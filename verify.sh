@@ -16,8 +16,9 @@
 #    deliberate change to kavach.xml or the C++ that the Python side never
 #    followed. A stage that is not in the command does not get run.
 #
-#  Build dirs live under build-verify/ (git-ignorable) so nothing is written
-#  into the source tree. Set JOBS to override parallelism, QMAKE to pick a Qt.
+#  Build dirs live under build-verify/ (git-ignored) so nothing is written
+#  into the source tree: core/ (the shared static library, built first),
+#  tests/, menuaudit/ and app/, which all link it. Set JOBS to override parallelism, QMAKE to pick a Qt.
 # =============================================================================
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -53,7 +54,16 @@ for v in "$HERE"/schema/validate_*.py; do
   stage "$n" "$rc"
 done
 
-if [ "$DO_CPP" -eq 1 ]; then
+# ---- 1b. the shared library -------------------------------------------------
+# Session 87: every program below links build-verify/core/libdlcore.a, so the
+# application sources are compiled once here instead of once per program.
+core_ok=1
+if [ "$DO_CPP" -eq 1 ] || [ "$DO_SMOKE" -eq 1 ]; then
+  echo "== shared library (dlcore)"
+  if build "$OUT/core" "$HERE/core/core.pro"; then echo "  ok"; else core_ok=0; stage "dlcore (build)" 1; fi
+fi
+
+if [ "$DO_CPP" -eq 1 ] && [ "$core_ok" -eq 1 ]; then
   # ---- 2. unit suite -------------------------------------------------------
   echo "== unit suite"
   if build "$OUT/tests" "$HERE/tests/tests.pro"; then
@@ -72,13 +82,13 @@ if [ "$DO_CPP" -eq 1 ]; then
   else stage "menuaudit (build)" 1; fi
 fi
 
-if [ "$DO_SMOKE" -eq 1 ]; then
+if [ "$DO_SMOKE" -eq 1 ] && [ "$core_ok" -eq 1 ]; then
   # ---- 4. headless smoke ---------------------------------------------------
   # The real app, offscreen, fed real capture lines over UDP (dest 101, the
   # console's id) for 12 s. Pass = still running when the timeout fires
   # (exit 124). A crash exits with a signal instead.
   echo "== headless smoke"
-  if build "$OUT/app" "$HERE/DLConsole.pro"; then
+  if build "$OUT/app" "$HERE/app/app.pro"; then
     port=50002
     (cd "$OUT/app" && QT_QPA_PLATFORM=offscreen timeout 14 ./DLConsole >"$OUT/smoke.log" 2>&1; echo $? >"$OUT/smoke.rc") &
     sleep 3

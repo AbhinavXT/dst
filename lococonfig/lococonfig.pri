@@ -1,7 +1,7 @@
 # =============================================================================
 #  lococonfig.pri -- Tools ▸ Loco Configuration… (LOCO_INFO editor / sender)
 #  ---------------------------------------------------------------------------
-#  Included by DLConsole.pro, tests/tests.pro and tests/menuaudit.pro, like
+#  Included by dlcore.pri (compiled once into the dlcore library), like
 #  flasher.pri. Uses FlasherStyle (flasher/) for its colours, UdpSender for
 #  its one transmit, and schema/kavach.xml (already a resource) for the
 #  LOCO_INFO layout.

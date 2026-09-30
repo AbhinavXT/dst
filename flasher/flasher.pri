@@ -1,8 +1,8 @@
 # =============================================================================
 #  flasher.pri -- the Firmware Flasher (Tools ▸ Firmware Flasher…)
 #  ---------------------------------------------------------------------------
-#  Included by DLConsole.pro, tests/tests.pro and tests/menuaudit.pro so the
-#  three builds cannot drift apart on which flasher files they compile.
+#  Included by dlcore.pri (compiled once into the dlcore library) so the
+#  programs cannot drift apart on which flasher files they compile.
 #
 #  flash_engine.*, flashworker.* and board_sim.py are the handoff pack's,
 #  unmodified (the wire protocol lives there). blockmapwidget.* is the

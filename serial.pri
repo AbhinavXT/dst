@@ -8,8 +8,12 @@
     QT      += serialport
     DEFINES += DL_HAVE_SERIAL
     CONFIG  += dl_serial
-    SOURCES += $$PWD/seriallink.cpp $$PWD/serialconsolewindow.cpp
-    HEADERS += $$PWD/seriallink.h   $$PWD/serialconsolewindow.h
-} else {
+    # The library compiles them; programs linking it only need the module
+    # and the define (dlcore_link.pri sets dl_link_only).
+    !dl_link_only {
+        SOURCES += $$PWD/seriallink.cpp $$PWD/serialconsolewindow.cpp
+        HEADERS += $$PWD/seriallink.h   $$PWD/serialconsolewindow.h
+    }
+} else:!dl_link_only {
     message("DLConsole: building without the serial terminal (Qt Serial Port module not used)")
 }

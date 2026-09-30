@@ -11,6 +11,99 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-88"></a>
+## Session 88 — Shared sources compiled once: the `dlcore` static library
+
+The app, the unit tests and the menu audit each compiled the same ~106
+application sources. They are now compiled once, into a static library, and
+every program links it.
+
+### Measured
+
+The same machine, one core (`make -j1`), clean builds:
+
+| Program | Before (patch 87) | After |
+|---|---|---|
+| Shared library `dlcore` | — | 375 s |
+| Unit tests (`dltests`) | 495 s | 178 s |
+| Menu audit | 379 s | 5 s |
+| App (`DLConsole`) | 374 s | 2 s |
+| **Total** | **1248 s** | **560 s (2.2× faster)** |
+
+Not 3×: the unit suite's own ~100 test files still compile either way.
+With `make -jN` both columns shrink by about N.
+
+### Layout
+
+- **`dlcore.pri`** is THE list of shared sources: 106 `.cpp`, 111 headers,
+  `mainwindow.ui`, plus `flasher.pri`, `lococonfig.pri` and `serial.pri`.
+  **A new source file is added here, and only here.**
+- **`core/core.pro`** builds `libdlcore.a` (`dlcore.lib` with MSVC) into
+  `<build>/core`, with no debug/release subfolder.
+- **`dlcore_link.pri`** is included by every program. It gives the headers,
+  the Qt modules, the serial switch (the same test the library was built
+  with), the resources, the link, and a relink when the library changes.
+  - Resources (`images.qrc`, `lococonfig.qrc`) stay in the programs. A `.qrc`
+    inside a static library registers itself from an object the linker never
+    pulls in.
+  - The library is looked for in `core/` next to the program's build folder.
+    Elsewhere, pass `qmake DLCORE_DIR=…`.
+- **`app/app.pro`** is `main.cpp` plus the library.
+- **`DLConsole.pro`** is now a subdirs project: `core`, then `app`.
+  - Open it in Qt Creator, or run `qmake && make`, as before.
+  - **The program now lands in `<build>/app/DLConsole(.exe)`**, so point
+    `windeployqt` or any script there.
+  - `qmake CONFIG+=with_tests` also builds `dltests` and `menuaudit`
+    (in `<build>/tests`, as `Makefile.dltests` / `Makefile.menuaudit`).
+- **`tests/tests.pro`, `menuaudit.pro`, `shot.pro`, `bench.pro`** list only
+  their own files and link the library. Each keeps its objects in its own
+  `.obj-<target>` folder, so two can share a build folder.
+  - **`shot.pro` builds again.** Its private copy of the source list had
+    fallen 66 files behind the app's, so it had not linked for a while.
+- **`verify.sh`** builds `build-verify/core` first, then links the tests,
+  the menu audit and the app (`app/app.pro`) against it. If the library
+  fails to build, it says so as its own stage.
+
+### One behaviour difference
+
+The unit tests used to compile the shared sources without
+`QT_NO_DEBUG_OUTPUT`; they now get the library, built like the app with
+it. No test reads debug output; the counts below are unchanged.
+
+### Checked
+
+- **`verify.sh`, end to end on the new layout: 0 stages failed.**
+  - validators 11/11;
+  - unit suite **146 suites / 4453 checks**, the same as patch 87;
+  - menu audit **138 ok**;
+  - headless smoke alive (500 datagrams).
+- **Built without the serial module** (`CONFIG+=no_serial`, library and menu
+  audit):
+  - the library has no serial objects;
+  - `menuaudit` does not link `Qt5SerialPort`;
+  - the audit is 137 ok, with the serial action present and disabled.
+- **The top-level `DLConsole.pro` with `CONFIG+=with_tests`** builds
+  `core → app, dltests, menuaudit`.
+- **`shot` and `bench`** link.
+
+---
+
+<a id="session-87"></a>
+## Session 87 — Git history; one changelog
+
+- **The tree is a git repository.**
+  - The first commit is patch 86 exactly as delivered (tag `patch-86`), so
+    everything removed afterwards can be recovered.
+  - Patches travel as the zip, which includes `.git`, or as a `.bundle`.
+- **This file replaces the 64 `CHANGES_SESSION_*.md` notes** and
+  `LINFO_CHANGES.md`, which is kept as an undated appendix.
+- **Removed `schema/*_v0_backup.*`**: nothing built, imported or tested them.
+- **Removed the root `SCHEMA_GUIDE.md`**: it described `kavachschema.h`,
+  which is gone. The guide is `schema/SCHEMA_GUIDE.md`.
+- **`.gitignore`** gains `__pycache__/`, `*.pyc` and `build-verify/`.
+
+---
+
 <a id="session-86"></a>
 ## Session 86 — The console never depends on a serial port
 
