@@ -25,6 +25,7 @@
 #include "schema/schemaencoder.h"
 
 class QComboBox;
+class FrameNumberWatch;
 class QLineEdit;
 class QSpinBox;
 class QListWidget;
@@ -44,7 +45,9 @@ class SubPacketWindow;
 class PacketMakerDialog : public QDialog {
     Q_OBJECT
 public:
-    explicit PacketMakerDialog(QWidget *parent = nullptr);
+    // `frameWatch`: the live frame-number watch a new frame is seeded from
+    // (MainWindow's). nullptr = no live traffic to follow (session 95).
+    explicit PacketMakerDialog(QWidget *parent = nullptr, FrameNumberWatch *frameWatch = nullptr);
     ~PacketMakerDialog() override;
 
     // The field-editor factory, shared with SubPacketWindow so a field looks
@@ -105,7 +108,8 @@ public:
     // set so the caller can say which it was — a number taken from traffic
     // and a number taken from this laptop's clock are different claims and
     // must not look alike.
-    static qint64 seedFrameNumber(int bits, bool *fromLive = nullptr);
+    // `watch` may be nullptr (no live traffic): the clock is used then.
+    static qint64 seedFrameNumber(const FrameNumberWatch *watch, int bits, bool *fromLive = nullptr);
 
     static QByteArray parseBuffer(const QString &text, QString *captypeHint);
 
@@ -161,6 +165,7 @@ private slots:
     void onExtrasEdited();
 
 private:
+    FrameNumberWatch *m_frameWatch = nullptr;     // session 95: not owned; may be nullptr
     void rebuildHeaderForm();
     void rebuildSubEditor();
     void commitCurrentSub();

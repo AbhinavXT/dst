@@ -112,6 +112,8 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    // Session 95: the live frame-number watch, owned here (was a singleton).
+    m_frameWatch = new FrameNumberWatch(this);
 
     // Crash recovery (session 79), before anything reads the workspace,
     // pop-out or layout keys: if the last run did not close cleanly, its
@@ -754,7 +756,7 @@ void MainWindow::onEntriesAppended(QString tabKey, QVector<LogEntryPtr> entries)
     // ARP and LSRP carry the frame number the equipment is actually using.
     // The Packet Maker follows it so a built frame is not minutes away from
     // the live counter — see framenumberwatch.h.
-    for (const LogEntryPtr &e : entries) { FrameNumberWatch::instance().observe(e); }
+    for (const LogEntryPtr &e : entries) { m_frameWatch->observe(e); }
 
     // A running field sweep scores each value it sent by what came back, so it
     // needs every entry, not just the visible tab's. It ignores them unless a
@@ -2606,6 +2608,7 @@ void MainWindow::openSessionAt(const QString &filePath, qint64 epochMs)
     Q_UNUSED(epochMs);   // SessionWindow has no seek API yet; see below.
 
     auto *win = new SessionWindow(&m_colorRules, &m_nameMap, m_theme, this);
+    win->setFrameWatch(m_frameWatch);
     win->setBookmarkStore(&m_bookmarks);
     const qint64 n = win->loadFiles({ filePath });
     win->show();
@@ -2630,6 +2633,7 @@ void MainWindow::onActionOpenSession()
     // Parented to us so the borrowed ColorRules / NameMap outlive it, and
     // WA_DeleteOnClose handles the rest.
     auto *win = new SessionWindow(&m_colorRules, &m_nameMap, m_theme, this);
+    win->setFrameWatch(m_frameWatch);
     // The same store the live tabs use: a row bookmarked while reviewing a
     // recording is the same row bookmarked live.
     win->setBookmarkStore(&m_bookmarks);

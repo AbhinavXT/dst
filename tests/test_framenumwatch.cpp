@@ -50,7 +50,8 @@ qint64 frameNumViaSchema(const QString &captype, const QByteArray &frame)
 
 TEST_SUITE(framenumwatch)
 {
-    FrameNumberWatch &w = FrameNumberWatch::instance();
+    FrameNumberWatch watch;                 // session 95: the test's own, not a global
+    FrameNumberWatch &w = watch;
     w.clear();
     CHECK(!w.latest().valid(), "nothing seen at the start");
     CHECK(w.ageMs() < 0, "and no age to report");
@@ -140,18 +141,18 @@ TEST_SUITE(framenumwatch)
     {
         w.clear();
         bool live = true;
-        const qint64 cold = PacketMakerDialog::seedFrameNumber(17, &live);
+        const qint64 cold = PacketMakerDialog::seedFrameNumber(&w, 17, &live);
         CHECK(!live, "with nothing seen, the seed is not claimed to be live");
         CHECK(cold >= 0 && cold < 86400,
               "and falls back to seconds since midnight");
 
         w.observeLine(CaptureDecoder::parseLine(kLsrp));
-        const qint64 hot = PacketMakerDialog::seedFrameNumber(17, &live);
+        const qint64 hot = PacketMakerDialog::seedFrameNumber(&w, 17, &live);
         CHECK(live, "once traffic is seen, the seed comes from it");
         CHECK(hot == w.latest().value, "and is the observed number");
 
         // A narrow field still gets a value that fits it.
-        const qint64 narrow = PacketMakerDialog::seedFrameNumber(8, nullptr);
+        const qint64 narrow = PacketMakerDialog::seedFrameNumber(&w, 8, nullptr);
         CHECK(narrow >= 0 && narrow < 256, "clipped to the field's width");
     }
 

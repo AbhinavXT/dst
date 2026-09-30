@@ -152,7 +152,7 @@ void MainWindow::buildStatusBar()
     }
     statusBar()->addPermanentWidget(m_lblDiskStatus);
 
-    connect(&FrameNumberWatch::instance(), &FrameNumberWatch::observed,
+    connect(m_frameWatch, &FrameNumberWatch::observed,
             this, [this](qint64, int) { refreshFrameClock(); });
     {
         // The skew is against this laptop's clock, so it goes stale on its own
@@ -242,7 +242,7 @@ void MainWindow::paintClockLabel(QLabel *lbl, const QString &who,
 
 void MainWindow::refreshFrameClock()
 {
-    FrameNumberWatch &w = FrameNumberWatch::instance();
+    FrameNumberWatch &w = *m_frameWatch;
     // Session 82: after the labels are painted, one history sample a second.
     struct Recorder {
         MainWindow *self;
@@ -299,7 +299,7 @@ void MainWindow::refreshFrameClock()
 
 void MainWindow::recordClockHistory()
 {
-    FrameNumberWatch &w = FrameNumberWatch::instance();
+    FrameNumberWatch &w = *m_frameWatch;
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     const FrameNumberWatch::Seen loco = w.latest();
     const FrameNumberWatch::Seen stn = w.latestStation();

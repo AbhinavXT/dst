@@ -201,7 +201,7 @@ void MainWindow::onActionPacketMaker()
     // Compose a station/loco packet, self-verify it, and (optionally) send it.
     // The only transmit path in DLConsole; independent lifetime like the
     // workbench, so more than one can be open.
-    auto *pm = new PacketMakerDialog(this);
+    auto *pm = new PacketMakerDialog(this, m_frameWatch);
     pm->setAttribute(Qt::WA_DeleteOnClose);
     pm->show();
     pm->raise();
@@ -240,7 +240,7 @@ void MainWindow::openBufferInPacketMaker(const QString &bufferText)
         m_bufferPacketMaker = nullptr;
     }
     if (!m_bufferPacketMaker) {
-        m_bufferPacketMaker = new PacketMakerDialog(this);
+        m_bufferPacketMaker = new PacketMakerDialog(this, m_frameWatch);
         m_bufferPacketMaker->setAttribute(Qt::WA_DeleteOnClose);
     }
     m_bufferPacketMaker->loadBuffer(bufferText);

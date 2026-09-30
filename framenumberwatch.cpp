@@ -36,11 +36,6 @@ const Schema::Encoder &encoder()
 
 }  // namespace
 
-FrameNumberWatch &FrameNumberWatch::instance()
-{
-    static FrameNumberWatch w;
-    return w;
-}
 
 FrameNumberWatch::Field FrameNumberWatch::fieldFor(const QString &captype)
 {

@@ -11,6 +11,7 @@
 
 #include "testutil.h"
 
+#include "framenumberwatch.h"
 #include "packetbuilder.h"
 #include "packetpreset.h"
 #include "packetvariation.h"
@@ -25,6 +26,10 @@
 #include <QUdpSocket>
 
 using PacketVary::Rule;
+
+// Session 95: the live frame-number watch is no longer process-wide; the
+// Packet Maker is handed one, as MainWindow does.
+static FrameNumberWatch g_watch95;
 
 TEST_SUITE(packetvary)
 {
@@ -452,7 +457,7 @@ TEST_SUITE(framenumseed)
 
 TEST_SUITE(framenumform)
 {
-    PacketMakerDialog dlg;
+    PacketMakerDialog dlg(nullptr, &g_watch95);
 
     // The Now button is the visible half of the feature: without it the seed
     // goes stale while the dialog sits open and nothing says so.
@@ -509,7 +514,7 @@ TEST_SUITE(framenumform)
 
 TEST_SUITE(packetmakerlayout)
 {
-    PacketMakerDialog dlg;
+    PacketMakerDialog dlg(nullptr, &g_watch95);
     dlg.resize(1080, 860);
     dlg.show();
     QCoreApplication::processEvents();
@@ -669,15 +674,15 @@ TEST_SUITE(varylive)
     // The default rule for a packet with FRAME_NUM is the one an operator gets
     // without touching anything, so it is the one that has to be right.
     {
-        FrameNumberWatch::instance().clear();
-        FrameNumberWatch::instance().observeLine(CaptureDecoder::parseLine(
+        g_watch95.clear();
+        g_watch95.observeLine(CaptureDecoder::parseLine(
             QStringLiteral("@lsrp_1_1 2026-06-27T14:02:27 21441 02 07 0A 00 27 00 00 00 "
                            "0F 02 A3 AC 57 40 00 01 40 9F FB 41 E0 F0 7D 00 10 FC 30 15 "
                            "20 8D 00 F2 F3 26 DD C6 ED 59 9B")));
-        const qint64 seen = FrameNumberWatch::instance().latest().value;
+        const qint64 seen = g_watch95.latest().value;
         CHECK(seen >= 0, "a frame number was observed");
 
-        PacketMakerDialog dlg;
+        PacketMakerDialog dlg(nullptr, &g_watch95);
         QCoreApplication::processEvents();
 
         const QVector<PacketVary::Rule> rules = dlg.varyRules();
@@ -695,7 +700,7 @@ TEST_SUITE(varylive)
                   "is a question about SIF 0533, not one to guess at");
         }
         CHECK(found, "a frame-number rule is seeded for a packet that has one");
-        FrameNumberWatch::instance().clear();
+        g_watch95.clear();
     }
 }
 
@@ -715,17 +720,17 @@ TEST_SUITE(varylive)
 
 TEST_SUITE(framefreshness)
 {
-    FrameNumberWatch::instance().clear();
+    g_watch95.clear();
 
     // A real LSRP, so the observed number is a real one.
     const QString lsrp = QStringLiteral(
         "@lsrp_1_1 2026-06-27T14:02:27 21441 02 07 0A 00 27 00 00 00 0F 02 A3 AC 57 "
         "40 00 01 40 9F FB 41 E0 F0 7D 00 10 FC 30 15 20 8D 00 F2 F3 26 DD C6 ED 59 9B");
-    FrameNumberWatch::instance().observeLine(CaptureDecoder::parseLine(lsrp));
-    const qint64 first = FrameNumberWatch::instance().latest().value;
+    g_watch95.observeLine(CaptureDecoder::parseLine(lsrp));
+    const qint64 first = g_watch95.latest().value;
     CHECK(first >= 0, "a frame number was observed");
 
-    PacketMakerDialog dlg;
+    PacketMakerDialog dlg(nullptr, &g_watch95);
     QCoreApplication::processEvents();
 
     // The header the dialog would build with must be the observed number,
@@ -737,8 +742,8 @@ TEST_SUITE(framefreshness)
     // Now the equipment moves on, as it does every second.
     CaptureLine moved = CaptureDecoder::parseLine(lsrp);
     moved.bytes[12] = char(quint8(moved.bytes.at(12)) ^ 0x0F);
-    FrameNumberWatch::instance().observeLine(moved);
-    const qint64 second = FrameNumberWatch::instance().latest().value;
+    g_watch95.observeLine(moved);
+    const qint64 second = g_watch95.latest().value;
     CHECK(second != first, "the observed number changed");
 
     QCoreApplication::processEvents();
@@ -747,7 +752,7 @@ TEST_SUITE(framefreshness)
           "and the next build follows it — this is the difference between a "
           "frame the loco accepts and one it rejects as stale");
 
-    FrameNumberWatch::instance().clear();
+    g_watch95.clear();
 }
 
 // =============================================================================
@@ -768,7 +773,7 @@ TEST_SUITE(framefreshness)
 
 TEST_SUITE(armdisarm)
 {
-    PacketMakerDialog dlg;
+    PacketMakerDialog dlg(nullptr, &g_watch95);
     QCoreApplication::processEvents();
 
     QCheckBox *arm = nullptr;
@@ -832,8 +837,8 @@ TEST_SUITE(armdisarm)
         arm->setChecked(true);
         QCoreApplication::processEvents();
 
-        FrameNumberWatch::instance().clear();
-        FrameNumberWatch::instance().observeLine(CaptureDecoder::parseLine(
+        g_watch95.clear();
+        g_watch95.observeLine(CaptureDecoder::parseLine(
             QStringLiteral("@lsrp_1_1 2026-06-27T14:02:27 21441 02 07 0A 00 27 00 00 00 "
                            "0F 02 A3 AC 57 40 00 01 40 9F FB 41 E0 F0 7D 00 10 FC 30 15 "
                            "20 8D 00 F2 F3 26 DD C6 ED 59 9B")));
@@ -843,6 +848,6 @@ TEST_SUITE(armdisarm)
               "the frame number moving on leaves it armed — otherwise the switch "
               "would clear itself once a second and guard nothing");
         arm->setChecked(false);
-        FrameNumberWatch::instance().clear();
+        g_watch95.clear();
     }
 }

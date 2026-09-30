@@ -69,6 +69,7 @@ class QTreeWidgetItem;
 class QLineEdit;
 class QLabel;
 class QMenu;
+class FrameNumberWatch;
 class QTableView;
 QT_END_NAMESPACE
 
@@ -505,6 +506,7 @@ private:
     QTimer *m_statusTimer    = nullptr;
     QTimer *m_userLabelTimer = nullptr;
 
+    FrameNumberWatch *m_frameWatch = nullptr;   // session 95: owned here, handed to the Packet Makers
     quint64 m_lastReportedMalformed = 0;   // session 90: drops by cause
     quint64 m_lastReportedQueueFull = 0;
     int     m_perTabCapacity    = 200'000;

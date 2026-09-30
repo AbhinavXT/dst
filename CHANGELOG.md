@@ -11,6 +11,41 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-95"></a>
+## Session 95 — Singletons, 1 of 4: `FrameNumberWatch`
+
+The first of the four singletons that came back (cleanup step 5). It holds
+the live loco frame number that the Packet Maker seeds frames from, so it
+is mutable runtime state. As a process-wide instance it was shared by every
+window and every test, which is exactly what the dispatcher's
+"kill the singletons" goal was meant to end.
+
+**Now:**
+- `FrameNumberWatch` has a public constructor and **no `instance()`**.
+- **`MainWindow` owns** the one fed by live traffic (`m_frameWatch`).
+- **`PacketMakerDialog(parent, frameWatch)`** is handed it.
+  - The Tools-menu and buffer Packet Makers get MainWindow's.
+  - A recorded-session window's Packet Maker gets it through
+    `SessionWindow::setFrameWatch()`, as before when it read the global.
+  - `nullptr` means no live traffic: the seed then comes from the clock
+    and says so.
+- **`PacketMakerDialog::seedFrameNumber(watch, bits, &fromLive)`** takes the
+  watch explicitly.
+- **No behaviour change** for the operator.
+
+**Tests:**
+- **`session95` (6):** two watches share nothing, and the seed comes from the
+  watch handed in, or the clock without one.
+- **`framenumwatch` and `packetvary`** now make their own watch instead of
+  clearing the global one between checks.
+
+**`verify.sh`: 0 stages failed.**
+- unit suite **151 suites / 4892 checks**;
+- menu audit 138 ok;
+- smoke alive.
+
+---
+
 <a id="session-94"></a>
 ## Session 94 — Export / import profiles, to use them on another PC
 

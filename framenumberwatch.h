@@ -44,7 +44,10 @@ class FrameNumberWatch : public QObject
     Q_OBJECT
 
 public:
-    static FrameNumberWatch &instance();
+    // Session 95: no longer a process-wide instance. MainWindow owns the one
+    // fed by live traffic and hands it to whatever reads it (the Packet
+    // Maker); a test makes its own.
+    explicit FrameNumberWatch(QObject *parent = nullptr) : QObject(parent) {}
 
     struct Seen {
         qint64  value     = -1;   // the FRAME_NUM last read
@@ -84,7 +87,6 @@ signals:
     void observed(qint64 value, int locoId);
 
 private:
-    FrameNumberWatch() = default;
 
     // Bit offset and width of FRAME_NUM within a captured frame of this
     // type, worked out once from the schema. width 0 means "this packet has

@@ -616,7 +616,7 @@ void SessionWindow::onToolRowToPacketMaker()
     // no warning. That one gets a window of its own.
     if (m_packetMaker && m_packetMaker->isSending()) { m_packetMaker = nullptr; }
     if (!m_packetMaker) {
-        m_packetMaker = new PacketMakerDialog(this);
+        m_packetMaker = new PacketMakerDialog(this, m_frameWatch);
         m_packetMaker->setAttribute(Qt::WA_DeleteOnClose);
     }
     m_packetMaker->loadBuffer(buf);

@@ -58,6 +58,8 @@ class DecodeWorkbench;
 class FrameDiffWindow;
 class PacketMakerDialog;
 
+class FrameNumberWatch;
+
 class SessionWindow : public QMainWindow
 {
     Q_OBJECT
@@ -70,6 +72,10 @@ public:
                   Theme             theme,
                   QWidget          *parent = nullptr);
     ~SessionWindow() override;
+
+    // Session 95: the live frame-number watch its Packet Maker seeds from
+    // (MainWindow's), as before when that watch was process-wide.
+    void setFrameWatch(class FrameNumberWatch *watch) { m_frameWatch = watch; }
 
     // Load every given .dlr. Returns the number of records loaded across all
     // files; per-file problems are collected and reported in the status
@@ -163,6 +169,7 @@ private:
     QPointer<DecodeWorkbench>   m_workbench;
     QPointer<FrameDiffWindow>   m_frameDiff;
     QPointer<PacketMakerDialog> m_packetMaker;
+    class FrameNumberWatch *m_frameWatch = nullptr;   // not owned
 };
 
 #endif // SESSIONWINDOW_H

@@ -173,9 +173,9 @@ qint64 PacketMakerDialog::secondsSinceMidnight(int bits)
     return secs % span;          // a narrow field wraps rather than saturates
 }
 
-qint64 PacketMakerDialog::seedFrameNumber(int bits, bool *fromLive)
+qint64 PacketMakerDialog::seedFrameNumber(const FrameNumberWatch *watch, int bits, bool *fromLive)
 {
-    const FrameNumberWatch::Seen s = FrameNumberWatch::instance().latest();
+    const FrameNumberWatch::Seen s = watch ? watch->latest() : FrameNumberWatch::Seen();
     if (s.valid()) {
         if (fromLive) { *fromLive = true; }
         if (bits > 0 && bits < 63) { return s.value & ((qint64(1) << bits) - 1); }
@@ -222,7 +222,7 @@ void PacketMakerDialog::writeEditor(QWidget *w, qint64 v)
 
 // ---- construction ----------------------------------------------------------
 
-PacketMakerDialog::PacketMakerDialog(QWidget *parent) : QDialog(parent)
+PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWatch) : QDialog(parent), m_frameWatch(frameWatch)
 {
     setWindowTitle(tr("Packet Maker"));
     WindowGeometry::makeResizableWindow(this);
@@ -655,7 +655,7 @@ void PacketMakerDialog::rebuildHeaderForm()
             // equipment says.
             bool live = false;
             const int bits = f.bits;
-            writeEditor(ed, seedFrameNumber(bits, &live));
+            writeEditor(ed, seedFrameNumber(m_frameWatch, bits, &live));
 
             auto *row  = new QWidget(m_headerHost);
             auto *hb   = new QHBoxLayout(row);
@@ -679,7 +679,7 @@ void PacketMakerDialog::rebuildHeaderForm()
                                "or the clock if none has been seen."));
             connect(now, &QPushButton::clicked, this, [this, ed, bits] {
                 bool fromLive = false;
-                writeEditor(ed, seedFrameNumber(bits, &fromLive));
+                writeEditor(ed, seedFrameNumber(m_frameWatch, bits, &fromLive));
                 m_lastFrame.clear();
                 setSendEnabled(false);
                 m_status->say(fromLive
@@ -692,7 +692,7 @@ void PacketMakerDialog::rebuildHeaderForm()
             // Live updates. Only while following, and only into the editor —
             // the built frame is deliberately left stale so Send stays
             // disabled until the operator rebuilds with the new number.
-            connect(&FrameNumberWatch::instance(), &FrameNumberWatch::observed,
+            if (m_frameWatch) connect(m_frameWatch, &FrameNumberWatch::observed,
                     ed, [this, ed, bits](qint64 v, int) {
                         if (!m_followFrameNum || !m_followFrameNum->isChecked()) { return; }
                         if (m_sender.isRunning()) { return; }   // don't fight a live send
@@ -875,7 +875,7 @@ QHash<QString, qint64> PacketMakerDialog::readHeader() const
     // closes.
     if (m_followFrameNum && m_followFrameNum->isChecked()
         && h.contains(QLatin1String("FRAME_NUM"))) {
-        const FrameNumberWatch::Seen seen = FrameNumberWatch::instance().latest();
+        const FrameNumberWatch::Seen seen = m_frameWatch ? m_frameWatch->latest() : FrameNumberWatch::Seen();
         if (seen.valid()) {
             const int bits = headerFieldBits(QStringLiteral("FRAME_NUM"));
             h.insert(QStringLiteral("FRAME_NUM"),
@@ -920,8 +920,8 @@ PacketBuilder::Result PacketMakerDialog::buildNow(int sendIndex)
     if (sendIndex >= 0) {
         // The live frame number is read HERE, once per send, rather than
         // inside the rule: packetvariation stays a pure value calculation
-        // and the ingest-facing singleton stays out of it.
-        const FrameNumberWatch::Seen seen = FrameNumberWatch::instance().latest();
+        // and the ingest-facing watch stays out of it.
+        const FrameNumberWatch::Seen seen = m_frameWatch ? m_frameWatch->latest() : FrameNumberWatch::Seen();
 
         PacketVary::LiveFrame live;
         live.value = seen.valid() ? seen.value : -1;
@@ -1068,7 +1068,7 @@ void PacketMakerDialog::seedDefaultVaryRule()
     // which is seeded from the same place the form's field is.
     r.mode  = PacketVary::Rule::Live;
     bool live = false;
-    r.start = seedFrameNumber(headerFieldBits(QStringLiteral("FRAME_NUM")), &live);
+    r.start = seedFrameNumber(m_frameWatch, headerFieldBits(QStringLiteral("FRAME_NUM")), &live);
     // step 0: repeat the observed number for as long as it stands. Whether a
     // peer requires every frame to advance is a question about SIF 0533 and
     // not one to answer by guessing, so the default is the literal reading —
