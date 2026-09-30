@@ -57,7 +57,8 @@ QString randLine(quint16 loco, quint16 stn, int locoTag = 1)
 
 TEST_SUITE(sessionkeystore)
 {
-    SessionKeyStore &store = SessionKeyStore::instance();
+    SessionKeyStore ownStore;                 // session 96: the test's own, not a global
+    SessionKeyStore &store = ownStore;
     store.clear();
 
     const QByteArray AK    = QByteArray::fromHex("1234567890abcdef1234567890abcdef");
@@ -109,7 +110,7 @@ TEST_SUITE(sessionkeystore)
             const QString line = QStringLiteral("@slrp_1_1 2026-08-26T09:30:19 200 %1")
                                      .arg(QString::fromLatin1(built.frame.toHex()));
             const QVector<FieldRow> rows =
-                CaptureDecoder::describe(CaptureDecoder::parseLine(line));
+                CaptureDecoder::describe(CaptureDecoder::parseLine(line), nullptr, 0, nullptr, &store);
             QString mac;
             for (const FieldRow &fr : rows) { if (fr.field.contains("MAC (live)")) { mac = fr.value; } }
             CHECK(mac.contains("PASS"), "decode shows MAC (live) PASS");

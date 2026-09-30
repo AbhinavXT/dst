@@ -245,6 +245,8 @@ struct CaptureIndex {
     int rfidUid   = -1;   // RFID unique id
 };
 
+class SessionKeyStore;   // session 96: handed to describe() for the live MAC row
+
 namespace CaptureDecoder {
 
 // Returns valid=false if `text` is not an @-capture line.
@@ -266,10 +268,14 @@ CaptureLine parseLine(const QString &text);
 // callers that compare rather than display — the reject rules. The rendered
 // rows carry display strings ("2 (Reverse)", "12.5 m"), and comparing a rule
 // against those would mean parsing presentation back into a number.
+// `keys` (session 96): the session-key store the SLRP "MAC (live)" row is
+// checked against -- MainWindow's, fed by live traffic. nullptr = no MAC row
+// (a replay, a recording, a panel that shows no MAC).
 QVector<FieldRow> describe(const CaptureLine &c,
                            const QHash<int, qint64> *tagLoc = nullptr,
                            int keySnapshotId = 0,
-                           QHash<QString, qint64> *rawValues = nullptr);
+                           QHash<QString, qint64> *rawValues = nullptr,
+                           const SessionKeyStore *keys = nullptr);
 
 // Structured SLRP look-ahead profile for the track view (empty .valid=false
 // for non-SLRP frames). Reuses the same verified bit layout as describe().

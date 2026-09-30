@@ -18,11 +18,12 @@
 #include <QVBoxLayout>
 
 TabPopoutWindow::TabPopoutWindow(const QString &key, const QString &friendlyName, LogModel *model,
-                                 MessageDispatcher *dispatcher, QWidget *parent)
+                                 MessageDispatcher *dispatcher, QWidget *parent, TabTags *tags)
     : QMainWindow(parent)
     , m_key(key)
     , m_friendlyName(friendlyName)
 {
+    m_tags = tags ? tags : new TabTags(this);
     WindowGeometry::makeResizableWindow(this);
     resize(900, 560);
     WindowGeometry::restore(this, geometryKey(key));
@@ -76,7 +77,7 @@ TabPopoutWindow::TabPopoutWindow(const QString &key, const QString &friendlyName
     if (dispatcher != nullptr) {
         connect(dispatcher, &MessageDispatcher::entryAppended, this, &TabPopoutWindow::onEntryAppended);
     }
-    connect(TabTags::instance(), &TabTags::changed, this, [this](const QString &changedKey) {
+    connect(m_tags, &TabTags::changed, this, [this](const QString &changedKey) {
         if (changedKey.isEmpty() || changedKey == m_key) {
             refreshTag();
         }
@@ -105,10 +106,10 @@ bool TabPopoutWindow::followLatest() const
 
 void TabPopoutWindow::refreshTag()
 {
-    const QString name = TabTags::instance()->decoratedName(m_key, m_friendlyName);
+    const QString name = m_tags->decoratedName(m_key, m_friendlyName);
     m_title->setText(name);
     setWindowTitle(name);
-    const QIcon dot = TabTags::instance()->dotIcon(m_key);
+    const QIcon dot = m_tags->dotIcon(m_key);
     // The window icon is also what the minimise chip shows.
     if (dot.isNull()) {
         setWindowIcon(QIcon());

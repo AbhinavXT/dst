@@ -27,6 +27,7 @@
 #include "packetbuilder.h"
 #include "udpsender.h"
 
+class SessionKeyStore;
 class QCheckBox;
 class QComboBox;
 class QLabel;
@@ -40,7 +41,8 @@ class FieldSweepDialog : public QDialog
 {
     Q_OBJECT
 public:
-    explicit FieldSweepDialog(QWidget *parent = nullptr);
+    // `keys`: MainWindow's session keys (session 96); nullptr = a private, empty store.
+    explicit FieldSweepDialog(QWidget *parent = nullptr, SessionKeyStore *keys = nullptr);
 
     // Every log entry, live. The dialog decides which ones belong to the step
     // in flight; MainWindow does not need to know the rules.
@@ -101,6 +103,7 @@ private:
     bool   m_running = false;
     QElapsedTimer m_sinceSend;
     QVector<QVector<FieldSweep::Observation>> m_obs;   // per step
+    SessionKeyStore *m_keys = nullptr;     // session 96: not owned (unless made here)
 };
 
 #endif  // FIELDSWEEPDIALOG_H

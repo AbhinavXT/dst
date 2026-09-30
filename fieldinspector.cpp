@@ -157,7 +157,7 @@ void FieldInspector::showEntry(const LogEntryPtr &entry)
     }
 
     QHash<QString, qint64> raw;
-    m_rows = CaptureDecoder::describe(cap, nullptr, 0, &raw);
+    m_rows = CaptureDecoder::describe(cap, nullptr, 0, &raw, m_keys);
 
     // Why the equipment at the other end would not act on this frame.
     //

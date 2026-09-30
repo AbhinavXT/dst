@@ -81,6 +81,9 @@ class CompareWindow : public QDialog
     Q_OBJECT
 
 public:
+    // Session 96: the live session keys (MainWindow's): its field panel's
+    // MAC row and its Decode Workbench check against them.
+    void setSessionKeys(class SessionKeyStore *keys);
     CompareWindow(MessageDispatcher *dispatcher,
                   const NameMap     *names,
                   QWidget           *parent = nullptr);
@@ -262,6 +265,7 @@ private:
     // Set by appendPane to feed paneIndex into lambda-wrapped slot calls.
     // Computed at lambda capture time so it stays correct even if the
     // pane vector grows.
+    class SessionKeyStore *m_sessionKeys = nullptr;   // not owned
 };
 
 #endif // COMPAREWINDOW_H

@@ -16,6 +16,7 @@
 // =====================================================================
 #include <QDialog>
 
+class SessionKeyStore;
 class QComboBox;
 class QDateTimeEdit;
 class QLineEdit;
@@ -26,7 +27,8 @@ class QPushButton;
 class SessionKeyDialog : public QDialog {
     Q_OBJECT
 public:
-    explicit SessionKeyDialog(QWidget *parent = nullptr);
+    // `keys`: MainWindow's session keys (session 96); nullptr = a private, empty store.
+    explicit SessionKeyDialog(QWidget *parent = nullptr, SessionKeyStore *keys = nullptr);
 
 private slots:
     void onDerive();
@@ -62,6 +64,7 @@ private:
     QLineEdit     *m_keyOut  = nullptr;
     QLabel        *m_explain = nullptr;
     QPushButton   *m_copyBtn = nullptr;
+    SessionKeyStore *m_keys = nullptr;     // session 96: not owned (unless made here)
 };
 
 #endif  // SESSIONKEYDIALOG_H

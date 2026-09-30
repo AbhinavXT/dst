@@ -360,7 +360,7 @@ void MainWindow::onTabContextMenu(const QPoint &pos)
     // Colour tag: follows this loco into its pop-out window, its minimise
     // chip and the Live Loco Console.
     QMenu *tagMenu = menu.addMenu(tr("Colour Tag"));
-    const TabTag currentTag = TabTags::instance()->tag(key);
+    const TabTag currentTag = m_tabTags->tag(key);
     QAction *actNoTag = tagMenu->addAction(tr("None"));
     actNoTag->setCheckable(true);
     actNoTag->setChecked(currentTag.color < 0);
@@ -404,11 +404,11 @@ void MainWindow::onTabContextMenu(const QPoint &pos)
         return;
     }
     if (chosen == actNoTag) {
-        TabTags::instance()->setColor(key, -1);
+        m_tabTags->setColor(key, -1);
         return;
     }
     if (colourActions.contains(chosen)) {
-        TabTags::instance()->setColor(key, colourActions.indexOf(chosen));
+        m_tabTags->setColor(key, colourActions.indexOf(chosen));
         return;
     }
     if (chosen == actLabel) {
@@ -418,7 +418,7 @@ void MainWindow::onTabContextMenu(const QPoint &pos)
             tr("Short label for %1 (empty to remove):").arg(m_tabs.value(key).friendlyName),
             QLineEdit::Normal, currentTag.label, &ok);
         if (ok) {
-            TabTags::instance()->setLabel(key, label);
+            m_tabTags->setLabel(key, label);
         }
         return;
     }
@@ -462,7 +462,7 @@ void MainWindow::popOutTab(const QString &key, const QPoint &globalPos)
     if (name.isEmpty()) {
         name = m_dispatcher->friendlyNameFor(key);
     }
-    auto *window = new TabPopoutWindow(key, name, model, m_dispatcher, this);
+    auto *window = new TabPopoutWindow(key, name, model, m_dispatcher, this, m_tabTags);
     window->setAttribute(Qt::WA_DeleteOnClose);
     // Follow the newest row if the tab does (its scroll lock).
     auto it = m_tabs.constFind(key);
@@ -535,8 +535,8 @@ void MainWindow::applyTabTag(const QString &key)
     if (it == m_tabs.constEnd() || !it->visible) return;
     const int index = ui->tabWidget->indexOf(it->container);
     if (index < 0) return;
-    ui->tabWidget->setTabIcon(index, TabTags::instance()->dotIcon(key));
-    ui->tabWidget->setTabText(index, TabTags::instance()->decoratedName(key, it->friendlyName));
+    ui->tabWidget->setTabIcon(index, m_tabTags->dotIcon(key));
+    ui->tabWidget->setTabText(index, m_tabTags->decoratedName(key, it->friendlyName));
 }
 
 void MainWindow::applyAllTabTags()

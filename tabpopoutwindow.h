@@ -32,8 +32,9 @@ class TabPopoutWindow : public QMainWindow
 {
     Q_OBJECT
 public:
+    // `tags`: MainWindow's (session 96); nullptr = a private one.
     TabPopoutWindow(const QString &key, const QString &friendlyName, LogModel *model,
-                    MessageDispatcher *dispatcher, QWidget *parent);
+                    MessageDispatcher *dispatcher, QWidget *parent, class TabTags *tags = nullptr);
 
     QString key() const { return m_key; }
     QTableView *view() const { return m_view; }
@@ -64,6 +65,7 @@ private:
     QLabel     *m_dot = nullptr;
     QLabel     *m_title = nullptr;
     QCheckBox  *m_follow = nullptr;
+    class TabTags *m_tags = nullptr;       // not owned (unless made here)
 };
 
 #endif // TABPOPOUTWINDOW_H

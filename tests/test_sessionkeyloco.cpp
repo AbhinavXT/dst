@@ -63,7 +63,8 @@ void feed(SessionKeyStore &s, const QString &line)
 
 TEST_SUITE(sessionkeyloco)
 {
-    SessionKeyStore &store = SessionKeyStore::instance();
+    SessionKeyStore ownStore;                 // session 96: the test's own, not a global
+    SessionKeyStore &store = ownStore;
     store.clear();
 
     const QByteArray K1 = QByteArray::fromHex("1234567890abcdef1234567890abcdef");

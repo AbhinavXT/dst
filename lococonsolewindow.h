@@ -54,7 +54,9 @@ class LocoConsoleWindow : public QMainWindow
     Q_OBJECT
 
 public:
-    explicit LocoConsoleWindow(MessageDispatcher *dispatcher, QWidget *parent = nullptr);
+    // `tags`: MainWindow's (session 96); nullptr = a private one.
+    explicit LocoConsoleWindow(MessageDispatcher *dispatcher, QWidget *parent = nullptr, class TabTags *tags = nullptr,
+                               const class SessionKeyStore *keys = nullptr);
     ~LocoConsoleWindow() override;
 
 protected:
@@ -222,6 +224,8 @@ public:
     QVector<LiveFieldRef> m_cabFields;
     void saveCabFields() const;
     void showCabMenu(const QPoint &pos);
+    class TabTags *m_tags = nullptr;       // not owned (unless made here)
+    const class SessionKeyStore *m_keys = nullptr;   // session 96: live keys for the SLRP MAC row; not owned
 };
 
 #endif // LOCOCONSOLEWINDOW_H

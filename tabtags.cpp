@@ -28,12 +28,6 @@ TabTags::TabTags(QObject *parent)
     // (UiColor::onThemeChange needs a widget).
 }
 
-TabTags *TabTags::instance()
-{
-    static TabTags *tags = new TabTags(qApp);
-    return tags;
-}
-
 TabTag TabTags::tag(const QString &key) const
 {
     QSettings settings(Settings::iniPath(), QSettings::IniFormat);

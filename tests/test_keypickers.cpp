@@ -68,7 +68,8 @@ QComboBox *keyCombo(QWidget *w)
 
 TEST_SUITE(keypickers)
 {
-    SessionKeyStore &store = SessionKeyStore::instance();
+    SessionKeyStore ownStore;                 // session 96: the test's own, not a global
+    SessionKeyStore &store = ownStore;
     store.clear();
 
     const QByteArray K1 = QByteArray::fromHex("1234567890abcdef1234567890abcdef");
@@ -84,7 +85,7 @@ TEST_SUITE(keypickers)
 
     // ---- Decode Workbench --------------------------------------------------
     {
-        DecodeWorkbench wb;
+        DecodeWorkbench wb(nullptr, &store);
         QComboBox *cb = keyCombo(&wb);
         CHECK(cb != nullptr, "the workbench has a session-key picker");
         if (cb) {
@@ -117,7 +118,7 @@ TEST_SUITE(keypickers)
 
     // ---- Packet Maker ------------------------------------------------------
     {
-        PacketMakerDialog pm;
+        PacketMakerDialog pm(nullptr, nullptr, &store);
         QComboBox *cb = keyCombo(&pm);
         CHECK(cb != nullptr, "the packet maker has a captured-key picker");
         if (cb) {

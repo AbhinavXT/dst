@@ -437,7 +437,7 @@ void CompareWindow::onRowToWorkbench()
     if (buf.isEmpty()) { return; }
 
     if (!m_workbench) {
-        m_workbench = new DecodeWorkbench(this);
+        m_workbench = new DecodeWorkbench(this, m_sessionKeys);
         m_workbench->setAttribute(Qt::WA_DeleteOnClose);
     }
     m_workbench->loadBuffer(buf);
@@ -995,4 +995,10 @@ void CompareWindow::closeEvent(QCloseEvent *event)
     // point at which the geometry still exists to be read.
     WindowGeometry::save(this, QStringLiteral("compareWindow"));
     QDialog::closeEvent(event);
+}
+
+void CompareWindow::setSessionKeys(SessionKeyStore *keys)
+{
+    m_sessionKeys = keys;
+    if (m_fieldPanel) m_fieldPanel->setSessionKeys(keys);
 }

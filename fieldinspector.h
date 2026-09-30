@@ -32,6 +32,7 @@
 #include <QVector>
 #include <QWidget>
 
+class SessionKeyStore;
 class LocoIdentity;
 
 #include "capturedecoder.h"   // FieldRow
@@ -60,6 +61,9 @@ public:
     void setLocoIdentity(LocoIdentity *identity) { m_identity = identity; }
 
     explicit FieldInspector(QWidget *parent = nullptr);
+    // Session 96: the live session keys the SLRP "MAC (live)" row is checked
+    // against (MainWindow's). None = no MAC row.
+    void setSessionKeys(const SessionKeyStore *keys) { m_keys = keys; }
 
     // Borrowed; must outlive this widget. Null disables decoding and the
     // panel says so rather than silently showing nothing.
@@ -112,6 +116,7 @@ private:
 
     StatusLine       *m_status = nullptr;
     QTableWidget *m_table  = nullptr;
+    const SessionKeyStore *m_keys = nullptr;   // not owned
 };
 
 #endif // FIELDINSPECTOR_H

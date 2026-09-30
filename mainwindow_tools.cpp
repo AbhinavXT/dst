@@ -117,7 +117,7 @@ void MainWindow::onActionLocoConsole()
     // A standalone live view of current loco state, built from the capture
     // stream. Like CompareWindow, it manages its own lifetime; multiple may
     // be opened (e.g. one per monitor) and each subscribes to the dispatcher.
-    auto *console = new LocoConsoleWindow(m_dispatcher, this);
+    auto *console = new LocoConsoleWindow(m_dispatcher, this, m_tabTags, m_sessionKeys);
     console->setAttribute(Qt::WA_DeleteOnClose);
     connect(console, &LocoConsoleWindow::jumpRequested, this, &MainWindow::jumpToEntry);
     console->show();
@@ -157,7 +157,7 @@ void MainWindow::onActionDecodeWorkbench()
 {
     // Standalone "paste a frame, see it decoded" tool. Independent of the
     // capture stream and of its own lifetime; multiple may be opened.
-    auto *wb = new DecodeWorkbench(this);
+    auto *wb = new DecodeWorkbench(this, m_sessionKeys);
     wb->setAttribute(Qt::WA_DeleteOnClose);
     wb->show();
     wb->raise();
@@ -201,7 +201,7 @@ void MainWindow::onActionPacketMaker()
     // Compose a station/loco packet, self-verify it, and (optionally) send it.
     // The only transmit path in DLConsole; independent lifetime like the
     // workbench, so more than one can be open.
-    auto *pm = new PacketMakerDialog(this, m_frameWatch);
+    auto *pm = new PacketMakerDialog(this, m_frameWatch, m_sessionKeys);
     pm->setAttribute(Qt::WA_DeleteOnClose);
     pm->show();
     pm->raise();
@@ -218,7 +218,7 @@ void MainWindow::openBufferInWorkbench(const QString &bufferText)
         return;
     }
     if (!m_bufferWorkbench) {
-        m_bufferWorkbench = new DecodeWorkbench(this);
+        m_bufferWorkbench = new DecodeWorkbench(this, m_sessionKeys);
         m_bufferWorkbench->setAttribute(Qt::WA_DeleteOnClose);
     }
     m_bufferWorkbench->loadBuffer(bufferText);
@@ -240,7 +240,7 @@ void MainWindow::openBufferInPacketMaker(const QString &bufferText)
         m_bufferPacketMaker = nullptr;
     }
     if (!m_bufferPacketMaker) {
-        m_bufferPacketMaker = new PacketMakerDialog(this, m_frameWatch);
+        m_bufferPacketMaker = new PacketMakerDialog(this, m_frameWatch, m_sessionKeys);
         m_bufferPacketMaker->setAttribute(Qt::WA_DeleteOnClose);
     }
     m_bufferPacketMaker->loadBuffer(bufferText);
@@ -289,7 +289,7 @@ void MainWindow::openFrameDiff(const QVector<LogEntryPtr> &entries)
 void MainWindow::onActionFieldSweep()
 {
     if (!m_fieldSweep) {
-        m_fieldSweep = new FieldSweepDialog(this);
+        m_fieldSweep = new FieldSweepDialog(this, m_sessionKeys);
         m_fieldSweep->setAttribute(Qt::WA_DeleteOnClose);
     }
     // Seed from the selected row when there is one: a sweep that starts from a
@@ -423,7 +423,7 @@ void MainWindow::onActionStreamSession()
 void MainWindow::onActionSessionKey()
 {
     // Derive a session key from the auth key sets + randoms + ids.
-    auto *sk = new SessionKeyDialog(this);
+    auto *sk = new SessionKeyDialog(this, m_sessionKeys);
     sk->setAttribute(Qt::WA_DeleteOnClose);
     sk->show();
     sk->raise();
@@ -464,6 +464,7 @@ void MainWindow::onActionCompareTabs()
     // useful for 3-way correlations. We don't keep a pointer; the
     // window manages its own lifetime via WA_DeleteOnClose.
     auto *cmp = new CompareWindow(m_dispatcher, &m_nameMap, this);
+    cmp->setSessionKeys(m_sessionKeys);
     cmp->setAttribute(Qt::WA_DeleteOnClose);
 
     // The stores it borrows rather than duplicates. A bookmark set in a

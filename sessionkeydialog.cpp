@@ -45,8 +45,9 @@ qint64 SessionKeyDialog::parseNum(const QString &s, bool *ok)
                                                     : t.toLongLong(ok, 10);
 }
 
-SessionKeyDialog::SessionKeyDialog(QWidget *parent) : QDialog(parent)
+SessionKeyDialog::SessionKeyDialog(QWidget *parent, SessionKeyStore *keys) : QDialog(parent)
 {
+    m_keys = keys ? keys : new SessionKeyStore(this);
     setWindowTitle(tr("Session Key"));
     resize(560, 620);
     auto *root = new QVBoxLayout(this);
@@ -159,14 +160,14 @@ SessionKeyDialog::SessionKeyDialog(QWidget *parent) : QDialog(parent)
     connect(loadLive,  &QPushButton::clicked, this, &SessionKeyDialog::onLoadLive);
     connect(m_liveLoco, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, [this](int) { refreshLiveKey(); });
-    connect(&SessionKeyStore::instance(), &SessionKeyStore::changed,
+    connect(m_keys, &SessionKeyStore::changed,
             this, &SessionKeyDialog::onStoreChanged);
     onStoreChanged();   // seed with whatever the store already has
 }
 
 void SessionKeyDialog::onStoreChanged()
 {
-    const SessionKeyStore &s = SessionKeyStore::instance();
+    const SessionKeyStore &s = (*m_keys);
     // statusAll(): with one loco this reads exactly as before; with more it
     // names each one, so a two-loco capture does not look like one flickering
     // session.
@@ -198,7 +199,7 @@ int SessionKeyDialog::selectedLoco() const
 
 void SessionKeyDialog::refreshLiveKey()
 {
-    const SessionKeyStore &s = SessionKeyStore::instance();
+    const SessionKeyStore &s = (*m_keys);
     const int loco = selectedLoco();
     m_liveKey->setText(s.haveSessionKey(loco)
                            ? QString::fromLatin1(s.sessionKey(loco).toHex())
@@ -207,7 +208,7 @@ void SessionKeyDialog::refreshLiveKey()
 
 void SessionKeyDialog::onLoadLive()
 {
-    const SessionKeyStore &s = SessionKeyStore::instance();
+    const SessionKeyStore &s = (*m_keys);
     auto putSet = [](QDateTimeEdit *st, QDateTimeEdit *en, QLineEdit *k0, QLineEdit *k1,
                      const SessionKeyGen::KeySet &ks) {
         if (ks.start.isValid()) { st->setDateTime(ks.start); }

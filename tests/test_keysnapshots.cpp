@@ -64,7 +64,8 @@ void feed(SessionKeyStore &s, const QString &line)
 
 TEST_SUITE(keysnapshots)
 {
-    SessionKeyStore &store = SessionKeyStore::instance();
+    SessionKeyStore ownStore;                 // session 96: the test's own, not a global
+    SessionKeyStore &store = ownStore;
     store.clear();
 
     const QByteArray K1 = QByteArray::fromHex("1234567890abcdef1234567890abcdef");
@@ -165,11 +166,11 @@ TEST_SUITE(keysnapshots)
             }
             return QString();
         };
-        CHECK(macRow(CaptureDecoder::describe(c, nullptr, 1)).contains("PASS"),
+        CHECK(macRow(CaptureDecoder::describe(c, nullptr, 1, nullptr, &store)).contains("PASS"),
               "describe() with set #1 shows PASS");
-        CHECK(macRow(CaptureDecoder::describe(c, nullptr, 2)).contains("FAIL"),
+        CHECK(macRow(CaptureDecoder::describe(c, nullptr, 2, nullptr, &store)).contains("FAIL"),
               "describe() with set #2 shows FAIL");
-        CHECK(macRow(CaptureDecoder::describe(c, nullptr, 1)).contains("#1"),
+        CHECK(macRow(CaptureDecoder::describe(c, nullptr, 1, nullptr, &store)).contains("#1"),
               "and names the set the verdict came from");
     }
 

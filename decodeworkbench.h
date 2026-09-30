@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QString>
 
+class SessionKeyStore;
 class QPlainTextEdit;
 class QComboBox;
 class QTableWidget;
@@ -31,7 +32,8 @@ class DecodeWorkbench : public QMainWindow
 {
     Q_OBJECT
 public:
-    explicit DecodeWorkbench(QWidget *parent = nullptr);
+    // `keys`: MainWindow's session keys (session 96); nullptr = a private, empty store.
+    explicit DecodeWorkbench(QWidget *parent = nullptr, SessionKeyStore *keys = nullptr);
 
     // Load a buffer from elsewhere in the application (a log row, the raw
     // bytes panel, the Check Buffer page) instead of making the operator
@@ -71,6 +73,7 @@ private:
     QTableWidget   *m_table    = nullptr;
     StatusLine     *m_status   = nullptr;
     bool            m_updating = false;   // re-entry guard for programmatic edits
+    SessionKeyStore *m_keys = nullptr;     // session 96: not owned (unless made here)
 };
 
 #endif // DECODEWORKBENCH_H

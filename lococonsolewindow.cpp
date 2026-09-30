@@ -104,10 +104,13 @@ const char *dirText(CapDir d) {
 }
 } // namespace
 
-LocoConsoleWindow::LocoConsoleWindow(MessageDispatcher *dispatcher, QWidget *parent)
+LocoConsoleWindow::LocoConsoleWindow(MessageDispatcher *dispatcher, QWidget *parent, TabTags *tags,
+                                     const SessionKeyStore *keys)
     : QMainWindow(parent)
     , m_dispatcher(dispatcher)
 {
+    m_tags = tags ? tags : new TabTags(this);   // session 96
+    m_keys = keys;
     setWindowTitle(tr("Live Loco Console"));
     WindowGeometry::makeResizableWindow(this);
     setWindowFlag(Qt::Window);
@@ -320,7 +323,7 @@ void LocoConsoleWindow::buildUi()
     auto *previousShortcut = new QShortcut(QKeySequence::FindPrevious, this);
     connect(previousShortcut, &QShortcut::activated, m_find, &TableFindBar::findPrevious);
     onTabChanged(m_tabs->currentIndex());
-    connect(TabTags::instance(), &TabTags::changed, this, [this]() { refreshTagDisplay(); });
+    connect(m_tags, &TabTags::changed, this, [this]() { refreshTagDisplay(); });
     UiColor::onThemeChange(this, [this]() { refreshTagDisplay(); });
 
     setCentralWidget(central);
@@ -404,7 +407,7 @@ void LocoConsoleWindow::onSelectionChanged(int index)
 
 void LocoConsoleWindow::refreshTagDisplay()
 {
-    TabTags *tags = TabTags::instance();
+    TabTags *tags = m_tags;
     for (int index = 0; index < m_selector->count(); ++index) {
         const QString tabKey = m_tabKeyFor.value(m_selector->itemText(index));
         m_selector->setItemIcon(index, tags->dotIcon(tabKey));
@@ -915,7 +918,7 @@ void LocoConsoleWindow::refreshTypeTables(const LocoState &st, qint64 nowMs)
             continue;
         }
 
-        const QVector<FieldRow> rows = CaptureDecoder::describe(st.latest[t]);
+        const QVector<FieldRow> rows = CaptureDecoder::describe(st.latest[t], nullptr, 0, nullptr, m_keys);
         // Change tracking: compare with this table's previous values. The
         // first frame of a type marks nothing (there is no "before").
         {

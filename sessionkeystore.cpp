@@ -77,12 +77,6 @@ QString KeySnapshot::label() const
     return s;
 }
 
-SessionKeyStore &SessionKeyStore::instance()
-{
-    static SessionKeyStore s;
-    return s;
-}
-
 bool SessionKeyStore::typeHasMac(const QString &captype)
 {
     // SLRP is the confirmed MAC-bearing packet (reserve_tail = MAC(4)+CRC(4)).
@@ -451,3 +445,5 @@ void SessionKeyStore::clear()
     m_active = -1;
     emit changed();
 }
+
+SessionKeyStore::SessionKeyStore(QObject *parent) : QObject(parent) {}

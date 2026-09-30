@@ -62,9 +62,10 @@ QString synthLine(const QString &token, const QString &hex)
 
 } // namespace
 
-DecodeWorkbench::DecodeWorkbench(QWidget *parent)
+DecodeWorkbench::DecodeWorkbench(QWidget *parent, SessionKeyStore *keys)
     : QMainWindow(parent)
 {
+    m_keys = keys ? keys : new SessionKeyStore(this);
     setWindowTitle(tr("Decode Workbench"));
     WindowGeometry::makeResizableWindow(this);
     resize(760, 640);
@@ -137,7 +138,7 @@ DecodeWorkbench::DecodeWorkbench(QWidget *parent)
     setCentralWidget(central);
 
     refreshKeySets();
-    connect(&SessionKeyStore::instance(), &SessionKeyStore::changed,
+    connect(m_keys, &SessionKeyStore::changed,
             this, &DecodeWorkbench::refreshKeySets);
     connect(m_keyBox, qOverload<int>(&QComboBox::currentIndexChanged),
             this, [this](int){ if (!m_updating) { decodeNow(); } });
@@ -181,7 +182,7 @@ void DecodeWorkbench::refreshKeySets()
     m_updating = true;                    // repopulating must not re-decode
     m_keyBox->clear();
     m_keyBox->addItem(tr("Auto (this frame's loco)"), 0);
-    for (const KeySnapshot &k : SessionKeyStore::instance().snapshots()) {
+    for (const KeySnapshot &k : (*m_keys).snapshots()) {
         m_keyBox->addItem(k.label(), k.id);
     }
     const int idx = m_keyBox->findData(keep);
@@ -301,7 +302,7 @@ void DecodeWorkbench::decodeNow()
 
     // ---- field table ----
     const int keyId = m_keyBox ? m_keyBox->currentData().toInt() : 0;
-    const QVector<FieldRow> rows = CaptureDecoder::describe(c, nullptr, keyId);
+    const QVector<FieldRow> rows = CaptureDecoder::describe(c, nullptr, keyId, nullptr, m_keys);
     m_table->setRowCount(rows.size());
     for (int i = 0; i < rows.size(); ++i) {
         QTableWidgetItem *f = new QTableWidgetItem(rows.at(i).field);

@@ -1247,7 +1247,8 @@ QVector<ActiveFaultInfo> faultsOf(const CaptureLine &c)
 }
 
 QVector<FieldRow> describe(const CaptureLine &c, const QHash<int, qint64> *tagLoc,
-                           int keySnapshotId, QHash<QString, qint64> *rawValues)
+                           int keySnapshotId, QHash<QString, qint64> *rawValues,
+                           const SessionKeyStore *keys)
 {
     if (rawValues) { rawValues->clear(); }
     QVector<FieldRow> r;
@@ -1368,7 +1369,8 @@ QVector<FieldRow> describe(const CaptureLine &c, const QHash<int, qint64> *tagLo
         // than one loco in the log, the active loco is not necessarily this
         // frame's loco. A caller that has let the operator pick one of the
         // captured key sets passes its id instead.
-        const SessionKeyStore &sks = SessionKeyStore::instance();
+        if (!keys) { break; }          // no live keys handed in: no MAC row (session 96)
+        const SessionKeyStore &sks = *keys;
         const bool chosen = (keySnapshotId > 0);
         const auto verdict = chosen
             ? sks.verifyMacWith(QStringLiteral("slrp"), b, keySnapshotId)

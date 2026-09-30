@@ -24,6 +24,7 @@
 #include "messageheader.h"
 #include "schema/schemaencoder.h"
 
+class SessionKeyStore;
 class QComboBox;
 class FrameNumberWatch;
 class QLineEdit;
@@ -47,7 +48,8 @@ class PacketMakerDialog : public QDialog {
 public:
     // `frameWatch`: the live frame-number watch a new frame is seeded from
     // (MainWindow's). nullptr = no live traffic to follow (session 95).
-    explicit PacketMakerDialog(QWidget *parent = nullptr, FrameNumberWatch *frameWatch = nullptr);
+    explicit PacketMakerDialog(QWidget *parent = nullptr, FrameNumberWatch *frameWatch = nullptr,
+                               SessionKeyStore *keys = nullptr);
     ~PacketMakerDialog() override;
 
     // The field-editor factory, shared with SubPacketWindow so a field looks
@@ -325,6 +327,7 @@ private:
     bool                      m_haveRef = false;
 
     QByteArray    m_lastFrame;
+    SessionKeyStore *m_keys = nullptr;     // session 96: not owned (unless made here)
 };
 
 #endif  // PACKETMAKERDIALOG_H

@@ -45,9 +45,10 @@ QVector<qint64> parseList(const QString &text)
 
 }  // namespace
 
-FieldSweepDialog::FieldSweepDialog(QWidget *parent)
+FieldSweepDialog::FieldSweepDialog(QWidget *parent, SessionKeyStore *keys)
     : QDialog(parent)
 {
+    m_keys = keys ? keys : new SessionKeyStore(this);
     setWindowTitle(tr("Field Sweep"));
     WindowGeometry::makeResizableWindow(this);
     resize(880, 720);
@@ -204,13 +205,13 @@ FieldSweepDialog::FieldSweepDialog(QWidget *parent)
     });
 
     refreshKeySets();
-    connect(&SessionKeyStore::instance(), &SessionKeyStore::changed,
+    connect(m_keys, &SessionKeyStore::changed,
             this, &FieldSweepDialog::refreshKeySets);
     connect(m_keySetBox, qOverload<int>(&QComboBox::currentIndexChanged),
             this, [this](int) {
         const int id = m_keySetBox->currentData().toInt();
         if (id <= 0) { return; }
-        if (const KeySnapshot *k = SessionKeyStore::instance().snapshot(id)) {
+        if (const KeySnapshot *k = (*m_keys).snapshot(id)) {
             if (k->result.ok) {
                 m_keyEdit->setText(QString::fromLatin1(k->result.sessionKey.toHex()));
             }
@@ -227,7 +228,7 @@ void FieldSweepDialog::refreshKeySets()
     const QSignalBlocker block(m_keySetBox);
     m_keySetBox->clear();
     m_keySetBox->addItem(tr("(none — type a key)"), 0);
-    for (const KeySnapshot &k : SessionKeyStore::instance().snapshots()) {
+    for (const KeySnapshot &k : (*m_keys).snapshots()) {
         m_keySetBox->addItem(k.label(), k.id);
     }
     const int idx = m_keySetBox->findData(keep);

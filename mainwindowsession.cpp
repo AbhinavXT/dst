@@ -650,7 +650,7 @@ void MainWindow::afterSettingsImported(const QStringList &ids)
     if (ids.contains(id(Section::Tags))) {
         applyAllTabTags();
         for (auto it = m_tabs.constBegin(); it != m_tabs.constEnd(); ++it) {
-            emit TabTags::instance()->changed(it.key());   // pop-outs redraw their dot too
+            emit m_tabTags->changed(it.key());   // pop-outs redraw their dot too
         }
     }
     if (ids.contains(id(Section::Pins))) {

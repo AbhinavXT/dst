@@ -33,7 +33,11 @@ class TabTags : public QObject
 {
     Q_OBJECT
 public:
-    static TabTags *instance();
+    // Session 96: no longer process-wide. MainWindow owns the one its tabs,
+    // pop-outs and loco consoles share (so a tag set in one redraws in all);
+    // a window given none makes its own, which reads the same saved tags
+    // but hears only its own changes.
+    explicit TabTags(QObject *parent = nullptr);
 
     TabTag tag(const QString &key) const;
     void   setTag(const QString &key, const TabTag &tag);
@@ -52,8 +56,6 @@ public:
 signals:
     void changed(const QString &key);
 
-private:
-    explicit TabTags(QObject *parent);
 };
 
 #endif // TABTAGS_H

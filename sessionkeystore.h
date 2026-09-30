@@ -73,7 +73,11 @@ struct KeySnapshot {
 class SessionKeyStore : public QObject {
     Q_OBJECT
 public:
-    static SessionKeyStore &instance();
+    // Session 96: no longer process-wide. MainWindow owns the one fed by
+    // live traffic and hands it to the decoder's MAC check, the Decode
+    // Workbench, the Packet Maker, the field sweep and the Session Key
+    // dialog; a test makes its own.
+    explicit SessionKeyStore(QObject *parent = nullptr);
 
     // Cheap: only @auth_keys / @rand_num / @slrp / @aap lines are parsed;
     // everything else is rejected on a prefix check.
@@ -147,7 +151,6 @@ signals:
     void changed();
 
 private:
-    SessionKeyStore() = default;
 
     // Everything the derivation needs for one loco.
     struct LocoState {

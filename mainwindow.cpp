@@ -114,6 +114,8 @@ MainWindow::MainWindow(QWidget *parent)
     ui->setupUi(this);
     // Session 95: the live frame-number watch, owned here (was a singleton).
     m_frameWatch = new FrameNumberWatch(this);
+    m_tabTags    = new TabTags(this);           // session 96 (was a singleton)
+    m_sessionKeys = new SessionKeyStore(this);  // session 96 (was a singleton)
 
     // Crash recovery (session 79), before anything reads the workspace,
     // pop-out or layout keys: if the last run did not close cleanly, its
@@ -228,7 +230,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Drag a tab out of the bar to pop it out into its own window.
     ui->tabWidget->tabBar()->installEventFilter(this);
     // Colour tags: redraw a tab's dot/label when its tag (or the theme) changes.
-    connect(TabTags::instance(), &TabTags::changed, this, [this](const QString &key) {
+    connect(m_tabTags, &TabTags::changed, this, [this](const QString &key) {
         applyTabTag(key);
     });
     // Pop-outs that were open last time come back once their tab appears.
@@ -447,6 +449,7 @@ MainWindow::MainWindow(QWidget *parent)
     // the hex panel. Tabbed with the raw-bytes dock rather than stacked, so
     // the two views of the same frame share the screen space.
     m_fieldPanel = new FieldInspector(this);
+    m_fieldPanel->setSessionKeys(m_sessionKeys);
     m_fieldPanel->setDecoder(&kavachSchema());
     // Shared, so a loco identified while reading a log tab is still
     // identified in a compare pane.
@@ -751,7 +754,7 @@ void MainWindow::onEntriesAppended(QString tabKey, QVector<LogEntryPtr> entries)
 
     // The session-key store watches for @auth_keys / @rand_num to derive the
     // live session key used for MAC verification (cheap prefix gate inside).
-    for (const LogEntryPtr &e : entries) { SessionKeyStore::instance().observe(e); }
+    for (const LogEntryPtr &e : entries) { m_sessionKeys->observe(e); }
 
     // ARP and LSRP carry the frame number the equipment is actually using.
     // The Packet Maker follows it so a built frame is not minutes away from
@@ -2609,6 +2612,7 @@ void MainWindow::openSessionAt(const QString &filePath, qint64 epochMs)
 
     auto *win = new SessionWindow(&m_colorRules, &m_nameMap, m_theme, this);
     win->setFrameWatch(m_frameWatch);
+    win->setSessionKeys(m_sessionKeys);
     win->setBookmarkStore(&m_bookmarks);
     const qint64 n = win->loadFiles({ filePath });
     win->show();
@@ -2634,6 +2638,7 @@ void MainWindow::onActionOpenSession()
     // WA_DeleteOnClose handles the rest.
     auto *win = new SessionWindow(&m_colorRules, &m_nameMap, m_theme, this);
     win->setFrameWatch(m_frameWatch);
+    win->setSessionKeys(m_sessionKeys);
     // The same store the live tabs use: a row bookmarked while reviewing a
     // recording is the same row bookmarked live.
     win->setBookmarkStore(&m_bookmarks);

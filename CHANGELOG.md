@@ -11,6 +11,62 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-96"></a>
+## Session 96 — Singletons, 2 and 3 of 4: `TabTags`, `SessionKeyStore`
+
+Same pattern as `FrameNumberWatch`: a public constructor, **no
+`instance()`**, one owned by `MainWindow`, and handed to whatever needs it.
+
+### `TabTags` (tab colour and label; 24 uses)
+
+- `MainWindow::m_tabTags`, shared with its **pop-outs**
+  (`TabPopoutWindow(…, tags)`) and **loco consoles**
+  (`LocoConsoleWindow(…, tags, …)`), so a tag set anywhere redraws
+  everywhere, as before.
+- A window given none makes its own. It reads the same saved tags (they
+  live in the ini), but hears only its own changes.
+- `MainWindow::tabTags()` is there for the menu audit.
+
+### `SessionKeyStore` (captured session keys; 19 uses, including the decoder)
+
+- **`MainWindow::m_sessionKeys`** is fed by live traffic as before.
+- **`CaptureDecoder::describe(…, keys)`** takes the store for the SLRP
+  "MAC (live)" row. **No store, no MAC row.**
+- **Handed to:**
+  - the main window's field panel;
+  - the Decode Workbench, Packet Maker, field sweep, Session Key dialog and
+    loco console (constructor);
+  - Compare windows (`setSessionKeys()`: field panel and workbench);
+  - recorded-session windows (`setSessionKeys()`: their workbench and
+    Packet Maker).
+- **Two deliberate differences:**
+  - **Replay windows and a recorded session's own field panel no longer
+    show "MAC (live)".** It checked a recorded frame against today's live
+    keys, which says nothing true about that frame. The Decode Workbench,
+    opened from a recording, still lets the operator pick a captured key
+    set.
+  - **A dialog opened with no store** (in tests) gets a private, empty one,
+    so its key picker is empty rather than borrowing global state.
+
+### Tests
+
+- **`session96` (6):**
+  - two tag hubs signal only their own listeners, but share the saved tag;
+  - `describe()` with no store has no MAC row; an empty store says "no
+    session key yet";
+  - two stores share nothing.
+- **The four key suites** (`sessionkeystore`, `keysnapshots`,
+  `sessionkeyloco`, `keypickers`) and **`tabtags`** each make their own
+  instead of sharing the global.
+- **The menu audit** tags through `MainWindow::tabTags()`.
+
+**`verify.sh`: 0 stages failed.**
+- unit suite **152 suites / 4898 checks**;
+- menu audit 138 ok;
+- smoke alive.
+
+---
+
 <a id="session-95"></a>
 ## Session 95 — Singletons, 1 of 4: `FrameNumberWatch`
 

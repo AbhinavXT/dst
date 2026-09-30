@@ -78,8 +78,8 @@ int main(int argc, char **argv) {
     const QVariant savedPopouts = borrowedIni.value(QStringLiteral("ui/popouts"));
     borrowedIni.setValue(QStringLiteral("ui/popouts"), QStringList{ QStringLiteral("21_1") });
     borrowedIni.sync();
-    const TabTag savedTag = TabTags::instance()->tag(QStringLiteral("21_1"));
-    TabTags::instance()->setTag(QStringLiteral("21_1"), TabTag());
+    const TabTag savedTag = TabTags().tag(QStringLiteral("21_1"));   // tags live in the ini
+    TabTags().setTag(QStringLiteral("21_1"), TabTag());
 
     MainWindow w;
     w.show();
@@ -481,8 +481,8 @@ int main(int argc, char **argv) {
 
         // Tag the tab: dot and label on the tab, and on its pop-out.
         auto *tabs = w.findChild<QTabWidget *>(QStringLiteral("tabWidget"));
-        TabTags::instance()->setColor(QStringLiteral("21_1"), 1);
-        TabTags::instance()->setLabel(QStringLiteral("21_1"), QStringLiteral("Brake test"));
+        w.tabTags()->setColor(QStringLiteral("21_1"), 1);
+        w.tabTags()->setLabel(QStringLiteral("21_1"), QStringLiteral("Brake test"));
         int tabIndex = -1;
         for (int i = 0; tabs && i < tabs->count(); ++i) {
             if (tabs->tabText(i).startsWith(QStringLiteral("L1_V1"))) {
@@ -571,7 +571,7 @@ int main(int argc, char **argv) {
         CHECK(pins != nullptr && StatusPins::instance() == pins,
               "the status bar holds the pinned values, reachable from the Loco Console");
 
-        TabTags::instance()->setTag(QStringLiteral("21_1"), savedTag);
+        w.tabTags()->setTag(QStringLiteral("21_1"), savedTag);
     }
 
     // ---- session 82: clock history, find bar All tabs ----
@@ -862,13 +862,13 @@ int main(int argc, char **argv) {
             root[QStringLiteral("sections")] = sections;
             QFile f(file); f.open(QIODevice::WriteOnly); f.write(QJsonDocument(root).toJson()); f.close();
 
-            const TabTag before = TabTags::instance()->tag(QStringLiteral("21_1"));
+            const TabTag before = w.tabTags()->tag(QStringLiteral("21_1"));
             QString error;
             CHECK(w.importSettingsFrom(file, { QStringLiteral("tags") }, &error), "a tags-only import succeeds");
-            CHECK(TabTags::instance()->tag(QStringLiteral("21_1")).label == QLatin1String("imported"),
+            CHECK(w.tabTags()->tag(QStringLiteral("21_1")).label == QLatin1String("imported"),
                   "and the tab has the imported tag");
             if (undo) undo->trigger();
-            CHECK(TabTags::instance()->tag(QStringLiteral("21_1")).label == before.label,
+            CHECK(w.tabTags()->tag(QStringLiteral("21_1")).label == before.label,
                   "Ctrl+Z puts the old tags back");
 
             QMenu *toolsM = findMenu(bar, "Tools");

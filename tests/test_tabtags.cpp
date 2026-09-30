@@ -21,7 +21,8 @@
 
 TEST_SUITE(tabtags)
 {
-    TabTags *tags = TabTags::instance();
+    TabTags ownTags;                               // session 96: the test's own
+    TabTags *tags = &ownTags;
     const QString key = QStringLiteral("99_7");   // a key no real test traffic uses
     tags->setTag(key, TabTag());
 
@@ -72,14 +73,15 @@ TEST_SUITE(tabtags)
 
 TEST_SUITE(tabpopout)
 {
-    TabTags *tags = TabTags::instance();
+    TabTags ownTags;                               // session 96: shared with the pop-out, as MainWindow's is
+    TabTags *tags = &ownTags;
     const QString key = QStringLiteral("99_8");
     tags->setTag(key, TabTag());
 
     QMainWindow main;
     main.show();
     LogModel model;
-    auto *popout = new TabPopoutWindow(key, QStringLiteral("Loco 99"), &model, nullptr, &main);
+    auto *popout = new TabPopoutWindow(key, QStringLiteral("Loco 99"), &model, nullptr, &main, tags);
     popout->show();
     QApplication::processEvents();
 

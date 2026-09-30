@@ -70,6 +70,8 @@ class QLineEdit;
 class QLabel;
 class QMenu;
 class FrameNumberWatch;
+class TabTags;
+class SessionKeyStore;
 class QTableView;
 QT_END_NAMESPACE
 
@@ -78,6 +80,9 @@ class MainWindow : public QMainWindow
     Q_OBJECT
 
 public:
+    // Session 96: the tab tags this window's tabs, pop-outs and loco consoles share.
+    SessionKeyStore *sessionKeys() const { return m_sessionKeys; }
+    TabTags *tabTags() const { return m_tabTags; }
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
@@ -506,7 +511,9 @@ private:
     QTimer *m_statusTimer    = nullptr;
     QTimer *m_userLabelTimer = nullptr;
 
-    FrameNumberWatch *m_frameWatch = nullptr;   // session 95: owned here, handed to the Packet Makers
+    FrameNumberWatch *m_frameWatch = nullptr;
+    class TabTags    *m_tabTags = nullptr;
+    class SessionKeyStore *m_sessionKeys = nullptr;   // session 96: owned here, fed by live traffic      // session 96: owned here, shared with pop-outs and loco consoles   // session 95: owned here, handed to the Packet Makers
     quint64 m_lastReportedMalformed = 0;   // session 90: drops by cause
     quint64 m_lastReportedQueueFull = 0;
     int     m_perTabCapacity    = 200'000;

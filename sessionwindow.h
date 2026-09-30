@@ -76,6 +76,10 @@ public:
     // Session 95: the live frame-number watch its Packet Maker seeds from
     // (MainWindow's), as before when that watch was process-wide.
     void setFrameWatch(class FrameNumberWatch *watch) { m_frameWatch = watch; }
+    // ...and the live session keys its Decode Workbench and Packet Maker
+    // offer. Its own field panel shows no live MAC row: a recorded frame
+    // checked against today's live keys says nothing true.
+    void setSessionKeys(class SessionKeyStore *keys) { m_sessionKeys = keys; }
 
     // Load every given .dlr. Returns the number of records loaded across all
     // files; per-file problems are collected and reported in the status
@@ -170,6 +174,7 @@ private:
     QPointer<FrameDiffWindow>   m_frameDiff;
     QPointer<PacketMakerDialog> m_packetMaker;
     class FrameNumberWatch *m_frameWatch = nullptr;   // not owned
+    class SessionKeyStore *m_sessionKeys = nullptr;   // not owned
 };
 
 #endif // SESSIONWINDOW_H
