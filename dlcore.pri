@@ -66,6 +66,10 @@ SOURCES += \
     $$PWD/rejectrules.cpp \
     $$PWD/logwriter.cpp \
     $$PWD/mainwindow.cpp \
+    $$PWD/mainwindow_menus.cpp \
+    $$PWD/mainwindow_status.cpp \
+    $$PWD/mainwindow_tabs.cpp \
+    $$PWD/mainwindow_tools.cpp \
     $$PWD/mainwindowsession.cpp \
     $$PWD/messagedispatcher.cpp \
     $$PWD/undolog.cpp \

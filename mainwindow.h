@@ -533,6 +533,14 @@ private:
     // Session 84: tell the DMI time-travel broker where the cursor is.
     void offerDmiMoment(const QString &tabKey, const QModelIndex &proxyIndex);
 
+    // Session 89: construction pieces, each in its own file.
+    struct MenuRoots {                 // what the rest of the constructor needs back
+        QMenu   *file = nullptr, *edit = nullptr, *view = nullptr, *theme = nullptr;
+        QAction *find = nullptr;
+    };
+    MenuRoots buildMenus();            // mainwindow_menus.cpp
+    void buildStatusBar();             // mainwindow_status.cpp
+
     // 2f: refresh tab text colors based on staleness + visibility.
     void refreshTabHealth();
     void rebuildWindowMenu();   // populated with currently-hidden tabs
