@@ -11,6 +11,74 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-90"></a>
+## Session 90 — UDP drops counted by cause
+
+The one drop counter mixed two different faults. It is now two counters:
+
+- **Malformed:** the datagram was bad on arrival. It was empty, oversize
+  (over 8000 bytes), shorter than a header, or its `message_len` overran
+  the datagram. **A network or sender problem**: this PC could not have
+  kept it.
+- **Queue full:** a good message was dropped because the GUI thread was
+  more than the queue limit (50,000) behind. **A PC problem**: this machine
+  could not keep up.
+
+Datagrams addressed to another console are still ignored, and are not drops.
+
+**What the operator sees:**
+- **Status bar:** `Drops: 0`, or e.g. `Drops: 3 malformed · 120 queue full`,
+  leaving out a cause with none. Its tooltip says what each cause means and
+  where to look.
+- **Log banner:** one row per cause that grew since the last tick, e.g.
+  `<<< 2 malformed datagram(s) discarded — network or sender problem >>>`
+  and `<<< 5 message(s) dropped: this PC fell behind (queue full) >>>`.
+  There used to be a single "queue full or invalid" row.
+
+**API:**
+- `UDPCommunication::malformedCount()` and `queueFullCount()`; the
+  `MessageDispatcher` has the same pair.
+- `droppedCount()` stays, as their sum.
+- The helpers `dropStatusText()`, `dropStatusTooltip()` and
+  `dropBannerLines()` are in `udpcommunication.h`.
+
+**Tests — `session90` (16):**
+- the status text, tooltip and banner rows;
+- **through a real socket on loopback:**
+  - a 3-byte datagram, a 9000-byte one and one whose `message_len` overruns
+    count as 3 malformed;
+  - a misaddressed one is not a drop, and a good one is received;
+  - a receiver with a queue limit of 2 and nothing consuming takes 2 and
+    counts 3 queue full, then takes messages again once the GUI catches up.
+
+**`verify.sh`: 0 stages failed.**
+- validators 11/11;
+- unit suite **147 suites / 4469 checks**;
+- menu audit 138 ok;
+- smoke alive.
+
+---
+
+<a id="session-89"></a>
+## Session 89 — `mainwindow.cpp` split
+
+A pure move, with no behaviour change. `mainwindow.cpp` goes from 4597 lines
+to 2677; the rest moved to:
+
+| File | What |
+|---|---|
+| `mainwindow_menus.cpp` | `buildMenus()`: the menu bar, which was 500 lines inside the constructor. It returns the few menus the constructor still needs (`MenuRoots`). |
+| `mainwindow_status.cpp` | `buildStatusBar()`, the frame clock, bind state, the status tick, notifications, the drop banner and decode failures |
+| `mainwindow_tabs.cpp` | creating, showing and hiding, closing, popping out, tagging and clearing tabs |
+| `mainwindow_tools.cpp` | the Tools-menu windows and the hand-offs between them (workbench, packet maker, frame diff, flasher, reports) |
+
+**Checked:**
+- menu audit 138 ok (it builds the real window and walks every menu);
+- smoke alive;
+- unit suite 146 suites / 4453 checks, run after delivery.
+
+---
+
 <a id="session-88"></a>
 ## Session 88 — Shared sources compiled once: the `dlcore` static library
 

@@ -121,6 +121,9 @@ public:
 
     // Pass-through for status-bar polling.
     quint64 droppedCount() const;
+    // Session 90: the same, by cause (see UDPCommunication).
+    quint64 malformedCount() const;
+    quint64 queueFullCount() const;
     quint64 receivedCount() const;
     int     currentQueueDepth() const;
 

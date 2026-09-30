@@ -26,13 +26,14 @@
 //
 //    4. Backpressure: we keep an atomic in-flight counter (incremented before
 //       emit, decremented when the GUI slot has finished consuming). If it
-//       exceeds m_maxQueueDepth we DROP the new message and bump m_dropped.
+//       exceeds m_maxQueueDepth we DROP the new message and bump m_queueFull.
 //       That counter is exposed via droppedCount() so MainWindow can show a
 //       "X messages dropped" banner. Without this, a slow GUI thread could
 //       grow Qt's internal event queue without bound and eventually OOM us.
 // =============================================================================
 
 #include <QObject>
+#include <QStringList>
 #include <QUdpSocket>
 #include <QThread>
 #include <QByteArray>
@@ -88,10 +89,19 @@ public:
                               QObject *parent = nullptr);
     ~UDPCommunication() override;
 
-    // Number of messages we have dropped since startup, either because the
-    // queue was full or because the datagram failed validation. Safe to call
+    // Messages dropped since startup, by cause (session 90). Safe to call
     // from any thread.
-    quint64 droppedCount() const  { return m_dropped.load(std::memory_order_relaxed); }
+    //
+    //  malformed  -- the DATAGRAM was bad: empty, oversize, shorter than a
+    //                header, or its message_len overruns it. A NETWORK or
+    //                SENDER problem: this PC could not have kept it.
+    //  queue full -- the datagram was fine, but the GUI thread was more than
+    //                maxQueueDepth messages behind. A PC problem: this
+    //                machine could not keep up.
+    quint64 malformedCount() const { return m_malformed.load(std::memory_order_relaxed); }
+    quint64 queueFullCount() const { return m_queueFull.load(std::memory_order_relaxed); }
+    // Both together, as before.
+    quint64 droppedCount() const   { return malformedCount() + queueFullCount(); }
 
     // Total messages we have successfully accepted (i.e. emitted upstream).
     quint64 receivedCount() const { return m_received.load(std::memory_order_relaxed); }
@@ -144,9 +154,21 @@ private:
 
     // Atomics — touched from both threads, so they have to be lock-free on
     // any platform Qt supports. std::atomic<integral> is lock-free on x86/x64.
-    std::atomic<quint64> m_dropped{0};
+    std::atomic<quint64> m_malformed{0};   // see malformedCount()
+    std::atomic<quint64> m_queueFull{0};   // see queueFullCount()
     std::atomic<quint64> m_received{0};
     std::atomic<int>     m_queueDepth{0};
 };
+
+
+// ---- Session 90: how drops are shown, by cause ------------------------------
+// Status-bar text: "Drops: 0", or e.g. "Drops: 3 malformed · 120 queue full"
+// (a cause with none is left out).
+QString dropStatusText(quint64 malformed, quint64 queueFull);
+// Its tooltip: what each cause means, and where to look.
+QString dropStatusTooltip(quint64 malformed, quint64 queueFull);
+// The banner rows injected into every tab for NEW drops since the last
+// tick: one row per cause that grew, none when neither did.
+QStringList dropBannerLines(quint64 newMalformed, quint64 newQueueFull);
 
 #endif // UDPCOMMUNICATION_H

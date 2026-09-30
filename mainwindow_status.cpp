@@ -4,6 +4,7 @@
 //  concern can be read, and recompiled, on its own. No behaviour change.
 // =============================================================================
 #include "mainwindow.h"
+#include "udpcommunication.h"
 #include <QSettings>
 #include "frameclock.h"
 #include "pinpanel.h"
@@ -413,18 +414,18 @@ void MainWindow::onStatusTick()
 
     if (!m_receiver) return;
 
-    const quint64 totalDrops = m_receiver->droppedCount();
-    const int     depth      = m_receiver->currentQueueDepth();
+    // Session 90: by cause, so the operator can tell a network fault from
+    // a PC that cannot keep up.
+    const quint64 malformed = m_receiver->malformedCount();
+    const quint64 queueFull = m_receiver->queueFullCount();
+    const int     depth     = m_receiver->currentQueueDepth();
 
     m_lblQueueDepth->setText(QString("Queue: %1").arg(depth));
 
-    if (totalDrops == 0) {
-        m_lblDropStatus->setText("Drops: 0");
-        m_lblDropStatus->setStyleSheet("");
-    } else {
-        m_lblDropStatus->setText(QString("Drops: %1").arg(totalDrops));
-        m_lblDropStatus->setStyleSheet(UiColor::errorStyle() + QStringLiteral(" font-weight:bold;"));
-    }
+    m_lblDropStatus->setText(dropStatusText(malformed, queueFull));
+    m_lblDropStatus->setToolTip(dropStatusTooltip(malformed, queueFull));
+    if (malformed == 0 && queueFull == 0) m_lblDropStatus->setStyleSheet("");
+    else m_lblDropStatus->setStyleSheet(UiColor::errorStyle() + QStringLiteral(" font-weight:bold;"));
 
     // Disk status (2b).
     if (!m_writer) {
@@ -466,9 +467,10 @@ void MainWindow::onStatusTick()
                       .arg(double(m_writer->folderBytes()) / (1024.0 * 1024.0), 0, 'f', 1));
     }
 
-    if (totalDrops > m_lastReportedDrops) {
-        emitDropBanner(totalDrops - m_lastReportedDrops);
-        m_lastReportedDrops = totalDrops;
+    if (malformed > m_lastReportedMalformed || queueFull > m_lastReportedQueueFull) {
+        emitDropBanner(malformed - m_lastReportedMalformed, queueFull - m_lastReportedQueueFull);
+        m_lastReportedMalformed = malformed;
+        m_lastReportedQueueFull = queueFull;
     }
 
     // (2f) Refresh tab title colors based on staleness.
@@ -533,13 +535,13 @@ void MainWindow::refreshTabHealth()
     }
 }
 
-void MainWindow::emitDropBanner(quint64 newlyDropped)
+void MainWindow::emitDropBanner(quint64 newMalformed, quint64 newQueueFull)
 {
     // The dispatcher does the heavy lifting — it owns all the models and
-    // can inject a synthetic Severity::Error row into each one.
-    m_dispatcher->injectBannerToAllTabs(
-        QString("<<< %1 message(s) dropped (queue full or invalid) >>>")
-            .arg(newlyDropped));
+    // can inject a synthetic Severity::Error row into each one. One row per
+    // cause (session 90), so the log says which fault it was.
+    for (const QString &line : dropBannerLines(newMalformed, newQueueFull))
+        m_dispatcher->injectBannerToAllTabs(line);
     updateLogCount();
 }
 

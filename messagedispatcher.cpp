@@ -114,6 +114,16 @@ quint64 MessageDispatcher::droppedCount() const
     return m_receiver ? m_receiver->droppedCount() : 0;
 }
 
+quint64 MessageDispatcher::malformedCount() const
+{
+    return m_receiver ? m_receiver->malformedCount() : 0;
+}
+
+quint64 MessageDispatcher::queueFullCount() const
+{
+    return m_receiver ? m_receiver->queueFullCount() : 0;
+}
+
 quint64 MessageDispatcher::receivedCount() const
 {
     return m_receiver ? m_receiver->receivedCount() : 0;

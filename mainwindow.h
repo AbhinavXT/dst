@@ -505,7 +505,8 @@ private:
     QTimer *m_statusTimer    = nullptr;
     QTimer *m_userLabelTimer = nullptr;
 
-    quint64 m_lastReportedDrops = 0;
+    quint64 m_lastReportedMalformed = 0;   // session 90: drops by cause
+    quint64 m_lastReportedQueueFull = 0;
     int     m_perTabCapacity    = 200'000;
 
     // Live tunables (mirrored from Settings, updatable via the dialog).
@@ -526,7 +527,7 @@ private:
     void   showTab(TabUi &tab);
     void   hideTab(TabUi &tab);
     void   updateLogCount();
-    void   emitDropBanner(quint64 newlyDropped);
+    void   emitDropBanner(quint64 newMalformed, quint64 newQueueFull);
     QString hexToAsciiString(const QString &hexData) const;
     QString currentTabKey() const;
     LogEntryPtr entryFromProxyIndex(const QModelIndex &proxyIndex) const;

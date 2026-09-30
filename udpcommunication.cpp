@@ -101,12 +101,12 @@ void UDPCommunication::drainSocket()
         const qint64 dgramSize = m_socket->pendingDatagramSize();
 
         if (dgramSize <= 0 || dgramSize > MAX_MSG_SIZE) {
-            // Malformed/oversize — discard and count as a drop. We still have
+            // Malformed/oversize — discard and count as malformed. We still have
             // to read it to advance past it in the kernel queue.
             QByteArray scratch;
             scratch.resize(dgramSize > 0 ? dgramSize : 0);
             m_socket->readDatagram(scratch.data(), scratch.size());
-            m_dropped.fetch_add(1, std::memory_order_relaxed);
+            m_malformed.fetch_add(1, std::memory_order_relaxed);
             continue;
         }
 
@@ -115,7 +115,7 @@ void UDPCommunication::drainSocket()
             QByteArray scratch;
             scratch.resize(dgramSize);
             m_socket->readDatagram(scratch.data(), scratch.size());
-            m_dropped.fetch_add(1, std::memory_order_relaxed);
+            m_malformed.fetch_add(1, std::memory_order_relaxed);
             continue;
         }
 
@@ -157,7 +157,7 @@ void UDPCommunication::drainSocket()
         // A spoofed/corrupt header could otherwise lie about its size.
         const int payloadAvail = buf.size() - static_cast<int>(sizeof(hdr));
         if (hdr.message_len > payloadAvail || hdr.message_len > MAX_MSG_SIZE) {
-            m_dropped.fetch_add(1, std::memory_order_relaxed);
+            m_malformed.fetch_add(1, std::memory_order_relaxed);
             continue;
         }
 
@@ -165,7 +165,7 @@ void UDPCommunication::drainSocket()
         // behind. m_queueDepth is "messages emitted but not yet consumed".
         const int depth = m_queueDepth.load(std::memory_order_relaxed);
         if (depth >= m_maxQueueDepth) {
-            m_dropped.fetch_add(1, std::memory_order_relaxed);
+            m_queueFull.fetch_add(1, std::memory_order_relaxed);
             continue;
         }
 
@@ -182,4 +182,40 @@ void UDPCommunication::drainSocket()
         m_received.fetch_add(1, std::memory_order_relaxed);
         emit messageReceived(msg);
     }
+}
+
+// =============================================================================
+//  Session 90: drops shown by cause
+// =============================================================================
+
+QString dropStatusText(quint64 malformed, quint64 queueFull)
+{
+    if (malformed == 0 && queueFull == 0) return QStringLiteral("Drops: 0");
+    QStringList parts;
+    if (malformed) parts << QStringLiteral("%1 malformed").arg(malformed);
+    if (queueFull) parts << QStringLiteral("%1 queue full").arg(queueFull);
+    return QStringLiteral("Drops: ") + parts.join(QStringLiteral(" \u00B7 "));
+}
+
+QString dropStatusTooltip(quint64 malformed, quint64 queueFull)
+{
+    return QStringLiteral(
+               "Malformed: %1 \u2014 datagrams that were bad on arrival (empty, oversize, shorter "
+               "than a header, or message_len overrunning the datagram). A network or sender "
+               "problem: check the cable, switch and the card that sent them.\n"
+               "Queue full: %2 \u2014 good messages dropped because this PC fell more than the queue "
+               "limit behind. A PC problem: close windows, filters or plots, or raise the limit.")
+        .arg(malformed).arg(queueFull);
+}
+
+QStringList dropBannerLines(quint64 newMalformed, quint64 newQueueFull)
+{
+    QStringList out;
+    if (newMalformed)
+        out << QStringLiteral("<<< %1 malformed datagram(s) discarded \u2014 network or sender problem >>>")
+                   .arg(newMalformed);
+    if (newQueueFull)
+        out << QStringLiteral("<<< %1 message(s) dropped: this PC fell behind (queue full) >>>")
+                   .arg(newQueueFull);
+    return out;
 }
