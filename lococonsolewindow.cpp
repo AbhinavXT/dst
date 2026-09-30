@@ -439,7 +439,7 @@ void LocoConsoleWindow::onRefreshTick()
     refreshHeader(st, nowMs);
     refreshLink(st, nowMs);              // ages tick every refresh
     if (m_dirty) {
-        refreshTypeTables(st);
+        refreshTypeTables(st, nowMs);
         m_dirty = false;
     }
     refreshBigNumbers(st, nowMs);
@@ -902,7 +902,7 @@ void LocoConsoleWindow::refreshLink(const LocoState &st, qint64 nowMs)
     }
 }
 
-void LocoConsoleWindow::refreshTypeTables(const LocoState &st)
+void LocoConsoleWindow::refreshTypeTables(const LocoState &st, qint64 nowMs)
 {
     for (auto it = m_typeTables.begin(); it != m_typeTables.end(); ++it) {
         const int     t   = it.key();
@@ -919,7 +919,10 @@ void LocoConsoleWindow::refreshTypeTables(const LocoState &st)
         // Change tracking: compare with this table's previous values. The
         // first frame of a type marks nothing (there is no "before").
         {
-            const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+            // Stamped with the TICK's time (session 93), the same clock the
+            // highlight is judged by a moment later. Reading the clock again
+            // here made a change look 1 ms in the future on a busy PC, so
+            // it went unmarked until the next tick.
             QHash<QString, QString> &previous = m_lastValues[t];
             QHash<QString, qint64> &changedAt = m_changedAt[t];
             const bool hadBefore = !previous.isEmpty();

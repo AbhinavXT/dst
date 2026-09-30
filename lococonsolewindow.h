@@ -132,7 +132,7 @@ private:
     void ingest(const CaptureLine &c, qint64 nowMs);
     void refreshHeader(const LocoState &st, qint64 nowMs);
     void refreshLink  (const LocoState &st, qint64 nowMs);
-    void refreshTypeTables(const LocoState &st);
+    void refreshTypeTables(const LocoState &st, qint64 nowMs);
     static QString ageText(qint64 ageMs);
 
     // ---- multi-source recording -------------------------------------

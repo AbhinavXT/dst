@@ -11,6 +11,35 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-93"></a>
+## Session 93 — The intermittent `lococonsolelive` failure: a real clock race
+
+`lococonsolelive` sometimes failed two checks: "a field that changed is
+highlighted" and "and in bold while fresh". It was not the test.
+
+**The race:** the loco console's refresh tick reads the clock once. It then
+rebuilds the tables, and the rebuild stamped each changed field with a
+**second** reading of the clock. On a busy PC that second reading was a
+millisecond or more later, so the change looked like it came from the
+future (age −1 ms). The highlight, which is judged against the tick's time,
+refused it, and the field went unmarked until the next tick, about 250 ms
+later.
+
+**Fix:** `refreshTypeTables()` takes the tick's `nowMs`, and changes are
+stamped with it.
+
+**Proof:** the suite was run 30 times with two CPU-burning processes
+alongside.
+- before: **8 of 30** runs failed;
+- after: **0 of 30**.
+
+**`verify.sh`: 0 stages failed.**
+- unit suite 149 suites / 4856 checks;
+- menu audit 138 ok;
+- smoke alive.
+
+---
+
 <a id="session-92"></a>
 ## Session 92 — DMI always drawn; Fields panel; 0–250 dial; the packet maker writes lsb-first; own-ID ARP flagged
 
