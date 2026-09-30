@@ -7,7 +7,8 @@
 #    core/  the static library `dlcore`: every shared source (dlcore.pri)
 #    app/   the DLConsole program: main.cpp linked against it
 #
-#  The program lands in <build>/app/DLConsole (DLConsole.exe on Windows).
+#  The program lands in the main build folder: <build>/DLConsole.exe
+#  (app/app.pro sets DESTDIR), as it did before the split.
 #
 #  The unit tests, the menu audit and the other harnesses (tests/*.pro) link
 #  the same library, so the shared sources are compiled once, not once per

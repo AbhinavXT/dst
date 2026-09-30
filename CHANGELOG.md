@@ -51,8 +51,10 @@ With `make -jN` both columns shrink by about N.
 - **`app/app.pro`** is `main.cpp` plus the library.
 - **`DLConsole.pro`** is now a subdirs project: `core`, then `app`.
   - Open it in Qt Creator, or run `qmake && make`, as before.
-  - **The program now lands in `<build>/app/DLConsole(.exe)`**, so point
-    `windeployqt` or any script there.
+  - **The program lands in the main build folder, `<build>/DLConsole(.exe)`**,
+    where it always did: `app/app.pro` sets `DESTDIR` to it. (Patch 88 as
+    first delivered put it in `<build>/app/`; 88.1 moved it back.) Override
+    with `qmake DLCONSOLE_BIN_DIR=…`.
   - `qmake CONFIG+=with_tests` also builds `dltests` and `menuaudit`
     (in `<build>/tests`, as `Makefile.dltests` / `Makefile.menuaudit`).
 - **`tests/tests.pro`, `menuaudit.pro`, `shot.pro`, `bench.pro`** list only

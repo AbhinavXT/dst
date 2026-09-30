@@ -90,7 +90,8 @@ if [ "$DO_SMOKE" -eq 1 ] && [ "$core_ok" -eq 1 ]; then
   echo "== headless smoke"
   if build "$OUT/app" "$HERE/app/app.pro"; then
     port=50002
-    (cd "$OUT/app" && QT_QPA_PLATFORM=offscreen timeout 14 ./DLConsole >"$OUT/smoke.log" 2>&1; echo $? >"$OUT/smoke.rc") &
+    # app/app.pro puts the program in the main build folder: $OUT/DLConsole.
+    (cd "$OUT/app" && QT_QPA_PLATFORM=offscreen timeout 14 "$OUT/DLConsole" >"$OUT/smoke.log" 2>&1; echo $? >"$OUT/smoke.rc") &
     sleep 3
     "$PY" - "$HERE/replay" "$port" <<'EOF'
 import glob, socket, struct, sys, time
