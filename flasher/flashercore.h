@@ -20,6 +20,7 @@
 //    The wire protocol. That lives in flash_engine.{h,cpp}, unchanged from
 //    the handoff pack, and nothing in this file sends or receives a byte.
 // =============================================================================
+#include "profileio.h"
 #include <QByteArray>
 #include <QDateTime>
 #include <QHash>
@@ -216,6 +217,11 @@ public:
     void    setActiveName(const QString &name);
 
     QString filePath() const { return m_filePath; }
+
+    // Session 94: every profile, in order (for export), and adding an
+    // imported one: returns the name it was stored under, empty if skipped.
+    QList<FlashProfile> all() const { return m_profiles; }
+    QString importProfile(const FlashProfile &profile, ImportClash clash);
 
 private:
     QString               m_filePath;
@@ -482,6 +488,25 @@ QString currentOperatorName();                 // Windows user name, or $USER
 QString batchReportText(const BatchPlan &plan, const QString &batchId,
                         const QString &operatorName, const QString &chassis,
                         const QString &vccIp, quint16 port);
+
+// ---- export / import to another PC (session 94) -------------------------------
+// A .dlflash file: {"format":"dlconsole-flasher-profiles","version":1,
+// "profiles":[...]}, each exactly as flasher_profiles.json stores it. The
+// default images are PATHS on the exporting PC; importedImageProblems()
+// names the ones this PC does not have, so they can be re-pointed.
+extern const char *kFlasherProfilesFormat;
+QByteArray exportProfiles(const QList<FlashProfile> &profiles);
+
+struct ImportedProfiles {
+    bool                ok = false;
+    QString             error;
+    QList<FlashProfile> profiles;
+};
+ImportedProfiles importProfiles(const QByteArray &json);
+
+// "VCC: D:/builds/vcc.appimage is not on this PC", one per default image
+// that does not exist here.
+QStringList importedImageProblems(const FlashProfile &profile);
 
 }  // namespace Flasher
 

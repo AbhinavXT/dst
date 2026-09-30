@@ -43,6 +43,7 @@
 //    opens its own UDP socket on an ephemeral port.
 // =============================================================================
 #include <QMainWindow>
+#include <functional>
 #include <QPointer>
 
 #include "flashercore.h"
@@ -91,6 +92,17 @@ public:
     // calls this). Public for the tests.
     void abortCurrent();
 
+    // Session 94: profiles to and from a .dlflash file, for another PC.
+    // The ☰ menu asks; these do the work (public for the tests).
+    // importProfilesFrom() returns the names stored; *imageProblems lists
+    // default images the imported profiles point at that this PC lacks.
+    bool        exportProfilesTo(const QString &path, const QStringList &names, QString *error = nullptr);
+    QStringList importProfilesFrom(const QString &path,
+                                   const std::function<ImportClash(const QString &name, bool *stop)> &onClash,
+                                   QString *error = nullptr, QStringList *imageProblems = nullptr);
+    QStringList profileNames() const { return m_profiles.names(); }
+    Flasher::FlashProfile profileNamed(const QString &name) const { return m_profiles.profile(name); }
+
 signals:
     // Emitted when the run has been recorded, after history has been
     // written. The tests wait on this.
@@ -108,6 +120,8 @@ private slots:
     void onModeChanged();
     void onProfileChosen(int comboIndex);
     void editProfile();
+    void exportProfilesDialog();
+    void importProfilesDialog();
     void openHistory();
     void exportReport();
     void tryAgain();
@@ -155,6 +169,7 @@ private:
     QLabel                 *m_targetLabel = nullptr;
     QToolButton            *m_historyButton = nullptr;
     QToolButton            *m_gearButton = nullptr;
+    QToolButton            *m_profileMenuButton = nullptr;   // session 94: export / import
     QStackedWidget         *m_stack = nullptr;
     FlasherQueuePage       *m_queuePage = nullptr;
     FlasherFlashingPage    *m_flashingPage = nullptr;

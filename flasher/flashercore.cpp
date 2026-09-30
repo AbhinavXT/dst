@@ -1,4 +1,5 @@
 #include "flashercore.h"
+#include <QSet>
 
 #include <QCryptographicHash>
 #include <QDir>
@@ -1443,6 +1444,97 @@ QString batchReportText(const BatchPlan &plan, const QString &batchId,
     }
     out.flush();
     return text;
+}
+
+// =============================================================================
+//  Session 94: export / import to another PC
+// =============================================================================
+
+const char *kFlasherProfilesFormat = "dlconsole-flasher-profiles";
+
+QByteArray exportProfiles(const QList<FlashProfile> &profiles)
+{
+    QJsonArray array;
+    for (const FlashProfile &p : profiles) array.append(p.toJson());
+    QJsonObject root;
+    root.insert(QStringLiteral("format"), QLatin1String(kFlasherProfilesFormat));
+    root.insert(QStringLiteral("version"), 1);
+    root.insert(QStringLiteral("exported_at"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    root.insert(QStringLiteral("profiles"), array);
+    return QJsonDocument(root).toJson(QJsonDocument::Indented);
+}
+
+ImportedProfiles importProfiles(const QByteArray &json)
+{
+    ImportedProfiles out;
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(json, &parseError);
+    if (!document.isObject()) {
+        out.error = QStringLiteral("not valid JSON: %1").arg(parseError.errorString());
+        return out;
+    }
+    const QJsonObject root = document.object();
+    // flasher_profiles.json itself (no "format") is accepted too.
+    const QString format = root.value(QStringLiteral("format")).toString();
+    if (!format.isEmpty() && format != QLatin1String(kFlasherProfilesFormat)) {
+        out.error = QStringLiteral("this is a \"%1\" file, not flasher profiles").arg(format);
+        return out;
+    }
+    if (root.value(QStringLiteral("version")).toInt(1) > 1) {
+        out.error = QStringLiteral("written by a newer DLConsole (version %1)").arg(root.value(QStringLiteral("version")).toInt());
+        return out;
+    }
+    QSet<QString> names;
+    for (const QJsonValue &value : root.value(QStringLiteral("profiles")).toArray()) {
+        FlashProfile p = FlashProfile::fromJson(value.toObject());
+        p.name = p.name.trimmed();
+        if (p.name.isEmpty() || names.contains(p.name)) continue;
+        names.insert(p.name);
+        out.profiles.append(p);
+    }
+    if (out.profiles.isEmpty()) {
+        out.error = QStringLiteral("the file holds no profiles");
+        return out;
+    }
+    out.ok = true;
+    return out;
+}
+
+QStringList importedImageProblems(const FlashProfile &profile)
+{
+    QStringList out;
+    QList<int> types = profile.defaultImages.keys();
+    std::sort(types.begin(), types.end());
+    for (int type : types) {
+        const QString path = profile.defaultImages.value(type);
+        if (!path.isEmpty() && !QFileInfo::exists(path))
+            out << QStringLiteral("%1: %2 is not on this PC").arg(cardShortName(type), QDir::toNativeSeparators(path));
+    }
+    return out;
+}
+
+QString ProfileStore::importProfile(const FlashProfile &profile, ImportClash clash)
+{
+    if (!contains(profile.name)) {
+        m_profiles.append(profile);
+        return profile.name;
+    }
+    switch (clash) {
+    case ImportClash::Skip:
+        return QString();
+    case ImportClash::Replace:
+        for (FlashProfile &p : m_profiles) {
+            if (p.name == profile.name) { p = profile; break; }
+        }
+        return profile.name;
+    case ImportClash::KeepBoth: {
+        FlashProfile renamed = profile;
+        renamed.name = uniqueImportName(profile.name, [this](const QString &n) { return contains(n); });
+        m_profiles.append(renamed);
+        return renamed.name;
+    }
+    }
+    return QString();
 }
 
 }  // namespace Flasher

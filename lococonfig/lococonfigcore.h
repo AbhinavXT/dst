@@ -37,6 +37,7 @@
 //    window names a field, except vcc_crc (shown in the send bar) and
 //    loco_info_crc (computed).
 // =============================================================================
+#include "profileio.h"
 #include <QByteArray>
 #include <QDateTime>
 #include <QHash>
@@ -245,6 +246,12 @@ public:
     // Keys dropped on load because the schema no longer has them.
     QStringList droppedKeys() const { return m_droppedKeys; }
 
+    // Session 94: every configuration, in order (for export).
+    QList<LocoConfig> all() const { return m_configs; }
+    // Add an imported configuration, resolving a name already in use by
+    // `clash`. Returns the name it was stored under, or empty when skipped.
+    QString importConfig(const LocoConfig &config, ImportClash clash);
+
 private:
     QString            m_filePath;
     const Layout      *m_layout = nullptr;
@@ -254,6 +261,23 @@ private:
     mutable QString    m_lastError;
     QStringList        m_droppedKeys;
 };
+
+// ---- export / import to another PC (session 94) ------------------------------
+// A .dlloco file: {"format":"dlconsole-loco-configs","version":1,
+// "configs":[...]} -- the same per-configuration JSON as loco_configs.json,
+// WITHOUT what was last sent (that is this PC's history, not the loco's).
+extern const char *kLocoConfigsFormat;
+QByteArray exportConfigs(const Layout &layout, const QList<LocoConfig> &configs);
+
+struct ImportedConfigs {
+    bool              ok = false;
+    QString           error;          // why the file was refused
+    QList<LocoConfig> configs;
+    QStringList       droppedKeys;    // fields the file had that this schema does not
+};
+// Values are completed from `defaults` for fields the file lacks, exactly as
+// loading loco_configs.json does.
+ImportedConfigs importConfigs(const Layout &layout, const Values &defaults, const QByteArray &json);
 
 // ---- the send log (loco_config_history.jsonl, append-only) ------------------
 struct SendRecord {

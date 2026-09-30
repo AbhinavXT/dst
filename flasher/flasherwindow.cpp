@@ -1,4 +1,7 @@
 #include "flasherwindow.h"
+#include "profileiodialogs.h"
+#include <QMenu>
+#include <QSaveFile>
 #include "undolog.h"
 
 #include <QPointer>
@@ -248,6 +251,18 @@ QWidget *FlasherWindow::buildAppBar()
     connect(m_gearButton, &QToolButton::clicked, this, &FlasherWindow::editProfile);
     barLayout->addWidget(m_gearButton);
 
+    // Session 94: profiles to and from another PC.
+    m_profileMenuButton = new QToolButton(m_appBar);
+    m_profileMenuButton->setObjectName(QStringLiteral("flasherProfileMenu"));
+    m_profileMenuButton->setText(QStringLiteral("\u2630"));
+    m_profileMenuButton->setToolTip(tr("Export or import profiles, to use them on another PC"));
+    m_profileMenuButton->setPopupMode(QToolButton::InstantPopup);
+    auto *profileMenu = new QMenu(m_profileMenuButton);
+    profileMenu->addAction(tr("Export profiles…"), this, &FlasherWindow::exportProfilesDialog);
+    profileMenu->addAction(tr("Import profiles…"), this, &FlasherWindow::importProfilesDialog);
+    m_profileMenuButton->setMenu(profileMenu);
+    barLayout->addWidget(m_profileMenuButton);
+
     restyleAppBar();
     return m_appBar;
 }
@@ -309,6 +324,7 @@ void FlasherWindow::setFlashingState(bool flashing)
     m_engineerButton->setEnabled(!flashing);
     m_operatorButton->setEnabled(!flashing);
     m_gearButton->setEnabled(!flashing);
+    if (m_profileMenuButton) m_profileMenuButton->setEnabled(!flashing);   // no profile swaps mid-flash
     refreshAppBarTarget();
     restyleAppBar();
 }
@@ -712,4 +728,110 @@ void FlasherWindow::closeEvent(QCloseEvent *event)
     }
     WindowGeometry::save(this, QStringLiteral("firmwareFlasher"));
     QMainWindow::closeEvent(event);
+}
+
+// =============================================================================
+//  Session 94: export / import profiles (another PC)
+// =============================================================================
+
+bool FlasherWindow::exportProfilesTo(const QString &path, const QStringList &names, QString *error)
+{
+    QList<Flasher::FlashProfile> chosen;
+    for (const Flasher::FlashProfile &p : m_profiles.all())
+        if (names.contains(p.name)) chosen << p;
+    if (chosen.isEmpty()) {
+        if (error) *error = tr("nothing chosen to export");
+        return false;
+    }
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly) || file.write(Flasher::exportProfiles(chosen)) < 0 || !file.commit()) {
+        if (error) *error = tr("cannot write %1: %2").arg(QDir::toNativeSeparators(path), file.errorString());
+        return false;
+    }
+    return true;
+}
+
+QStringList FlasherWindow::importProfilesFrom(const QString &path,
+                                              const std::function<ImportClash(const QString &, bool *)> &onClash,
+                                              QString *error, QStringList *imageProblems)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (error) *error = tr("cannot open %1: %2").arg(QDir::toNativeSeparators(path), file.errorString());
+        return {};
+    }
+    const Flasher::ImportedProfiles in = Flasher::importProfiles(file.readAll());
+    if (!in.ok) {
+        if (error) *error = in.error;
+        return {};
+    }
+    QStringList stored;
+    for (const Flasher::FlashProfile &p : in.profiles) {
+        ImportClash how = ImportClash::KeepBoth;
+        if (m_profiles.contains(p.name)) {
+            bool stop = false;
+            how = onClash(p.name, &stop);
+            if (stop) break;
+        }
+        const QString name = m_profiles.importProfile(p, how);
+        if (name.isEmpty()) continue;
+        stored << name;
+        if (imageProblems)
+            for (const QString &problem : Flasher::importedImageProblems(p))
+                imageProblems->append(QStringLiteral("%1 \u2014 %2").arg(name, problem));
+    }
+    if (!stored.isEmpty()) {
+        saveProfiles();
+        reloadProfileCombo();
+        applyActiveProfile();        // the active one may have been replaced
+    }
+    return stored;
+}
+
+void FlasherWindow::exportProfilesDialog()
+{
+    const QStringList names = ProfileIo::pickNames(this, tr("Export profiles"), tr("profiles"),
+                                                   m_profiles.names(), { m_profiles.activeName() });
+    if (names.isEmpty()) return;
+    const QString path = QFileDialog::getSaveFileName(this, tr("Export profiles"),
+                                                      QDir(QDir::homePath()).filePath(QStringLiteral("flasher_profiles.dlflash")),
+                                                      tr("DLConsole flasher profiles (*.dlflash);;JSON (*.json)"));
+    if (path.isEmpty()) return;
+    QString error;
+    if (!exportProfilesTo(path, names, &error))
+        QMessageBox::warning(this, tr("Export profiles"), tr("Export failed: %1").arg(error));
+    else
+        QMessageBox::information(this, tr("Export profiles"),
+                                 tr("Exported %1 to %2.\n\nThe default images are saved as paths on this PC; on "
+                                    "another PC, any that are not at the same place will need re-pointing.")
+                                     .arg(names.join(QStringLiteral(", ")), QDir::toNativeSeparators(path)));
+}
+
+void FlasherWindow::importProfilesDialog()
+{
+    const QString path = QFileDialog::getOpenFileName(this, tr("Import profiles"), QDir::homePath(),
+                                                      tr("DLConsole flasher profiles (*.dlflash *.json);;All files (*)"));
+    if (path.isEmpty()) return;
+    bool haveAnswer = false;
+    ImportClash remembered = ImportClash::KeepBoth;
+    QString error;
+    QStringList problems;
+    const QStringList stored = importProfilesFrom(path, [&](const QString &name, bool *stop) {
+        if (haveAnswer) return remembered;
+        bool same = false, cancelled = false;
+        const ImportClash how = ProfileIo::askClash(this, tr("profile"), name, &same, &cancelled);
+        *stop = cancelled;
+        if (same) { haveAnswer = true; remembered = how; }
+        return how;
+    }, &error, &problems);
+    if (!error.isEmpty()) {
+        QMessageBox::warning(this, tr("Import profiles"), tr("Nothing was imported: %1").arg(error));
+        return;
+    }
+    QString text = stored.isEmpty() ? tr("Nothing was imported.") : tr("Imported %1.").arg(stored.join(QStringLiteral(", ")));
+    if (!problems.isEmpty())
+        text += tr("\n\nThese default images are not on this PC; open the profile (\u2699) and choose them again:\n\n%1")
+                    .arg(problems.join(QLatin1Char('\n')));
+    if (problems.isEmpty()) QMessageBox::information(this, tr("Import profiles"), text);
+    else QMessageBox::warning(this, tr("Import profiles"), text);
 }

@@ -697,6 +697,52 @@ QJsonObject configToJson(const Layout &layout, const LocoConfig &config)
     return object;
 }
 
+// One configuration from its JSON object: targets (bulk list, or the single
+// target of an older file), values completed from the defaults, and what was
+// last sent. Shared by load() and importConfigs() (session 94).
+LocoConfig configFromJson(const Layout &layout, const Values &defaults, const QJsonObject &object,
+                          QSet<QString> *dropped)
+{
+    LocoConfig config;
+    config.name = object.value(QStringLiteral("name")).toString().trimmed();
+    // Targets: the bulk-send list if present, else the single target of
+    // a file written before bulk send (it becomes row 1).
+    const QJsonArray targetRows = object.value(QStringLiteral("targets")).toArray();
+    if (!targetRows.isEmpty()) {
+        for (int row = 0; row < kMaxTargets; ++row) {
+            SendTarget target;
+            target.ip.clear();
+            if (row < targetRows.size()) {
+                const QJsonObject rowObject = targetRows.at(row).toObject();
+                target.ip = rowObject.value(QStringLiteral("ip")).toString().trimmed();
+                const int port = rowObject.value(QStringLiteral("port")).toInt(kDefaultPort);
+                if (port > 0 && port <= 65535) {
+                    target.port = static_cast<quint16>(port);
+                }
+                target.enabled = rowObject.value(QStringLiteral("enabled")).toBool(true);
+            }
+            config.targets[row] = target;
+        }
+    } else {
+        const QString ip = object.value(QStringLiteral("target_ip")).toString();
+        if (!ip.isEmpty()) {
+            config.targets[0].ip = ip;
+        }
+        const int port = object.value(QStringLiteral("port")).toInt(kDefaultPort);
+        if (port > 0 && port <= 65535) {
+            config.targets[0].port = static_cast<quint16>(port);
+        }
+    }
+    config.values = valuesFromJson(layout, object.value(QStringLiteral("values")).toObject());
+    for (const QString &key : completeValues(layout, defaults, &config.values)) {
+        dropped->insert(key);
+    }
+    config.lastSentBody = QByteArray::fromHex(object.value(QStringLiteral("last_sent_body_hex")).toString().toLatin1());
+    config.lastSentAt = QDateTime::fromString(object.value(QStringLiteral("last_sent_at")).toString(), Qt::ISODateWithMs);
+    config.lastSentTarget = object.value(QStringLiteral("last_sent_target")).toString();
+    return config;
+}
+
 }  // namespace
 
 ConfigStore::ConfigStore(const QString &filePath, const Layout *layout, const Values &defaults)
@@ -746,46 +792,11 @@ bool ConfigStore::load()
     QSet<QString> dropped;
     for (const QJsonValue &entry : root.value(QStringLiteral("configs")).toArray()) {
         const QJsonObject object = entry.toObject();
-        LocoConfig config;
-        config.name = object.value(QStringLiteral("name")).toString().trimmed();
-        if (config.name.isEmpty() || contains(config.name)) {
+        const QString name = object.value(QStringLiteral("name")).toString().trimmed();
+        if (name.isEmpty() || contains(name)) {
             continue;
         }
-        // Targets: the bulk-send list if present, else the single target of
-        // a file written before bulk send (it becomes row 1).
-        const QJsonArray targetRows = object.value(QStringLiteral("targets")).toArray();
-        if (!targetRows.isEmpty()) {
-            for (int row = 0; row < kMaxTargets; ++row) {
-                SendTarget target;
-                target.ip.clear();
-                if (row < targetRows.size()) {
-                    const QJsonObject rowObject = targetRows.at(row).toObject();
-                    target.ip = rowObject.value(QStringLiteral("ip")).toString().trimmed();
-                    const int port = rowObject.value(QStringLiteral("port")).toInt(kDefaultPort);
-                    if (port > 0 && port <= 65535) {
-                        target.port = static_cast<quint16>(port);
-                    }
-                    target.enabled = rowObject.value(QStringLiteral("enabled")).toBool(true);
-                }
-                config.targets[row] = target;
-            }
-        } else {
-            const QString ip = object.value(QStringLiteral("target_ip")).toString();
-            if (!ip.isEmpty()) {
-                config.targets[0].ip = ip;
-            }
-            const int port = object.value(QStringLiteral("port")).toInt(kDefaultPort);
-            if (port > 0 && port <= 65535) {
-                config.targets[0].port = static_cast<quint16>(port);
-            }
-        }
-        config.values = valuesFromJson(*m_layout, object.value(QStringLiteral("values")).toObject());
-        for (const QString &key : completeValues(*m_layout, m_defaults, &config.values)) {
-            dropped.insert(key);
-        }
-        config.lastSentBody = QByteArray::fromHex(object.value(QStringLiteral("last_sent_body_hex")).toString().toLatin1());
-        config.lastSentAt = QDateTime::fromString(object.value(QStringLiteral("last_sent_at")).toString(), Qt::ISODateWithMs);
-        config.lastSentTarget = object.value(QStringLiteral("last_sent_target")).toString();
+        LocoConfig config = configFromJson(*m_layout, m_defaults, object, &dropped);
         m_configs.append(config);
     }
     m_activeName = root.value(QStringLiteral("active")).toString();
@@ -1086,6 +1097,101 @@ QString currentOperatorName()
         name = QStringLiteral("unknown");
     }
     return name;
+}
+
+}  // namespace LocoInfo
+
+namespace LocoInfo {
+
+// =============================================================================
+//  Session 94: export / import to another PC
+// =============================================================================
+
+const char *kLocoConfigsFormat = "dlconsole-loco-configs";
+
+QByteArray exportConfigs(const Layout &layout, const QList<LocoConfig> &configs)
+{
+    QJsonArray array;
+    for (LocoConfig c : configs) {
+        c.lastSentBody.clear();                 // this PC's history, not the loco's
+        c.lastSentAt = QDateTime();
+        c.lastSentTarget.clear();
+        array.append(configToJson(layout, c));
+    }
+    QJsonObject root;
+    root.insert(QStringLiteral("format"), QLatin1String(kLocoConfigsFormat));
+    root.insert(QStringLiteral("version"), 1);
+    root.insert(QStringLiteral("exported_at"), QDateTime::currentDateTimeUtc().toString(Qt::ISODate));
+    root.insert(QStringLiteral("configs"), array);
+    return QJsonDocument(root).toJson(QJsonDocument::Indented);
+}
+
+ImportedConfigs importConfigs(const Layout &layout, const Values &defaults, const QByteArray &json)
+{
+    ImportedConfigs out;
+    QJsonParseError parseError;
+    const QJsonDocument document = QJsonDocument::fromJson(json, &parseError);
+    if (!document.isObject()) {
+        out.error = QStringLiteral("not valid JSON: %1").arg(parseError.errorString());
+        return out;
+    }
+    const QJsonObject root = document.object();
+    // A flasher-profile file, or anything else, is refused by name rather
+    // than half-read. loco_configs.json itself (no "format") is accepted:
+    // copying that file across is the obvious thing to try.
+    const QString format = root.value(QStringLiteral("format")).toString();
+    if (!format.isEmpty() && format != QLatin1String(kLocoConfigsFormat)) {
+        out.error = QStringLiteral("this is a \"%1\" file, not loco configurations").arg(format);
+        return out;
+    }
+    if (root.value(QStringLiteral("version")).toInt(1) > 1) {
+        out.error = QStringLiteral("written by a newer DLConsole (version %1)").arg(root.value(QStringLiteral("version")).toInt());
+        return out;
+    }
+    QSet<QString> dropped, names;
+    for (const QJsonValue &entry : root.value(QStringLiteral("configs")).toArray()) {
+        const QJsonObject object = entry.toObject();
+        const QString name = object.value(QStringLiteral("name")).toString().trimmed();
+        if (name.isEmpty() || names.contains(name)) continue;
+        names.insert(name);
+        LocoConfig c = configFromJson(layout, defaults, object, &dropped);
+        c.lastSentBody.clear();
+        c.lastSentAt = QDateTime();
+        c.lastSentTarget.clear();
+        out.configs.append(c);
+    }
+    if (out.configs.isEmpty()) {
+        out.error = QStringLiteral("the file holds no configurations");
+        return out;
+    }
+    out.droppedKeys = QStringList(dropped.begin(), dropped.end());
+    out.droppedKeys.sort();
+    out.ok = true;
+    return out;
+}
+
+QString ConfigStore::importConfig(const LocoConfig &config, ImportClash clash)
+{
+    if (!contains(config.name)) {
+        m_configs.append(config);
+        return config.name;
+    }
+    switch (clash) {
+    case ImportClash::Skip:
+        return QString();
+    case ImportClash::Replace:
+        for (LocoConfig &c : m_configs) {
+            if (c.name == config.name) { c = config; break; }
+        }
+        return config.name;
+    case ImportClash::KeepBoth: {
+        LocoConfig renamed = config;
+        renamed.name = uniqueImportName(config.name, [this](const QString &n) { return contains(n); });
+        m_configs.append(renamed);
+        return renamed.name;
+    }
+    }
+    return QString();
 }
 
 }  // namespace LocoInfo

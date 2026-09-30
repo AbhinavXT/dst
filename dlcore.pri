@@ -66,6 +66,7 @@ SOURCES += \
     $$PWD/rejectrules.cpp \
     $$PWD/logwriter.cpp \
     $$PWD/mainwindow.cpp \
+    $$PWD/profileiodialogs.cpp \
     $$PWD/mainwindow_menus.cpp \
     $$PWD/mainwindow_status.cpp \
     $$PWD/mainwindow_tabs.cpp \
@@ -181,6 +182,8 @@ HEADERS += \
     $$PWD/rejectrules.h \
     $$PWD/logwriter.h \
     $$PWD/mainwindow.h \
+    $$PWD/profileio.h \
+    $$PWD/profileiodialogs.h \
     $$PWD/messagedispatcher.h \
     $$PWD/undolog.h \
     $$PWD/cabpanel.h \

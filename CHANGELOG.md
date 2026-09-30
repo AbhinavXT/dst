@@ -11,6 +11,93 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-94"></a>
+## Session 94 — Export / import profiles, to use them on another PC
+
+Both windows already had named, saved profiles. They can now be carried to
+another PC as a file.
+
+### Loco Configuration: ☰ ▸ Export configurations… / Import configurations…
+
+- **Export:**
+  - tick which configurations to include (the one on screen is pre-ticked;
+    All / None);
+  - saved as a `.dlloco` file: every LOCO_INFO value and all four send
+    targets (IP, port, enabled);
+  - **not** what was last sent: that is this PC's send history, not the
+    loco's.
+- **Import:**
+  - any `.dlloco`, or a plain copy of another PC's `loco_configs.json`;
+  - values the file lacks are filled from the defaults, and fields this
+    schema does not have are dropped and named, exactly as loading
+    `loco_configs.json` does.
+
+### Firmware Flasher: ☰ (next to ⚙) ▸ Export profiles… / Import profiles…
+
+- **Export:** the chosen profiles as a `.dlflash` file: VCC IP and port,
+  the default image per card, pin-by-SHA, transfer tuning and updater wait.
+- **Import:** a `.dlflash`, or a copy of `flasher_profiles.json`.
+- **Default images are paths on the exporting PC.** After an import, any
+  that do not exist here are listed ("Bench 3 — Input: D:\…\input.appimage
+  is not on this PC"), so they can be re-pointed with ⚙.
+- The menu is disabled while flashing.
+
+### A name already in use
+
+For each clashing name, one question:
+- **Replace:** the imported one overwrites the existing one, in its place;
+- **Keep both:** the imported one is added as "Name (2)", "Name (3)", …;
+- **Skip:** the existing one is kept.
+
+"Do the same for the rest" answers once for the whole file. Cancel stops
+the import.
+
+### Refusals, not half-reads
+
+A file is refused, with the reason, when it is:
+- the other window's kind of file (named by its `format`);
+- broken JSON;
+- written by a newer DLConsole (`version` above 1);
+- empty.
+
+### Files
+
+- **New:**
+  - `profileio.h`: the clash rule and the "Name (n)" naming, shared;
+  - `profileiodialogs.{h,cpp}`: the pick-which dialog and the clash question.
+- **Loco Configuration:**
+  - `lococonfigcore`: `exportConfigs`, `importConfigs`,
+    `ConfigStore::importConfig`, `all`;
+  - one config's JSON parse is factored out, so loading and importing read
+    it identically.
+- **Flasher:** `flashercore` gains `exportProfiles`, `importProfiles`,
+  `importedImageProblems`, `ProfileStore::importProfile` and `all`.
+- **Both windows:** the menu items, plus `exportConfigsTo` /
+  `importConfigsFrom` and `exportProfilesTo` / `importProfilesFrom`, which
+  do the work and are public for the tests.
+
+### Tests
+
+**`session94` (30):**
+- the naming rule;
+- the file format: named, versioned, no send history;
+- every value and target read back;
+- the refusals: wrong kind, broken JSON, newer version; a bare
+  `loco_configs.json` is accepted;
+- **two windows as two PCs, for configurations and for flasher profiles:**
+  export on one, import on the other, and each clash answer (replace,
+  keep both, skip, cancel);
+- PC B's own file on disk has them afterwards;
+- a missing default image is reported against its profile.
+
+**`verify.sh`: 0 stages failed.**
+- validators 11/11;
+- unit suite **150 suites / 4886 checks**;
+- menu audit 138 ok;
+- smoke alive.
+
+---
+
 <a id="session-93"></a>
 ## Session 93 — The intermittent `lococonsolelive` failure: a real clock race
 

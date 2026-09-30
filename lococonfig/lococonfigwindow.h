@@ -38,6 +38,7 @@
 //    decodes @linfo captures (see lococonfigcore.h).
 // =============================================================================
 #include <QMainWindow>
+#include <functional>
 #include <QPointer>
 #include <QTimer>
 
@@ -69,6 +70,17 @@ public:
     ~LocoConfigWindow() override;
 
     bool isUsable() const { return m_layout.isLoaded(); }
+
+    // Session 94: configurations to and from a .dlloco file, for another
+    // PC. The menu items ask (which ones; what to do with a name already
+    // used); these do the work and are public for the tests. importFrom()
+    // returns the names stored (empty on failure; *error says why).
+    bool        exportConfigsTo(const QString &path, const QStringList &names, QString *error = nullptr);
+    QStringList importConfigsFrom(const QString &path,
+                                  const std::function<ImportClash(const QString &name, bool *stop)> &onClash,
+                                  QString *error = nullptr);
+    QStringList configNames() const;
+    LocoInfo::LocoConfig configNamed(const QString &name) const;
 
     // The Send button without (confirm = false) or with its confirmation box.
     // Public for the tests.
@@ -118,6 +130,8 @@ private slots:
     void renameConfig();
     void deleteConfig();
     void importBin();
+    void exportConfigsDialog();
+    void importConfigsDialog();
     void exportBin();
     void resetToDefaults();
     void openHistory();

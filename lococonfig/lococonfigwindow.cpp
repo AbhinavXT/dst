@@ -1,4 +1,5 @@
 #include "lococonfigwindow.h"
+#include "profileiodialogs.h"
 #include "undolog.h"
 
 #include <QPointer>
@@ -23,6 +24,8 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QRegularExpression>
+#include <QSaveFile>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
@@ -231,6 +234,11 @@ QWidget *LocoConfigWindow::buildAppBar()
     menu->addAction(tr("Delete…"), this, &LocoConfigWindow::deleteConfig);
     menu->addSeparator();
     menu->addAction(tr("Import loco_info.bin…"), this, &LocoConfigWindow::importBin);
+    menu->addSeparator();
+    // Session 94: to and from another PC.
+    menu->addAction(tr("Export configurations…"), this, &LocoConfigWindow::exportConfigsDialog);
+    menu->addAction(tr("Import configurations…"), this, &LocoConfigWindow::importConfigsDialog);
+    menu->addSeparator();
     menu->addAction(tr("Reset all fields to defaults…"), this, &LocoConfigWindow::resetToDefaults);
     // Where "defaults" come from: the tool sync_linfo.py last read.
     if (!m_defaultsSource.isEmpty()) {
@@ -1385,4 +1393,110 @@ void LocoConfigWindow::closeEvent(QCloseEvent *event)
     }
     WindowGeometry::save(this, QStringLiteral("locoConfiguration"));
     QMainWindow::closeEvent(event);
+}
+
+// =============================================================================
+//  Session 94: export / import configurations (another PC)
+// =============================================================================
+
+QStringList LocoConfigWindow::configNames() const { return m_store->names(); }
+
+LocoInfo::LocoConfig LocoConfigWindow::configNamed(const QString &name) const { return m_store->config(name); }
+
+bool LocoConfigWindow::exportConfigsTo(const QString &path, const QStringList &names, QString *error)
+{
+    saveNow();                                  // what is on screen is what goes
+    QList<LocoInfo::LocoConfig> chosen;
+    for (const LocoInfo::LocoConfig &c : m_store->all())
+        if (names.contains(c.name)) chosen << c;
+    if (chosen.isEmpty()) {
+        if (error) *error = tr("nothing chosen to export");
+        return false;
+    }
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly) || file.write(LocoInfo::exportConfigs(m_layout, chosen)) < 0 || !file.commit()) {
+        if (error) *error = tr("cannot write %1: %2").arg(QDir::toNativeSeparators(path), file.errorString());
+        return false;
+    }
+    return true;
+}
+
+QStringList LocoConfigWindow::importConfigsFrom(const QString &path,
+                                                const std::function<ImportClash(const QString &, bool *)> &onClash,
+                                                QString *error)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        if (error) *error = tr("cannot open %1: %2").arg(QDir::toNativeSeparators(path), file.errorString());
+        return {};
+    }
+    const LocoInfo::ImportedConfigs in = LocoInfo::importConfigs(m_layout, m_defaults, file.readAll());
+    if (!in.ok) {
+        if (error) *error = in.error;
+        return {};
+    }
+    saveNow();
+    const QString current = m_config.name;
+    QStringList stored;
+    for (const LocoInfo::LocoConfig &c : in.configs) {
+        ImportClash how = ImportClash::KeepBoth;
+        if (m_store->contains(c.name)) {
+            bool stop = false;
+            how = onClash(c.name, &stop);
+            if (stop) break;
+        }
+        const QString name = m_store->importConfig(c, how);
+        if (!name.isEmpty()) stored << name;
+    }
+    if (!stored.isEmpty()) {
+        m_store->save();
+        reloadConfigCombo();
+        // The one on screen was replaced: show the imported values.
+        loadConfig(m_store->contains(current) ? current : m_store->activeName());
+    }
+    if (!in.droppedKeys.isEmpty())
+        m_status->warn(tr("The file had fields this schema does not (ignored): %1").arg(in.droppedKeys.join(QStringLiteral(", "))));
+    return stored;
+}
+
+void LocoConfigWindow::exportConfigsDialog()
+{
+    const QStringList names = ProfileIo::pickNames(this, tr("Export configurations"), tr("configurations"),
+                                                   m_store->names(), { m_config.name });
+    if (names.isEmpty()) return;
+    const QString suggested = QDir(QDir::homePath()).filePath(
+        names.size() == 1 ? QString(names.first()).replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9_.-]+")), QStringLiteral("_")) + QStringLiteral(".dlloco")
+                          : QStringLiteral("loco_configs.dlloco"));
+    const QString path = QFileDialog::getSaveFileName(this, tr("Export configurations"), suggested,
+                                                      tr("DLConsole loco configurations (*.dlloco);;JSON (*.json)"));
+    if (path.isEmpty()) return;
+    QString error;
+    if (exportConfigsTo(path, names, &error))
+        m_status->ok(tr("Exported %n configuration(s) to %1", "", names.size()).arg(QDir::toNativeSeparators(path)));
+    else
+        m_status->warn(tr("Export failed: %1").arg(error));
+}
+
+void LocoConfigWindow::importConfigsDialog()
+{
+    const QString path = QFileDialog::getOpenFileName(this, tr("Import configurations"), QDir::homePath(),
+                                                      tr("DLConsole loco configurations (*.dlloco *.json);;All files (*)"));
+    if (path.isEmpty()) return;
+    bool haveAnswer = false;
+    ImportClash remembered = ImportClash::KeepBoth;
+    QString error;
+    const QStringList stored = importConfigsFrom(path, [&](const QString &name, bool *stop) {
+        if (haveAnswer) return remembered;
+        bool same = false, cancelled = false;
+        const ImportClash how = ProfileIo::askClash(this, tr("configuration"), name, &same, &cancelled);
+        *stop = cancelled;
+        if (same) { haveAnswer = true; remembered = how; }
+        return how;
+    }, &error);
+    if (!error.isEmpty()) {
+        QMessageBox::warning(this, tr("Import configurations"), tr("Nothing was imported: %1").arg(error));
+        return;
+    }
+    if (stored.isEmpty()) m_status->warn(tr("Nothing was imported"));
+    else m_status->ok(tr("Imported %1").arg(stored.join(QStringLiteral(", "))));
 }
