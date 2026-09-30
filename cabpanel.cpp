@@ -220,7 +220,10 @@ void CabDisplay::paintEvent(QPaintEvent *)
     const QRectF dial(12, (height() - band - dialSize) / 2.0, dialSize, dialSize);
     const QPointF c = dial.center();
     const double radius = dialSize / 2.0;
-    const double maxSpeed = std::max({ 120.0, std::ceil((qMax(s.speed, s.permitted) + 20) / 20.0) * 20.0 });
+    // Session 92: a fixed 0-250 km/h dial -- the loco's top speed -- so a
+    // needle's angle always means the same speed. It used to start at 120
+    // and grow with the speed, so the scale moved under the operator.
+    const double maxSpeed = kCabDialMaxKmh;
     // 240° sweep from 210° (lower left) clockwise to -30° (lower right).
     auto angleOf = [maxSpeed](double v) { return (210.0 - qBound(0.0, v / maxSpeed, 1.0) * 240.0) * kPi / 180.0; };
     auto at = [&](double v, double r) { return QPointF(c.x() + r * std::cos(angleOf(v)), c.y() - r * std::sin(angleOf(v))); };
@@ -246,9 +249,12 @@ void CabDisplay::paintEvent(QPaintEvent *)
     QFont small = p.font();
     small.setPointSizeF(qMax(6.0, small.pointSizeF() - 1.0));
     p.setFont(small);
-    for (int v = 0; v <= int(maxSpeed); v += 20) {
-        p.setPen(QPen(ink, 1.2));
-        p.drawLine(at(v, radius * 0.95), at(v, radius * 0.83));
+    // Minor tick every 10 km/h, a labelled major tick every 50.
+    for (int v = 0; v <= int(maxSpeed); v += 10) {
+        const bool major = v % 50 == 0;
+        p.setPen(QPen(ink, major ? 1.4 : 0.8));
+        p.drawLine(at(v, radius * 0.95), at(v, radius * (major ? 0.82 : 0.88)));
+        if (!major) continue;
         const QPointF lp = at(v, radius * 0.68);
         p.drawText(QRectF(lp.x() - 16, lp.y() - 8, 32, 16), Qt::AlignCenter, QString::number(v));
     }

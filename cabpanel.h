@@ -61,6 +61,9 @@ AspectLamps lampsFor(int aspect);
 // empty when stationary.
 QString timeToTarget(double distanceM, double speedKmh);
 
+// The cab view's speed dial runs 0 .. this, the loco's top speed (session 92).
+constexpr double kCabDialMaxKmh = 250.0;
+
 class CabDisplay : public QWidget
 {
     Q_OBJECT

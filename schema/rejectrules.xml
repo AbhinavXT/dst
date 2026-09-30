@@ -108,6 +108,17 @@
         bits="20" doc="own id"
         note="addressed to a different loco"/>
 
+  <!-- An ARP RECEIVED (arprecv) that carries this loco's OWN ID is the loco's
+       own transmission coming back, or a second loco configured with the
+       same ID: not another loco, and must not be processed as one.
+       Session 92, on the project's instruction; no FRS clause is cited yet,
+       so the clause names the console. captype restricts it to arprecv: the
+       ARP the loco SENDS carries its own ID by design. Quiet until the loco
+       is identified, like 32.14.1. -->
+  <rule clause="DLConsole" field="SOURCE_LOCO_ID" op="eq_field" other="OWN_LOCO_ID"
+        captype="arprecv" bits="20" doc="own id"
+        note="received ARP from this loco's own ID"/>
+
   <!-- Aspect values, resolved. The document writes every aspect in BINARY
        and drops leading zeros on the short ones, so 31.23 runs 0, 1, 10,
        100 … 1111, then 010000, 011000, 100000. An earlier reading took the

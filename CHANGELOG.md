@@ -11,6 +11,118 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-92"></a>
+## Session 92 — DMI always drawn; Fields panel; 0–250 dial; the packet maker writes lsb-first; own-ID ARP flagged
+
+### DMI (LP-OCIP) window
+
+- **Signal (D):** the distance is now printed with no aspect too
+  ("0000 m"). Patch 91 already drew the post and lamps.
+- **Target column (A):** the scale lines, the "Target Distance" label and
+  "0000 m" are always drawn. Only the bar needs a distance, and only the
+  type needs a type. The column used to vanish when both were 0.
+- **Fields ▸** (new, beside Save image) opens a panel to the right of the
+  panel with **every decoded field of the `@dmi` frame being drawn**. It
+  follows the live frame, or the time-travel moment, and costs nothing
+  while closed.
+- **"Field sources…" is gone.** It only printed, in the status line, which
+  `@dmi` field feeds each region. Those notes now sit under the Fields
+  table, headed "Where each region comes from".
+- Tag IDs and statuses were already shown by patch 91, from real frames.
+
+### Cab view
+
+- **The speed dial is fixed at 0–250 km/h**, the loco's top speed
+  (`kCabDialMaxKmh`), with a minor tick every 10 and a label every 50.
+- It used to start at 120 and grow with the speed, so the same needle
+  angle meant different speeds.
+
+### Packet maker: lsb-first packets build
+
+**Now buildable:** DMI, RFID, CCSYS, DLSYS, SPEED, DIP1/2 and LOCO_SOS.
+
+**Encoder changes (`schema/schemaencoder.cpp`):**
+- **Bit order:** the writer and reader do lsb-first, the exact inverse of
+  the decoder.
+- **`<crc>` elements** are written as zeros, then computed over the finished
+  frame and placed in schema order. `at=` is honoured, so RFID's 30-bit CRC
+  inside its last data byte works.
+  - The algorithms (`jamcrc`, `rfidcrc30`) are registered for the encoder
+    when the program loads, the same functions the decoder uses.
+- **`<pad fill="…">`** writes a fixed pattern, and `fill="frame_len"` writes
+  the finished frame's size.
+  - `kavach.xml`'s DMI now spells out its AA AA sync, the length byte (116)
+    and the BB BB end sync this way.
+  - The decoder, which just skips a pad, is unaffected.
+
+**Three writer bugs these exposed**, now fixed:
+- **A pad inside a `<when>` was always written.** It now obeys the `when`,
+  as the decoder does. RFID Adjacent-Line tags (type 11) were shifted by it.
+- **`<flags pad="N">` did not skip its N pad bits.**
+- **A flags block wider than 63 bits lost bits 64 and up.** The DMI's
+  71-bit `alarm_code` is now taken in 32-bit pieces (`alarm_code`,
+  `alarm_code#2`, `alarm_code#3`).
+
+**Still refused, with the reason named:**
+- ANALOG, LINFO and UBA (float, double and text fields);
+- DOP1/2 (`<repeat>`).
+
+CRC fields are not shown as inputs in the form.
+
+**Checked against `replay/`:** every real frame is rebuilt from its own
+decoded fields, and every rebuilt frame's CRC passes.
+
+| Type | Rebuilt | Notes |
+|---|---|---|
+| `@dmi` | 10,658 / 10,658 byte for byte | including the CRC |
+| `@rfid` | 173 / 173 | 171 byte for byte; the 2 recorded with a zero CRC come out with a correct one |
+| `@ccsys` | 2,092 / 2,092 | the recording's CRCs fail in the decoder too; everything else identical |
+| `@dlsys` | 1,050 / 1,050 | as for `@ccsys` |
+
+### Reject rules: an ARP received from our own loco ID
+
+- **New rule:** an `arprecv` whose `SOURCE_LOCO_ID` equals this loco's own
+  ID is reported as not processed.
+  - It is this loco's own transmission coming back, or a second loco
+    configured with the same ID.
+  - Clause "DLConsole": no FRS clause is cited yet.
+- **Two engine additions** (`rejectrules.{h,cpp}`):
+  - an `eq_field` op, which fires when two fields agree;
+  - a rule-level `captype=` restriction. The ARP the loco SENDS carries its
+    own ID by design and is not judged by it.
+- Like 32.14.1, it is quiet until the loco's ID has been learned.
+- The field inspector and the run report pass the frame's type.
+
+### Tests
+
+- **`session92` (32):**
+  - the dial's range;
+  - the target column and signal distance drawn with nothing to show;
+  - the Fields panel (opens, lists `target_distance`, closes, the old
+    button gone);
+  - the four lsb-first types rebuilt frame for frame, with passing CRCs;
+  - LINFO still refused;
+  - a real `@dmi` built through the packet maker's builder byte for byte,
+    and an edited one (speed 87) with AA AA 74 … BB BB and a CRC that
+    passes;
+  - the own-ID ARP rule firing only on `arprecv`, and only once the loco is
+    known.
+- **Updated:**
+  - `session89`: the distance with no aspect is now expected.
+  - `roundtrip`: `@dmi` is now expected to be reproduced, not refused. Its
+    fixture is a whole real frame; the old one was truncated.
+- **Caught on the way:** a `--` in the new rule's XML comment made
+  `rejectrules.xml` fail to load, which would have silently dropped every
+  reject rule. The new tests failed on it before it shipped.
+
+**`verify.sh`: 0 stages failed.**
+- validators 11/11;
+- unit suite **149 suites / 4856 checks**;
+- menu audit 138 ok;
+- smoke alive.
+
+---
+
 <a id="session-91"></a>
 ## Session 91 — DMI tag IDs, the signal post with no aspect, four more themes, and a decoder fix
 

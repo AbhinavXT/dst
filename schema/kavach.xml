@@ -1432,7 +1432,10 @@
        byte re-alignment between blocks. CRC = JAMCRC over wire[3:109] stored LE
        at wire[109:113]. Body bytes 10..108; SOF(2)+spare(1) skipped up front. -->
   <packet name="DMI" match="captype==dmi" wire="lsb-first" trailer_bytes="0">
-    <pad bits="24"/>                                <!-- bytes 0-2: AA AA + spare -->
+    <!-- bytes 0-2: AA AA sync + the frame length (116). fill= is for the
+         packet maker (session 92); the decoder just skips a pad. -->
+    <pad bits="16" fill="0xAAAA"/>
+    <pad bits="8"  fill="frame_len"/>
     <field name="msg.src_id"         bits="8"/>
     <field name="msg.dest_id"        bits="8"/>
     <field name="msg.message_id"     bits="8"/>
@@ -1547,6 +1550,7 @@
     <field name="num coaches" bits="8"/>
 
     <crc name="CRC" algo="jamcrc" from="3" len="107" bits="32" at="880"/>
+    <pad bits="16" fill="0xBBBB"/>                     <!-- bytes 114-115: BB BB end sync -->
   </packet>
 
 

@@ -40,9 +40,18 @@ const QString kArp = QStringLiteral(
     "00 01 40 9F FB 47 D0 01 0E 04 1F C3 15 00 00 00 00 00 08 32 00 C9 5E DE 2F");
 const QString kDop1 = QStringLiteral(
     "@dop1_1_1 2026-06-27T14:02:26 21431 0C 17 17 17 17 0C 0C 0C 0C 17 17 17 17 17 17 17");
+// A whole real @dmi frame (116 B, AA AA .. BB BB), from replay/ (session 92:
+// the old fixture was a truncated one, which the encoder cannot reproduce).
 const QString kDmi = QStringLiteral(
-    "@dmi_1_1 2026-06-27T14:02:27 21437 AA AA 74 02 01 0A 6F 00 FD A5 00 00 00 00 "
-    "00 00 00 00 00 00 1B 06 EA 07 0E 02 1B 08 00");
+    "@dmi_1_1 2026-06-27T14:02:27 21437 "
+    "AA AA 74 02 01 0A 6F 00 FD A5 00 00 00 00 00 00 "
+    "00 00 00 00 1B 06 EA 07 0E 02 1B 08 00 00 00 00 "
+    "00 00 00 00 00 86 47 78 82 07 01 00 00 70 ED 7F "
+    "02 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 "
+    "00 00 0F 02 00 00 FA 00 00 00 00 00 01 20 14 2D "
+    "6A 0D 00 00 00 00 00 00 00 00 00 00 00 00 F0 3C "
+    "00 F4 01 00 00 00 00 02 06 0F 00 00 01 00 26 10 "
+    "77 7E BB BB");
 
 CaptureLine line(const QString &s) { return CaptureDecoder::parseLine(s); }
 
@@ -134,11 +143,14 @@ TEST_SUITE(roundtrip)
               "'not encodable' is not a verdict on this frame");
     }
     {
+        // Session 92: lsb-first is written now, so a real @dmi is reproduced
+        // byte for byte instead of refused.
         const CaptureLine c = line(kDmi);
         const Result r = check(enc, c.typeToken, c.bytes);
-        CHECK(r.outcome == Outcome::NotEncodable,
-              "an lsb-first packet is refused rather than packed msb-first");
-        CHECK(r.detail.contains(QLatin1String("lsb-first")), "naming the bit order");
+        CHECK(r.outcome == Outcome::Identical,
+              QByteArray("an lsb-first packet (dmi) is now rebuilt byte for byte (session 92): ")
+                  + outcomeName(r.outcome).toUtf8() + " " + r.detail.toUtf8() + " @" + QByteArray::number(r.firstDiff));
+        CHECK(r.outcome != Outcome::NotEncodable, "and is no longer refused");
     }
     {
         // NMSHLTH is a single <eventstream>, which the encoder has no writer
@@ -251,13 +263,15 @@ TEST_SUITE(roundtrip)
         const CaptureLine dmi  = line(kDmi);
         rep.add(slrp, check(enc, slrp.typeToken, slrp.bytes), 4);
         rep.add(dmi,  check(enc, dmi.typeToken,  dmi.bytes),  4);
+        const CaptureLine dop1 = line(kDop1);   // still not encodable: a <repeat>
+        rep.add(dop1, check(enc, dop1.typeToken, dop1.bytes), 4);
         const QString txt = rep.toText();
         CHECK(txt.contains(QLatin1String("slrp")) && txt.contains(QLatin1String("dmi")),
               "both types appear in the report");
         CHECK(txt.contains(QLatin1String("built into the binary")),
               "the report names the schema it used");
         CHECK(txt.contains(QLatin1String("not encodable")),
-              "and says outright that dmi could not be built");
+              "and says outright that dop1 could not be built");
         CHECK(txt.contains(QLatin1String("Reproduction is not correctness")),
               "the report states its own limit");
     }

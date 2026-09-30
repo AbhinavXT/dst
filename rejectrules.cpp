@@ -40,6 +40,8 @@ bool RejectRules::load(const QString &path, QString *error)
          !e.isNull(); e = e.nextSiblingElement(QStringLiteral("rule"))) {
         Rule r;
         r.clause = e.attribute(QStringLiteral("clause")).trimmed();
+        for (const QString &t : e.attribute(QStringLiteral("captype")).split(QLatin1Char(','), Qt::SkipEmptyParts))
+            r.captypes << t.trimmed().toLower();
         r.field  = e.attribute(QStringLiteral("field")).trimmed();
         r.op     = e.attribute(QStringLiteral("op"), QStringLiteral("eq")).trimmed();
         r.doc    = e.attribute(QStringLiteral("doc")).trimmed();
@@ -79,15 +81,16 @@ bool RejectRules::load(const QString &path, QString *error)
                                 .arg(r.clause, r.field)
                                 .arg(r.value).arg(r.bits));
             }
-        } else if (r.op == QLatin1String("ne_field")) {
-            // Fires when two fields disagree. The identity rules need it:
+        } else if (r.op == QLatin1String("ne_field") || r.op == QLatin1String("eq_field")) {
+            // ne_field fires when two fields disagree; eq_field (session 92)
+            // when they agree. The identity rules need it:
             // "this SLRP is addressed to a different loco" is a comparison
             // against something the frame does not carry, supplied alongside
             // it. Keeping it a plain field comparison means the engine needs
             // no notion of identity at all.
             r.other = e.attribute(QStringLiteral("other")).trimmed();
             if (r.other.isEmpty()) {
-                return fail(QStringLiteral("rule %1 (%2) has op ne_field but "
+                return fail(QStringLiteral("rule %1 (%2) has op %3 but "
                                            "names no other field")
                                 .arg(r.clause, r.field));
             }
@@ -117,10 +120,13 @@ bool RejectRules::load(const QString &path, QString *error)
 }
 
 QVector<RejectRules::Finding> RejectRules::evaluate(
-    const QHash<QString, qint64> &values) const
+    const QHash<QString, qint64> &values, const QString &captype) const
 {
     QVector<Finding> out;
+    const QString type = captype.toLower();
     for (const Rule &r : m_rules) {
+        // A rule for other capture types does not apply here (session 92).
+        if (!r.captypes.isEmpty() && !r.captypes.contains(type)) { continue; }
         // A field the frame does not carry is not a finding. Sub-packet
         // fields are absent from most frames by design — an SLRP carrying
         // only a movement authority has no TSR fields at all, and reporting
@@ -151,6 +157,10 @@ QVector<RejectRules::Finding> RejectRules::evaluate(
             auto o = values.constFind(r.other);
             if (o == values.constEnd()) { continue; }
             fires = (v != o.value());
+        } else if (r.op == QLatin1String("eq_field")) {
+            auto o = values.constFind(r.other);          // absent comparand: not checked
+            if (o == values.constEnd()) { continue; }
+            fires = (v == o.value());
         }
         if (!fires) { continue; }
 
@@ -171,6 +181,9 @@ QString RejectRules::describe(const Finding &f)
     QString s = QStringLiteral("%1 = %2").arg(f.rule.field).arg(f.actual);
     if (f.rule.op == QLatin1String("ne_field")) {
         s += QStringLiteral(", not %1").arg(f.rule.other);
+    }
+    if (f.rule.op == QLatin1String("eq_field")) {
+        s += QStringLiteral(", same as %1").arg(f.rule.other);
     }
     if (!f.rule.when.isEmpty()) {
         // The guard is part of the claim. "FRAME_OFFSET = 14" alone would

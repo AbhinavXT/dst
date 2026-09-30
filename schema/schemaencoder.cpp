@@ -7,21 +7,37 @@
 
 namespace {
 
+QHash<QString, std::function<quint32(const QByteArray &, int, int)>> &crcRegistry()
+{
+    static QHash<QString, std::function<quint32(const QByteArray &, int, int)>> r;
+    return r;
+}
+
 // msb-first bit writer: the inverse of Decoder::Cursor::take(). Bit 0 is the
 // MSB of byte 0, and put() emits a field's bits most-significant first, so a
 // value written here reads back identically through take().
 struct BitWriter {
     QByteArray buf;
     int nbits = 0;
+    // Session 92: lsb-first packets (DMI, RFID, CCSYS, ...). The inverse of
+    // Decoder::Cursor::take() with msb=false: bit k of the frame is bit
+    // (k & 7) of byte k>>3 counted from the LSB, and a field's LEAST
+    // significant bit is written first.
+    bool lsb = false;
 
     void ensure(int byte) { while (buf.size() <= byte) { buf.append(char(0)); } }
 
+    uchar maskAt(int bitPos) const { return lsb ? uchar(1u << (bitPos & 7)) : uchar(0x80 >> (bitPos & 7)); }
+    // The field's bits in wire order: MSB first, or LSB first.
+    int bitOfField(int k, int n) const { return lsb ? k : n - 1 - k; }
+
     void put(quint64 v, int n) {
-        for (int i = n - 1; i >= 0; --i) {
+        for (int k = 0; k < n; ++k) {
+            const int i = bitOfField(k, n);
             const int byte = nbits >> 3;
             ensure(byte);
-            if ((v >> i) & 1) {
-                buf[byte] = char(uchar(buf[byte]) | uchar(0x80 >> (nbits & 7)));
+            if (i < 64 && ((v >> i) & 1)) {
+                buf[byte] = char(uchar(buf[byte]) | maskAt(nbits));
             }
             ++nbits;
         }
@@ -29,12 +45,13 @@ struct BitWriter {
 
     // Overwrite n bits starting at an absolute bit position (already emitted).
     void poke(int bitPos, quint64 v, int n) {
-        for (int i = n - 1; i >= 0; --i) {
+        for (int k = 0; k < n; ++k) {
+            const int i = bitOfField(k, n);
             const int byte = bitPos >> 3;
             if (byte >= buf.size()) { break; }
-            const uchar mask = uchar(0x80 >> (bitPos & 7));
-            if ((v >> i) & 1) { buf[byte] = char(uchar(buf[byte]) | mask); }
-            else              { buf[byte] = char(uchar(buf[byte]) & uchar(~mask)); }
+            const uchar mask = maskAt(bitPos);
+            if (i < 64 && ((v >> i) & 1)) { buf[byte] = char(uchar(buf[byte]) | mask); }
+            else                          { buf[byte] = char(uchar(buf[byte]) & uchar(~mask)); }
             ++bitPos;
         }
     }
@@ -54,12 +71,15 @@ struct BitReader {
     BitReader(const QByteArray &b, int startBit, int limitBit)
         : buf(b), pos(startBit), limit(limitBit) {}
 
+    bool lsb = false;   // session 92: see BitWriter::lsb
+
     quint64 take(int n) {
         quint64 v = 0;
         for (int i = 0; i < n; ++i) {
-            if (pos >= limit || (pos >> 3) >= buf.size()) { over = true; v <<= 1; ++pos; continue; }
+            if (pos >= limit || (pos >> 3) >= buf.size()) { over = true; if (!lsb) v <<= 1; ++pos; continue; }
             const uchar byte = uchar(buf[pos >> 3]);
-            v = (v << 1) | quint64((byte >> (7 - (pos & 7))) & 1);
+            if (lsb) { if (i < 64) v |= quint64((byte >> (pos & 7)) & 1) << i; }
+            else     { v = (v << 1) | quint64((byte >> (7 - (pos & 7))) & 1); }
             ++pos;
         }
         return v;
@@ -351,7 +371,14 @@ void Encoder::collectFields(const QDomElement &parent, const QString &whenCtx,
     for (QDomElement e = parent.firstChildElement(); !e.isNull();
          e = e.nextSiblingElement()) {
         const QString t = e.tagName();
-        if (t == "field") {
+        if (t == "field" && e.hasAttribute("type")) {
+            // float / double / char arrays (ANALOG, LINFO, UBA): not an
+            // integer the form can take, so the packet is refused, named.
+            if (unsupported) {
+                const QString what = QStringLiteral("typed %1 field").arg(e.attribute("type"));
+                if (!unsupported->contains(what)) { *unsupported << what; }
+            }
+        } else if (t == "field") {
             FieldInfo fi;
             fi.name     = e.attribute("name");
             fi.bits     = e.attribute("bits").toInt();
@@ -362,17 +389,37 @@ void Encoder::collectFields(const QDomElement &parent, const QString &whenCtx,
         } else if (t == "flags") {
             // A flags block is N raw bits; the operator supplies the bitmap.
             // order="lsb" only affects how the decoder labels individual bits.
-            FieldInfo fi;
-            fi.name = e.attribute("name");
-            fi.bits = e.attribute("bits").toInt();
-            fi.when = whenCtx;
-            out.push_back(fi);
+            // A value is a qint64, so a flags block wider than 63 bits (the
+            // DMI's 71-bit alarm_code) is taken in 32-bit pieces, in wire
+            // order: "alarm_code", "alarm_code#2", ... (session 92). Before,
+            // bits 64+ were silently written as 0.
+            const int total = e.attribute("bits").toInt();
+            const int piece = total > 63 ? 32 : total;
+            for (int done = 0, k = 1; done < total; done += piece, ++k) {
+                FieldInfo fi;
+                fi.name = k == 1 ? e.attribute("name") : QStringLiteral("%1#%2").arg(e.attribute("name")).arg(k);
+                fi.bits = qMin(piece, total - done);
+                fi.when = whenCtx;
+                out.push_back(fi);
+            }
+            // The decoder skips pad= bits after the flags (session 92: the
+            // writer must too, or everything after lands short).
+            if (e.attribute("pad", "0").toInt() > 0) {
+                FieldInfo p; p.isPad = true; p.bits = e.attribute("pad").toInt();
+                p.when = whenCtx;
+                out.push_back(p);
+            }
         } else if (t == "pad") {
             FieldInfo fi; fi.isPad = true; fi.bits = e.attribute("bits").toInt();
+            fi.when = whenCtx;   // a pad inside <when> is only there when it holds (session 92)
+            const QString fill = e.attribute("fill");
+            if (fill == QLatin1String("frame_len")) fi.fillFrameLen = true;
+            else if (!fill.isEmpty()) fi.fill = fill.toULongLong(nullptr, 0);
             out.push_back(fi);
         } else if (t == "align") {
             FieldInfo fi; fi.isPad = true; fi.name = QStringLiteral("<align>");
             fi.bits = -1;                       // sentinel: align to next byte
+            fi.when = whenCtx;
             out.push_back(fi);
         } else if (t == "group") {
             collectFields(e, whenCtx, out, unsupported);          // inline the group's fields
@@ -382,6 +429,17 @@ void Encoder::collectFields(const QDomElement &parent, const QString &whenCtx,
             // display-only; emits no bits. <row> renders other fields'
             // captured ids through a template — the decoder consumes
             // nothing for it, so neither does the writer.
+        } else if (t == "crc") {
+            FieldInfo fi;
+            fi.isCrc   = true;
+            fi.name    = e.attribute("name");
+            fi.bits    = e.attribute("bits", "32").toInt();
+            fi.crcAlgo = e.attribute("algo");
+            fi.crcFrom = e.attribute("from").toInt();
+            fi.crcLen  = e.attribute("len").toInt();
+            fi.crcAt   = e.hasAttribute("at") ? e.attribute("at").toInt() : -1;
+            fi.when    = whenCtx;
+            out.push_back(fi);
         } else if (t == "subpackets") {
             break;                              // handled by the caller
         } else if (unsupported) {
@@ -410,14 +468,17 @@ PacketInfo Encoder::packet(const QString &captype) const
     pi.bodyOffsetBits = p.attribute("body_offset").toInt();
     pi.header = fieldsOf(p, &pi.unsupported);
 
-    // The writer is msb-first only. An lsb-first packet (DMI, LINFO, RFID,
+    // Until session 92 the writer was msb-first only. An lsb-first packet (DMI, LINFO, RFID,
     // CCSYS, DLSYS) would be packed in the wrong bit order and the result
     // still looks fine — it decodes back to the values that produced it, and
     // its CRC is valid over its own wrong bytes. The round-trip validator
     // shows what that costs: not one @dmi or @linfo frame in the corpus can
     // be reproduced. Refuse instead, so the failure is visible before
     // anything is transmitted rather than after.
-    if (!pi.wire.isEmpty() && pi.wire != QLatin1String("msb-first")) {
+    // Session 92: lsb-first is now written (BitWriter::lsb) and checked
+    // frame for frame against the corpus; only an order this code does not
+    // know is refused.
+    if (!pi.wire.isEmpty() && pi.wire != QLatin1String("msb-first") && pi.wire != QLatin1String("lsb-first")) {
         pi.unsupported << QStringLiteral("%1 bit order").arg(pi.wire);
     }
 
@@ -513,11 +574,26 @@ QByteArray Encoder::encodeBody(const QString &captype,
     }
 
     BitWriter bw;
+    bw.lsb = (pi.wire == QLatin1String("lsb-first"));
+    struct CrcSlot { int pos; FieldInfo f; };
+    QVector<CrcSlot> crcSlots;
+    struct LenSlot { int pos; int bits; };
+    QVector<LenSlot> lenSlots;
 
     // Flat header. `align` sentinel (bits < 0) rounds to the next byte.
     for (const FieldInfo &f : pi.header) {
+        if (f.isCrc) {
+            if (!condOk(f.when, header)) { continue; }
+            // at= places it absolutely, as the decoder reads it.
+            if (f.crcAt >= 0) { while (bw.nbits < f.crcAt) bw.put(0, 1); bw.nbits = f.crcAt; }
+            crcSlots.push_back({ bw.nbits, f });
+            bw.put(0, f.bits);
+            continue;
+        }
+        if (f.isPad && !condOk(f.when, header)) { continue; }
         if (f.isPad && f.bits < 0) { bw.alignByte(); continue; }
-        if (f.isPad) { bw.put(0, f.bits); continue; }
+        if (f.isPad && f.fillFrameLen) { lenSlots.push_back({ bw.nbits, f.bits }); bw.put(0, f.bits); continue; }
+        if (f.isPad) { bw.put(f.fill, f.bits); continue; }
         if (!condOk(f.when, header)) { continue; }
         const quint64 masked = (f.bits >= 64)
             ? quint64(header.value(f.name, 0))
@@ -559,6 +635,18 @@ QByteArray Encoder::encodeBody(const QString &captype,
     }
 
     bw.alignByte();
+
+    // Session 92: the frame length, then the CRCs over the finished frame
+    // (so a CRC covers the length), in schema order.
+    for (const LenSlot &slot : lenSlots) bw.poke(slot.pos, quint64(bw.buf.size()), slot.bits);
+    for (const CrcSlot &slot : crcSlots) {
+        const auto fn = crcRegistry().value(slot.f.crcAlgo);
+        if (!fn) {
+            if (err) { *err = QStringLiteral("no CRC algorithm '%1' registered").arg(slot.f.crcAlgo); }
+            return {};
+        }
+        bw.poke(slot.pos, fn(bw.buf, slot.f.crcFrom, slot.f.crcLen), slot.f.bits);
+    }
     return bw.buf;
 }
 
@@ -577,9 +665,17 @@ ParsedPacket Encoder::parseBody(const QString &captype, const QByteArray &frame)
     if (frame.isEmpty()) { pp.error = QStringLiteral("buffer is empty"); return pp; }
 
     BitReader br(frame, 0, frame.size() * 8);
+    br.lsb = (pi.wire == QLatin1String("lsb-first"));
 
     // Flat header, in spec order, with the same `when` gating the writer uses.
     for (const FieldInfo &f : pi.header) {
+        if (f.isCrc) {                     // computed, not an input: skip it
+            if (!condOk(f.when, pp.header)) { continue; }
+            if (f.crcAt >= 0) br.pos = f.crcAt;
+            br.take(f.bits);
+            continue;
+        }
+        if (f.isPad && !condOk(f.when, pp.header)) { continue; }
         if (f.isPad && f.bits < 0) { br.alignByte(); continue; }
         if (f.isPad)               { br.take(f.bits); continue; }
         if (!condOk(f.when, pp.header)) { continue; }
@@ -703,3 +799,8 @@ QString Encoder::detectCaptype(const QByteArray &frame) const
 }
 
 }  // namespace Schema
+
+void Schema::Encoder::registerCrc(const QString &name, std::function<quint32(const QByteArray &, int, int)> fn)
+{
+    crcRegistry().insert(name, fn);
+}

@@ -152,8 +152,10 @@ TEST_SUITE(session89)
         };
         CHECK(count(img0, lamps, lampRed) == 0 && count(img1, lamps, lampRed) > 300,
               "with no aspect every lamp is unlit; a red aspect lights the red lamp");
-        CHECK(inked(img0, QRect(569, 360, 231, 26), black) < inked(img1, QRect(569, 360, 231, 26), black),
-              "no signal distance is printed without an aspect");
+        // Session 92 reversed this: the distance is printed with no aspect
+        // too ("0000 m"), as the project asked.
+        CHECK(inked(img0, QRect(569, 360, 231, 26), black) > 30,
+              "the signal distance is printed without an aspect as well (session 92)");
         // A real unidentified-aspect frame draws the post too.
         for (const QString &l : realDmiLines89(12000)) {
             const DmiState s = dmiStateFromLine(l);

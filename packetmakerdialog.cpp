@@ -637,7 +637,7 @@ void PacketMakerDialog::rebuildHeaderForm()
         }
     }
     for (const Schema::FieldInfo &f : pi.header) {
-        if (f.isPad) { continue; }
+        if (f.isPad || f.isCrc) { continue; }   // a <crc> is computed, not asked for (session 92)
         // PKT_LENGTH is computed by the builder; show it read-only.
         QWidget *ed = makeEditor(f, m_builder.encoder(), m_headerHost);
         // PKT_LENGTH and MAC_CODE are computed by the builder — show read-only.
@@ -1011,7 +1011,7 @@ void PacketMakerDialog::onVaryAdd()
     for (const Schema::FieldInfo &f : pi.header) {
         // PKT_LENGTH and MAC_CODE are recomputed by the builder on every
         // send, so varying them would be overwritten and misleading.
-        if (f.isPad) { continue; }
+        if (f.isPad || f.isCrc) { continue; }
         if (f.name == QLatin1String("PKT_LENGTH") || f.name == QLatin1String("MAC_CODE")) { continue; }
         fieldCombo->addItem(f.name);
     }
@@ -1160,7 +1160,7 @@ void PacketMakerDialog::onShowDiff()
     const Schema::PacketInfo pi = m_builder.encoder().packet(m_packetCombo->currentText());
     // Walked in spec order, not hash order, so the list reads like the packet.
     for (const Schema::FieldInfo &f : pi.header) {
-        if (f.isPad) { continue; }
+        if (f.isPad || f.isCrc) { continue; }
         if (f.name == QLatin1String("PKT_LENGTH") || f.name == QLatin1String("MAC_CODE")) { continue; }
         QWidget *ed = m_headerEditors.value(f.name);
         if (!ed || !m_refHeader.contains(f.name)) { continue; }

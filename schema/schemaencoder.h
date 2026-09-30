@@ -24,6 +24,7 @@
 #include <QStringList>
 #include <QVector>
 #include <QHash>
+#include <functional>
 #include <QByteArray>
 #include <QDomDocument>
 #include <QDomElement>
@@ -39,6 +40,16 @@ struct FieldInfo {
     bool    isPad   = false;
     QString enumName;      // non-empty => offer a choice list
     QString when;          // present only when this condition holds
+    // Session 92: a <crc> element (the lsb-first packets carry their CRC as
+    // one). Written as zeros, then computed over the finished frame and
+    // poked in; read back and skipped. Not an operator input.
+    bool    isCrc   = false;
+    QString crcAlgo;
+    int     crcFrom = 0, crcLen = 0, crcAt = -1;
+    // Session 92: a pad's fixed content (<pad fill="0xAAAA"/>), or
+    // fillFrameLen for <pad fill="frame_len"/>: the finished frame's size.
+    quint64 fill = 0;
+    bool    fillFrameLen = false;
 };
 
 struct CaseInfo { int type = 0; QString structName; };
@@ -108,6 +119,10 @@ struct ParsedPacket {
 class Encoder {
 public:
     Encoder() = default;
+
+    // Session 92: CRC algorithms for <crc algo=...>, shared by every Encoder
+    // (capturedecoder.cpp registers the same ones as the decoder's).
+    static void registerCrc(const QString &name, std::function<quint32(const QByteArray &, int, int)> fn);
 
     bool load(const QString &xmlPath, QString *err = nullptr);
     bool isLoaded() const { return m_loaded; }

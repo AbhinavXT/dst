@@ -1,4 +1,5 @@
 #include "capturedecoder.h"
+#include "schema/schemaencoder.h"
 #include "sessionkeystore.h"
 #include "schema/schemadecoder.h"   // global scope: declares namespace Schema + pulls in QtXml
 
@@ -197,6 +198,24 @@ static Schema::Decoder &kavachSchemaImpl()
     }();
     return d;
 }
+
+// Session 92: the same CRC algorithms for the packet maker's encoder, which
+// writes <crc> elements. Registered at load time rather than inside
+// kavachSchema(), so a build (or a round-trip check) that runs before
+// anything has been decoded still finds them.
+namespace {
+const bool kEncoderCrcsRegistered = [] {
+    Schema::Encoder::registerCrc(QStringLiteral("jamcrc"), &CaptureDecoder::jamcrc);
+    Schema::Encoder::registerCrc(QStringLiteral("rfidcrc30"), [](const QByteArray &d, int from, int len) -> quint32 {
+        QByteArray s = d.mid(from, len);
+        if (!s.isEmpty()) {
+            s[s.size() - 1] = char((quint8)s[s.size() - 1] & 0x03);
+        }
+        return rfidCrc30(reinterpret_cast<const quint8 *>(s.constData()), s.size());
+    });
+    return true;
+}();
+}  // namespace
 
 // The single inspector path. Every migrated packet renders its rows from the
 // schema (kavach.xml) -- there is NO hand-decoder fallback. If the schema fails

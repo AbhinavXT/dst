@@ -59,6 +59,8 @@ struct FieldRow;
 class LogEntry;
 class MessageDispatcher;
 class QCheckBox;
+class QPushButton;
+class QTableWidget;
 class QComboBox;
 class QLabel;
 
@@ -194,6 +196,13 @@ public:
     void showMoment(const DmiMoment &moment);
     const DmiMoment &moment() const { return m_moment; }
 
+    // Session 92: the "Fields" side panel -- the decoded fields of the frame
+    // the panel is drawing (live or at the moment).
+    void setFieldsVisible(bool on);
+    bool fieldsVisible() const;
+    QStringList fieldNames() const;              // for tests
+    QString fieldValue(const QString &name) const;
+
 private:
     void refreshStatus();
     void render();                 // the selected source, live or at the moment
@@ -203,6 +212,12 @@ private:
     QComboBox *m_source = nullptr;
     QLabel    *m_status = nullptr;
     QCheckBox *m_follow = nullptr;
+    QPushButton  *m_fieldsBtn = nullptr;
+    QTableWidget *m_fields = nullptr;
+    QWidget   *m_fieldsPane = nullptr;
+    QLabel    *m_fieldsTitle = nullptr;
+    CaptureLine m_shown;                          // the frame the panel is drawing
+    void refreshFields();
     bool       m_following = false;
     DmiMoment  m_moment;
     QHash<QString, QString> m_lastLine;     // source -> last @dmi line

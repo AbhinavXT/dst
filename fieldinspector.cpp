@@ -180,7 +180,7 @@ void FieldInspector::showEntry(const LogEntryPtr &entry)
     }
 
     m_findings.clear();
-    for (const RejectRules::Finding &f : kavachRejectRules().evaluate(raw)) {
+    for (const RejectRules::Finding &f : kavachRejectRules().evaluate(raw, cap.typeToken)) {
         m_findings << f.text;
     }
 

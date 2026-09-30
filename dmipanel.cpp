@@ -16,6 +16,8 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QTimer>
+#include <QHeaderView>
+#include <QTableWidget>
 #include <QVBoxLayout>
 
 #include "settings.h"
@@ -424,8 +426,12 @@ void DmiView::paintEvent(QPaintEvent *)
     }
 
     // ---- Region A: target distance -----------------------------------------------
-    if (s.targetDistance > 0) {
-        text(QRectF(kA.left(), 4, kA.width(), 22), s.targetType, 18.67, true, ink, Qt::AlignHCenter | Qt::AlignVCenter);
+    // Session 92: the scale, its labels and the distance are always drawn,
+    // so the column reads "0000 m" rather than vanishing when the target
+    // distance and type are 0. Only the bar and the type need a target.
+    {
+        if (!s.targetType.isEmpty())
+            text(QRectF(kA.left(), 4, kA.width(), 22), s.targetType, 18.67, true, ink, Qt::AlignHCenter | Qt::AlignVCenter);
         text(QRectF(kA.left(), 28, kA.width(), 22), tr("Target"), 18.67, false, ink, Qt::AlignHCenter | Qt::AlignVCenter);
         text(QRectF(kA.left(), 50, kA.width(), 22), tr("Distance"), 18.67, false, ink, Qt::AlignHCenter | Qt::AlignVCenter);
         const double markX = kA.left() + 45, markW = 30;
@@ -433,8 +439,10 @@ void DmiView::paintEvent(QPaintEvent *)
         for (double y : { 107.0, 124.0, 141.0, 157.0, 182.0, 207.0, 272.0, 337.0 }) p.drawLine(QPointF(markX, y), QPointF(markX + markW, y));
         const struct { double y; const char *label; } labels[] = { { 107, "2000" }, { 157, "1000" }, { 207, "500" }, { 272, "250" }, { 337, "0" } };
         for (const auto &l : labels) text(QRectF(kA.left(), l.y - 10, 40, 20), QLatin1String(l.label), 14, false, ink, Qt::AlignRight | Qt::AlignVCenter);
-        const double top = dmiTargetScaleY(s.targetDistance);
-        p.fillRect(QRectF(markX + 3, top, 24, 337 - top), m_stale ? c.lgy : c.lor);
+        if (s.targetDistance > 0) {
+            const double top = dmiTargetScaleY(s.targetDistance);
+            p.fillRect(QRectF(markX + 3, top, 24, 337 - top), m_stale ? c.lgy : c.lor);
+        }
         text(QRectF(kA.left(), 352, kA.width(), 26), QStringLiteral("%1 m").arg(qMin(s.targetDistance, 9999), 4, 10, QLatin1Char('0')),
              18.67, true, ink, Qt::AlignHCenter | Qt::AlignVCenter);
     }
@@ -647,10 +655,9 @@ void DmiView::paintEvent(QPaintEvent *)
             p.drawLine(a0, a1);
         }
         if (s.stencil > 0) text(QRectF(660, 6, 60, 36), QString::number(s.stencil), 28, true, ink, Qt::AlignCenter);
-        if (s.aspect != 0) {
-            text(QRectF(kD.left(), 360, kD.width(), 26), QStringLiteral("%1 m").arg(qMin(s.signalDistance, 9999), 4, 10, QLatin1Char('0')),
-                 18.67, true, ink, Qt::AlignHCenter | Qt::AlignVCenter);
-        }
+        // Session 92: the distance too, even with no aspect ("0000 m").
+        text(QRectF(kD.left(), 360, kD.width(), 26), QStringLiteral("%1 m").arg(qMin(s.signalDistance, 9999), 4, 10, QLatin1Char('0')),
+             18.67, true, ink, Qt::AlignHCenter | Qt::AlignVCenter);
     }
     text(QRectF(kD.left() + 2, 392, kD.width() - 4, 24), s.signalName, 17.33, false, m_stale ? c.lgy : c.org);
 
@@ -765,8 +772,35 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
     m_follow->setToolTip(tr("Show the panel as it was at the row selected in any tab, or at a replay window's "
                             "cursor: each loco's latest @dmi at or before that moment. Off: the live panel."));
     auto *save = new QPushButton(tr("Save image…"), this);
-    auto *notes = new QPushButton(tr("Field sources…"), this);
-    notes->setToolTip(dmiAssumptions().join(QLatin1Char('\n')));
+    // Session 92: "Fields" opens a side panel with the displayed frame's
+    // decoded @dmi fields. It replaces "Field sources…", whose notes on
+    // which field feeds which region now sit under that table.
+    m_fieldsBtn = new QPushButton(tr("Fields \u25B8"), this);
+    m_fieldsBtn->setObjectName(QStringLiteral("dmiFieldsButton"));
+    m_fieldsBtn->setCheckable(true);
+    m_fieldsBtn->setToolTip(tr("Show the decoded fields of the @dmi frame the panel is drawing, beside it"));
+    m_fields = new QTableWidget(0, 2, this);
+    m_fields->setObjectName(QStringLiteral("dmiFieldsTable"));
+    m_fields->setHorizontalHeaderLabels({ tr("Field"), tr("Value") });
+    m_fields->verticalHeader()->hide();
+    m_fields->horizontalHeader()->setStretchLastSection(true);
+    m_fields->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_fields->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_fields->setAlternatingRowColors(true);
+    m_fields->setWordWrap(false);
+    auto *sources = new QLabel(tr("<b>Where each region comes from</b><br>") + dmiAssumptions().join(QStringLiteral("<br>")), this);
+    sources->setWordWrap(true);
+    sources->setStyleSheet(UiColor::mutedStyle());
+    m_fieldsPane = new QWidget(this);
+    m_fieldsPane->setObjectName(QStringLiteral("dmiFieldsPane"));
+    auto *paneLay = new QVBoxLayout(m_fieldsPane);
+    paneLay->setContentsMargins(0, 0, 0, 0);
+    m_fieldsTitle = new QLabel(m_fieldsPane);
+    paneLay->addWidget(m_fieldsTitle);
+    paneLay->addWidget(m_fields, 1);
+    paneLay->addWidget(sources);
+    m_fieldsPane->setMinimumWidth(300);
+    m_fieldsPane->hide();
     m_status = new QLabel(this);
     m_status->setObjectName(QStringLiteral("dmiStatus"));
     m_status->setStyleSheet(UiColor::mutedStyle());
@@ -777,11 +811,14 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
     top->addWidget(m_follow);
     top->addWidget(annexure);
     top->addStretch(1);
-    top->addWidget(notes);
+    top->addWidget(m_fieldsBtn);
     top->addWidget(save);
     auto *root = new QVBoxLayout(this);
     root->addLayout(top);
-    root->addWidget(m_view, 1);
+    auto *body = new QHBoxLayout;
+    body->addWidget(m_view, 1);
+    body->addWidget(m_fieldsPane);
+    root->addLayout(body, 1);
     root->addWidget(m_status);
 
     connect(annexure, &QCheckBox::toggled, this, [this](bool on) {
@@ -798,9 +835,7 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
         const QString path = QFileDialog::getSaveFileName(this, tr("Save DMI image"), QStringLiteral("dmi.png"), tr("PNG (*.png)"));
         if (!path.isEmpty()) saveImage(path);
     });
-    connect(notes, &QPushButton::clicked, this, [this]() {
-        m_status->setText(tr("Assumed: %1").arg(dmiAssumptions().join(QStringLiteral("  ·  "))));
-    });
+    connect(m_fieldsBtn, &QPushButton::toggled, this, [this](bool on) { setFieldsVisible(on); });
     // H / I alternate every 2 s (B4.6.7 (e)); staleness is judged each tick.
     auto *tick = new QTimer(this);
     tick->setInterval(2000);
@@ -902,13 +937,17 @@ void DmiWindow::render()
     const QString key = m_source->currentText();
     if (!m_following) {
         m_view->setEmptyText(QString());
-        m_view->setState(dmiStateFromLine(m_lastLine.value(key)));
+        m_shown = CaptureDecoder::parseLine(m_lastLine.value(key));
+        m_view->setState(dmiStateFromCapture(m_shown));
+        refreshFields();
         return;
     }
     const DmiFrameAt *f = m_moment.valid ? m_moment.frameFor(key) : nullptr;
     if (!m_moment.valid) m_view->setEmptyText(tr("Pick a row in any tab, or move a replay cursor"));
     else if (!f)         m_view->setEmptyText(tr("No @dmi at or before this moment"));
+    m_shown = f ? f->cap : CaptureLine();
     m_view->setState(f ? dmiStateFromCapture(f->cap) : DmiState());
+    refreshFields();
     m_view->setStale(f && m_moment.atMs - f->frameMs > kDmiStaleMs);
     setWindowTitle(m_moment.valid
                        ? tr("DMI (LP-OCIP) \u2014 at %1").arg(QDateTime::fromMSecsSinceEpoch(m_moment.atMs).toString(QStringLiteral("HH:mm:ss")))
@@ -952,4 +991,52 @@ void DmiWindow::refreshStatus()
     m_view->setStale(age > 3000);
     m_status->setText(tr("%1 · last @dmi %2 s ago · RDSO/SPN/196/2020 Annexure-B Amdt-3 layout")
                           .arg(key).arg(age / 1000));
+}
+
+// ---- Session 92: the decoded fields beside the panel ---------------------------------------------
+
+void DmiWindow::setFieldsVisible(bool on)
+{
+    if (m_fieldsBtn->isChecked() != on) { m_fieldsBtn->setChecked(on); return; }   // back via toggled
+    m_fieldsBtn->setText(on ? tr("Fields \u25C2") : tr("Fields \u25B8"));
+    m_fieldsPane->setVisible(on);
+    // Widen the window by the pane rather than squeezing the panel.
+    if (on && !isMaximized() && !isFullScreen()) resize(width() + m_fieldsPane->minimumWidth(), height());
+    refreshFields();
+}
+
+bool DmiWindow::fieldsVisible() const { return m_fieldsPane->isVisible(); }
+
+void DmiWindow::refreshFields()
+{
+    if (!m_fieldsPane->isVisible()) return;             // cost nothing while closed
+    m_fields->setRowCount(0);
+    if (!m_shown.valid || m_shown.type != CapType::Dmi) {
+        m_fieldsTitle->setText(tr("No @dmi frame on the panel."));
+        return;
+    }
+    m_fieldsTitle->setText(tr("<b>@dmi %1</b> \u00B7 %2").arg(m_shown.key(),
+                                                               m_shown.rtc.isValid() ? m_shown.rtc.toString(QStringLiteral("dd-MMM-yyyy HH:mm:ss"))
+                                                                                     : tr("no RTC")));
+    const QVector<FieldRow> rows = CaptureDecoder::describe(m_shown, nullptr, 0, nullptr);
+    m_fields->setRowCount(rows.size());
+    for (int i = 0; i < rows.size(); ++i) {
+        m_fields->setItem(i, 0, new QTableWidgetItem(rows[i].field));
+        m_fields->setItem(i, 1, new QTableWidgetItem(rows[i].value));
+    }
+    m_fields->resizeColumnToContents(0);
+}
+
+QStringList DmiWindow::fieldNames() const
+{
+    QStringList out;
+    for (int i = 0; i < m_fields->rowCount(); ++i) out << m_fields->item(i, 0)->text();
+    return out;
+}
+
+QString DmiWindow::fieldValue(const QString &name) const
+{
+    for (int i = 0; i < m_fields->rowCount(); ++i)
+        if (m_fields->item(i, 0)->text() == name) return m_fields->item(i, 1)->text();
+    return QString();
 }

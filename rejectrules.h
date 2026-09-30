@@ -26,6 +26,7 @@
 // =============================================================================
 #include <QHash>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 class RejectRules
@@ -34,7 +35,7 @@ public:
     struct Rule {
         QString clause;     // "31.16.1" — the FRS clause this came from
         QString field;      // decoded field name it tests
-        QString op;         // "eq" | "outside" | "ne_field"
+        QString op;         // "eq" | "outside" | "ne_field" | "eq_field"
         QString other;      // for ne_field: the field to compare against
         qint64  value = 0;  // for eq
         qint64  min   = 0;  // for outside
@@ -52,6 +53,12 @@ public:
         QString doc;        // the document's own spelling, e.g. "‘11’"
         int     bits  = 0;
         QString note;       // plain words for the operator
+        // Session 92: capture types the rule applies to ("arprecv"; comma
+        // list). Empty = every frame carrying the field. Needed where the
+        // same packet layout arrives by two routes that must be judged
+        // differently: an ARP the loco SENDS carries its own ID by design,
+        // one it RECEIVES must not.
+        QStringList captypes;
     };
 
     struct Finding {
@@ -67,7 +74,10 @@ public:
     bool load(const QString &path, QString *error = nullptr);
 
     // Every rule that fires, in file order. Empty means no rule matched.
-    QVector<Finding> evaluate(const QHash<QString, qint64> &values) const;
+    // `captype` is the frame's capture type ("arprecv"); rules restricted to
+    // other types are skipped. Empty skips every restricted rule.
+    QVector<Finding> evaluate(const QHash<QString, qint64> &values,
+                              const QString &captype = QString()) const;
 
     int  count() const { return m_rules.size(); }
     bool isEmpty() const { return m_rules.isEmpty(); }

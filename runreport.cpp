@@ -152,7 +152,7 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
             QHash<QString, qint64> judged = raw;
             const QHash<QString, qint64> ctx = identity.contextFor(sourceKey);
             for (auto it = ctx.cbegin(); it != ctx.cend(); ++it) judged.insert(it.key(), it.value());
-            for (const RejectRules::Finding &f : kavachRejectRules().evaluate(judged)) {
+            for (const RejectRules::Finding &f : kavachRejectRules().evaluate(judged, type)) {
                 s.rejectClauses[QStringLiteral("%1  %2").arg(f.rule.clause, f.rule.field)] += 1;
             }
         } else if (type == QLatin1String("nmsflt")) {
