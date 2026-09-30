@@ -53,6 +53,7 @@ SOURCES += \
     test_session82.cpp \
     test_session83.cpp \
     test_session84.cpp \
+    test_session89.cpp \
     test_session90.cpp \
     test_undolog.cpp \
     test_workspacesnapshot.cpp \

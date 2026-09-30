@@ -209,7 +209,8 @@ QStringList dmiAssumptions()
         QObject::tr("Movement authority (C) is ma_w_r_t_sig."),
         QObject::tr("Loco id (B4) is train_id."),
         QObject::tr("Next lower speed (B7) is target_speed, shown while there is a target."),
-        QObject::tr("Tag diagram (M): status 1 read (dark green), 2 missed (red), otherwise grey."),
+        QObject::tr("Tag diagram (M): the current, last and last-but-one tag IDs (rc/rl/rll), each with its status "
+                    "(rcs/rls/rlls): 1 read (dark green, \u2713), 2 missed (red, \u2717), 0 none (grey), 3 unnamed (?)."),
         QObject::tr("RF bars (J3): signal_strength, capped at 5."),
     };
 }
@@ -603,7 +604,11 @@ void DmiView::paintEvent(QPaintEvent *)
     }
 
     // ---- Region D: signal -------------------------------------------------------------------
-    if (s.aspect != 0) {
+    // Session 89: the signal post, its lamps, stem and disc are always
+    // drawn. With no aspect (0, "Unidentified") every lamp is simply unlit;
+    // what depends on a signal being known -- the route indicator, the
+    // stencil and the distance -- still waits for one.
+    {
         const double postX = 651, postY = 45;
         QPolygonF post({ QPointF(postX + 12, postY), QPointF(postX + 58, postY), QPointF(postX + 70, postY + 12),
                          QPointF(postX + 70, postY + 208), QPointF(postX + 58, postY + 220), QPointF(postX + 12, postY + 220),
@@ -642,8 +647,10 @@ void DmiView::paintEvent(QPaintEvent *)
             p.drawLine(a0, a1);
         }
         if (s.stencil > 0) text(QRectF(660, 6, 60, 36), QString::number(s.stencil), 28, true, ink, Qt::AlignCenter);
-        text(QRectF(kD.left(), 360, kD.width(), 26), QStringLiteral("%1 m").arg(qMin(s.signalDistance, 9999), 4, 10, QLatin1Char('0')),
-             18.67, true, ink, Qt::AlignHCenter | Qt::AlignVCenter);
+        if (s.aspect != 0) {
+            text(QRectF(kD.left(), 360, kD.width(), 26), QStringLiteral("%1 m").arg(qMin(s.signalDistance, 9999), 4, 10, QLatin1Char('0')),
+                 18.67, true, ink, Qt::AlignHCenter | Qt::AlignVCenter);
+        }
     }
     text(QRectF(kD.left() + 2, 392, kD.width() - 4, 24), s.signalName, 17.33, false, m_stale ? c.lgy : c.org);
 
@@ -683,22 +690,32 @@ void DmiView::paintEvent(QPaintEvent *)
          tr("Tid-%1, Dir-%2").arg(s.tagId).arg(s.tagDir.isEmpty() ? QStringLiteral("-") : s.tagDir), 16, false, ink);
     text(QRectF(kL.left() + 6, kL.top() + 30, kL.width() - 8, 22), tr("T Dist-%1").arg(s.nextTagDistance), 16, false, ink);
     // ---- M: the last three tags on a track -------------------------------------------------------------
+    // Session 89: each tag's ID is written beside its sleeper, in the colour
+    // of its status, with a mark that does not rely on colour: ✓ read (1),
+    // ✗ missed (2), nothing for none (0), ? for a status the spec does not
+    // name (3). An empty slot (ID 0, status 0) shows a dash.
     {
         text(QRectF(kM.left(), kM.top() + 2, kM.width(), 18), tr("Tag"), 14, false, ink, Qt::AlignHCenter | Qt::AlignVCenter);
-        const double top = kM.top() + 20, bottom = top + 104, cx = kM.center().x();
+        const double top = kM.top() + 20, bottom = top + 104, cx = kM.left() + 27;
         p.setPen(QPen(ink, 1));
-        p.drawLine(QPointF(cx - 27, top), QPointF(cx - 8, bottom));
-        p.drawLine(QPointF(cx + 27, top), QPointF(cx + 8, bottom));
+        p.drawLine(QPointF(cx - 20, top), QPointF(cx - 6, bottom));
+        p.drawLine(QPointF(cx + 20, top), QPointF(cx + 6, bottom));
         for (int k = 0; k < 6; ++k) {
-            const double y = top + 8 + k * 16, half = 30 - k * 3.5;
+            const double y = top + 8 + k * 16, half = 22 - k * 2.6;
             p.drawLine(QPointF(cx - half, y), QPointF(cx + half, y));
         }
-        const double widths[3] = { 33, 21, 15 };
+        const double widths[3] = { 26, 17, 12 };
         for (int k = 0; k < 3; ++k) {
             const double y = top + 22 + k * 30;
             const int st = s.tagStatus[k];
             const QColor fill = st == 1 ? c.dgr : st == 2 ? c.brd : c.gry;
             p.fillRect(QRectF(cx - widths[k] / 2, y, widths[k], 8), m_stale ? c.lgy : fill);
+            const bool empty = s.tagIds[k] == 0 && st == 0;
+            const QString mark = st == 1 ? QStringLiteral("\u2713") : st == 2 ? QStringLiteral("\u2717")
+                               : st == 3 ? QStringLiteral("?") : QString();
+            const QColor idInk = m_stale ? c.lgy : st == 1 ? c.dgr : st == 2 ? c.brd : ink;
+            text(QRectF(kM.left() + 50, y - 7, kM.width() - 51, 22),
+                 empty ? QStringLiteral("\u2014") : QString::number(s.tagIds[k]) + mark, 13, st != 0, idInk);
         }
     }
     // ---- K: soft keys (labels only) ----------------------------------------------------------------------

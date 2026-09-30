@@ -45,7 +45,13 @@ enum class Theme {
     Sage         = 3,   // soft green-grey
     Nord         = 4,   // cool blue-grey, dark
     Mocha        = 5,   // Catppuccin Mocha, dark
-    HighContrast = 6    // black on white, 7:1 everywhere
+    HighContrast = 6,   // black on white, 7:1 everywhere
+    // Session 89: Sage's recipe (tinted greys, no pure white, one accent)
+    // with other accents.
+    Ocean        = 7,   // blue-grey, blue accent
+    Lavender     = 8,   // violet-grey, violet accent
+    Rose         = 9,   // rose-grey, rose accent
+    Amber        = 10   // warm grey, amber accent
 };
 
 namespace ThemeUtil {
@@ -54,7 +60,8 @@ namespace ThemeUtil {
 // the light ones, then the dark ones.
 inline QVector<Theme> all()
 {
-    return { Theme::Light, Theme::Sepia, Theme::Sage, Theme::HighContrast,
+    return { Theme::Light, Theme::Sepia, Theme::Sage, Theme::Ocean, Theme::Lavender,
+             Theme::Rose, Theme::Amber, Theme::HighContrast,
              Theme::Dark, Theme::Nord, Theme::Mocha };
 }
 
@@ -69,6 +76,10 @@ inline const char *toString(Theme t)
     case Theme::Nord:         return "nord";
     case Theme::Mocha:        return "mocha";
     case Theme::HighContrast: return "high-contrast";
+    case Theme::Ocean:        return "ocean";
+    case Theme::Lavender:     return "lavender";
+    case Theme::Rose:         return "rose";
+    case Theme::Amber:        return "amber";
     }
     return "light";
 }
@@ -95,6 +106,10 @@ inline QString label(Theme t)
     case Theme::Nord:         return QStringLiteral("Nord");
     case Theme::Mocha:        return QStringLiteral("Mocha");
     case Theme::HighContrast: return QStringLiteral("High contrast");
+    case Theme::Ocean:        return QStringLiteral("Ocean");
+    case Theme::Lavender:     return QStringLiteral("Lavender");
+    case Theme::Rose:         return QStringLiteral("Rose");
+    case Theme::Amber:        return QStringLiteral("Amber");
     }
     return QStringLiteral("Light");
 }
@@ -172,6 +187,43 @@ inline ThemeColors colorsFor(Theme t)
               QColor(0x6B, 0x78, 0x6E), QColor(0xFF, 0xFF, 0xFF), QColor(0xA9, 0xB8, 0xAB),
               QColor(0x98, 0xA8, 0x9B), QColor(0x7E, 0x8E, 0x81), QColor(0xDC, 0xE3, 0xDB),
               QColor(0xA3, 0x30, 0x30) };
+    } else if (t == Theme::Ocean) {
+        // Sage's recipe in blue: cool blue-grey, a deep sea-blue accent.
+        c = { QColor(0xE3, 0xE9, 0xF0), QColor(0xF3, 0xF6, 0xFA), QColor(0xDC, 0xE4, 0xED),
+              QColor(0x25, 0x31, 0x3E), QColor(0xEB, 0xF0, 0xF6), QColor(0x2A, 0x5A, 0x8A),
+              QColor(0xFF, 0xFF, 0xFF), QColor(0x1B, 0x24, 0x2F), QColor(0xE2, 0xE9, 0xF1),
+              QColor(0x1B, 0x5A, 0x8C), QColor(0x62, 0x47, 0x8A), QColor(0x68, 0x75, 0x84),
+              QColor(0x67, 0x73, 0x80), QColor(0xFF, 0xFF, 0xFF), QColor(0xA6, 0xB3, 0xC2),
+              QColor(0x95, 0xA2, 0xB2), QColor(0x7A, 0x87, 0x97), QColor(0xD9, 0xE1, 0xEB),
+              QColor(0xA3, 0x30, 0x30) };
+    } else if (t == Theme::Lavender) {
+        // Sage's recipe in violet: soft lilac-grey, a muted violet accent.
+        c = { QColor(0xE9, 0xE6, 0xF0), QColor(0xF6, 0xF4, 0xFA), QColor(0xE2, 0xDE, 0xEB),
+              QColor(0x2F, 0x28, 0x3B), QColor(0xEF, 0xEC, 0xF4), QColor(0x5A, 0x48, 0x8C),
+              QColor(0xFF, 0xFF, 0xFF), QColor(0x22, 0x1D, 0x2B), QColor(0xE6, 0xE2, 0xEE),
+              QColor(0x3E, 0x4C, 0x98), QColor(0x7A, 0x3A, 0x7E), QColor(0x72, 0x6A, 0x80),
+              QColor(0x71, 0x69, 0x7E), QColor(0xFF, 0xFF, 0xFF), QColor(0xB0, 0xA8, 0xBF),
+              QColor(0xA0, 0x97, 0xB0), QColor(0x84, 0x7B, 0x94), QColor(0xDF, 0xDA, 0xE8),
+              QColor(0xA3, 0x30, 0x30) };
+    } else if (t == Theme::Rose) {
+        // Sage's recipe in rose: blush-grey, a deep rose accent.
+        c = { QColor(0xEF, 0xE6, 0xE8), QColor(0xFA, 0xF4, 0xF5), QColor(0xEA, 0xDF, 0xE2),
+              QColor(0x39, 0x29, 0x2D), QColor(0xF4, 0xEC, 0xEE), QColor(0x8A, 0x38, 0x50),
+              QColor(0xFF, 0xFF, 0xFF), QColor(0x2A, 0x1D, 0x20), QColor(0xF0, 0xE5, 0xE8),
+              QColor(0x8A, 0x2E, 0x4C), QColor(0x5C, 0x48, 0x86), QColor(0x7E, 0x6A, 0x70),
+              QColor(0x7C, 0x68, 0x6E), QColor(0xFF, 0xFF, 0xFF), QColor(0xBF, 0xA8, 0xAE),
+              QColor(0xAF, 0x97, 0x9E), QColor(0x94, 0x7B, 0x83), QColor(0xE8, 0xDB, 0xDF),
+              QColor(0x9A, 0x2A, 0x2A) };
+    } else if (t == Theme::Amber) {
+        // Sage's recipe in amber: neutral warm grey (not Sepia's paper), a
+        // burnt-amber accent.
+        c = { QColor(0xEE, 0xEA, 0xE4), QColor(0xF9, 0xF7, 0xF3), QColor(0xE8, 0xE3, 0xDA),
+              QColor(0x36, 0x2F, 0x25), QColor(0xF3, 0xF0, 0xEA), QColor(0x8F, 0x52, 0x0C),
+              QColor(0xFF, 0xFF, 0xFF), QColor(0x29, 0x23, 0x1A), QColor(0xEF, 0xEA, 0xE1),
+              QColor(0x8A, 0x4B, 0x06), QColor(0x5E, 0x48, 0x86), QColor(0x78, 0x6F, 0x62),
+              QColor(0x77, 0x6E, 0x61), QColor(0xFF, 0xFF, 0xFF), QColor(0xBC, 0xB2, 0xA3),
+              QColor(0xAC, 0xA2, 0x92), QColor(0x91, 0x86, 0x76), QColor(0xE6, 0xE0, 0xD6),
+              QColor(0xA3, 0x2A, 0x2A) };
     } else if (t == Theme::Nord) {
         // Nord: arctic blue-grey. nord4 text on a base a step deeper than
         // nord0, for more contrast than the published scheme.

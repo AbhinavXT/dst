@@ -945,6 +945,11 @@ void Decoder::walkFlat(QDomElement node, Cursor &c, Ctx &ctx,
     if (tag == "group") {                              // sub-fields -> one row
         const QString sep = node.hasAttribute("sep") ? node.attribute("sep")
                                                      : QStringLiteral("  ");
+        // The group's sub-field values go back into the packet's scope, as
+        // engine.walk_entry does (session 89): walkEntry used to take its
+        // Ctx by value, so this merge copied nothing and every grouped field
+        // -- the DMI's RFID IDs and statuses among them -- was missing from
+        // the numeric values (raw) and from later conditions.
         Ctx ev = ctx;
         Grp grp;
         const QString line = walkEntry(node, c, ev, grp, geo, sep);
@@ -1058,7 +1063,7 @@ void Decoder::walkFlat(QDomElement node, Cursor &c, Ctx &ctx,
 }
 
 // ---- entry walker (mirrors engine.walk_entry) ------------------------
-QString Decoder::walkEntry(QDomElement rep, Cursor &c, Ctx ctx,
+QString Decoder::walkEntry(QDomElement rep, Cursor &c, Ctx &ctx,
                            Grp &grp, const Geo &geo, const QString &sep) const
 {
     QStringList toks;

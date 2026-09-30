@@ -126,6 +126,62 @@ const Set &highContrastSet()
     return s;
 }
 
+// Session 91: the four themes on Sage's recipe (session 89). They used to
+// fall through to Ayu Light's set, which is tuned for #FCFCFC; on their
+// tinted surfaces its muted grey and badge inks fell just under 4.5:1
+// (4.44-4.47). Sage's ok / warning / error clear 5:1 on all four as they
+// are; muted is each theme's own tinted grey and accent its own link colour,
+// darkened until the worst surface -- and the flasher's badge tint -- is at
+// least 4.7:1.
+const Set &oceanSet()
+{
+    static const Set s{
+        QColor(0x2D, 0x63, 0x25),   // ok
+        QColor(0x83, 0x4F, 0x00),   // warning
+        QColor(0xA3, 0x30, 0x30),   // error
+        QColor(0x58, 0x61, 0x70),   // muted     the theme's own grey
+        QColor(0x1B, 0x5A, 0x8C),   // accent    the theme's link colour
+        QColor(0xF1, 0xE3, 0xBB), QColor(0x55, 0x3E, 0x00), QColor(0xCD, 0xB6, 0x7A)
+    };
+    return s;
+}
+const Set &lavenderSet()
+{
+    static const Set s{
+        QColor(0x2D, 0x63, 0x25),   // ok
+        QColor(0x83, 0x4F, 0x00),   // warning
+        QColor(0xA3, 0x30, 0x30),   // error
+        QColor(0x62, 0x5C, 0x70),   // muted     the theme's own grey
+        QColor(0x3E, 0x4C, 0x98),   // accent    the theme's link colour
+        QColor(0xF1, 0xE3, 0xBB), QColor(0x55, 0x3E, 0x00), QColor(0xCD, 0xB6, 0x7A)
+    };
+    return s;
+}
+const Set &roseSet()
+{
+    static const Set s{
+        QColor(0x2D, 0x63, 0x25),   // ok
+        QColor(0x83, 0x4F, 0x00),   // warning
+        QColor(0xA3, 0x30, 0x30),   // error
+        QColor(0x6E, 0x5C, 0x61),   // muted     the theme's own grey
+        QColor(0x8A, 0x2E, 0x4C),   // accent    the theme's link colour
+        QColor(0xF1, 0xE3, 0xBB), QColor(0x55, 0x3E, 0x00), QColor(0xCD, 0xB6, 0x7A)
+    };
+    return s;
+}
+const Set &amberSet()
+{
+    static const Set s{
+        QColor(0x2D, 0x63, 0x25),   // ok
+        QColor(0x83, 0x4F, 0x00),   // warning
+        QColor(0xA3, 0x30, 0x30),   // error
+        QColor(0x68, 0x60, 0x56),   // muted     the theme's own grey
+        QColor(0x8A, 0x4B, 0x06),   // accent    the theme's link colour
+        QColor(0xF1, 0xE3, 0xBB), QColor(0x55, 0x3E, 0x00), QColor(0xCD, 0xB6, 0x7A)
+    };
+    return s;
+}
+
 // Set by ThemeUtil::apply(). -1 = never set (a test that only set a
 // palette): fall back to light/dark by the window colour, as before.
 int g_activeTheme = -1;
@@ -138,6 +194,10 @@ const Set &active()
     case 4:  return nordSet();
     case 5:  return mochaSet();
     case 6:  return highContrastSet();
+    case 7:  return oceanSet();
+    case 8:  return lavenderSet();
+    case 9:  return roseSet();
+    case 10: return amberSet();
     default: break;
     }
     if (dark()) {

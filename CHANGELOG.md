@@ -11,6 +11,67 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-91"></a>
+## Session 91 — DMI tag IDs, the signal post with no aspect, four more themes, and a decoder fix
+
+This work was started as "session 89"; the code comments still say so.
+
+### DMI (LP-OCIP) window
+
+- **Tag diagram (M):** each of the last three tags now shows its **ID**
+  beside its sleeper, in the colour of its status.
+  - Each also has a mark that does not rely on colour: `✓` read (1), `✗`
+    missed (2), nothing for none (0), and `?` for status 3, which the spec
+    does not name.
+  - An empty slot (ID 0, status 0) shows `—`.
+  - The track is drawn narrower to make room.
+- **Signal (D):** the post, lamps, stem and disc are always drawn. With
+  aspect 0 ("Unidentified") every lamp is unlit. The route indicator,
+  stencil and distance still wait for a known aspect.
+- **Field sources…** notes the tag IDs (`rc`/`rl`/`rll`) and statuses
+  (`rcs`/`rls`/`rlls`).
+
+### Decoder fix (`schema/schemadecoder.cpp`)
+
+`Decoder::walkEntry` took its context **by value**. So a `<group>`'s
+sub-field values never reached the packet's scope, and every grouped field
+was missing from the numeric values and from later conditions. That
+included the DMI's RFID IDs and statuses, which is why the tag diagram
+could not show them.
+
+It now takes the context by reference, as the Python engine's `walk_entry`
+does. The golden validators and the whole suite are unchanged by it.
+
+### Themes: Ocean, Lavender, Rose, Amber
+
+- **Sage's recipe** (tinted greys, no pure white, one accent) in blue,
+  violet, rose and warm grey. They are listed with the light themes.
+- **Each has its own status colours** (`uicolors.cpp`), as Sepia and Sage
+  do. As first written they fell through to Ayu Light's set, which is tuned
+  for `#FCFCFC`. On their tinted surfaces, Lavender's muted grey on an
+  alternating row was 4.46:1, and the flasher's badge text on its tint was
+  4.44–4.47:1 in Ocean, Lavender and Rose.
+  - Sage's ok / warning / error clear 5:1 on all four as they are.
+  - Muted is each theme's own tinted grey, and accent its own link colour.
+  - Each was darkened until the worst surface (window, base, alternating
+    row, button) and the badge tint are at least 4.7:1.
+
+### Tests
+
+- **`session89` (31):** the tag IDs and marks, the empty slot, the post
+  with no aspect, the four themes, and the decoder carrying grouped values.
+  It uses real `@dmi` frames.
+- The contrast audit and the flasher's badge check now cover the four new
+  themes as well.
+
+**`verify.sh`: 0 stages failed.**
+- validators 11/11;
+- unit suite **148 suites / 4824 checks**;
+- menu audit 138 ok;
+- smoke alive.
+
+---
+
 <a id="session-90"></a>
 ## Session 90 — UDP drops counted by cause
 

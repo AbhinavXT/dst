@@ -193,7 +193,7 @@ private:
 
     void walkFlat(QDomElement node, Cursor &c, Ctx &ctx,
                   QVector<FieldRow> &rows, const Geo &geo) const;
-    QString walkEntry(QDomElement rep, Cursor &c, Ctx ctx,
+    QString walkEntry(QDomElement rep, Cursor &c, Ctx &ctx,
                       Grp &grp, const Geo &geo, const QString &sep) const;
     // `depth` guards against a schema whose structs reference each other in
     // a cycle, which would otherwise recurse until the stack is gone.
