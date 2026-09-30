@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/lococonfig">
+        <file>loco_defaults.json</file>
+    </qresource>
+</RCC>

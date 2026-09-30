@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  rejectrules.xml - conditions under which a receiver does not process a
+  packet, from the SIF-0533 v4.22 functional test cases.
+
+  External, like kavach.xml, and for the same reason: a clause misread is
+  fixed by editing this file, not by rebuilding. Every rule carries the
+  clause it came from, so any reason the console prints can be checked
+  against the document.
+
+  `value` is DECIMAL; `doc` keeps the document's own spelling, so a rule
+  written there as a bit pattern can still be compared by eye.
+
+  SCOPE. Section A of REJECT_RULES_REVIEW.md only: the rules whose field,
+  width and value were all unambiguous. Deliberately absent, not forgotten:
+  the aspect rules whose width the document contradicts, the rows where
+  PKT_TYPE names the section rather than the fault, the narrative
+  conditions, and six rules whose value cannot fit the field it tests
+  (SOURCE_STN_ILC_IBS_ID 65536 in 16 bits, APPR_STN_ILC_IBS_ID 65539 in 16)
+  - those test the generating tool, not the wire, and could never fire.
+-->
+<rejectrules version="4.22">
+
+  <!-- FRAME_NUM is a RANGE, not two values. The document tests 0 and 86401
+       because they are the boundaries; the field is seconds since midnight
+       plus one, so anything outside 1..86400 is the same fault. Encoding
+       only the two tested values would pass 90000 silently. -->
+  <rule clause="31.9" field="FRAME_NUM" op="outside" min="1" max="86400"
+        doc="0 / 86401" bits="17"
+        note="frame number outside 1..86400 (seconds since midnight + 1)"/>
+
+  <rule clause="31.6.1" field="PKT_TYPE" op="eq" value="8" doc="1000" bits="4"
+        note="reserved packet type"/>
+  <rule clause="31.11" field="SOURCE_STN_ILC_IBS_VERSION" op="eq" value="0" doc="0" bits="3"
+        note="reserved source station version"/>
+  <rule clause="31.11" field="SOURCE_STN_ILC_IBS_VERSION" op="eq" value="3" doc="3" bits="3"
+        note="reserved source station version"/>
+  <rule clause="31.13.2" field="REF_PROF_ID" op="eq" value="0" doc="0000" bits="4"
+        note="no reference profile when the route is known"/>
+  <rule clause="31.15" field="DIST_PKT_START" op="eq" value="16390" doc="16390" bits="15"
+        note="packet start distance outside range"/>
+  <rule clause="31.16.1" field="PKT_DIR" op="eq" value="0" doc="00" bits="2"
+        note="packet direction unidentified or spare"/>
+  <rule clause="31.16.4" field="PKT_DIR" op="eq" value="3" doc="11" bits="2"
+        note="packet direction unidentified or spare"/>
+  <rule clause="31.19.4" field="FRAME_OFFSET" op="eq" value="15" doc="1111" bits="4"
+        note="reserved frame offset"/>
+  <rule clause="31.20.12" field="DEST_LOCO_SOS" op="eq" value="15" doc="1111" bits="4"
+        note="reserved destination loco SoS"/>
+  <rule clause="31.21.4" field="TRAIN_SECTION_TYPE" op="eq" value="3" doc="11" bits="2"
+        note="reserved train section type"/>
+  <rule clause="31.23.17" field="CUR_SIG_ASPECT" op="eq" value="16" doc="010000" bits="6"
+        note="spare current signal aspect"/>
+  <rule clause="31.23.18" field="CUR_SIG_ASPECT" op="eq" value="23" doc="010111" bits="6"
+        note="spare current signal aspect"/>
+  <rule clause="31.23.20" field="CUR_SIG_ASPECT" op="eq" value="25" doc="011001" bits="6"
+        note="spare current signal aspect"/>
+  <rule clause="31.23.21" field="CUR_SIG_ASPECT" op="eq" value="31" doc="011111" bits="6"
+        note="spare current signal aspect"/>
+  <rule clause="31.24.17" field="NEXT_SIG_ASPECT" op="eq" value="16" doc="010000" bits="6"
+        note="spare next signal aspect"/>
+  <rule clause="31.24.18" field="NEXT_SIG_ASPECT" op="eq" value="23" doc="010111" bits="6"
+        note="spare next signal aspect"/>
+  <rule clause="31.24.20" field="NEXT_SIG_ASPECT" op="eq" value="25" doc="011001" bits="6"
+        note="spare next signal aspect"/>
+  <rule clause="31.24.21" field="NEXT_SIG_ASPECT" op="eq" value="31" doc="011111" bits="6"
+        note="spare next signal aspect"/>
+  <rule clause="31.26.1" field="AUTHORITY_TYPE" op="eq" value="0" doc="00" bits="2"
+        note="authority type unidentified"/>
+  <rule clause="31.31.1" field="TRN_LEN_INFO_STS" op="eq" value="0" doc="0" bits="1"
+        note="no train length info when it is required"/>
+  <rule clause="31.36.2" field="ROUTE_RFID_CNT" op="eq" value="0" doc="0" bits="6"
+        note="no route RFIDs"/>
+  <rule clause="31.39.52" field="ADJ_LINE_CNT" op="eq" value="6" doc="6" bits="3"
+        note="reserved adjacent line count"/>
+  <rule clause="31.39.53" field="ADJ_LINE_CNT" op="eq" value="7" doc="7" bits="3"
+        note="reserved adjacent line count"/>
+  <rule clause="32.12.1" field="SOURCE_STN_ILC_IBS_ID" op="eq" value="0" doc="0" bits="16"
+        note="source station id unassigned"/>
+  <rule clause="32.14.1" field="DEST_LOCO_ID" op="eq" value="0" doc="0" bits="20"
+        note="destination loco id unassigned"/>
+
+  <!-- FRAME_OFFSET 14 is section-dependent, which is why 31.19.3 (which
+       sends 1110 and expects it processed) and 31.19.5 (process if the
+       offset is < 14) both stand: they describe different sections.
+
+       READING TO CONFIRM. secType is 0 Station Section, 1 Absolute Block,
+       2 Autoblock, 3 Reserved. "Accepted where the RFID has absolute or
+       station section" is taken as TRAIN_SECTION_TYPE in 0..1, so 14 is
+       reported only in Autoblock and Reserved. If that reading is wrong,
+       this is a one-line edit and nothing else changes.
+
+       The guard uses the schema's own condition language, the same one
+       kavach.xml puts on <field when=>. -->
+  <rule clause="31.19.5" field="FRAME_OFFSET" op="eq" value="14" doc="1110" bits="4"
+        when="TRAIN_SECTION_TYPE not in 0..1"
+        note="frame offset 14 outside a station or absolute-block section"/>
+
+  <!-- Addressed to another loco. OWN_LOCO_ID is not a wire field: the
+       console learns it from the SOURCE_LOCO_ID of ARP and LSRP frames on
+       the same source and supplies it beside the decoded ones.
+
+       No guard is needed. When the loco is not yet identified the value is
+       simply absent, and ne_field does not fire on an absent comparand —
+       which is the difference between "not checked" and "checked, and the
+       frame is for us". The console says which of those it is. -->
+  <rule clause="32.14.1" field="DEST_LOCO_ID" op="ne_field" other="OWN_LOCO_ID"
+        bits="20" doc="own id"
+        note="addressed to a different loco"/>
+
+  <!-- Aspect values, resolved. The document writes every aspect in BINARY
+       and drops leading zeros on the short ones, so 31.23 runs 0, 1, 10,
+       100 … 1111, then 010000, 011000, 100000. An earlier reading took the
+       four-character ones for decimal; they are 9 and 14.
+
+       9 is spare in the document AND in kavach.xml, which has no v=9 and
+       falls through to Spare. Encoded.
+
+       14 is NOT encoded. The document calls it spare; kavach.xml calls it
+       AG Marker OFF, a real aspect. One of the two is wrong, and a rule
+       here would report a legitimate aspect on live traffic, which is the
+       one failure that teaches an operator to ignore the feature. Needs a
+       decision before it goes in. -->
+  <rule clause="31.23.10" field="CUR_SIG_ASPECT"  op="eq" value="9" doc="1001" bits="6"
+        note="spare current signal aspect"/>
+  <rule clause="31.24.10" field="NEXT_SIG_ASPECT" op="eq" value="9" doc="1001" bits="6"
+        note="spare next signal aspect"/>
+
+  <!-- 31.54 and 31.55 read as PKT_TYPE rules on a first pass, because every
+       row opens by naming the packet under test (0111, the TSR profile).
+       The condition is the last clause of the sentence, not the first. -->
+  <rule clause="31.55.5" field="TSR_STATUS" op="eq" value="3" doc="3" bits="2"
+        note="reserved TSR status"/>
+
+</rejectrules>

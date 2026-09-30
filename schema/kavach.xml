@@ -1,0 +1,1754 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Kavach packet schema.
+     Field order top-to-bottom == wire order. To add a FIELD copy a <field/>
+     line into the right struct/packet; to add a STRUCT copy a <struct> block
+     and register it in the packet's <subpackets>. Validate every edit with
+     `python3 engine.py <capture.cap>` before trusting the C++ engine.
+     SLRP is at full parity with the validated kschema tables. -->
+<schema version="2">
+
+  <enums>
+    <!-- profile-coded 6-bit speed (mapSpeed6) -->
+    <enum name="speed6">
+      <map v="0"  label="0 (dead stop)"/>
+      <map from="1"  to="50" formula="v*5" unit="km/h"/>
+      <map from="51" to="61" label="%v (reserved)"/>
+      <map v="62" label="8 km/h (night override)"/>
+      <map v="63" label="unknown"/>
+    </enum>
+
+    <!-- turnout speed (toSpeed): 0 NotUsed, 1-18 N*5, 31 Unrestricted, else rsvd -->
+    <enum name="toSpeed">
+      <map v="0"  label="NotUsed"/>
+      <map from="1" to="18" formula="v*5" unit="km/h"/>
+      <map v="31" label="Unrestricted"/>
+      <map default="true" label="rsvd(%v)"/>
+    </enum>
+
+    <enum name="pktDir">
+      <map v="0" label="%v (Unidentified)"/>
+      <map v="1" label="%v (Nominal)"/>
+      <map v="2" label="%v (Reverse)"/>
+      <map v="3" label="%v (Spare)"/>
+    </enum>
+
+    <enum name="authType">
+      <map v="0" label="%v (Not used)"/>
+      <map v="1" label="%v (OS Authority)"/>
+      <map v="2" label="%v (FS Authority)"/>
+      <map v="3" label="%v (SR Authority)"/>
+    </enum>
+
+    <enum name="secType">
+      <map v="0" label="%v (Station Section)"/>
+      <map v="1" label="%v (Absolute Block)"/>
+      <map v="2" label="%v (Autoblock)"/>
+      <map v="3" label="%v (Reserved)"/>
+    </enum>
+
+    <enum name="sosType">
+      <map v="0" label="%v (No SoS)"/>
+      <map v="1" label="%v (Foreign RFID)"/>
+      <map v="2" label="%v (Reserved)"/>
+      <map v="3" label="%v (Odo err>=120m)"/>
+      <map v="4" label="%v (SPAD)"/>
+      <map v="5" label="%v (Rear-end)"/>
+      <map v="6" label="%v (Head-on)"/>
+      <map v="7" label="%v (Shunt violation)"/>
+      <map v="8" label="%v (Station General SoS)"/>
+      <map default="true" label="%v"/>
+    </enum>
+
+    <enum name="tcType">
+      <map v="0" label="%v (Not used)"/>
+      <map v="1" label="%v (Dead Stop)"/>
+      <map v="2" label="%v (Radio hole)"/>
+      <map v="3" label="%v (Non-stopping)"/>
+      <map v="4" label="%v (Tunnel stopping)"/>
+      <map v="5" label="%v (Powerless/Neutral)"/>
+      <map v="6" label="%v (Sound horn)"/>
+      <map v="7" label="%v (Reversing)"/>
+      <map v="8" label="%v (Fouling Mark)"/>
+      <map v="9" label="%v (KAVACH Exit)"/>
+      <map default="true" label="%v"/>
+    </enum>
+
+    <!-- An LC entry with numeric id 0 is a placeholder: the loco consumes its
+         bits and skips it (ProcessLCGate). It is not a gate numbered 0, and
+         reading it as one is how an empty slot becomes a level crossing on
+         screen. -->
+    <enum name="lcIdNumeric">
+      <map v="0" label="%v (unused slot)"/>
+      <map default="true" label="%v"/>
+    </enum>
+
+    <enum name="tsrStatus">
+      <map v="0" label="%v (No applicable TSR)"/>
+      <map v="1" label="%v (No latest TSR (->SR))"/>
+      <map v="2" label="%v (Latest TSR)"/>
+      <map v="3" label="%v (Reserved)"/>
+    </enum>
+
+    <!-- 6-bit signal aspect (sigAspect): explicit values + stencil range -->
+    <enum name="sigAspect">
+      <map v="0"  label="%v (Unidentified)"/>
+      <map v="1"  label="%v (Red)"/>
+      <map v="2"  label="%v (Yellow, no route indication)"/>
+      <map v="3"  label="%v (Yellow + Pos1 junction route, left)"/>
+      <map v="4"  label="%v (Yellow + Pos2 junction route, left)"/>
+      <map v="5"  label="%v (Yellow + Pos3 junction route, left)"/>
+      <map v="6"  label="%v (Yellow + Pos4 junction route, right)"/>
+      <map v="7"  label="%v (Yellow + Pos5 junction route, right)"/>
+      <map v="8"  label="%v (Yellow + Pos6 junction route, right)"/>
+      <map v="10" label="%v (Double Yellow)"/>
+      <map v="11" label="%v (Green)"/>
+      <map v="12" label="%v (Double Yellow + Pos1 junction route, left)"/>
+      <map v="13" label="%v (Double Yellow + Pos4 junction route, right)"/>
+      <map v="14" label="%v (AG Marker OFF)"/>
+      <map v="15" label="%v (Red with Calling-on at OFF)"/>
+      <map v="24" label="%v (Stop Board / Buffer Stop)"/>
+      <map from="32" to="63" formula="v-31" label="%v (Yellow + Stencil route %f)"/>
+      <map default="true" label="%v (Spare)"/>
+    </enum>
+
+    <enum name="gradDir">
+      <map v="0" label="downhill"/>
+      <map v="1" label="uphill"/>
+    </enum>
+    <enum name="dupTagDir">
+      <map v="0" label="Nominal(+)"/>
+      <map v="1" label="Reverse(-)"/>
+    </enum>
+    <enum name="manned">
+      <map v="0" label="Manned"/>
+      <map v="1" label="Unmanned"/>
+    </enum>
+    <enum name="adjLocoDir">
+      <map v="0" label="Not Known"/>
+      <map v="1" label="Nominal"/>
+      <map v="2" label="Reverse"/>
+      <map v="3" label="Deduce"/>
+    </enum>
+    <enum name="lcClass">
+      <map v="0" label="Spl"/>  <map v="1" label="A"/>  <map v="2" label="B1"/>
+      <map v="3" label="B2"/>   <map v="4" label="B"/>  <map v="5" label="C"/>
+      <map v="6" label="D"/>    <map v="7" label="Spare"/>
+    </enum>
+    <enum name="lcSuffix">
+      <map v="0" label="none"/> <map v="1" label="a"/> <map v="2" label="b"/>
+      <map v="3" label="c"/>    <map v="4" label="d"/> <map v="5" label="e"/>
+      <map v="6" label="OOR"/>  <map v="7" label="spare"/>
+    </enum>
+
+    <!-- AEP (C.4.5) -->
+    <enum name="aepType">
+      <map default="true" label="%v (Additional Emergency Packet)"/>
+    </enum>
+    <enum name="stnIbsVersion">
+      <map v="0" label="%v (not used)"/>
+      <map v="1" label="%v (Kavach Spec 3.2)"/>
+      <map v="2" label="%v (Kavach Spec 4.0)"/>
+      <map default="true" label="%v (Kavach version)"/>
+    </enum>
+    <enum name="genSosCall">
+      <map v="0" label="%v (No Station Manual SoS)"/>
+      <map v="1" label="%v (General SoS &#8212; manual SOIP buttons)"/>
+    </enum>
+
+    <!-- ARP/LSRP (C.4.6 / C.4.3) shared maps -->
+    <enum name="trainSpeed9">
+      <map from="0" to="400" label="%v km/h"/>
+      <map v="511" label="unidentified"/>
+      <map default="true" label="%v (reserved)"/>
+    </enum>
+    <enum name="moveDir">
+      <map v="0" label="%v (Unidentified)"/>
+      <map v="1" label="%v (Nominal)"/>
+      <map v="2" label="%v (Reverse)"/>
+      <map v="3" label="%v (Reserved)"/>
+    </enum>
+    <enum name="emergencyStatus">
+      <map v="0" label="%v (No Emergency)"/>
+      <map v="1" label="%v (Unusual Stoppage)"/>
+      <map v="2" label="%v (SoS)"/>
+      <map v="3" label="%v (Roll Back)"/>
+      <map v="4" label="%v (Head-On Collision)"/>
+      <map v="5" label="%v (Rear-End Collision)"/>
+      <map v="6" label="%v (Parting SoS)"/>
+      <map v="7" label="%v (Spare)"/>
+    </enum>
+    <enum name="locoMode">
+      <map v="0"  label="%v (?)"/>
+      <map v="1"  label="%v (Stand_By)"/>
+      <map v="2"  label="%v (Staff_Responsible)"/>
+      <map v="3"  label="%v (Limited_Supervision)"/>
+      <map v="4"  label="%v (Full_Supervision)"/>
+      <map v="5"  label="%v (Override)"/>
+      <map v="6"  label="%v (On_Sight)"/>
+      <map v="7"  label="%v (Trip)"/>
+      <map v="8"  label="%v (Post_Trip)"/>
+      <map v="9"  label="%v (Reverse)"/>
+      <map v="10" label="%v (Shunting)"/>
+      <map v="11" label="%v (Non_Leading)"/>
+      <map v="12" label="%v (System_Failure)"/>
+      <map v="13" label="%v (Isolation)"/>
+      <map default="true" label="%v"/>
+    </enum>
+    <enum name="nmsModule">
+      <map v="1" label="%v (VCC Mc-1)"/>
+      <map v="2" label="%v (VCC Mc-2)"/>
+      <map v="3" label="%v (VCC Mc-3)"/>
+      <map v="4" label="%v (VCC Mc-4)"/>
+      <map v="5" label="%v (Input Card 1 Mc-1)"/>
+      <map v="6" label="%v (Input Card 1 Mc-2)"/>
+      <map v="7" label="%v (Input Card 1 Mc-3)"/>
+      <map v="8" label="%v (Input Card 1 Mc-4)"/>
+      <map v="9" label="%v (Input Card 2 Mc-1)"/>
+      <map v="10" label="%v (Input Card 2 Mc-2)"/>
+      <map v="11" label="%v (Input Card 2 Mc-3)"/>
+      <map v="12" label="%v (Input Card 2 Mc-4)"/>
+      <map v="13" label="%v (Output Card Mc-1)"/>
+      <map v="14" label="%v (Output Card Mc-2)"/>
+      <map v="15" label="%v (Analogue Card Mc-1)"/>
+      <map v="16" label="%v (Analogue Card Mc-2)"/>
+      <map v="17" label="%v (Communication Card Mc-1)"/>
+      <map v="18" label="%v (Communication Card Mc-2)"/>
+      <map v="19" label="%v (Data logger Card Mc-1)"/>
+      <map v="20" label="%v (Data logger Card Mc-2)"/>
+      <map v="21" label="%v (Rfid-Reader-1)"/>
+      <map v="22" label="%v (Rfid-Reader-2)"/>
+      <map v="23" label="%v (Radio-1)"/>
+      <map v="24" label="%v (Radio-2)"/>
+      <map v="25" label="%v (GPS-1)"/>
+      <map v="26" label="%v (GPS-2)"/>
+      <map v="27" label="%v (GSM-1)"/>
+      <map v="28" label="%v (GSM-2)"/>
+      <map v="29" label="%v (Speed sensor-1)"/>
+      <map v="30" label="%v (Speed sensor-2)"/>
+      <map v="31" label="%v (DMI-1)"/>
+      <map v="32" label="%v (DMI-2)"/>
+      <map v="33" label="%v (VCC MC All)"/>
+      <map v="34" label="%v (VCC Card-1)"/>
+      <map v="35" label="%v (VCC Card-2)"/>
+      <map v="36" label="%v (Input Card-1)"/>
+      <map v="37" label="%v (Input Card-1')"/>
+      <map v="38" label="%v (Input Card-2)"/>
+      <map v="39" label="%v (Input Card-2')"/>
+      <map v="40" label="%v (Output Card-1)"/>
+      <map v="41" label="%v (Analogue Card-1)"/>
+      <map v="42" label="%v (Data logger Card-1)"/>
+      <map v="43" label="%v (Comm Card-1)"/>
+      <map default="true" label="%v (?)"/>
+    </enum>
+    <enum name="nmsFaultInput">
+      <map v="1" label="%v (Radio-1)"/>
+      <map v="2" label="%v (Radio-2)"/>
+      <map v="3" label="%v (Radio1 Power)"/>
+      <map v="4" label="%v (Radio2 Power)"/>
+      <map v="5" label="%v (GPS-1)"/>
+      <map v="6" label="%v (GPS-2)"/>
+      <map v="7" label="%v (GPS-1 view)"/>
+      <map v="8" label="%v (GPS-2 view)"/>
+      <map v="9" label="%v (GSM-1)"/>
+      <map v="10" label="%v (GSM-2)"/>
+      <map v="11" label="%v (CAN 1 status)"/>
+      <map v="12" label="%v (CAN 2 status)"/>
+      <map v="13" label="%v (CAN 3 Status)"/>
+      <map v="14" label="%v (I2C_1)"/>
+      <map v="15" label="%v (I2C_2)"/>
+      <map v="16" label="%v (I2C_3)"/>
+      <map v="17" label="%v (RS485_1)"/>
+      <map v="18" label="%v (FSI_1)"/>
+      <map v="19" label="%v (FSI_2)"/>
+      <map v="20" label="%v (RTC)"/>
+      <map v="21" label="%v (RTC_2)"/>
+      <map v="22" label="%v (24V_1 PS)"/>
+      <map v="23" label="%v (24V_2 PS)"/>
+      <map v="24" label="%v (3.3V PS)"/>
+      <map v="25" label="%v (1.2V PS)"/>
+      <map v="26" label="%v (safety error)"/>
+      <map v="27" label="%v (Link_1)"/>
+      <map v="28" label="%v (Link_2)"/>
+      <map v="29" label="%v (RS485_2)"/>
+      <map v="33" label="%v (CPU Fail)"/>
+      <map v="100" label="%v (CARD STATUS)"/>
+      <map v="1001" label="%v (DMI 1)"/>
+      <map v="1002" label="%v (DMI 2)"/>
+      <map v="1003" label="%v (RFID READER 1)"/>
+      <map v="1004" label="%v (RFID READER 2)"/>
+      <map v="1005" label="%v (Active DMI)"/>
+      <map v="1006" label="%v (Non-Active Cab DMI)"/>
+      <map v="1007" label="%v (Speed Sensor1 comm)"/>
+      <map v="1008" label="%v (Speed Sensor2 comm)"/>
+      <map v="1009" label="%v (BIU)"/>
+      <map v="1010" label="%v (MBT)"/>
+      <map v="1011" label="%v (cpc1)"/>
+      <map v="1012" label="%v (cpc2)"/>
+      <map v="1013" label="%v (dmi1_sos_button)"/>
+      <map v="1014" label="%v (dmi1_cancel_button)"/>
+      <map v="1015" label="%v (dmi1_common_button)"/>
+      <map v="1016" label="%v (dmi1_rotary_button)"/>
+      <map v="1017" label="%v (dmi2_sos_button)"/>
+      <map v="1018" label="%v (dmi2_cancel_button)"/>
+      <map v="1019" label="%v (dmi2_common_button)"/>
+      <map v="1020" label="%v (dmi2_rotary_button)"/>
+      <map v="1021" label="%v (pvef)"/>
+      <map v="1022" label="%v (horn1_solenoid)"/>
+      <map v="1023" label="%v (horn2_solenoid)"/>
+      <map v="1024" label="%v (horn1_cock)"/>
+      <map v="1025" label="%v (horn2_cock)"/>
+      <map v="1026" label="%v (traction)"/>
+      <map v="1027" label="%v (kavach_isolation)"/>
+      <map v="1028" label="%v (biu_isolation)"/>
+      <map v="1029" label="%v (sifa_valve)"/>
+      <map v="1030" label="%v (sifa_isolation)"/>
+      <map v="1031" label="%v (fsb_relay)"/>
+      <map v="1032" label="%v (nb_relay)"/>
+      <map v="1033" label="%v (eb_relay)"/>
+      <map v="1034" label="%v (le_relay)"/>
+      <map v="1035" label="%v (sifa_relay)"/>
+      <map default="true" label="%v (?)"/>
+    </enum>
+    <enum name="ccActiveRadio">
+      <map v="0" label="%v (No Active Radio)"/>
+      <map v="1" label="%v (Radio-1)"/>
+      <map v="2" label="%v (Radio-2)"/>
+      <map v="3" label="%v (Both Radios)"/>
+      <map default="true" label="%v"/>
+    </enum>
+
+    <!-- ===== Anx-D RFID coded-value maps (mirror the rfid* helpers) ===== -->
+    <!-- Tag type: discriminator for the body AND a display row. Default "(?)"
+         covers the null/unknown tags (type 0, 1-8, 13-15). -->
+    <enum name="rfidType">
+      <map v="9"  label="%v (Normal)"/>
+      <map v="10" label="%v (LC)"/>
+      <map v="11" label="%v (Adjacent-Line)"/>
+      <map v="12" label="%v (Adjustment/Junction)"/>
+      <map default="true" label="%v (?)"/>
+    </enum>
+    <!-- Absolute location: 23-bit all-ones (8388607) = Not Applicable. -->
+    <enum name="rfidAbs">
+      <map v="8388607" label="N/A"/>
+      <map default="true" label="%v m"/>
+    </enum>
+    <enum name="rfidSect">
+      <map v="0" label="%v (Station Section)"/>
+      <map v="1" label="%v (Absolute Block)"/>
+      <map v="2" label="%v (Automatic Section)"/>
+      <map v="3" label="%v (Virtual Block)"/>
+    </enum>
+    <enum name="rfidPlace">
+      <map v="0" label="%v (In line section)"/>
+      <map v="1" label="%v (Signal foot (Nominal))"/>
+      <map v="2" label="%v (Signal foot (Reverse))"/>
+      <map v="3" label="%v (Turnout)"/>
+      <map v="4" label="%v (Exit (Nominal))"/>
+      <map v="5" label="%v (Exit (Reverse))"/>
+      <map v="6" label="%v (Signal foot (both))"/>
+      <map v="7" label="%v (Exit (both))"/>
+      <map v="8" label="%v (Dead Stop (Nominal))"/>
+      <map v="9" label="%v (Dead Stop (Reverse))"/>
+      <map from="10" to="15" label="%v (reserved)"/>
+    </enum>
+    <enum name="rfidDup">
+      <map v="0" label="%v (Main Tag)"/>
+      <map v="1" label="%v (Duplicate Tag)"/>
+    </enum>
+    <enum name="rfidComm">
+      <map v="0" label="%v (Required)"/>
+      <map v="1" label="%v (Not required)"/>
+    </enum>
+    <!-- LC gate (type 10) maps — encoded from the hand decoder / Anx-D.
+         NOTE: no type-10 frames exist in any capture, so these are
+         spec-derived and UNVALIDATED against ground truth. -->
+    <enum name="rfidLcApproach">
+      <map v="0" label="%v (KAVACH)"/>
+      <map v="1" label="%v (Non-KAVACH First)"/>
+      <map v="2" label="%v (Non-KAVACH Second)"/>
+      <map v="3" label="%v (Spare)"/>
+    </enum>
+    <enum name="rfidApplDir">
+      <map v="0" label="%v (Nominal)"/>
+      <map v="1" label="%v (Reverse)"/>
+    </enum>
+    <enum name="rfidGateAlpha">
+      <map v="0" label="%v (None)"/>
+      <map v="1" label="%v (a)"/>
+      <map v="2" label="%v (b)"/>
+      <map v="3" label="%v (c)"/>
+      <map v="4" label="%v (d)"/>
+      <map v="5" label="%v (e)"/>
+      <map v="6" label="%v (Out of range (xx on DMI))"/>
+      <map v="7" label="%v (Spare)"/>
+    </enum>
+    <enum name="rfidGateType">
+      <map v="0" label="%v (Manned)"/>
+      <map v="1" label="%v (Unmanned)"/>
+    </enum>
+    <enum name="rfidYesNo">
+      <map v="0" label="%v (No)"/>
+      <map v="1" label="%v (Yes)"/>
+    </enum>
+    <enum name="rfidWhistleType">
+      <map v="0" label="%v (Distance based)"/>
+      <map v="1" label="%v (Time based)"/>
+    </enum>
+    <!-- Junction (type 12) maps. -->
+    <enum name="rfidDirCorr">
+      <map v="0" label="%v (Reset Dir. unknown (derive from next tags))"/>
+      <map v="1" label="%v (Loco Nominal, next tag Nominal)"/>
+      <map v="2" label="%v (Loco Nominal, next tag Reverse)"/>
+      <map v="3" label="%v (Loco Reverse, next tag Nominal)"/>
+      <map v="4" label="%v (Loco Reverse, next tag Reverse)"/>
+      <map from="5" to="7" label="%v (reserved)"/>
+    </enum>
+    <enum name="rfidLocCorrType">
+      <map v="0" label="%v (Adjustment (A-tag))"/>
+      <map v="1" label="%v (Reset (J-tag))"/>
+    </enum>
+
+    <!-- ===== DMI (Annexure-F regular frame) enums ===== -->
+    <enum name="dmiLocoMode">
+      <map v="0" label="%v (?)"/>
+      <map v="1" label="%v (Stand_By)"/>
+      <map v="2" label="%v (Staff_Responsible)"/>
+      <map v="3" label="%v (Limited_Supervision)"/>
+      <map v="4" label="%v (Full_Supervision)"/>
+      <map v="5" label="%v (Override)"/>
+      <map v="6" label="%v (On_Sight)"/>
+      <map v="7" label="%v (Trip)"/>
+      <map v="8" label="%v (Post_Trip)"/>
+      <map v="9" label="%v (Reverse)"/>
+      <map v="10" label="%v (Shunting)"/>
+      <map v="11" label="%v (Non_Leading)"/>
+      <map v="12" label="%v (System_Failure)"/>
+      <map v="13" label="%v (Isolation)"/>
+      <map default="true" label="%v"/>
+    </enum>
+    <enum name="dmiBrakeType">
+      <map v="0" label="%v (NO_OVER_SPEED_NO_BRAKES)"/>
+      <map v="1" label="%v (OVER_SPEED_NO_BRAKES)"/>
+      <map v="2" label="%v (NORMAL_BRAKE)"/>
+      <map v="3" label="%v (FULL_SERVICE_BRAKE)"/>
+      <map v="4" label="%v (EMERGENCY_BRAKE)"/>
+      <map v="5" label="%v (LIGHT_ENGINE_BRAKE)"/>
+      <map default="true" label="%v"/>
+    </enum>
+    <enum name="dmiTargetDistType">
+      <map v="0" label="%v (none)"/>
+      <map v="1" label="%v (EOA)"/>
+      <map v="2" label="%v (TURNOUT)"/>
+      <map v="3" label="%v (TSR)"/>
+      <map v="4" label="%v (PSR)"/>
+      <map v="5" label="%v (COLLISION)"/>
+      <map v="6" label="%v (SOS_TARGET)"/>
+      <map v="7" label="%v (UNDEFINED)"/>
+      <map default="true" label="%v"/>
+    </enum>
+    <enum name="dmiTrainType">
+      <map v="0" label="%v (none)"/>
+      <map v="1" label="%v (LIGHT_ENGINE)"/>
+      <map v="2" label="%v (GOODS_TRAIN)"/>
+      <map v="3" label="%v (PASSENGER_ICF)"/>
+      <map v="4" label="%v (PASSENGER_LHB)"/>
+      <map v="5" label="%v (EMU)"/>
+      <map v="6" label="%v (TRAIN_SET)"/>
+      <map v="7" label="%v (PARCEL)"/>
+      <map default="true" label="%v"/>
+    </enum>
+    <enum name="dmiMoveDir">
+      <map v="0" label="%v (undefined)"/>
+      <map v="1" label="%v (nominal)"/>
+      <map v="2" label="%v (reverse)"/>
+      <map default="true" label="%v"/>
+    </enum>
+    <enum name="dmiManning">
+      <map v="0" label="Manned"/>
+      <map default="true" label="Unmanned"/>
+    </enum>
+    <enum name="dmiHealth">
+      <map v="0" label="fault"/>
+      <map v="1" label="OK"/>
+    </enum>
+    <enum name="dmiUnmapped">
+      <map default="true" label="%v (unmapped)"/>
+    </enum>
+    <!-- UBA_TARGET_TYPE. The wire value is ONE byte, not four: the target
+         build compiles enums to their smallest type (-fshort-enums), which
+         is why the first curve double sits at offset 17 and not 20. -->
+    <enum name="ubaTargetType">
+      <map v="1" label="EOA"/>
+      <map v="2" label="TURNOUT"/>
+      <map v="3" label="TSR"/>
+      <map v="4" label="PSR"/>
+      <map v="5" label="COLLISION"/>
+      <map v="6" label="SOS_TARGET_TYPE"/>
+      <map v="7" label="CAUTION_ASPECT"/>
+      <map v="8" label="SVL"/>
+      <map v="0" label="0 (empty / no target)"/>
+      <map default="true" label="%v (undefined)"/>
+    </enum>
+
+  </enums>
+
+
+  <crcs>
+    <!-- Descriptive only: the C++ and Python engines both call the registered
+         "jamcrc" implementation, not these parameters. They were wrong on two
+         counts (xor_out is 0, and the stored trailer word is big-endian on
+         every Annexure-C packet) and are corrected here so the declaration
+         stops contradicting the code it documents. -->
+    <crc name="anxc_jamcrc" type="crc32" poly="0x04C11DB7" init="0x00000000"
+         reflect_in="true" reflect_out="true" xor_out="0x00000000"
+         trailer_bytes="4" trailer_endian="be"/>
+    <crc name="anxd_crc30" type="crc30" poly="0x2030B9C7" init="0x3FFFFFFF"
+         reflect_in="true" reflect_out="true" xor_out="0x3FFFFFFF"
+         trailer_bits="30"/>
+    <crc name="anxg_ccitt32" type="crc32" poly="0x04C11DB7" init="0xFFFFFFFF"
+         reflect_in="false" reflect_out="false" xor_out="0x00000000"
+         trailer_bytes="4" trailer_endian="be"/>
+  </crcs>
+
+  <eventtables>
+    <eventtable name="nmsHealth">
+      <event id="1" bytes="1" name="RADIO_1_HEALTH"/>
+      <event id="2" bytes="1" name="RADIO_2_HEALTH"/>
+      <event id="3" bytes="1" name="RADIO_1_INPUT_SUPPLY"/>
+      <event id="4" bytes="1" name="RADIO_2_INPUT_SUPPLY"/>
+      <event id="5" bytes="1" signed="true" name="RADIO_1_TEMP"/>
+      <event id="6" bytes="1" signed="true" name="RADIO_2_TEMP"/>
+      <event id="7" bytes="1" name="RADIO_1_PA_TEMP"/>
+      <event id="8" bytes="1" name="RADIO_2_PA_TEMP"/>
+      <event id="9" bytes="1" name="RADIO_1_PA_SUPPLY_VOLTAGE"/>
+      <event id="10" bytes="1" name="RADIO_2_PA_SUPPLY_VOLTAGE"/>
+      <event id="11" bytes="1" name="RADIO_1_TX_PA_CURRENT"/>
+      <event id="12" bytes="1" name="RADIO_2_TX_PA_CURRENT"/>
+      <event id="13" bytes="1" name="RADIO_1_REVERSE_POWER"/>
+      <event id="14" bytes="1" name="RADIO_2_REVERSE_POWER"/>
+      <event id="15" bytes="1" name="RADIO_1_FORWARD_POWER"/>
+      <event id="16" bytes="1" name="RADIO_2_FORWARD_POWER"/>
+      <event id="17" bytes="2" name="SKAVACH_REGULAR_PKT_OFFSET"/>
+      <event id="18" bytes="1" name="ACTIVE_GPS_NUMBER"/>
+      <event id="19" bytes="1" name="GPS_1_VIEW_STATUS"/>
+      <event id="20" bytes="1" name="GPS_2_VIEW_STATUS"/>
+      <event id="21" bytes="1" name="GPS_1_SECONDS"/>
+      <event id="22" bytes="1" name="GPS_2_SECONDS"/>
+      <event id="23" bytes="1" name="GPS_1_SATELLITE_IN_VIEW"/>
+      <event id="24" bytes="1" name="GPS_1_CNO"/>
+      <event id="25" bytes="1" name="GPS_2_SATELLITE_IN_VIEW"/>
+      <event id="26" bytes="1" name="GPS_2_CNO"/>
+      <event id="27" bytes="2" name="GPS_1_LINK_STATUS"/>
+      <event id="28" bytes="2" name="GPS_2_LINK_STATUS"/>
+      <event id="29" bytes="1" name="GSM_1_RSSI"/>
+      <event id="30" bytes="1" name="GSM_2_RSSI"/>
+      <event id="31" bytes="1" name="CURRENT_RUNNING_KEY"/>
+      <event id="32" bytes="1" name="REMAINING_KEY_NUMBERS"/>
+      <event id="33" bytes="2" name="SESSION_KEY_CHECKSUM"/>
+      <event id="34" bytes="2" name="DMI_1_LINK_STATUS"/>
+      <event id="35" bytes="2" name="DMI_2_LINK_STATUS"/>
+      <event id="36" bytes="2" name="RFID_READER_1_LINK_STATUS"/>
+      <event id="37" bytes="2" name="RFID_READER_2_LINK_STATUS"/>
+      <event id="38" bytes="2" name="DUPLICATE_MISSING_RFID"/>
+      <event id="39" bytes="4" name="MISSING_LINKED_RFID"/>
+      <event id="40" bytes="4" name="COMPUTED_TLM_STATUS"/>
+      <event id="41" bytes="1" name="TRAIN_CONFIG_CHANGE"/>
+      <event id="42" bytes="1" name="BOOTUP_SEQUENCE_ERROR"/>
+      <event id="43" bytes="1" name="SELECTED_TRAIN_FORMATION"/>
+      <event id="44" bytes="1" name="SELECTED_CAB"/>
+      <event id="45" bytes="1" name="BRAKE_APPLICATION_REASON"/>
+      <event id="46" bytes="3" name="STATION_GENERAL_SOS"/>
+      <event id="47" bytes="3" name="STATION_LOCO_SPECIFIC_SOS"/>
+      <event id="48" bytes="4" name="COLLISION_DETECTION"/>
+      <event id="49" bytes="1" name="LOCO_SELF_SOS"/>
+      <event id="50" bytes="1" name="KAVACH_CONNECTION"/>
+      <event id="51" bytes="1" name="BIU_ISOLATED"/>
+      <event id="52" bytes="1" name="EB_BYPASSED"/>
+      <event id="53" bytes="1" name="KAVACH_TERRITORY"/>
+      <event id="54" bytes="1" name="BRAKE_INTERFACE_ERROR"/>
+      <event id="55" bytes="2" name="ONBOARD_KAVACH_MODULES_HEALTH"/>
+      <event id="56" bytes="2" name="CONFLICT_ROUTE_RFID"/>
+      <event id="57" bytes="4" name="TRAIN_CONFIG_DATA_CHECKSUM"/>
+    </eventtable>
+  </eventtables>
+
+  <!-- Single-bit flag vectors (DMI). <flags> emits the "; "-joined names of the
+       set bits in declaration order, or "(none)". Order is the wire bit order. -->
+  <flagtables>
+
+    <!-- LSRP loco health status (LKAVACH regular packet).
+         The field is only SIX bits but there are 24 fault types, so the
+         firmware multiplexes: which group of six it carries is selected by
+         FRAME_NUM & 7, and the bit position within the group is
+         (fault_id % 6). See the LSRP health-status source.
+
+         A SET bit means FAULT. The firmware writes !(health_status), so a
+         healthy subsystem contributes 0 and only faults appear.
+
+         order="lsb" on the <flags> elements below lets these tables be
+         listed in the same order as the #defines (bit 0 first) even though
+         LSRP is an msb-first packet.
+
+         VERIFIED against SIF 0533 Ver4_22 clauses 32.9.2-32.9.5, which give
+         the B0..B23 layout explicitly and state "The bit status shall be set
+         to 1, if it is failed". The B-numbers below are the document's, so a
+         decoded row can be cross-referenced with the test format directly.
+         The spec's own simulation frame numbers (01,09,17,... for group 1;
+         03,11,19,... for group 3; 05,13,21,... for group 5) all satisfy
+         frame &amp; 7 == group, confirming the multiplex selector. -->
+    <flagtable name="locoHealthG1">
+      <flag name="B0  SYSTEM_INTERNAL_FAULT"/>
+      <flag name="B1  SPEED_SENSOR1_FAULT"/>
+      <flag name="B2  EB_DRIVE_FAULT"/>
+      <flag name="B3  EB_APPLICATION_FEEDBACK_FAULT"/>
+      <flag name="B4  RFID_READER1_LINK_FAIL"/>
+      <flag name="B5  RFID_READER2_LINK_FAIL"/>
+    </flagtable>
+    <flagtable name="locoHealthG3">
+      <flag name="B6  RADIO1_LINK_FAIL"/>
+      <flag name="B7  RADIO2_LINK_FAIL"/>
+      <flag name="B8  LP_OCIP_DMI1_LINK_FAIL"/>
+      <flag name="B9  LP_OCIP_DMI2_LINK_FAIL"/>
+      <flag name="B10 GPS1_PPS1_FAIL"/>
+      <flag name="B11 GPS2_PPS2_FAIL"/>
+    </flagtable>
+    <flagtable name="locoHealthG5">
+      <flag name="B12 GPS1_VIEW_NOT_AVAILABLE"/>
+      <flag name="B13 GPS2_VIEW_NOT_AVAILABLE"/>
+      <flag name="B14 TAG_LINKING_INCORRECT"/>
+      <flag name="B15 GSM1_FAULT"/>
+      <flag name="B16 GSM2_FAULT"/>
+      <flag name="B17 RADIO1_RSSI_WEAK"/>
+    </flagtable>
+    <flagtable name="locoHealthG7">
+      <flag name="B18 RADIO2_RSSI_WEAK"/>
+      <flag name="B19 SESSION_KEY_MISMATCH"/>
+      <flag name="B20 REMAINING_KEYS_LESS_THAN_5"/>
+      <flag name="B21 BIU_CONNECTIVITY_FAULT"/>
+      <flag name="B22 SPEED_SENSOR2_FAULT"/>
+      <flag name="B23 CAB_INPUT_FAULT"/>
+    </flagtable>
+
+    <flagtable name="dmiAlarm">
+      <flag name="System Fault, Isolate or Restart KAVACH"/>
+      <flag name="Ack Block Stop, SOS Generates in XX s"/>
+      <flag name="EB Bypassed (EB Cock Closed), No Traction"/>
+      <flag name="Train Tripped, Select P_Trip"/>
+      <flag name="Brake Applied, Dead End Detected"/>
+      <flag name="Standstill Protection, Brake Applied"/>
+      <flag name="Rollback Protection, Brake Applied"/>
+      <flag name="REV Movement Not Allowed, Use REV mode"/>
+      <flag name="Stand By mode - CAB input not Active"/>
+      <flag name="Ack SR mode, KAVACH Territory"/>
+      <flag name="Ack SR mode, Station Radio Comm Fail"/>
+      <flag name="Ack SR mode, No Track Profile Info"/>
+      <flag name="Ack SR mode, Tags Missing"/>
+      <flag name="Ack SR mode, Direction Unknown"/>
+      <flag name="Ack SR mode, GPS Fail"/>
+      <flag name="Ack LS mode, Station Radio Comm Fail"/>
+      <flag name="Ack SR mode, TSR Link Fail"/>
+      <flag name="Head-On Collision with Loco"/>
+      <flag name="Rear-End Collision with Loco"/>
+      <flag name="Override Selected, Pass Signal"/>
+      <flag name="Reverse Mode Expires"/>
+      <flag name="Manned LC Gate"/>
+      <flag name="Unmanned LC Gate"/>
+      <flag name="LS mode - Waiting for Station Radio Comm"/>
+      <flag name="LS mode - Waiting for Track Profile Info"/>
+      <flag name="Leading/Non-Leading Input Active"/>
+      <flag name="Train Length Computation In Progress"/>
+      <flag name="Train Length Computation Success"/>
+      <flag name="Train Length Computation Fail"/>
+      <flag name="Train Length Computation Aborted"/>
+      <flag name="Turnout with Speed Limit"/>
+      <flag name="TSR with Speed Limit"/>
+      <flag name="PSR with Speed"/>
+      <flag name="End of Authority"/>
+      <flag name="KAVACH Territory Entry"/>
+      <flag name="System Self Test In Progress"/>
+      <flag name="System Self Test Success"/>
+      <flag name="System Self Test Fail"/>
+      <flag name="Brake Test - Waiting for MR"/>
+      <flag name="Brake Test - Waiting for BP"/>
+      <flag name="Brake Test - NSB Applied (BP)"/>
+      <flag name="Brake Test - FSB Applied (BP)"/>
+      <flag name="Brake Test - EB Applied (BP)"/>
+      <flag name="Brake Test - LEB Applied (BC)"/>
+      <flag name="Brakes Testing Success"/>
+      <flag name="Brakes Testing Fail"/>
+      <flag name="Brakes Test Fail, Press Ack for Retesting"/>
+      <flag name="Select Train Config, Press Config Button"/>
+      <flag name="Select Staff Responsible / Shunt mode"/>
+      <flag name="Approaching Radio Hole"/>
+      <flag name="Ack OS mode"/>
+      <flag name="Train in Fouling Zone, Normalize the REV"/>
+      <flag name="SR/SH mode - ETCS Territory Entry"/>
+      <flag name="FS mode - ETCS Full Supervision mode"/>
+      <flag name="Ack SR mode - ETCS Territory Exit"/>
+      <flag name="Ballise Default Telegram Received"/>
+      <flag name="Waiting for Traction Command"/>
+      <flag name="Traction Cut-off Command Fail"/>
+      <flag name="Fouling Mark Entry"/>
+      <flag name="Fouling Mark Clear"/>
+      <flag name="Neutral Section Approaching"/>
+      <flag name="Braking System Malfunction"/>
+      <flag name="No Forward Dir in REV mode"/>
+      <flag name="Ack SR mode - SR Authorized Received"/>
+      <flag name="Ack SR mode - Slip/Skid Detected"/>
+      <flag name="Ack SR mode - Foreign Tag Detected"/>
+      <flag name="Ack SR mode - Odo Error Detected"/>
+      <flag name="Brake Applied - Shunting Limit Exceed"/>
+      <flag name="Brake Applied - Station General SOS"/>
+      <flag name="Brake Applied - SPAD Detected"/>
+      <flag name="no_alarm"/>
+    </flagtable>
+    <flagtable name="dmiCtx">
+      <flag name="SOS - Self Loco Manual"/>
+      <flag name="SOS - Self Loco Stopped in Block Section"/>
+      <flag name="SOS - Self Loco Train Parted"/>
+      <flag name="SOS - Other Loco Manual"/>
+      <flag name="SOS - Other Loco Stopped in Block Section"/>
+      <flag name="SOS - Other Loco Train Parted"/>
+      <flag name="SOS - Station (All Locos)"/>
+      <flag name="SOS - Station (This Loco)"/>
+      <flag name="Over Speed - Reduce Speed"/>
+      <flag name="Brake Applied - Speed Limit Exceeded"/>
+      <flag name="FSB will be Applied in XX s"/>
+      <flag name="EB will be Applied in XX s"/>
+      <flag name="BIU Isolated"/>
+      <flag name="Train Type Selected"/>
+    </flagtable>
+  </flagtables>
+
+  <!-- Station to Onboard regular packet (SLRP), Annexure-C C.4.2.
+       wire msb-first: bit 0 is the MSB of byte 0. -->
+  <packet name="SLRP" match="captype==slrp" wire="msb-first" crc="anxc_jamcrc">
+    <field name="PKT_TYPE"        bits="4"/>
+    <field name="PKT_LENGTH"      bits="10"/>
+    <field name="FRAME_NUM"       bits="17"/>
+    <field name="SOURCE_STN_ID"   bits="16"/>
+    <field name="STN_VERSION"     bits="3"/>
+    <field name="DEST_LOCO_ID"    bits="20"/>
+    <field name="REF_PROF_ID"     bits="4"/>
+    <field name="LAST_REF_RFID"   bits="10"/>
+    <field name="DIST_PKT_START"  bits="15" signed="true" unit="m"/>
+    <field name="PKT_DIR"         bits="2"  enum="pktDir"/>
+    <pad   bits="3"/>
+
+    <subpackets type_bits="4" len_bits="7" len_unit="bytes" reserve_tail="8">
+      <case type="0" struct="MovementAuthority"/>
+      <case type="1" struct="StaticSpeedProfile"/>
+      <case type="2" struct="GradientProfile"/>
+      <case type="3" struct="LCgateProfile"/>
+      <case type="4" struct="TurnoutSpeed"/>
+      <case type="5" struct="TagLinking"/>
+      <case type="6" struct="TrackCondition"/>
+      <case type="7" struct="TSR"/>
+    </subpackets>
+  </packet>
+
+  <!-- Access/Allotment Packet (AAP), Annexure-C C.4.4. msb-first, no header. -->
+  <packet name="AAP" match="captype==aap" wire="msb-first" crc="anxc_jamcrc">
+    <field name="PKT_TYPE"               bits="4"/>
+    <field name="PKT_LENGTH"             bits="7"/>
+    <field name="FRAME_NUM"              bits="17"/>
+    <field name="SOURCE_STN_ID"          bits="16"/>
+    <field name="STN_VERSION"            bits="3"/>
+    <field name="STN_ILC_IBS_LOC"        bits="23" unit="m"/>
+    <field name="DEST_LOCO_ID"           bits="20"/>
+    <field name="Allotted_UpLink_Freq"   bits="12"/>
+    <field name="Allotted_DownLink_Freq" bits="12"/>
+    <field name="Allotted_TDMA_Timeslot" bits="7"/>
+    <field name="STN_RND_NUM_RS"         bits="16" hex="4"/>
+    <field name="STN_TDMA"               bits="7"/>
+    <field name="MAC_CODE"               bits="32" hex="8"/>
+  </packet>
+
+  <!-- Additional Emergency Packet (AEP), Annexure-C C.4.5. msb-first, no header.
+       Named fields cover the first 72 bits; the rest of the 13-byte body is
+       unused (the hand decoder ignores it too). -->
+  <packet name="AEP" match="captype==aep" wire="msb-first" crc="anxc_jamcrc">
+    <field name="PKT_TYPE"                   bits="4"  enum="aepType"/>
+    <field name="PKT_LENGTH"                 bits="7"  unit="B"/>
+    <field name="FRAME_NUM"                  bits="17"/>
+    <field name="SOURCE_STN_ILC_IBS_ID"      bits="16"/>
+    <field name="SOURCE_STN_ILC_IBS_VERSION" bits="3"  enum="stnIbsVersion"/>
+    <field name="STN_ILC_IBS_LOC"            bits="23" unit="m"/>
+    <field name="GEN_SOS_CALL"               bits="1"  enum="genSosCall"/>
+    <field name="Padding"                    bits="1"/>
+  </packet>
+
+  <!-- Digital inputs/outputs (@dip1/@dip2/@dop1/@dop2). LSB-first within each
+       byte, payload @ byte 0, no CRC trailer. -->
+
+  <!-- STRUCT_CAB_INPUTS_SIFA_EXTENDED_SET1 (32 inputs, 0..30 used, 31 pad) -->
+  <packet name="DIP1" match="captype==dip1" wire="lsb-first" trailer_bytes="0">
+    <field name="1 dmi1_sos_nc"                 bits="1"/>
+    <field name="2 dmi1_sos_no"                 bits="1"/>
+    <field name="3 dmi1_cancel_nc"              bits="1"/>
+    <field name="4 dmi1_cancel_no"              bits="1"/>
+    <field name="5 dmi1_common_nc"              bits="1"/>
+    <field name="6 dmi1_common_no"              bits="1"/>
+    <field name="7 dmi1_leading_non_leading_nc" bits="1"/>
+    <field name="8 dmi1_leading_non_leading_no" bits="1"/>
+    <field name="9 dmi2_sos_nc"                 bits="1"/>
+    <field name="10 dmi2_sos_no"                bits="1"/>
+    <field name="11 dmi2_cancel_nc"             bits="1"/>
+    <field name="12 dmi2_cancel_no"             bits="1"/>
+    <field name="13 dmi2_common_nc"             bits="1"/>
+    <field name="14 dmi2_common_no"             bits="1"/>
+    <field name="15 dmi2_leading_non_leading_nc" bits="1"/>
+    <field name="16 dmi2_leading_non_leading_no" bits="1"/>
+    <field name="17 pvef_disabled_fb"          bits="1"/>
+    <field name="18 neutral_section_fb"        bits="1"/>
+    <field name="19 fouling_mark_entry_fb"     bits="1"/>
+    <field name="20 horn1_fb_cock_no"          bits="1"/>
+    <field name="21 horn1_solenoid_no"         bits="1"/>
+    <field name="22 horn2_fb_cock_no"          bits="1"/>
+    <field name="23 horn2_solenoid_no"         bits="1"/>
+    <field name="24 cab1_active"               bits="1"/>
+    <field name="25 cab1_forward"              bits="1"/>
+    <field name="26 cab1_reverse"              bits="1"/>
+    <field name="27 cab2_active"               bits="1"/>
+    <field name="28 cab2_forward"              bits="1"/>
+    <field name="29 cab2_reverse"              bits="1"/>
+    <field name="30 train_intigrity"          bits="1"/>
+    <field name="31 traction_cutoff_fb"        bits="1"/>
+    <pad bits="1"/>
+  </packet>
+
+  <!-- STRUCT_CAB_INPUTS_SIFA_EXTENDED_SET2 (sparse: 0..9 + 20..29 used) -->
+  <packet name="DIP2" match="captype==dip2" wire="lsb-first" trailer_bytes="0">
+    <field name="1 kavach_isolation_fb_no"     bits="1"/>
+    <field name="2 kavach_isolation_fb_nc"     bits="1"/>
+    <field name="3 biu_isolation_fb_no"        bits="1"/>
+    <field name="4 biu_isolation_fb_nc"        bits="1"/>
+    <field name="5 mr_cock_fb_no"              bits="1"/>
+    <field name="6 bp_cock_fb_no"              bits="1"/>
+    <field name="7 sifa_valve_fb_no"           bits="1"/>
+    <field name="8 sifa_valve_fb_nc"           bits="1"/>
+    <field name="9 sifa_isolation_cock_fb_no"  bits="1"/>
+    <field name="10 sifa_isolation_cock_fb_nc" bits="1"/>
+    <pad bits="10"/>
+    <field name="21 fsb_relay_fb_no"           bits="1"/>
+    <field name="22 fsb_relay_fb_nc"           bits="1"/>
+    <field name="23 nb_relay_fb_no"            bits="1"/>
+    <field name="24 nb_relay_fb_nc"            bits="1"/>
+    <field name="25 eb_relay_fb_no"            bits="1"/>
+    <field name="26 eb_relay_fb_nc"            bits="1"/>
+    <field name="27 le_relay_fb_no"            bits="1"/>
+    <field name="28 le_relay_fb_nc"            bits="1"/>
+    <field name="29 sifa_or_veb_relay_fb_nc"   bits="1"/>
+    <field name="30 sifa_or_veb_relay_fb_no"   bits="1"/>
+    <pad bits="2"/>
+  </packet>
+
+  <!-- @dop1: 16 output pins, 1 byte each. Per byte: a,b,fault,trans,output (5
+       bits LSB-first) + 3 pad. -->
+  <packet name="DOP1" match="captype==dop1" wire="lsb-first" trailer_bytes="0">
+    <repeat name="pin" count="16" index0="true" sep=" ">
+      <field name="a"      bits="1"/>
+      <field name="b"      bits="1"/>
+      <field name="fault"  bits="1"/>
+      <field name="trans"  bits="1"/>
+      <field name="output" bits="1"/>
+      <pad bits="3"/>
+    </repeat>
+  </packet>
+
+  <!-- @dop2: identical layout to @dop1 -->
+  <packet name="DOP2" match="captype==dop2" wire="lsb-first" trailer_bytes="0">
+    <repeat name="pin" count="16" index0="true" sep=" ">
+      <field name="a"      bits="1"/>
+      <field name="b"      bits="1"/>
+      <field name="fault"  bits="1"/>
+      <field name="trans"  bits="1"/>
+      <field name="output" bits="1"/>
+      <pad bits="3"/>
+    </repeat>
+  </packet>
+
+  <!-- Access Request Packet (ARP), Annexure-C C.4.6. msb-first body starting at
+       bit 80 (after the 10-byte LE message header, which describe() emits as the
+       msg.* envelope). Longitude/Latitude are DMS-packed (signed degrees). -->
+  <packet name="ARP" match="captype==arp,arprecv" wire="msb-first" crc="anxc_jamcrc" body_offset="80">
+    <field name="PKT_TYPE"          bits="4"/>
+    <field name="PKT_LENGTH"        bits="7"/>
+    <field name="FRAME_NUM"         bits="17"/>
+    <field name="SOURCE_LOCO_ID"    bits="20"/>
+    <field name="LOCO_VERSION"      bits="3"/>
+    <field name="ABS_LOCO_LOC"      bits="23" unit="m"/>
+    <field name="TRAIN_LENGTH"      bits="11" unit="m"/>
+    <field name="TRAIN_SPEED"       bits="9"  enum="trainSpeed9"/>
+    <field name="MOVEMENT_DIR"      bits="2"  enum="moveDir"/>
+    <field name="EMERGENCY_STATUS"  bits="3"  enum="emergencyStatus"/>
+    <field name="LOCO_MODE"         bits="4"  enum="locoMode"/>
+    <field name="APPROACHING_STN_ID" bits="16"/>
+    <field name="LAST_RFID_TAG"     bits="10"/>
+    <field name="TIN"               bits="9"/>
+    <group name="Longitude" sep=" ">
+      <field name="lon_d" bits="9" signed="true" tmpl="%s&#176;"/>
+      <field name="lon_m" bits="6" tmpl="%s'"/>
+      <field name="lon_s" bits="6" tmpl="%s&quot;"/>
+    </group>
+    <group name="Latitude" sep=" ">
+      <field name="lat_d" bits="8" signed="true" tmpl="%s&#176;"/>
+      <field name="lat_m" bits="6" tmpl="%s'"/>
+      <field name="lat_s" bits="6" tmpl="%s&quot;"/>
+    </group>
+    <field name="LOCO_RND_NUM_RL"   bits="16" hex="4"/>
+  </packet>
+
+  <!-- Loco Status Reply Packet (LSRP), Annexure-C C.4.3. msb-first body @ bit 80
+       (after the 10-byte LE message header / msg.* envelope from describe()). -->
+
+
+  <packet name="LSRP" match="captype==lsrp" wire="msb-first" crc="anxc_jamcrc" body_offset="80">
+    <field name="PKT_TYPE"            bits="4"/>
+    <field name="PKT_LENGTH"          bits="7"/>
+    <field name="FRAME_NUM"           bits="17"/>
+    <field name="SOURCE_LOCO_ID"      bits="20"/>
+    <field name="LOCO_VERSION"        bits="3"/>
+    <field name="ABS_LOCO_LOC"        bits="23" unit="m"/>
+    <field name="L_DOUBTOVER"         bits="9"  unit="m"/>
+    <field name="L_DOUBTUNDER"        bits="9"  unit="m"/>
+    <field name="TRAIN_INT"           bits="2"/>
+    <field name="TRAIN_LENGTH"        bits="11" unit="m"/>
+    <field name="TRAIN_SPEED"         bits="9"  enum="trainSpeed9"/>
+    <field name="MOVEMENT_DIR"        bits="2"  enum="moveDir"/>
+    <field name="EMERGENCY_STATUS"    bits="3"  enum="emergencyStatus"/>
+    <field name="LOCO_MODE"           bits="4"  enum="locoMode"/>
+    <field name="LAST_RFID_TAG"       bits="10"/>
+    <field name="TAG_DUP"             bits="1"/>
+    <field name="TAG_LINK_INFO"       bits="3"/>
+    <field name="TIN"                 bits="9"/>
+    <field name="Brake_Applied"       bits="3"/>
+    <field name="NEW_MA_REPLY"        bits="2"/>
+    <field name="LAST_REF_PROFILE_NUM" bits="4"/>
+    <field name="SIG_OV"              bits="1"/>
+    <field name="Info_Ack"            bits="4"/>
+    <pad bits="2"/>
+    <!-- Loco_Health_Status: six bits whose meaning rotates with FRAME_NUM.
+         Exactly one of the five branches below fires for any frame, so the
+         six bits are always consumed and MAC_CODE stays aligned. -->
+    <when test="FRAME_NUM &amp; 7 == 1">
+      <flags name="Loco_Health (faults 0-5)"   table="locoHealthG1" bits="6" order="lsb" expand="all"/>
+    </when>
+    <when test="FRAME_NUM &amp; 7 == 3">
+      <flags name="Loco_Health (faults 6-11)"  table="locoHealthG3" bits="6" order="lsb" expand="all"/>
+    </when>
+    <when test="FRAME_NUM &amp; 7 == 5">
+      <flags name="Loco_Health (faults 12-17)" table="locoHealthG5" bits="6" order="lsb" expand="all"/>
+    </when>
+    <when test="FRAME_NUM &amp; 7 == 7">
+      <flags name="Loco_Health (faults 18-23)" table="locoHealthG7" bits="6" order="lsb" expand="all"/>
+    </when>
+    <!-- Even frame numbers: the firmware's switch has no case for them, so
+         the field is NOT refreshed and still holds the previous group's
+         bits. Decoding it against any table would report real-looking
+         faults with the wrong names, so it is deliberately left raw. -->
+    <when test="FRAME_NUM &amp; 1 == 0">
+      <field name="Health_Raw_Stale" bits="6" hex="2"/>
+      <note name="Health_Note" text="not updated on even frames (stale)"/>
+    </when>
+    <field name="MAC_CODE"            bits="32" hex="8"/>
+  </packet>
+
+  <!-- NMS RSSI report body (@nmsrssi), Annexure-G. The 8-byte transport prefix
+       + NMS common header (bytes 8..26) are emitted by appendNmsHeader() in C++;
+       this is the body at byte 27. Big-endian byte fields == msb-first reads. -->
+  <packet name="NMSRSSI" match="captype==nmsrssi" wire="msb-first" crc="anxg_ccitt32" body_offset="216">
+    <field name="stationary_kavach_id" bits="16"/>
+    <field name="radio1_rssi_count"    bits="8"/>
+    <field name="radio1_ref_rfid"      bits="16"/>
+    <field name="radio1_abs_rfid"      bits="24"/>
+    <field name="radio1_rssi"          bits="16"/>
+    <field name="radio2_rssi_count"    bits="8"/>
+    <field name="radio2_ref_rfid"      bits="16"/>
+    <field name="radio2_abs_rfid"      bits="24"/>
+    <field name="radio2_rssi"          bits="16"/>
+  </packet>
+
+  <!-- NMS health telemetry body (@nmshlth), Annexure-G. Transport prefix + NMS
+       common header (bytes 8..26) come from appendNmsHeader() in C++. The body
+       at byte 27 is a count byte then a stream of (id:2B, value:size B) records
+       whose size/sign/name come from the nmsHealth event table; the per-eid
+       meaning is the 'nmsHealth' hook (nmsHealthMeaning). -->
+  <packet name="NMSHLTH" match="captype==nmshlth" wire="msb-first" crc="anxg_ccitt32" body_offset="216">
+    <eventstream name="event" count_bits="8" id_bits="16"
+                 table="nmsHealth" meaning="nmsHealth"/>
+  </packet>
+
+  <!-- NMS fault report body (@nmsflt), Annexure-G. Transport prefix + NMS common
+       header from appendNmsHeader() in C++. Body at byte 27: reporting_subsystem,
+       fault_count, then fault_count x (module:1, code_type:1, fault_id:2 BE). -->
+  <packet name="NMSFLT" match="captype==nmsflt" wire="msb-first" crc="anxg_ccitt32" body_offset="216">
+    <field name="reporting_subsystem" bits="8" enum="nmsModule"/>
+    <field name="fault_count"          bits="8"/>
+    <repeat name="fault" count="fault_count" expand="true">
+      <field name="module"    bits="8"  enum="nmsModule"/>
+      <field name="code_type" bits="8"  hexup="2"/>
+      <field name="fault_id"  bits="16" enum="nmsFaultInput"/>
+    </repeat>
+  </packet>
+
+  <!-- CCU self-status (@ccsys), LE byte fields, eid value semantics, two embedded
+       JAMCRCs. wire lsb-first (byte-aligned LE == lsb-first reads); no trailer. -->
+  <packet name="CCSYS" match="captype==ccsys" wire="lsb-first" trailer_bytes="0">
+    <field name="active_radio"         bits="8"  enum="ccActiveRadio"/>
+    <field name="health_radio1"        bits="8"  meaning="nmsHealth" eid="1"/>
+    <field name="health_radio2"        bits="8"  meaning="nmsHealth" eid="2"/>
+    <field name="radio1_input_supply"  bits="8"  meaning="nmsHealth" eid="3"/>
+    <field name="radio2_input_supply"  bits="8"  meaning="nmsHealth" eid="4"/>
+    <field name="radio1_temp"          bits="16" signed="true" meaning="nmsHealth" eid="5"/>
+    <field name="radio2_temp"          bits="16" signed="true" meaning="nmsHealth" eid="6"/>
+    <field name="radio1_pa_temp"       bits="16" signed="true" meaning="nmsHealth" eid="7"/>
+    <field name="radio2_pa_temp"       bits="16" signed="true" meaning="nmsHealth" eid="8"/>
+    <field name="radio1_pa_supply"     bits="8"  meaning="nmsHealth" eid="9"/>
+    <field name="radio2_pa_supply"     bits="8"  meaning="nmsHealth" eid="10"/>
+    <field name="radio1_tx_pa_current" bits="8"  meaning="nmsHealth" eid="11"/>
+    <field name="radio2_tx_pa_current" bits="8"  meaning="nmsHealth" eid="12"/>
+    <field name="radio1_reverse_power" bits="16" meaning="nmsHealth" eid="13"/>
+    <field name="radio2_reverse_power" bits="16" meaning="nmsHealth" eid="14"/>
+    <field name="radio1_forward_power" bits="16" meaning="nmsHealth" eid="15"/>
+    <field name="radio2_forward_power" bits="16" meaning="nmsHealth" eid="16"/>
+    <field name="radio1_rx_pkt_count"  bits="16"/>
+    <field name="radio2_rx_pkt_count"  bits="16"/>
+    <field name="active_gps"           bits="8"  meaning="nmsHealth" eid="18"/>
+    <field name="gps1_view"            bits="8"  meaning="nmsHealth" eid="19"/>
+    <field name="gps2_view"            bits="8"  meaning="nmsHealth" eid="20"/>
+    <field name="gps1_seconds"         bits="8"  meaning="nmsHealth" eid="21"/>
+    <field name="gps2_seconds"         bits="8"  meaning="nmsHealth" eid="22"/>
+    <field name="gps1_sat_in_view"     bits="8"/>
+    <field name="gps2_sat_in_view"     bits="8"/>
+    <field name="gps1_cno_max"         bits="8"/>
+    <field name="gps2_cno_max"         bits="8"/>
+    <field name="gps1_link_status"     bits="8"  meaning="nmsHealth" eid="27"/>
+    <field name="gps2_link_status"     bits="8"  meaning="nmsHealth" eid="28"/>
+    <crc name="cc_crc" algo="jamcrc" from="0" len="40"/>
+    <group name="lcu_ctrl1_hlth" sep=" ">
+      <field name="v24_pgd1" bits="1"/><field name="v24_pgd2" bits="1"/>
+      <field name="v33" bits="1"/><field name="v12" bits="1"/>
+      <field name="safety_err" bits="1"/><pad bits="3"/>
+    </group>
+    <group name="lcu_ctrl2_hlth" sep=" ">
+      <field name="v24_pgd1" bits="1"/><field name="v24_pgd2" bits="1"/>
+      <field name="v33" bits="1"/><field name="v12" bits="1"/>
+      <field name="safety_err" bits="1"/><pad bits="3"/>
+    </group>
+    <group name="lcu_elem_status1" sep=" ">
+      <field name="can0" bits="1"/><field name="can1" bits="1"/>
+      <field name="radio1" bits="1"/><field name="radio2" bits="1"/>
+      <field name="gps1" bits="1"/><field name="gps2" bits="1"/><pad bits="2"/>
+    </group>
+    <group name="lcu_elem_status2" sep=" ">
+      <field name="can0" bits="1"/><field name="can1" bits="1"/>
+      <field name="radio1" bits="1"/><field name="radio2" bits="1"/>
+      <field name="gps1" bits="1"/><field name="gps2" bits="1"/><pad bits="2"/>
+    </group>
+    <crc name="pkt_crc" algo="jamcrc" from="0" len="48"/>
+  </packet>
+
+  <!-- Datalogger self-status (@dlsys), 16 B LE, one embedded JAMCRC. -->
+  <packet name="DLSYS" match="captype==dlsys" wire="lsb-first" trailer_bytes="0">
+    <field name="gsm1_rssi"         bits="8"/>
+    <field name="gsm2_rssi"         bits="8"/>
+    <field name="rem_key_num"       bits="8"/>
+    <field name="gsm1_health"       bits="8"/>
+    <field name="gsm2_health"       bits="8"/>
+    <field name="eval_version"      bits="8"/>
+    <field name="eval_checksum"     bits="32" meaning="nmsHealth" eid="57"/>
+    <field name="a_v24_pgd1_status" bits="8"/>
+    <field name="a_v24_pgd2_status" bits="8"/>
+    <crc name="crc" algo="jamcrc" from="0" len="12"/>
+  </packet>
+
+  <!-- ===================================================================== -->
+  <!-- @speed  STRUCT_SENSOR_SPEED_DATA (session 67) - flat LE, PACK, 14 B.     -->
+  <!--                                                                         -->
+  <!--   typedef struct PACK {                                                 -->
+  <!--       uint8_t  speed_sensor_reader;    // 1 or 2                        -->
+  <!--       uint8_t  sensor_dir;                                              -->
+  <!--       uint32_t pulse_from_tachometer1;                                  -->
+  <!--       uint32_t pulse_from_tachometer2;                                  -->
+  <!--       uint32_t crc;                                                     -->
+  <!--   } STRUCT_SENSOR_SPEED_DATA;                                           -->
+  <!--                                                                         -->
+  <!-- Recorded so the mission driver can feed the loco its speed on a re-run. -->
+  <!-- CRC ASSUMED: JAMCRC over bytes 0..9, stored LE - the convention of the  -->
+  <!-- other firmware structs (@ccsys/@dlsys/@linfo). No real frame has been   -->
+  <!-- seen yet; if every live frame reads FAIL, the algorithm differs.        -->
+  <!-- sensor_dir values and whether the pulse counts are cumulative or per    -->
+  <!-- cycle are not yet known, so both are shown raw.                         -->
+  <!-- ===================================================================== -->
+  <packet name="SPEED" match="captype==speed" wire="lsb-first" trailer_bytes="0">
+    <field name="speed_sensor_reader"    bits="8"/>
+    <field name="sensor_dir"             bits="8"/>
+    <field name="pulse_from_tachometer1" bits="32"/>
+    <field name="pulse_from_tachometer2" bits="32"/>
+    <crc name="crc" algo="jamcrc" from="0" len="10"/>
+  </packet>
+
+  <!-- ===================================================================== -->
+  <!-- @analog_top / @analog_bottom  STRUCT_ANALOG_SENSOR_DATA (session 67)    -->
+  <!-- flat LE, PACK, 24 B: six IEEE-754 floats. No CRC.                      -->
+  <!--                                                                         -->
+  <!--   typedef struct PACK {                                                 -->
+  <!--       float channel1_data;  ...  float channel6_data;                   -->
+  <!--   } STRUCT_ANALOG_SENSOR_DATA;                                          -->
+  <!--                                                                         -->
+  <!-- Shown %g, as the firmware computed them. Which pressure each channel    -->
+  <!-- carries, and its unit, are not yet known, so no names or units here.    -->
+  <!-- ===================================================================== -->
+  <packet name="ANALOG" match="captype==analog_top,analog_bottom" wire="lsb-first" trailer_bytes="0">
+    <field name="channel1_data" type="float"/>
+    <field name="channel2_data" type="float"/>
+    <field name="channel3_data" type="float"/>
+    <field name="channel4_data" type="float"/>
+    <field name="channel5_data" type="float"/>
+    <field name="channel6_data" type="float"/>
+  </packet>
+
+  <!-- ===================================================================== -->
+  <!-- @linfo  LOCO_INFO - flat little-endian config struct (PACK, no align),   -->
+  <!-- no msg header on the wire (the 5-byte STRUCT_MESSAGE_HEADER is stripped   -->
+  <!-- before capture). 370 B body. vcc_crc is a stored constant; loco_info_crc  -->
+  <!-- IS a real frame CRC: JAMCRC(init 0, poly 0x04C11DB7, reflected) over       -->
+  <!-- body[0 : len-4], stored LE, verified in capturedecoder.cpp parseLine.      -->
+  <!-- Nested static_brake_params (STATIC_BRAKING_CONFIG) then national_values    -->
+  <!-- (UBA_NationalValues) are expanded inline in declaration order. VALIDATED:  -->
+  <!-- golden 370 B frame, all fields + loco_info_crc=0xC7C020BC.                  -->
+  <!--                                                                         -->
+  <!-- THIS BLOCK IS ALSO THE LOCO CONFIGURATION EDITOR'S LAYOUT               -->
+  <!-- (Tools > Loco Configuration). To add a LOCO_INFO member: add ONE         -->
+  <!-- <field> line here at the member's position, then run                    -->
+  <!--   python3 lococonfig/sync_linfo.py path/to/loco_config_vNN.cpp           -->
+  <!-- which checks every field below against the C struct (offset and size), -->
+  <!-- and takes the defaults and the golden fixture from that tool. Steps:     -->
+  <!-- lococonfig/ADDING_A_FIELD.md. Attributes the decoders do not read:       -->
+  <!--   ui-group="..."   editor group (a new name makes a new group)           -->
+  <!--   ui-note="..."    one-line help shown in the editor                     -->
+  <!--   ui-format="ipv4" edit a u32 as a dotted address                        -->
+  <!--   c-name="..."     the C member's name when it differs from name=        -->
+  <!--   c-member="..."   (on a section <note>) the nested struct's C member    -->
+  <!-- ===================================================================== -->
+  <packet name="LINFO" match="captype==linfo" wire="lsb-first" trailer_bytes="0">
+    <field name="loco_ip_set_id"                                                    bits="8" ui-group="Loco &amp; wheels"/>
+    <field name="source_loco_version"                                               bits="8" ui-group="Loco &amp; wheels"/>
+    <field name="loco_unit_id"                                                      bits="32" ui-group="Loco &amp; wheels"/>
+    <field name="loco_max_speed"                                                    bits="16" ui-group="Loco &amp; wheels"/>
+    <field name="loco_wheel_dia1"                                                   bits="16" ui-group="Loco &amp; wheels"/>
+    <field name="loco_wheel_dia2"                                                   bits="16" ui-group="Loco &amp; wheels"/>
+    <field name="loco_offset_front1"                                                bits="8" ui-group="Loco &amp; wheels"/>
+    <field name="loco_offset_rear1"                                                 bits="8" ui-group="Loco &amp; wheels"/>
+    <field name="loco_offset_front2"                                                bits="8" ui-group="Loco &amp; wheels"/>
+    <field name="loco_offset_rear2"                                                 bits="8" ui-group="Loco &amp; wheels"/>
+    <field name="loco_rfid_location_accuracy"                                       bits="8" ui-group="Loco &amp; wheels" ui-note="RFID static error (v12 comment)."/>
+    <field name="loco_doubtover"                                                    bits="8" ui-group="Loco &amp; wheels" ui-note="Odometry error (v12 comment)."/>
+    <field name="loco_doubtunder"                                                   bits="8" ui-group="Loco &amp; wheels" ui-note="Odometry error (v12 comment)."/>
+    <field name="loco_max_accleration"                                              bits="8" ui-group="Loco &amp; wheels"/>
+    <field name="tacho_output_pulse_per_rev1"                                       bits="16" ui-group="Tachos, slip &amp; skid"/>
+    <field name="tacho_type1"                                                       bits="8" ui-group="Tachos, slip &amp; skid"/>
+    <field name="tacho_mount_direction1"                                            bits="8" ui-group="Tachos, slip &amp; skid"/>
+    <field name="tacho_output_pulse_per_rev2"                                       bits="16" ui-group="Tachos, slip &amp; skid"/>
+    <field name="tacho_type2"                                                       bits="8" ui-group="Tachos, slip &amp; skid"/>
+    <field name="tacho_mount_direction2"                                            bits="8" ui-group="Tachos, slip &amp; skid"/>
+    <field name="speed_margin_warning"                                              bits="8" ui-group="Speeds &amp; margins"/>
+    <field name="speed_margin_nsb"                                                  bits="8" ui-group="Speeds &amp; margins"/>
+    <field name="speed_margin_fsb"                                                  bits="8" ui-group="Speeds &amp; margins"/>
+    <field name="speed_margin_eb"                                                   bits="8" ui-group="Speeds &amp; margins"/>
+    <field name="sos_speed_limit"                                                   bits="8" ui-group="Speeds &amp; margins"/>
+    <field name="sos_stop_speed"                                                    bits="8" ui-group="Speeds &amp; margins"/>
+    <field name="reverse_mode_speed"                                                bits="8" ui-group="Speeds &amp; margins"/>
+    <field name="shunt_speed"                                                       bits="8" ui-group="Speeds &amp; margins"/>
+    <field name="wheel_sensor_direction_discrimination_speed"                       bits="8" ui-group="Tachos, slip &amp; skid"/>
+    <field name="brake_intervention_withdrawal_speed_limit"                         bits="8" ui-group="Speeds &amp; margins"/>
+    <field name="slipping_acceleration_limit"                                       type="float" prec="4" ui-group="Tachos, slip &amp; skid"/>
+    <field name="slipping_duration"                                                 bits="16" ui-group="Tachos, slip &amp; skid"/>
+    <field name="slipping_percentage"                                               bits="8" ui-group="Tachos, slip &amp; skid"/>
+    <field name="slip_limit_1"                                                      bits="8" ui-group="Tachos, slip &amp; skid"/>
+    <field name="slip_limit_2"                                                      bits="8" ui-group="Tachos, slip &amp; skid"/>
+    <field name="skid_limit_1"                                                      bits="8" ui-group="Tachos, slip &amp; skid"/>
+    <field name="skid_limit_2"                                                      bits="8" ui-group="Tachos, slip &amp; skid"/>
+    <field name="warning_indication_before_brake_intervention"                      bits="8" ui-group="Speeds &amp; margins"/>
+    <field name="loco_pilot_time_margin"                                            bits="8" ui-group="Speeds &amp; margins"/>
+    <field name="traction_cutoff_time"                                              bits="8" ui-group="Speeds &amp; margins"/>
+    <field name="sos_timeout"                                                       bits="16" ui-group="Timeouts &amp; periods"/>
+    <field name="reverse_mode_timeout"                                              bits="16" ui-group="Timeouts &amp; periods"/>
+    <field name="override_timeout"                                                  bits="16" ui-group="Timeouts &amp; periods"/>
+    <field name="onsight_ma_expiry_timeout"                                         bits="16" ui-group="Timeouts &amp; periods"/>
+    <field name="communication_timeout_absolute_block"                              bits="8" ui-group="Timeouts &amp; periods"/>
+    <field name="communication_timeout_automatic_section"                           bits="8" ui-group="Timeouts &amp; periods"/>
+    <field name="random_number_timeout"                                             bits="8" ui-group="Timeouts &amp; periods"/>
+    <field name="block_stop_annonce_timeout"                                        bits="8" ui-group="Timeouts &amp; periods"/>
+    <field name="signal_display_timeout"                                            bits="8" ui-group="Timeouts &amp; periods"/>
+    <field name="slip_skid_timeout"                                                 bits="8" ui-group="Timeouts &amp; periods"/>
+    <field name="sr_mode_transition_acknowledgment_timeout"                         bits="8" ui-group="Timeouts &amp; periods"/>
+    <field name="multi_dmi_messages_timeout"                                        bits="8" ui-group="Timeouts &amp; periods"/>
+    <field name="gps_gnss_failure_rtc_timeout"                                      bits="16" ui-group="Timeouts &amp; periods" ui-note="Minutes (v12 comment)."/>
+    <field name="kms_request_periodicity"                                           bits="16" ui-group="Timeouts &amp; periods"/>
+    <field name="kms_key_set_validity_check_periodicity"                            bits="16" ui-group="Timeouts &amp; periods"/>
+    <field name="randomized_request_mode_key_value_periodicity"                     bits="16" ui-group="Timeouts &amp; periods"/>
+    <field name="lp_reaction_time"                                                  bits="8" ui-group="Speeds &amp; margins"/>
+    <field name="overlap_distance"                                                  bits="16" ui-group="Distances"/>
+    <field name="collision_margin_distance_mainline"                                bits="16" ui-group="Distances"/>
+    <field name="collision_margin_distance_suburban_emu"                            bits="16" ui-group="Distances"/>
+    <field name="sos_trigger_distance"                                              bits="16" ui-group="Distances"/>
+    <field name="sos_cancellation_distance"                                         bits="16" ui-group="Distances"/>
+    <field name="sos_hold_distance"                                                 bits="16" ui-group="Distances"/>
+    <field name="roll_away_or_roll_back_trigger_distance"                           bits="8" ui-group="Distances"/>
+    <field name="override_permit_distance"                                          bits="16" ui-group="Distances"/>
+    <field name="unusual_stoppage_bypass_ma_limit"                                  bits="16" ui-group="Distances"/>
+    <field name="signal_foot_tag_miss_distance"                                     bits="8" ui-group="Distances"/>
+    <field name="other_tags_miss_distance"                                          bits="8" ui-group="Distances"/>
+    <field name="signal_description_display_distance"                               bits="8" ui-group="Distances"/>
+    <field name="trip_margin_distance"                                              bits="8" ui-group="Distances"/>
+    <field name="block_stop_trigger_ma_distance"                                    bits="16" ui-group="Distances"/>
+    <field name="lc_horn_enable_distance"                                           bits="16" ui-group="LC horn"/>
+    <field name="grad_scan_distance"                                                bits="16" ui-group="Distances"/>
+    <field name="psr_scan_distance"                                                 bits="16" ui-group="Distances"/>
+    <field name="min_track_profile_required_distance"                               bits="16" ui-group="Distances"/>
+    <field name="reverse_mode_distance_margin"                                      bits="16" ui-group="Distances"/>
+    <field name="signal_desc_linking_distance_os_mode"                              bits="16" ui-group="Distances"/>
+    <field name="missed_vaild_radio_packet_cycles_absolute_block"                   bits="8" ui-group="Radio"/>
+    <field name="missed_vaild_radio_packet_cycles_automatic_block"                  bits="8" ui-group="Radio"/>
+    <field name="reverse_movement_trigger_distance"                                 bits="8" ui-group="Distances"/>
+    <field name="onboard_to_stationary_radio_packet_non_leading"                    bits="16" ui-group="Radio"/>
+    <field name="onboard_to_stationary_radio_packet_isolation"                      bits="16" ui-group="Radio"/>
+    <field name="threshold_to_update_train_length_after_tlm"                        bits="8" ui-group="Train lengths"/>
+    <field name="lc_horn_on_time"                                                   bits="8" ui-group="LC horn"/>
+    <field name="lc_horn_off_time"                                                  bits="8" ui-group="LC horn"/>
+    <field name="frame_cycle"                                                       bits="8" ui-group="Radio"/>
+    <field name="gsm_1_apn_name"                                                    type="char" count="40" ui-group="Network &amp; IDs"/>
+    <field name="gsm_2_apn_name"                                                    type="char" count="40" ui-group="Network &amp; IDs"/>
+    <field name="nms_ip_address"                                                    bits="32" ui-group="Network &amp; IDs" ui-format="ipv4" ui-note="Stored as a 32-bit number; entered here as a dotted address."/>
+    <field name="nms_port"                                                          bits="32" ui-group="Network &amp; IDs"/>
+    <field name="kms_ip_address"                                                    bits="32" ui-group="Network &amp; IDs" ui-format="ipv4" ui-note="Stored as a 32-bit number; entered here as a dotted address."/>
+    <field name="kms_port"                                                          bits="32" ui-group="Network &amp; IDs"/>
+    <field name="station_ip_address_first_octet"                                    bits="8" ui-group="Network &amp; IDs"/>
+    <field name="station_ip_address_second_octet_blue_ring"                         bits="8" ui-group="Network &amp; IDs"/>
+    <field name="station_ip_address_second_octet_red_ring"                          bits="8" ui-group="Network &amp; IDs"/>
+    <field name="min_press_time_for_button"                                         bits="16" ui-group="DMI &amp; buttons"/>
+    <field name="max_press_time_for_button"                                         bits="16" ui-group="DMI &amp; buttons"/>
+    <field name="max_consecutive_miss_count"                                        bits="8" ui-group="Radio"/>
+    <field name="onboard_kavach_logical_id"                                         bits="8" ui-group="Network &amp; IDs"/>
+    <field name="fault_code_vendor_specific"                                        bits="8" ui-group="Hardware &amp; system"/>
+    <field name="ack_alarm_timeout"                                                 bits="8" ui-group="Timeouts &amp; periods"/>
+    <field name="mr_pressure"                                                       type="float" prec="4" ui-group="Brake pressures"/>
+    <field name="bp_pressure"                                                       type="float" prec="4" ui-group="Brake pressures"/>
+    <field name="nsb_pressure"                                                      type="float" prec="4" ui-group="Brake pressures"/>
+    <field name="fsb_pressure"                                                      type="float" prec="4" ui-group="Brake pressures"/>
+    <field name="eb_pressure"                                                       type="float" prec="4" ui-group="Brake pressures"/>
+    <field name="light_engine_train_length"                                         bits="16" ui-group="Train lengths"/>
+    <field name="light_engine_multi_train_length"                                   bits="16" ui-group="Train lengths"/>
+    <field name="light_engine_wap5_train_length"                                    bits="16" ui-group="Train lengths"/>
+    <field name="light_engine_wap7_train_length"                                    bits="16" ui-group="Train lengths"/>
+    <field name="collision_trigger_distance"                                        bits="16" ui-group="Distances"/>
+    <field name="emu_train_length"                                                  bits="16" ui-group="Train lengths"/>
+    <field name="trainset_train_length"                                             bits="16" ui-group="Train lengths"/>
+    <field name="is_rfid_hardware_used"                                             bits="8" ui-group="Hardware &amp; system"/>
+    <field name="is_pg_hardware_used"                                               bits="8" ui-group="Hardware &amp; system"/>
+    <field name="max_vital_fails"                                                   bits="8" ui-group="Hardware &amp; system"/>
+    <field name="init_state_machine_atf"                                            bits="8" ui-group="Hardware &amp; system" c-name="use_init_state_machine_atf" ui-note="For the ATF brake-test version (v12: use_init_state_machine_atf)."/>
+    <field name="vcc_crc"                                                           bits="32" hexup="8" ui-group="Hardware &amp; system" ui-note="Set by hand — must match the VCC build on this loco (v12: &quot;change crc&quot;)."/>
+
+    <note name="--"                                                                text="static_brake_params  (STATIC_BRAKING_CONFIG)" c-member="static_braking_config"/>
+    <field name="train_config_number"                                               bits="8" ui-group="Static braking"/>
+    <field name="train_class"                                                       bits="8" ui-group="Static braking"/>
+    <field name="train_desc"                                                        type="char" count="40" ui-group="Static braking"/>
+    <field name="train_max_speed"                                                   bits="8" ui-group="Static braking" ui-note="km/h (v12 comment)."/>
+    <field name="train_max_accn"                                                    bits="8" ui-group="Static braking"/>
+    <field name="train_max_dccn"                                                    bits="8" ui-group="Static braking"/>
+    <field name="train_length"                                                      bits="16" ui-group="Static braking"/>
+    <field name="train_load"                                                        bits="16" ui-group="Static braking"/>
+    <field name="rolling_mass_percent"                                              bits="16" ui-group="Static braking" ui-note="Axle weight / total train weight, % (v12 comment)."/>
+    <field name="fsb_propogation_lag"                                               bits="8" ui-group="Static braking"/>
+    <field name="fsb_build_lag"                                                     bits="8" ui-group="Static braking"/>
+    <field name="fsb_release_lag"                                                   bits="8" ui-group="Static braking"/>
+    <field name="eb_propogation_lag"                                                bits="8" ui-group="Static braking"/>
+    <field name="eb_build_lag"                                                      bits="8" ui-group="Static braking"/>
+    <field name="eb_release_lag"                                                    bits="8" ui-group="Static braking"/>
+    <field name="intermediate_deccn_percentage"                                     bits="8" ui-group="Static braking" ui-note="Intermediate deceleration, % (v12 comment)."/>
+    <field name="fsb_dc1"                                                           bits="8" ui-group="Static braking"/>
+    <field name="eb_dc1"                                                            bits="8" ui-group="Static braking" ui-note="Divided by 10 (v12 comment)."/>
+    <field name="speed_limit1"                                                      bits="8" ui-group="Static braking" ui-note="As it is (v12 comment)."/>
+    <field name="fsb_dc2"                                                           bits="8" ui-group="Static braking"/>
+    <field name="eb_dc2"                                                            bits="8" ui-group="Static braking"/>
+    <field name="speed_limit2"                                                      bits="8" ui-group="Static braking"/>
+    <field name="fsb_dc3"                                                           bits="8" ui-group="Static braking"/>
+    <field name="eb_dc3"                                                            bits="8" ui-group="Static braking"/>
+    <field name="speed_limit3"                                                      bits="8" ui-group="Static braking"/>
+    <field name="fsb_dc4"                                                           bits="8" ui-group="Static braking"/>
+    <field name="eb_dc4"                                                            bits="8" ui-group="Static braking"/>
+    <field name="speed_limit4"                                                      bits="8" ui-group="Static braking" ui-note="255 (UINT8_MAX) in v12."/>
+    <field name="spare"                                                             bits="8" ui-group="Static braking"/>
+
+    <note name="--"                                                                text="national_values  (UBA_NationalValues)" c-member="national_values"/>
+    <field name="overlap"                                                           bits="8" ui-group="National values (UBA)"/>
+    <field name="fsb_margin1"                                                       bits="8" ui-group="National values (UBA)"/>
+    <field name="fsb_margin2"                                                       bits="8" ui-group="National values (UBA)"/>
+    <field name="fsb_margin3"                                                       bits="8" ui-group="National values (UBA)"/>
+    <field name="fsb_margin4"                                                       bits="8" ui-group="National values (UBA)"/>
+    <field name="enable_sbd_curve_for_loa"                                          bits="8" ui-group="National values (UBA)" ui-note="Compute the FSB curve for LOA / MRSP targets (v12 comment)."/>
+    <field name="enable_use_of_gradient_from_rear_end"                              bits="8" ui-group="National values (UBA)"/>
+    <field name="percentage_of_speed_under_reading_amount"                          bits="8" ui-group="National values (UBA)" ui-note="Estimated inaccuracy in speed measurement (v12 comment)."/>
+    <field name="enable_compensation_for_odometery_distance_error"                  bits="8" ui-group="National values (UBA)"/>
+    <field name="enable_virtual_target_monitoring_for_crossing_caution_aspect"      bits="8" ui-group="National values (UBA)" ui-note="Virtual target to pass a caution aspect at the speed below (v12 comment)."/>
+    <field name="speed_for_virtual_target_monitoring"                               bits="8" ui-group="National values (UBA)"/>
+    <field name="enable_the_release_of_fsb_considering_brake_release_time_for_mrsp_targets" bits="8" ui-group="National values (UBA)"/>
+    <field name="release_speed_for_eoa_type_targets"                                bits="8" ui-group="National values (UBA)" ui-note="Non-zero enables release-speed monitoring (v12 comment)."/>
+    <field name="speed_margin_warning"                                              bits="8" ui-group="National values (UBA)"/>
+    <field name="speed_margin_nsb"                                                  bits="8" ui-group="National values (UBA)"/>
+    <field name="speed_margin_fsb"                                                  bits="8" ui-group="National values (UBA)"/>
+    <field name="speed_margin_eb"                                                   bits="8" ui-group="National values (UBA)"/>
+    <field name="brake_intervention_withdrawl_speed_limit"                          bits="8" ui-group="National values (UBA)"/>
+    <field name="warning_indication_before_kavach_brake_intervention"               bits="8" ui-group="National values (UBA)"/>
+    <field name="permitted_indication_time"                                         bits="8" ui-group="National values (UBA)"/>
+    <field name="traction_cutoff"                                                   bits="8" ui-group="National values (UBA)"/>
+
+    <!-- back to LOCO_INFO's own members: these follow the nested struct in  -->
+    <!-- loco_config_v12.cpp, they are not part of UBA_NationalValues.        -->
+    <note name="--"                                                                text="loco_info  (LOCO_INFO, after the nested structs)"/>
+    <field name="braking_prints"                                                    bits="8" ui-group="Hardware &amp; system" ui-note="Uniform-braking debug prints (v12, 23-04-2026)."/>
+    <field name="brake_pressure_used"                                               bits="8" ui-group="Brake pressures" c-name="braking_pressure_used" ui-note="v12: braking_pressure_used."/>
+    <field name="loco_info_crc"                                                     bits="32" hexup="8"/>
+  </packet>
+
+  <!-- ===================================================================== -->
+  <!-- @rfid  Annexure-D balise tag (reader-id byte + 16-byte tag).          -->
+  <!--                                                                       -->
+  <!-- Wire regime: LSB-first. The hand decoder reads two 64-bit LE words    -->
+  <!-- x (tag bytes 0-7) and y (bytes 8-15) and extracts bit ranges; a field -->
+  <!-- like Normal STATION = rfidBf(x,55,63)|(rfidBf(y,0,6)<<9) is simply a  -->
+  <!-- 16-bit lsb-first field crossing the 64-bit word boundary, which the   -->
+  <!-- lsb-first cursor reproduces with no special handling.                 -->
+  <!--                                                                       -->
+  <!-- Shared header X0..X54 (reader-id + type/version/unique/abs_loc/tin),  -->
+  <!-- then a type-discriminated body. CRC-30 is a fixed 30-bit field at tag -->
+  <!-- bit 98 = frame bit 106, read via <crc at=> independent of which body  -->
+  <!-- ran (so the all-zero / unknown tag still verifies). trailer_bytes=0:  -->
+  <!-- the 17-byte frame is fully decoded; no trailing 4-byte CRC reserve.   -->
+  <!-- Golden-validated (engine vs rfid_oracle) over real @rfid frames by    -->
+  <!-- validate_rfid.py: types 9/11/12 + the null/unknown tag. Type 10 (LC)  -->
+  <!-- has NO frames in any capture: encoded from the hand decoder, marked   -->
+  <!-- UNVALIDATED.                                                          -->
+  <!-- ===================================================================== -->
+  <packet name="RFID" match="captype==rfid" wire="lsb-first" trailer_bytes="0">
+    <field name="reader_id" bits="8"/>
+    <field name="type"      bits="4"  enum="rfidType"/>
+    <field name="version"   bits="2"/>
+    <field name="unique"    bits="10"/>
+
+    <!-- header abs-loc: renamed abs_loc_1 for type 12 (which adds abs_loc_2) -->
+    <field name="abs_loc"   bits="23" enum="rfidAbs" when="type!=12"/>
+    <field name="abs_loc_1" bits="23" enum="rfidAbs" when="type==12"/>
+    <group name="tin" sep=" / ">
+      <field name="tin_nom" bits="8" tmpl="%s"/>
+      <field name="tin_rev" bits="8" tmpl="%s"/>
+    </group>
+
+    <!-- Normal tag (type 9) -->
+    <when test="type==9">
+      <group name="station" sep=" / ">
+        <field name="stn_nom" bits="16" tmpl="%s"/>
+        <field name="stn_rev" bits="16" tmpl="%s"/>
+      </group>
+      <group name="section" sep=" / ">
+        <field name="sect_nom" bits="2" enum="rfidSect" tmpl="%s"/>
+        <field name="sect_rev" bits="2" enum="rfidSect" tmpl="%s"/>
+      </group>
+      <field name="placement"   bits="4" enum="rfidPlace"/>
+      <field name="duplication" bits="1" enum="rfidDup"/>
+      <group name="comm" sep=" / ">
+        <field name="comm_nom" bits="1" enum="rfidComm" tmpl="%s"/>
+        <field name="comm_rev" bits="1" enum="rfidComm" tmpl="%s"/>
+      </group>
+    </when>
+
+    <!-- LC gate tag (type 10) — UNVALIDATED: no type-10 frames in any cap -->
+    <when test="type==10">
+      <group name="section" sep=" / ">
+        <field name="sect_nom" bits="2" enum="rfidSect" tmpl="%s"/>
+        <field name="sect_rev" bits="2" enum="rfidSect" tmpl="%s"/>
+      </group>
+      <field name="placement"      bits="4"  enum="rfidPlace"/>
+      <field name="lc_approach"    bits="2"  enum="rfidLcApproach"/>
+      <field name="applicable_dir" bits="1"  enum="rfidApplDir"/>
+      <field name="gate_id"        bits="10"/>
+      <field name="gate_alpha"     bits="3"  enum="rfidGateAlpha"/>
+      <field name="gate_type"      bits="1"  enum="rfidGateType"/>
+      <field name="dist_to_gate"   bits="10" unit="m"/>
+      <field name="auto_whistle"   bits="1"  enum="rfidYesNo"/>
+      <field name="whistle_type"   bits="1"  enum="rfidWhistleType"/>
+      <pad bits="3"/>                              <!-- Y28-30 reserved -->
+      <field name="duplication"    bits="1"  enum="rfidDup"/>
+      <group name="comm" sep=" / ">
+        <field name="comm_nom" bits="1" enum="rfidComm" tmpl="%s"/>
+        <field name="comm_rev" bits="1" enum="rfidComm" tmpl="%s"/>
+      </group>
+    </when>
+
+    <!-- Adjacent-line tag (type 11) — no comm flags -->
+    <when test="type==11">
+      <group name="adjacent_tin" sep=" / ">
+        <field name="adj0" bits="8" tmpl="%s"/>
+        <field name="adj1" bits="8" tmpl="%s"/>
+        <field name="adj2" bits="8" tmpl="%s"/>
+        <field name="adj3" bits="8" tmpl="%s"/>
+        <field name="adj4" bits="8" tmpl="%s"/>
+      </group>
+      <field name="duplication" bits="1" enum="rfidDup"/>
+    </when>
+
+    <!-- Adjustment/Junction tag (type 12) — WIRE order: abs_loc_2 after tin -->
+    <when test="type==12">
+      <field name="abs_loc_2"     bits="23" enum="rfidAbs"/>
+      <field name="dir_corr_1"    bits="3"  enum="rfidDirCorr"/>
+      <field name="dir_corr_2"    bits="3"  enum="rfidDirCorr"/>
+      <field name="loc_corr_type" bits="1"  enum="rfidLocCorrType"/>
+      <pad bits="2"/>                              <!-- Y21-22 reserved -->
+      <group name="section" sep=" / ">
+        <field name="sect_nom" bits="2" enum="rfidSect" tmpl="%s"/>
+        <field name="sect_rev" bits="2" enum="rfidSect" tmpl="%s"/>
+      </group>
+      <pad bits="4"/>                              <!-- Y27-30 reserved -->
+      <field name="duplication"   bits="1"  enum="rfidDup"/>
+      <group name="comm" sep=" / ">
+        <field name="comm_nom" bits="1" enum="rfidComm" tmpl="%s"/>
+        <field name="comm_rev" bits="1" enum="rfidComm" tmpl="%s"/>
+      </group>
+    </when>
+
+    <!-- Null / unknown tag type: header + CRC only -->
+    <when test="type not in 9..12">
+      <note name="body" text="(unknown tag type &#8212; header + CRC only)"/>
+    </when>
+
+    <crc name="CRC-30" algo="rfidcrc30" from="1" len="13" bits="30" at="106"/>
+  </packet>
+
+
+  <!-- DMI regular frame (Annexure-F). 115 B, AA AA .. BB BB, lsb-first body with
+       byte re-alignment between blocks. CRC = JAMCRC over wire[3:109] stored LE
+       at wire[109:113]. Body bytes 10..108; SOF(2)+spare(1) skipped up front. -->
+  <packet name="DMI" match="captype==dmi" wire="lsb-first" trailer_bytes="0">
+    <pad bits="24"/>                                <!-- bytes 0-2: AA AA + spare -->
+    <field name="msg.src_id"         bits="8"/>
+    <field name="msg.dest_id"        bits="8"/>
+    <field name="msg.message_id"     bits="8"/>
+    <field name="msg.message_length" bits="16"/>
+    <field name="msg.seq_num"        bits="16"/>
+
+    <!-- LC_GATE_DISP_INFO (body bytes 0-9). lc.id shows num then suffix, but the
+         suffix byte is wire-earlier, so read both hidden and compose a row. -->
+    <field name="lc.auto_whistle"      bits="8"/>
+    <field name="lc.auto_whistle_type" bits="8"/>
+    <field name="lc.distance"          bits="32" unit="m"/>
+    <field name="lc_alpha" bits="8"  id="lc_alpha" hide="true"/>
+    <field name="lc_num"   bits="16" id="lc_num"   hide="true"/>
+    <row   name="lc.id"    tmpl="{lc_num} suf={lc_alpha}"/>
+    <field name="lc.manning"           bits="8"  enum="dmiManning"/>
+
+    <!-- DATE_TIME (body bytes 10-16) -->
+    <field name="dd" bits="8"  id="dd" hide="true"/>
+    <field name="mo" bits="8"  id="mo" hide="true"/>
+    <field name="yy" bits="16" id="yy" hide="true"/>
+    <field name="hh" bits="8"  id="hh" hide="true"/>
+    <field name="mi" bits="8"  id="mi" hide="true"/>
+    <field name="ss" bits="8"  id="ss" hide="true"/>
+    <row name="rtc" tmpl="{dd:02d}-{mo:02d}-{yy} {hh:02d}:{mi:02d}:{ss:02d}"/>
+
+    <!-- ALARM_CODE (body bytes 17-26: 71 flags + 9 pad) -->
+    <align/>
+    <flags name="alarm_code" table="dmiAlarm" bits="71" pad="9"/>
+
+    <!-- RFID_RECORD (body bytes 27-31: 3x (10-bit id + 2-bit status) + 4 pad) -->
+    <align/>
+    <group name="rfid.current" sep=" ">
+      <field name="rc"  bits="10" tmpl="%s"/><field name="rcs" bits="2" tmpl="(st %s)"/>
+    </group>
+    <group name="rfid.last" sep=" ">
+      <field name="rl"  bits="10" tmpl="%s"/><field name="rls" bits="2" tmpl="(st %s)"/>
+    </group>
+    <group name="rfid.last_to_last" sep=" ">
+      <field name="rll" bits="10" tmpl="%s"/><field name="rlls" bits="2" tmpl="(st %s)"/>
+    </group>
+    <pad bits="4"/>
+
+    <!-- inline run 1 (body bytes 32-63, ends mid-byte at body bit 505) -->
+    <field name="train_id"                bits="20"/>
+    <field name="warning_type"            bits="8"  enum="dmiUnmapped"/>
+    <field name="loco_mode"               bits="4"  enum="dmiLocoMode"/>
+    <field name="abs_loco_loc"            bits="23" format="absKm"/>
+    <field name="train_speed"             bits="9"  unit="km/h"/>
+    <field name="current_sig_info"        bits="17" format="sigInfo"/>
+    <field name="target_distance"         bits="15" unit="m"/>
+    <field name="stn_ilc_ibs_loc"         bits="23" unit="m"/>
+    <field name="speed_limit_permissible" bits="9"  unit="km/h"/>
+    <field name="tsr_distance"            bits="15" unit="m"/>
+    <field name="ma_w_r_t_sig"            bits="16" unit="m"/>
+    <field name="btm_status"              bits="1"/>
+    <field name="appr_sig_dist"           bits="15" unit="m"/>
+    <field name="dist_next_rfid"          bits="15" unit="m"/>
+    <field name="LKAVACH_self_test"       bits="2"/>
+    <field name="station_id"              bits="16"/>
+    <field name="tsr_length"              bits="15" unit="m"/>
+    <field name="tsr_class"               bits="1"/>
+    <field name="train_length"            bits="11" unit="m"/>
+    <field name="to_speed"                bits="5"  unit="km/h"/>
+    <field name="speed_limit_loopline"    bits="9"  unit="km/h"/>
+
+    <!-- DMI_CONTEXT_VALUES (body bytes 64-65: 14 flags + 2 pad) -->
+    <align/>
+    <flags name="context_values" table="dmiCtx" bits="14" pad="2"/>
+
+    <!-- inline run 2 (body bytes 66-75, ends mid-byte at body bit 607) -->
+    <field name="active_cab"            bits="2"/>
+    <field name="section_speed_info"    bits="9"  unit="km/h"/>
+    <field name="brake_type"            bits="3"  enum="dmiBrakeType"/>
+    <field name="target_distance_type"  bits="4"  enum="dmiTargetDistType"/>
+    <field name="signal_strength"       bits="6"/>
+    <field name="radio_health_status"   bits="2"  enum="dmiUnmapped"/>
+    <field name="LKAVACH_health_status" bits="1"  enum="dmiHealth"/>
+    <field name="dir_of_opr_loco"       bits="1"/>
+    <field name="txt_msg_type"          bits="1"/>
+    <field name="movement_dir"          bits="2"  enum="dmiMoveDir"/>
+    <field name="kavach_to_non_kavach"  bits="1"/>
+    <field name="train_speed_color_sts" bits="1"/>
+    <field name="pg_health_status"      bits="1"  enum="dmiHealth"/>
+    <field name="deceleration_constant" bits="8"  format="decel"/>
+    <field name="biu_health_status"     bits="1"  enum="dmiHealth"/>
+    <field name="gps_status"            bits="1"/>
+    <field name="current_sig_aspect"    bits="6"  format="sigAspect"/>
+    <field name="tsr_universal_speed"   bits="6"  enum="dmiUnmapped"/>
+    <field name="gen_sos_call"          bits="3"  enum="dmiUnmapped"/>
+    <field name="collision_loco_id"     bits="20"/>
+
+    <!-- ordinary little-endian block (body bytes 76-95) -->
+    <align/>
+    <field name="context_pressure"                bits="16"/>
+    <field name="target_speed"                    bits="16" unit="km/h"/>
+    <field name="collision_loco_distance"         bits="32" unit="m"/>
+    <field name="override_timeout"                bits="8"  unit="s"/>
+    <field name="expiry_reverse_mode"             bits="16" unit="s"/>
+    <field name="expiry_reverse_distance"         bits="16" unit="m"/>
+    <field name="track_condition_start_distance"  bits="32" unit="m"/>
+    <field name="fsb_applied_time"                bits="8"  unit="s"/>
+    <field name="eb_applied_time"                 bits="8"  unit="s"/>
+    <field name="ack_blockstop_sos_generate_time" bits="8"  unit="s"/>
+
+    <!-- tail (body bytes 96-98) -->
+    <align/>
+    <field name="sos_station_id" bits="16"/>
+    <field name="train_type"     bits="3"  enum="dmiTrainType"/>
+    <pad bits="5"/>
+
+    <align/>
+    <field name="num coaches" bits="8"/>
+
+    <crc name="CRC" algo="jamcrc" from="3" len="107" bits="32" at="880"/>
+  </packet>
+
+
+  <!-- 0: Movement Authority -->
+  <struct name="MovementAuthority">
+    <field name="FRAME_OFFSET"        bits="4"/>
+    <field name="DEST_LOCO_SOS"       bits="4"  enum="sosType"/>
+    <field name="TRAIN_SECTION_TYPE"  bits="2"  enum="secType"/>
+    <field name="CUR_SIG_INFO"        bits="17" format="sigInfo"/>
+    <field name="CUR_SIG_ASPECT"      bits="6"  enum="sigAspect"/>
+    <field name="NEXT_SIG_ASPECT"     bits="6"  enum="sigAspect"/>
+    <field name="APPR_SIG_DIST"       bits="15" unit="m"/>
+    <field name="AUTHORITY_TYPE"      bits="2"  enum="authType"/>
+    <field name="AUTHORIZED_SPEED"    bits="6"  enum="speed6" when="AUTHORITY_TYPE==1"/>
+    <field name="MA_W_R_T_SIG"        bits="16" unit="m"/>
+    <field name="REQ_SHORTEN_MA"      bits="1"/>
+    <field name="NEW_MA"              bits="16" unit="m" when="REQ_SHORTEN_MA==1"/>
+    <field name="TRN_LEN_INFO_STS"    bits="1"/>
+    <field name="TRN_LEN_INFO_TYPE"   bits="1"  when="TRN_LEN_INFO_STS==1"/>
+    <field name="REF_FRAME_NUM_TLM"   bits="17" when="TRN_LEN_INFO_STS==1"/>
+    <field name="REF_OFFSET_INT_TLM"  bits="8"  when="TRN_LEN_INFO_STS==1"/>
+    <field name="NEXT_STN_COMM"       bits="1"/>
+    <field name="APPR_STN_ILC_IBS_ID" bits="16" when="NEXT_STN_COMM==1"/>
+  </struct>
+
+  <!-- 1: Static Speed Profile  (d = per-segment length -> seglen) -->
+  <struct name="StaticSpeedProfile">
+    <field name="LM_Speed_Info_CNT" bits="5"/>
+    <repeat name="speed" count="LM_Speed_Info_CNT" cmin="0" cmax="31">
+      <field name="d"         bits="15" role="seglen" tmpl="@%s m"/>
+      <field name="class"     bits="1"  hide="true"/>
+      <field name="u"         bits="6"  enum="speed6" tmpl="universal %s" when="class==0"/>
+      <field name="a"         bits="6"  enum="speed6" tmpl="A:%s" when="class==1"/>
+      <field name="b"         bits="6"  enum="speed6" tmpl="B:%s" when="class==1"/>
+      <field name="c"         bits="6"  enum="speed6" tmpl="C:%s" when="class==1"/>
+    </repeat>
+  </struct>
+
+  <!-- 2: Gradient Profile  (d = per-segment length -> seglen) -->
+  <struct name="GradientProfile">
+    <field name="LM_Grad_Info_CNT" bits="5"/>
+    <repeat name="grad" count="LM_Grad_Info_CNT" cmin="0" cmax="31">
+      <field name="d"     bits="15" role="seglen" tmpl="@%s m"/>
+      <field name="dir"   bits="1"  enum="gradDir" tmpl="%s"/>
+      <field name="value" bits="5"  tmpl="value=%s"/>
+    </repeat>
+  </struct>
+
+  <!-- 3: LC Gate Profile  (d = start distance from ref -> start, a point) -->
+  <struct name="LCgateProfile">
+    <field name="LM_LC_Info_CNT" bits="5"/>
+    <repeat name="lc" count="LM_LC_Info_CNT" cmin="0" cmax="31">
+      <field name="d"      bits="15" role="start" tmpl="@%s m"/>
+      <field name="id"     bits="10" enum="lcIdNumeric" tmpl="id=%s"/>
+      <field name="suffix" bits="3"  enum="lcSuffix" tmpl="suf=%s"/>
+      <field name="manned" bits="1"  enum="manned"   tmpl="%s"/>
+      <field name="class"  bits="3"  enum="lcClass"  tmpl="class=%s"/>
+      <field name="awEn"   bits="1"  tmpl="aw=%s"/>
+      <field name="awType" bits="2"  tmpl="awType=%s"/>
+    </repeat>
+  </struct>
+
+  <!-- 4: Turnout Speed.
+       ENTRIES ARE FIXED WIDTH. start/release used to carry when="speed in
+       1..18", which is wrong: the loco consumes those two fields for every
+       entry whatever the speed. Both branches of ProcessTurnout advance the
+       cursor by DIFF_DIST + REL_DIST — one reads them, the other skips them —
+       so an entry is always 5+15+12 bits. Making them conditional mis-parsed
+       any entry with a speed outside 1..18 and everything after it in the
+       sub-packet. Not caught by the captures: all five turnout sub-packets in
+       replay/ carry speed 6 only, where both readings agree. -->
+  <struct name="TurnoutSpeed">
+    <field name="TO_CNT" bits="2"/>
+    <repeat name="to" count="TO_CNT" cmin="0" cmax="3">
+      <field name="speed"   bits="5"  enum="toSpeed" tmpl="speed=%s"/>
+      <field name="start"   bits="15" role="start" tmpl="start=%s m"/>
+      <field name="release" bits="12" role="len"   tmpl="release=%s m"/>
+    </repeat>
+  </struct>
+
+  <!-- 5: Tag Linking  (dist = DIST_NXT_RFID -> taghop from the ref) -->
+  <struct name="TagLinking">
+    <field name="DIST_DUP_TAG"   bits="4"/>
+    <field name="ROUTE_RFID_CNT" bits="6"/>
+    <repeat name="tag" count="ROUTE_RFID_CNT" cmin="1" cmax="62">
+      <field name="dist"    bits="11" role="taghop" tmpl="dist=%s m"/>
+      <field name="tag"     bits="10" tmpl="tag=%s"/>
+      <field name="dup_dir" bits="1"  enum="dupTagDir" tmpl="dup_dir=%s"/>
+    </repeat>
+    <field name="LOC_RESET"               bits="1"  hide="true"/>
+    <field name="START_DIST_TO_LOC_RESET" bits="15" unit="m"        when="LOC_RESET==1"/>
+    <field name="ADJ_LOCO_DIR"            bits="2"  enum="adjLocoDir" when="LOC_RESET==1"/>
+    <field name="ABS_LOC_CORRECTION"      bits="23" unit="m"        when="LOC_RESET==1"/>
+    <field name="ADJ_LINE_CNT"            bits="3"/>
+    <repeat name="line_tin" count="ADJ_LINE_CNT" cmin="0" cmax="5">
+      <field name="tin" bits="9" tmpl="%s"/>
+    </repeat>
+    <!-- Trailing 9-bit TIN of the line this tag chain runs on. ALWAYS present,
+         including when ADJ_LINE_CNT==0. This field is what used to make
+         TagLinking look like it carried a trailing PAD BYTE: without it the
+         modelled body came up 9 bits short, so the declared sub-packet length
+         was a whole byte more than the fields could account for.
+         Verified on 19 real type-5 sub-packets (12 distinct shapes) from the
+         loco_1_1 / loco_2_1 replay captures and the 81_2 station log: with
+         this field the leftover is always 0..7 bits of ordinary byte
+         alignment, never 8..15. The value tracks the route (52/58/83 at
+         stn 527, 110 at stn 501) and sits next to the adjacent-line TIN
+         (own 83 / adjacent 84), which a pad byte would not.
+         If Annexure-C words this as "ADJ_LINE_CNT+1 line TINs" the wire bytes
+         are identical: move it into the <repeat> above with
+         count="ADJ_LINE_CNT+1". Nothing else changes. -->
+    <field name="TIN"                     bits="9"/>
+  </struct>
+
+  <!-- 6: Track Condition  (sd = start from ref, ln = length) -->
+  <struct name="TrackCondition">
+    <field name="TRACKCOND_CNT" bits="4"/>
+    <repeat name="tc" count="TRACKCOND_CNT" cmin="0" cmax="15">
+      <field name="type" bits="4"  enum="tcType" tmpl="%s"/>
+      <field name="sd"   bits="15" role="start" tmpl="@%s m"/>
+      <field name="ln"   bits="15" role="len"   tmpl="len=%s m"/>
+    </repeat>
+  </struct>
+
+  <!-- 7: Temporary Speed Restriction -->
+  <struct name="TSR">
+    <field name="TSR_STATUS"   bits="2" enum="tsrStatus"/>
+    <field name="TSR_Info_CNT" bits="5"/>
+    <repeat name="tsr" count="TSR_Info_CNT" cmin="0" cmax="31">
+      <field name="id"      bits="8"  tmpl="id=%s"/>
+      <field name="dist"    bits="15" role="start" tmpl="@%s m"/>
+      <field name="len"     bits="15" role="len"   tmpl="len=%s m"/>
+      <field name="class"   bits="1"  hide="true"/>
+      <field name="u"       bits="6"  enum="speed6" tmpl="universal %s" when="class==0"/>
+      <field name="a"       bits="6"  enum="speed6" tmpl="A:%s" when="class==1"/>
+      <field name="b"       bits="6"  enum="speed6" tmpl="B:%s" when="class==1"/>
+      <field name="c"       bits="6"  enum="speed6" tmpl="C:%s" when="class==1"/>
+      <field name="whistle" bits="2"  tmpl="whistle=%s"/>
+    </repeat>
+  </struct>
+
+
+  <packet name="LOCO_SOS" match="captype==lsos" wire="lsb-first" trailer_bytes="0">
+    <field name="in_use"                      bits="8"/>
+    <field name="source_loco_id"              bits="32"/>
+    <field name="abs_loc"                     bits="32"/>
+    <field name="movement_dir"                bits="8"/>
+    <field name="tin"                         bits="16"/>
+    <field name="train_length"                bits="16"/>
+    <field name="distance"                    bits="32"/>
+    <field name="is_access_sos_recvd"         bits="8"/>
+    <field name="is_unusual_stop_recvd"       bits="8"/>
+    <field name="is_head_on_collision_recvd"  bits="8"/>
+    <field name="is_rear_end_collision_recvd" bits="8"/>
+    <field name="is_train_parted_recvd"       bits="8"/>
+    <field name="sos_distance"                bits="32"/>
+    <field name="collision_distance"          bits="32"/>
+  </packet>
+
+  <!-- ===================================================================
+       UBA — Target_Internal: one target plus the braking curve computed
+       towards it. 452 B on the wire, all little-endian, no CRC trailer.
+
+         Target          target_location   double   8 B   @0
+                         target_speed      double   8 B   @8
+                         target_type       enum     1 B   @16   (-fshort-enums)
+         CURVE           CURVE_SEGMENT[9]        432 B   @17
+         (tail)                                    3 B   @449
+
+       CURVE_SEGMENT is 48 B packed: QuadraticEqn{A,C} then start_loc,
+       end_loc, higher_speed, lower_speed — six unaligned doubles.
+
+       Each segment is  x = A*v^2 + C,  i.e. C is the stop location and
+       A = -1/(2a) for deceleration a. Verified over all 4694 frames of
+       81_2_15092026_121737.log: end_loc == A*lower_speed^2 + C exactly,
+       and each segment's end_loc is the previous segment's start_loc
+       (the curve is continuous, as the struct comment requires).
+
+       SEGMENT COUNT — the wire says 9 slots (435 B of curve = 9*48 + 3),
+       so the build that produced this capture has ONE curve of
+       2*MAX_DEC_UNITS+1 = 9 segments (MAX_DEC_UNITS 4). The header the
+       layout was quoted from says MAX_DEC_UNITS 5 and
+       NUM_OF_CURVES_FOR_EACH_TARGET 2, which would be 22 segments and a
+       1073 B frame. Nine is what arrives; change count= here if the
+       deployed constants change.                                        -->
+  <packet name="UBA" match="captype==uba" wire="lsb-first" trailer_bytes="0">
+    <field name="target_location" type="double" prec="3" unit="m"/>
+    <field name="target_speed"    type="double" format="mps"/>
+    <field name="target_type"     bits="8" enum="ubaTargetType"/>
+    <!-- One row per segment: the ladder is what you read, not 54 loose
+         numbers. Unused slots are all-zero and are shown as such rather
+         than hidden — an empty slot is a fact about the curve. -->
+    <repeat name="seg" count="9" index0="true" sep="   ">
+      <field name="A"            type="double" format="curveA"      tmpl="A=%s"/>
+      <field name="C"            type="double" prec="3" unit="m"    tmpl="C=%s"/>
+      <field name="start_loc"    type="double" prec="3" unit="m"    tmpl="start=%s"/>
+      <field name="end_loc"      type="double" prec="3" unit="m"    tmpl="end=%s"/>
+      <field name="higher_speed" type="double" format="mps"         tmpl="hi=%s"/>
+      <field name="lower_speed"  type="double" format="mps"         tmpl="lo=%s"/>
+    </repeat>
+    <pad bits="24"/>
+    <note name="tail" text="3 B struct tail (zero in every captured frame)"/>
+  </packet>
+
+</schema>

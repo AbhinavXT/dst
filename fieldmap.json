@@ -1,0 +1,518 @@
+{
+  "_comment": "Field catalogue: what a test case may name, which packet carries it, and what its values mean. Generated from schema/kavach.xml enums, then hand-extended. Unknown names still work as raw decoder field names.",
+  "packets": {
+    "lsrp": "Loco \u2192 Stationary regular packet",
+    "slrp": "Stationary \u2192 Loco regular packet",
+    "arp": "Access Request Packet",
+    "arprecv": "Access Request Packet received from another loco",
+    "aap": "Access/Allotment Packet",
+    "dip1": "Digital inputs, bank 1 (cab, SOS, DMI buttons)",
+    "dip2": "Digital inputs, bank 2",
+    "dop1": "Digital outputs, bank 1",
+    "dmi": "DMI display packet",
+    "authkeys": "Authentication key sets from the LCU"
+  },
+  "fields": [
+    {
+      "name": "loco_mode",
+      "field": "LOCO_MODE",
+      "packet": "lsrp",
+      "desc": "Operating mode reported by the loco",
+      "values": {
+        "?": 0,
+        "stand_by": 1,
+        "staff_responsible": 2,
+        "limited_supervision": 3,
+        "full_supervision": 4,
+        "override": 5,
+        "on_sight": 6,
+        "trip": 7,
+        "post_trip": 8,
+        "reverse": 9,
+        "shunting": 10,
+        "non_leading": 11,
+        "system_failure": 12,
+        "isolation": 13
+      }
+    },
+    {
+      "name": "emergency_status",
+      "field": "EMERGENCY_STATUS",
+      "packet": "lsrp",
+      "desc": "Emergency condition",
+      "values": {
+        "none": 0
+      }
+    },
+    {
+      "name": "movement_dir",
+      "field": "MOVEMENT_DIR",
+      "packet": "lsrp",
+      "desc": "Direction of travel"
+    },
+    {
+      "name": "train_speed",
+      "field": "TRAIN_SPEED",
+      "packet": "lsrp",
+      "desc": "Reported speed, km/h"
+    },
+    {
+      "name": "abs_loco_loc",
+      "field": "ABS_LOCO_LOC",
+      "packet": "lsrp",
+      "desc": "Absolute loco location, m"
+    },
+    {
+      "name": "train_length",
+      "field": "TRAIN_LENGTH",
+      "packet": "lsrp",
+      "desc": "Train length, m"
+    },
+    {
+      "name": "frame_num",
+      "field": "FRAME_NUM",
+      "packet": "lsrp",
+      "desc": "Frame counter; low 3 bits select the health group"
+    },
+    {
+      "name": "sig_ov",
+      "field": "SIG_OV",
+      "packet": "lsrp",
+      "desc": "Signal override flag",
+      "values": {
+        "clear": 0,
+        "set": 1
+      }
+    },
+    {
+      "name": "info_ack",
+      "field": "Info_Ack",
+      "packet": "lsrp",
+      "desc": "Information acknowledgement"
+    },
+    {
+      "name": "brake_applied",
+      "field": "Brake_Applied",
+      "packet": "lsrp",
+      "desc": "Brake application state"
+    },
+    {
+      "name": "last_rfid_tag",
+      "field": "LAST_RFID_TAG",
+      "packet": "lsrp",
+      "desc": "Most recent RFID tag id"
+    },
+    {
+      "name": "tag_link_info",
+      "field": "TAG_LINK_INFO",
+      "packet": "lsrp",
+      "desc": "Tag linking status (codes not yet labelled)"
+    },
+    {
+      "name": "tag_dup",
+      "field": "TAG_DUP",
+      "packet": "lsrp",
+      "desc": "Duplicate tag indication"
+    },
+    {
+      "name": "tin",
+      "field": "TIN",
+      "packet": "lsrp",
+      "desc": "Train identification number"
+    },
+    {
+      "name": "loco_health",
+      "field": "Loco_Health",
+      "packet": "lsrp",
+      "desc": "Multiplexed health group; use ~NAME to match a fault"
+    },
+    {
+      "name": "system_internal_fault",
+      "field": "B0 SYSTEM_INTERNAL_FAULT",
+      "packet": "lsrp",
+      "desc": "SIF bit B0, health group 1",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "speed_sensor1_fault",
+      "field": "B1 SPEED_SENSOR1_FAULT",
+      "packet": "lsrp",
+      "desc": "SIF bit B1, health group 1",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "eb_drive_fault",
+      "field": "B2 EB_DRIVE_FAULT",
+      "packet": "lsrp",
+      "desc": "SIF bit B2, health group 1",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "eb_application_feedback_fault",
+      "field": "B3 EB_APPLICATION_FEEDBACK_FAULT",
+      "packet": "lsrp",
+      "desc": "SIF bit B3, health group 1",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "rfid_reader1_link_fail",
+      "field": "B4 RFID_READER1_LINK_FAIL",
+      "packet": "lsrp",
+      "desc": "SIF bit B4, health group 1",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "rfid_reader2_link_fail",
+      "field": "B5 RFID_READER2_LINK_FAIL",
+      "packet": "lsrp",
+      "desc": "SIF bit B5, health group 1",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "radio1_link_fail",
+      "field": "B6 RADIO1_LINK_FAIL",
+      "packet": "lsrp",
+      "desc": "SIF bit B6, health group 3",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "radio2_link_fail",
+      "field": "B7 RADIO2_LINK_FAIL",
+      "packet": "lsrp",
+      "desc": "SIF bit B7, health group 3",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "lp_ocip_dmi1_link_fail",
+      "field": "B8 LP_OCIP_DMI1_LINK_FAIL",
+      "packet": "lsrp",
+      "desc": "SIF bit B8, health group 3",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "lp_ocip_dmi2_link_fail",
+      "field": "B9 LP_OCIP_DMI2_LINK_FAIL",
+      "packet": "lsrp",
+      "desc": "SIF bit B9, health group 3",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "gps1_pps1_fail",
+      "field": "B10 GPS1_PPS1_FAIL",
+      "packet": "lsrp",
+      "desc": "SIF bit B10, health group 3",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "gps2_pps2_fail",
+      "field": "B11 GPS2_PPS2_FAIL",
+      "packet": "lsrp",
+      "desc": "SIF bit B11, health group 3",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "gps1_view_not_available",
+      "field": "B12 GPS1_VIEW_NOT_AVAILABLE",
+      "packet": "lsrp",
+      "desc": "SIF bit B12, health group 5",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "gps2_view_not_available",
+      "field": "B13 GPS2_VIEW_NOT_AVAILABLE",
+      "packet": "lsrp",
+      "desc": "SIF bit B13, health group 5",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "tag_linking_incorrect",
+      "field": "B14 TAG_LINKING_INCORRECT",
+      "packet": "lsrp",
+      "desc": "SIF bit B14, health group 5",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "gsm1_fault",
+      "field": "B15 GSM1_FAULT",
+      "packet": "lsrp",
+      "desc": "SIF bit B15, health group 5",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "gsm2_fault",
+      "field": "B16 GSM2_FAULT",
+      "packet": "lsrp",
+      "desc": "SIF bit B16, health group 5",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "radio1_rssi_weak",
+      "field": "B17 RADIO1_RSSI_WEAK",
+      "packet": "lsrp",
+      "desc": "SIF bit B17, health group 5",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "radio2_rssi_weak",
+      "field": "B18 RADIO2_RSSI_WEAK",
+      "packet": "lsrp",
+      "desc": "SIF bit B18, health group 7",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "session_key_mismatch",
+      "field": "B19 SESSION_KEY_MISMATCH",
+      "packet": "lsrp",
+      "desc": "SIF bit B19, health group 7",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "remaining_keys_less_than_5",
+      "field": "B20 REMAINING_KEYS_LESS_THAN_5",
+      "packet": "lsrp",
+      "desc": "SIF bit B20, health group 7",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "biu_connectivity_fault",
+      "field": "B21 BIU_CONNECTIVITY_FAULT",
+      "packet": "lsrp",
+      "desc": "SIF bit B21, health group 7",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "speed_sensor2_fault",
+      "field": "B22 SPEED_SENSOR2_FAULT",
+      "packet": "lsrp",
+      "desc": "SIF bit B22, health group 7",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "cab_input_fault",
+      "field": "B23 CAB_INPUT_FAULT",
+      "packet": "lsrp",
+      "desc": "SIF bit B23, health group 7",
+      "values": {
+        "ok": 0,
+        "fault": 1
+      }
+    },
+    {
+      "name": "cab1_active",
+      "field": "24 cab1_active",
+      "packet": "dip1",
+      "desc": "Cab 1 active",
+      "values": {
+        "inactive": 0,
+        "active": 1
+      }
+    },
+    {
+      "name": "cab1_forward",
+      "field": "25 cab1_forward",
+      "packet": "dip1",
+      "desc": "Cab 1 forward",
+      "values": {
+        "inactive": 0,
+        "active": 1
+      }
+    },
+    {
+      "name": "cab1_reverse",
+      "field": "26 cab1_reverse",
+      "packet": "dip1",
+      "desc": "Cab 1 reverse",
+      "values": {
+        "inactive": 0,
+        "active": 1
+      }
+    },
+    {
+      "name": "cab2_active",
+      "field": "27 cab2_active",
+      "packet": "dip1",
+      "desc": "Cab 2 active",
+      "values": {
+        "inactive": 0,
+        "active": 1
+      }
+    },
+    {
+      "name": "cab2_forward",
+      "field": "28 cab2_forward",
+      "packet": "dip1",
+      "desc": "Cab 2 forward",
+      "values": {
+        "inactive": 0,
+        "active": 1
+      }
+    },
+    {
+      "name": "cab2_reverse",
+      "field": "29 cab2_reverse",
+      "packet": "dip1",
+      "desc": "Cab 2 reverse",
+      "values": {
+        "inactive": 0,
+        "active": 1
+      }
+    },
+    {
+      "name": "dmi1_sos_nc",
+      "field": "1 dmi1_sos_nc",
+      "packet": "dip1",
+      "desc": "DMI1 SOS, normally closed",
+      "values": {
+        "inactive": 0,
+        "active": 1
+      }
+    },
+    {
+      "name": "dmi1_sos_no",
+      "field": "2 dmi1_sos_no",
+      "packet": "dip1",
+      "desc": "DMI1 SOS, normally open",
+      "values": {
+        "inactive": 0,
+        "active": 1
+      }
+    },
+    {
+      "name": "dmi2_sos_nc",
+      "field": "9 dmi2_sos_nc",
+      "packet": "dip1",
+      "desc": "DMI2 SOS, normally closed",
+      "values": {
+        "inactive": 0,
+        "active": 1
+      }
+    },
+    {
+      "name": "dmi2_sos_no",
+      "field": "10 dmi2_sos_no",
+      "packet": "dip1",
+      "desc": "DMI2 SOS, normally open",
+      "values": {
+        "inactive": 0,
+        "active": 1
+      }
+    },
+    {
+      "name": "key_days_remaining",
+      "field": "key_days_remaining",
+      "packet": "",
+      "desc": "Days until the current auth key set expires (from the AUTH_KEYS block)"
+    },
+    {
+      "name": "key_time_now",
+      "field": "key_time_now",
+      "packet": "",
+      "desc": "Loco clock as reported in the AUTH_KEYS block"
+    },
+    {
+      "name": "auth_keys",
+      "field": "AUTH_KEYS",
+      "packet": "",
+      "desc": "Auth key set summary"
+    },
+    {
+      "name": "key_sets",
+      "field": "key sets",
+      "packet": "authkeys",
+      "desc": "Number of authentication key sets held"
+    },
+    {
+      "name": "key0_valid_from",
+      "field": "idx0.valid_from",
+      "packet": "authkeys",
+      "desc": "Key set 0 validity start"
+    },
+    {
+      "name": "key0_valid_to",
+      "field": "idx0.valid_to",
+      "packet": "authkeys",
+      "desc": "Key set 0 validity end"
+    },
+    {
+      "name": "key1_valid_from",
+      "field": "idx1.valid_from",
+      "packet": "authkeys",
+      "desc": "Key set 1 validity start"
+    },
+    {
+      "name": "key1_valid_to",
+      "field": "idx1.valid_to",
+      "packet": "authkeys",
+      "desc": "Key set 1 validity end"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+# qmake / Qt Creator build output — 45 .o files and 39 generated moc_*.cpp
+# were checked in alongside the sources.
+*.o
+*.obj
+moc_*.cpp
+moc_*.h
+qrc_*.cpp
+ui_*.h
+Makefile*
+object_script.*
+.qmake.stash
+*.pro.user*
+debug/
+release/
+build-*/
+tests/dltests
+tests/dlconsole.ini
+tools/
+tests/menuaudit
+
+# Throwaway screenshot harness output — a 2.6 MB binary does not belong in the tree.
+tests/shot
+dltests
+menuaudit
+
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Gate output
+build-verify/

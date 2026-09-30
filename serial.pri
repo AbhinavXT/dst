@@ -1,0 +1,15 @@
+# Session 85/86: the serial terminal is OPTIONAL at build time.
+#
+# With Qt's Serial Port module present (the normal case) it is built in and
+# DL_HAVE_SERIAL is defined. Without it -- or with `qmake CONFIG+=no_serial`
+# -- DLConsole still builds and runs on Ethernet alone; Tools > Serial Port
+# Terminal is then present but disabled, and says why.
+!no_serial:qtHaveModule(serialport) {
+    QT      += serialport
+    DEFINES += DL_HAVE_SERIAL
+    CONFIG  += dl_serial
+    SOURCES += $$PWD/seriallink.cpp $$PWD/serialconsolewindow.cpp
+    HEADERS += $$PWD/seriallink.h   $$PWD/serialconsolewindow.h
+} else {
+    message("DLConsole: building without the serial terminal (Qt Serial Port module not used)")
+}

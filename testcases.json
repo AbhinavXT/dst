@@ -1,0 +1,257 @@
+[
+  {
+    "id": "32.9.2",
+    "title": "Health bits 0-5 reported on frames ending 001",
+    "query": "field:FRAME_NUM&7=1",
+    "cover_field": "FRAME_NUM",
+    "cover_values": [
+      1,
+      9,
+      17,
+      25,
+      33,
+      41,
+      49,
+      57,
+      65,
+      73,
+      81,
+      89,
+      97
+    ],
+    "note": "Coverage is the document's own simulate-with list. Frame numbers are matched modulo 100 in the SIF text; the values here are the low three bits, which is what the firmware switches on."
+  },
+  {
+    "id": "32.9.3",
+    "title": "Health bits 6-11 reported on frames ending 011",
+    "query": "field:FRAME_NUM&7=3",
+    "cover_field": "FRAME_NUM",
+    "cover_values": [
+      3,
+      11,
+      19,
+      27,
+      35,
+      43,
+      51,
+      59,
+      67,
+      75,
+      83,
+      91,
+      99
+    ]
+  },
+  {
+    "id": "32.9.4",
+    "title": "Health bits 12-17 reported on frames ending 101",
+    "query": "field:FRAME_NUM&7=5",
+    "cover_field": "FRAME_NUM",
+    "cover_values": [
+      5,
+      13,
+      21,
+      29,
+      37,
+      45,
+      53,
+      61,
+      69,
+      77,
+      85,
+      93
+    ]
+  },
+  {
+    "id": "32.9.5",
+    "title": "Health bits 18-23 reported on frames ending 111",
+    "query": "field:FRAME_NUM&7=7",
+    "cover_field": "FRAME_NUM",
+    "cover_values": [
+      7,
+      15,
+      23,
+      31,
+      39,
+      47,
+      55,
+      63,
+      71,
+      79,
+      87,
+      95
+    ]
+  },
+  {
+    "id": "32.9.2/B0",
+    "title": "SYSTEM_INTERNAL_FAULT reported",
+    "query": "field:FRAME_NUM&7=1 field:system_internal_fault=fault"
+  },
+  {
+    "id": "32.9.2/B4",
+    "title": "RFID_READER1_LINK_FAIL reported",
+    "query": "field:FRAME_NUM&7=1 field:rfid_reader1_link_fail=fault"
+  },
+  {
+    "id": "32.9.3/B6",
+    "title": "RADIO1_LINK_FAIL reported",
+    "query": "field:FRAME_NUM&7=3 field:radio1_link_fail=fault"
+  },
+  {
+    "id": "32.9.3/B10",
+    "title": "GPS1_PPS1_FAIL reported",
+    "query": "field:FRAME_NUM&7=3 field:gps1_pps1_fail=fault"
+  },
+  {
+    "id": "32.9.4/B14",
+    "title": "TAG_LINKING_INCORRECT reported",
+    "query": "field:FRAME_NUM&7=5 field:tag_linking_incorrect=fault"
+  },
+  {
+    "id": "32.9.5/B19",
+    "title": "SESSION_KEY_MISMATCH reported",
+    "query": "field:FRAME_NUM&7=7 field:session_key_mismatch=fault"
+  },
+  {
+    "id": "32.9.5/B23",
+    "title": "CAB_INPUT_FAULT reported",
+    "query": "field:FRAME_NUM&7=7 field:cab_input_fault=fault"
+  },
+  {
+    "id": "32.9.5/B19-clear",
+    "title": "SESSION_KEY_MISMATCH clear when healthy",
+    "query": "field:FRAME_NUM&7=7 field:session_key_mismatch=ok"
+  },
+  {
+    "id": "32.7/SIG_OV",
+    "title": "SIG_OV set when signal overridden",
+    "query": "field:sig_ov=set"
+  },
+  {
+    "id": "32.x/EMERG",
+    "title": "EMERGENCY_STATUS non-zero during an emergency",
+    "query": "field:emergency_status!=0"
+  },
+  {
+    "id": "32.x/MODE",
+    "title": "LOCO_MODE reported",
+    "query": "field:LOCO_MODE"
+  },
+  {
+    "id": "SEC/CBC",
+    "title": "Authentication rejection surfaced",
+    "query": "\"PACKET REJECTED\" OR \"INVALID CBC MAC\"",
+    "note": "Not a SIF clause: an integrity failure that must be visible if it occurs at any point during the run."
+  },
+  {
+    "id": "32.x/SOS-EMERG",
+    "title": "SOS input is followed by an emergency status",
+    "given": "field:dmi1_sos_no=1",
+    "then": "field:emergency_status!=0",
+    "within_ms": 5000
+  },
+  {
+    "_comment": "One shape, three numbered SIF clauses. The trigger and the result are identical; only the mode the loco starts in differs, which is exactly what 'expand' is for.",
+    "id": "32.x/STANDBY-{code}",
+    "title": "From {mode_name}, entering Stand_By when no cab is active",
+    "sequence": [
+      {
+        "label": "in {mode_name}",
+        "match": "field:loco_mode={mode}"
+      },
+      {
+        "label": "no cab active",
+        "match": "field:cab1_active=inactive field:cab2_active=inactive",
+        "within_ms": 0
+      },
+      {
+        "label": "Stand_By",
+        "match": "field:loco_mode=stand_by",
+        "within_ms": 10000
+      }
+    ],
+    "expand": [
+      {
+        "code": "FS",
+        "mode": "4",
+        "mode_name": "Full Supervision"
+      },
+      {
+        "code": "LS",
+        "mode": "3",
+        "mode_name": "Limited Supervision"
+      },
+      {
+        "code": "SR",
+        "mode": "2",
+        "mode_name": "Staff Responsible"
+      },
+      {
+        "code": "OS",
+        "mode": "6",
+        "mode_name": "On Sight"
+      }
+    ]
+  },
+  {
+    "id": "32.x/CAB-ACTIVE",
+    "title": "Loco leaves Stand_By once a cab is made active",
+    "sequence": [
+      {
+        "label": "in Stand_By",
+        "match": "field:loco_mode=stand_by"
+      },
+      {
+        "label": "cab activated",
+        "match": "field:cab1_active=active",
+        "within_ms": 0
+      },
+      {
+        "label": "mode changed",
+        "match": "field:loco_mode!=stand_by",
+        "within_ms": 10000
+      }
+    ]
+  },
+  {
+    "_comment": "Foreign tag: ONE trigger with several required consequences. They arrive in different packets and in no guaranteed order, but every one is required \u2014 a case that passed when only two of four happened would be worse than no check.",
+    "id": "32.x/FOREIGN-TAG",
+    "title": "Foreign tag causes SR mode, emergency brake and loss of position report",
+    "sequence": [
+      {
+        "label": "foreign tag reported",
+        "match": "field:tag_link_info!=0 OR \"foreign\" OR \"FOREIGN\""
+      },
+      {
+        "label": "loco reacts",
+        "within_ms": 15000,
+        "all_of": [
+          {
+            "label": "Staff Responsible mode",
+            "match": "field:loco_mode=staff_responsible"
+          },
+          {
+            "label": "brake applied",
+            "match": "field:brake_applied!=0"
+          },
+          {
+            "label": "emergency status set",
+            "match": "field:emergency_status!=0"
+          }
+        ]
+      }
+    ],
+    "note": "TAG_LINK_INFO is a 3-bit field whose non-zero codes are not yet labelled in the schema \u2014 confirm which code means 'foreign' and tighten this to that value. The text alternatives catch the DMI/diagnostic wording in the meantime."
+  },
+  {
+    "id": "SEC/KEY-EXPIRY",
+    "title": "Authentication key set still valid with usable margin",
+    "query": "field:key_days_remaining>14",
+    "note": "AUTH_KEYS is a multi-line text block, reassembled from the separate datagrams its lines arrive in. REMAINING_KEYS_LESS_THAN_5 and SESSION_KEY_MISMATCH are both loco health faults, so a set close to expiry predicts a fault rather than reporting one."
+  },
+  {
+    "id": "SEC/KEY-PRESENT",
+    "title": "Loco reports its authentication key sets",
+    "query": "field:auth_keys~key set"
+  }
+]

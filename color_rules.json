@@ -1,0 +1,195 @@
+[
+  {
+    "pattern": "\\bNo\\s+Error\\b",
+    "fg": "grey",
+    "bg": "#f0f0f0",
+    "fg_dark": "#a0a0a0",
+    "bg_dark": "#383838",
+    "severity": "info",
+    "_note": "must precede \\bError\\b"
+  },
+  {
+    "pattern": "\\bIN\\s*[-_ ]?SYNC\\b",
+    "fg": "#0b6b2f",
+    "bg": "#e3f7e8",
+    "fg_dark": "#7fdf9f",
+    "bg_dark": "#16301f",
+    "severity": "info",
+    "direction": "none",
+    "_note": "healthy sync; direction:none suppresses the IN false positive"
+  },
+  {
+    "pattern": "\\bPACKET\\s+REJECTED\\b|\\bINVALID\\s+CBC\\s+MAC\\b",
+    "fg": "#7a0000",
+    "bg": "#ffdada",
+    "fg_dark": "#ff9c9c",
+    "bg_dark": "#4a1414",
+    "severity": "error",
+    "case_sensitive": true,
+    "_note": "authentication/integrity rejection"
+  },
+  {
+    "pattern": "\\bINVALID\\b",
+    "fg": "#b00000",
+    "bg": "#ffe3e3",
+    "fg_dark": "#ff8a8a",
+    "bg_dark": "#4a1c1c",
+    "severity": "error",
+    "case_sensitive": true
+  },
+  {
+    "pattern": "\\bFAULTY\\b",
+    "fg": "#7a0000",
+    "bg": "#ffdada",
+    "fg_dark": "#ff9c9c",
+    "bg_dark": "#4a1414",
+    "severity": "error",
+    "case_sensitive": true
+  },
+  {
+    "pattern": "\\bFAIL(ED|URE|S)?\\b",
+    "fg": "#b00000",
+    "bg": "#ffe3e3",
+    "fg_dark": "#ff8a8a",
+    "bg_dark": "#4a1c1c",
+    "severity": "error",
+    "_note": "deliberately NOT matching 'fault: [n]', which is a status field: it read [1] in all 158 occurrences of a healthy capture, so treating it as a fault would be 158 false alarms"
+  },
+  {
+    "pattern": "\\bError\\b",
+    "fg": "darkred",
+    "bg": "#ffe0e0",
+    "fg_dark": "#ff8080",
+    "bg_dark": "#5a2020",
+    "severity": "error",
+    "_note": "does not match DMI_ERR_2, which is a counter line"
+  },
+  {
+    "pattern": "\\bWarn(ing)?\\b",
+    "fg": "darkorange",
+    "bg": "#fff0d0",
+    "fg_dark": "#ffb060",
+    "bg_dark": "#4a3010",
+    "severity": "warn"
+  },
+  {
+    "pattern": "\\bACCESS\\s+REQUEST\\s+MSG\\b|\\bGOT\\s+ACCESS\\s+REQ\\b",
+    "fg": "#5b2d8e",
+    "bg": "#f2e8fb",
+    "fg_dark": "#c9a3f0",
+    "bg_dark": "#2b1c3d",
+    "case_sensitive": true,
+    "_note": "access request, either direction of the exchange"
+  },
+  {
+    "pattern": "\\bACCESS\\s*[-_ ]?AUTH\\w*\\b",
+    "fg": "#3b3fa0",
+    "bg": "#e8eafc",
+    "fg_dark": "#a8b0f5",
+    "bg_dark": "#1e2145",
+    "case_sensitive": true
+  },
+  {
+    "pattern": "\\bAUTH\\w*\\s*[-_ ]?KEYS?\\b",
+    "fg": "#1f5fa8",
+    "bg": "#e4f0fb",
+    "fg_dark": "#8fc3f0",
+    "bg_dark": "#152b40",
+    "case_sensitive": true
+  },
+  {
+    "pattern": "\\bAUTHORITY\\s+DATA\\b",
+    "fg": "#1f5fa8",
+    "bg": "#eef6fc",
+    "fg_dark": "#8fc3f0",
+    "bg_dark": "#152b40",
+    "case_sensitive": true
+  },
+  {
+    "pattern": "SOS:\\s*\\[[1-9]",
+    "fg": "#7a0000",
+    "bg": "#ffd0d0",
+    "fg_dark": "#ff9c9c",
+    "bg_dark": "#4a1414",
+    "severity": "error",
+    "case_sensitive": true,
+    "_note": "non-zero SOS only; SOS: [0] is the routine healthy state"
+  },
+  {
+    "pattern": "\\bSKAVACH\\s*[-_ ]?LKAVACH\\b.*\\bREGULAR\\b.*\\bPKT\\b",
+    "fg": "#4a5a6a",
+    "bg": "#eef2f5",
+    "fg_dark": "#8fa3b5",
+    "bg_dark": "#232b31",
+    "case_sensitive": true
+  },
+  {
+    "pattern": "\\bLKAVACH\\s*[-_ ]?SKAVACH\\b.*\\bREGULAR\\b.*\\bPKT\\b",
+    "fg": "#5a5a4a",
+    "bg": "#f5f3ee",
+    "fg_dark": "#b5ad8f",
+    "bg_dark": "#312e23",
+    "case_sensitive": true
+  },
+  {
+    "pattern": "\\bACK\\s+PROFILE\\b",
+    "fg": "#6a6a6a",
+    "bg": "#f4f4f4",
+    "fg_dark": "#9a9a9a",
+    "bg_dark": "#2c2c2c",
+    "case_sensitive": true,
+    "_note": "440 of 4164 messages in the sample capture; muted so it does not dominate the view"
+  },
+  {
+    "pattern": "\\bCRC:\\s*\\[",
+    "fg": "#6a6a6a",
+    "bg": "#f4f4f4",
+    "fg_dark": "#9a9a9a",
+    "bg_dark": "#2c2c2c",
+    "case_sensitive": true,
+    "_note": "CRC/Target CRC pairs; a MISMATCH cannot be detected by regex (it needs the two values compared) \u2014 the field inspector's CRC row is the check for that"
+  },
+  {
+    "pattern": "^\\s*(RTC|GPS)\\b",
+    "fg": "#0d6b6b",
+    "bg": "#e4f6f6",
+    "fg_dark": "#84d6d6",
+    "bg_dark": "#12312f",
+    "case_sensitive": true,
+    "_note": "anchored: only when the message STARTS with RTC/GPS, so a fault mentioning RTC still reads as a fault"
+  },
+  {
+    "pattern": "\\bRAD\\b.*\\b(IN|OUT)\\b",
+    "fg": "darkblue",
+    "bg": "#ffd0e0",
+    "fg_dark": "#9ec5ff",
+    "bg_dark": "#3a2230",
+    "case_sensitive": true
+  },
+  {
+    "pattern": "\\bCAN\\b.*\\b(IN|OUT)\\b",
+    "fg": "darkgreen",
+    "bg": "#fffacd",
+    "fg_dark": "#9ed29e",
+    "bg_dark": "#2a3320",
+    "case_sensitive": true
+  },
+  {
+    "pattern": "\\bIN\\b",
+    "fg": "darkblue",
+    "bg": "#e0f0ff",
+    "fg_dark": "#7fb3ff",
+    "bg_dark": "#1e2a3c",
+    "direction": "in",
+    "case_sensitive": true
+  },
+  {
+    "pattern": "\\bOUT\\b",
+    "fg": "darkgreen",
+    "bg": "#e0ffe0",
+    "fg_dark": "#7fcc7f",
+    "bg_dark": "#1e3a1e",
+    "direction": "out",
+    "case_sensitive": true
+  }
+]
