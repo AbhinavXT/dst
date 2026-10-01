@@ -615,6 +615,16 @@ MainWindow::MainWindow(QWidget *parent)
     // touched here; one opens only when the operator presses Open.
     m_serial = new SerialManager(m_dispatcher, this);
     connect(m_serial, &SerialManager::portsChanged, this, &MainWindow::rebuildSerialChips);
+    {
+        // Health moves on its own (lines per second, the gap since the last
+        // line), so the chips are refreshed each second while any is shown.
+        auto *chipTimer = new QTimer(this);
+        chipTimer->setInterval(1000);
+        connect(chipTimer, &QTimer::timeout, this, [this]() {
+            if (m_serialChips && m_serialChips->isVisible()) refreshSerialChips();
+        });
+        chipTimer->start();
+    }
 #endif
     connect(m_dispatcher, &MessageDispatcher::entryAppended, m_statusPins, &StatusPins::onEntry);
 

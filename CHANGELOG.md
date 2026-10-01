@@ -11,6 +11,77 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-104"></a>
+## Session 104 — Serial: line health per port
+
+From the serial test report: "Line health per port: lines per second,
+longest gap, lines that fail to decode, framing/parity error counts. A
+wrong baud rate shows up immediately as 100% failing to decode."
+
+### What the operator sees
+
+- **In the terminal**, next to the status line:
+  `12.0 lines/s · 100% decode · longest gap 1.2 s · 0 driver errors`.
+  Once at least 10 lines have arrived and fewer than half decode, it turns
+  the warning colour and adds "(check baud and line settings)".
+- **On the status-bar chip**: `⚠ COM5` in the warning colour when the
+  lines do not decode, otherwise `● COM5`. The tooltip carries the same
+  health line, refreshed each second, so a port at the wrong baud is visible
+  with no terminal open.
+- **Reset** (in the terminal) clears the health along with the counters.
+  Reopening a port starts its health afresh.
+
+### Definitions
+
+- **Decodes**: a well-formed `@` capture line of a type the console knows
+  (`CaptureDecoder::parseLine`, `type != Unknown`). It is cheap enough for
+  every line of every port, and it is exactly what wrong line settings
+  break. A truncated but well-formed frame still counts. An `@` line of an
+  unknown type does not.
+- **Lines/s**: lines within the last 5 s, divided by 5.
+- **Longest gap**: between two lines, since the port opened.
+- **Driver errors**: every error the driver reported, including the ones a
+  burst folds into a single report (session 101).
+- **Health counts every line**, whether or not it is fed to the console.
+
+### Framing and parity, said plainly
+
+Qt 5.15 marks `FramingError` and `ParityError` obsolete and does not emit
+them. Separate framing/parity counts would therefore always read 0, which is
+worse than none. The decode rate is the signal for wrong settings instead,
+and the tooltip says so.
+
+Files: `serialmanager.h/.cpp` (`SerialLineHealth`, `health()`,
+`healthText()`), `seriallink.h/.cpp` (`errorCount()`),
+`serialconsolewindow.h/.cpp`, `mainwindow*.cpp` (chip refresh).
+
+### Tests
+
+`tests/test_session104.cpp`, 25 checks:
+
+- which real lines decode (`@dop1`, `@lsrp`) and which do not (wrong-baud
+  bytes, a prompt, an unknown `@` type);
+- the rate, gap and judging arithmetic;
+- five errors in a burst count as five;
+- over a pty, 12 real lines give 100%, shown in the terminal; 12
+  wrong-baud lines give 0%, failing, with the label in the warning colour
+  and naming what to check;
+- health counts lines that are not fed to the console;
+- Reset and reopening start afresh.
+
+Menu audit (+1): wrong-baud bytes on a port in the real MainWindow turn
+its chip into `⚠`, with "check baud" in the tooltip. The audit's port does
+not feed the console, because a later check counts that window's tabs (the
+first run of the gate caught exactly that).
+
+Gate: 11/11 validators, `dltests` 160 suites / 5188 checks, menu audit,
+smoke. All green.
+
+Not tested: a real adapter at a genuinely wrong baud rate. The garbage here
+is a fixed byte pattern standing in for one.
+
+---
+
 <a id="session-103"></a>
 ## Session 103 — Serial: read on its own thread; low-latency FTDI
 

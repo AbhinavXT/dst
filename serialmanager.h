@@ -29,11 +29,47 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QVector>
 
 #include "seriallink.h"
 
 class MessageDispatcher;
 class QSettings;
+
+// Line health of one port (session 104): is the card talking, and are we
+// reading it right? A wrong baud rate shows up at once as ~0% decoding.
+//
+// "Decodes" = a well-formed @ capture line of a type the console knows
+// (CaptureDecoder::parseLine). That is deliberately cheap — every line of
+// every port goes through it — and it is what wrong line settings break.
+class SerialLineHealth
+{
+public:
+    void reset() { *this = SerialLineHealth(); }
+    void note(bool decodes, qint64 ms);
+
+    struct Stats {
+        int    lines = 0;
+        int    decoded = 0;
+        double perSecond = 0;          // over the last kRateWindowMs
+        qint64 longestGapMs = 0;       // between two lines, since open
+        qint64 sinceLastMs = -1;       // -1: no line yet
+        int    decodePercent() const { return lines ? int(qRound(100.0 * decoded / lines)) : 100; }
+        // Enough lines to judge, and most of them garbage.
+        bool   failing() const { return lines >= kJudgeAfter && decodePercent() < 50; }
+    };
+    Stats stats(qint64 nowMs) const;
+
+    static bool lineDecodes(const QByteArray &line);
+    static constexpr qint64 kRateWindowMs = 5000;
+    static constexpr int    kJudgeAfter = 10;
+
+private:
+    int    m_lines = 0, m_decoded = 0;
+    qint64 m_lastMs = -1;
+    qint64 m_longestGapMs = 0;
+    QVector<qint64> m_recent;          // line times inside the rate window
+};
 
 class SerialManager : public QObject
 {
@@ -62,7 +98,13 @@ public:
     void setFeed(const QString &portName, bool on);
     bool feeds(const QString &portName) const;
     int  fedLines(const QString &portName) const;
-    void resetFedLines(const QString &portName);
+    void resetFedLines(const QString &portName);     // and the line health
+
+    // Line health of a port since it opened.
+    SerialLineHealth::Stats health(const QString &portName, qint64 nowMs) const;
+    // One line for a status bar or tooltip: "12.0 lines/s · 100% decode ·
+    // longest gap 1.2 s · 0 driver errors".
+    QString healthText(const QString &portName, qint64 nowMs) const;
 
     // The console tab a port feeds.
     static constexpr quint8 kSerialSourceId = 254;
@@ -86,6 +128,7 @@ private:
         SerialLink *link = nullptr;
         bool feed = true;
         int  fedLines = 0;
+        SerialLineHealth health;
     };
     static QString key(const QString &portName) { return portName.trimmed().toUpper(); }
     void onLine(const QString &key, const QByteArray &line, qint64 ms);

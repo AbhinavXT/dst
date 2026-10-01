@@ -559,6 +559,7 @@ private:
     void buildStatusBar();             // mainwindow_status.cpp
     void openSerialTerminal(const QString &port = QString());   // mainwindow_tools.cpp
     void rebuildSerialChips();                                   // mainwindow_status.cpp
+    void refreshSerialChips();                                   // tooltips and health, each second
 
     // 2f: refresh tab text colors based on staleness + visibility.
     void refreshTabHealth();

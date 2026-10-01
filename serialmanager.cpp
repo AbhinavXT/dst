@@ -1,5 +1,6 @@
 #include "serialmanager.h"
 
+#include "capturedecoder.h"
 #include "messagedispatcher.h"
 
 #include <QSettings>
@@ -36,7 +37,11 @@ SerialLink *SerialManager::linkFor(const QString &portName)
     e.link->setIdleFlushMs(300);
     connect(e.link, &SerialLink::lineReceived, this,
             [this, k](const QByteArray &line, qint64 ms) { onLine(k, line, ms); });
-    connect(e.link, &SerialLink::opened, this, &SerialManager::portsChanged);
+    connect(e.link, &SerialLink::opened, this, [this, k]() {
+        auto it = m_ports.find(k);
+        if (it != m_ports.end()) it->health.reset();     // health is per session
+        emit portsChanged();
+    });
     connect(e.link, &SerialLink::closed, this, &SerialManager::portsChanged);
     m_ports.insert(k, e);
     return e.link;
@@ -90,13 +95,38 @@ int SerialManager::fedLines(const QString &portName) const
 void SerialManager::resetFedLines(const QString &portName)
 {
     auto it = m_ports.find(key(portName));
-    if (it != m_ports.end()) it->fedLines = 0;
+    if (it != m_ports.end()) {
+        it->fedLines = 0;
+        it->health.reset();
+    }
+}
+
+SerialLineHealth::Stats SerialManager::health(const QString &portName, qint64 nowMs) const
+{
+    const auto it = m_ports.constFind(key(portName));
+    return it == m_ports.constEnd() ? SerialLineHealth::Stats() : it->health.stats(nowMs);
+}
+
+QString SerialManager::healthText(const QString &portName, qint64 nowMs) const
+{
+    const SerialLineHealth::Stats h = health(portName, nowMs);
+    const SerialLink *l = link(portName);
+    const quint64 errs = l ? l->errorCount() : 0;
+    QString t = tr("%1 lines/s").arg(h.perSecond, 0, 'f', 1);
+    t += h.lines ? tr(" · %1% decode").arg(h.decodePercent()) : tr(" · no lines yet");
+    if (h.failing()) t += tr(" (check baud and line settings)");
+    if (h.longestGapMs > 0) t += tr(" · longest gap %1 s").arg(h.longestGapMs / 1000.0, 0, 'f', 1);
+    t += errs == 1 ? tr(" · 1 driver error") : tr(" · %1 driver errors").arg(errs);
+    return t;
 }
 
 void SerialManager::onLine(const QString &k, const QByteArray &line, qint64 ms)
 {
     auto it = m_ports.find(k);
-    if (it == m_ports.end() || !it->feed || !m_dispatcher || line.trimmed().isEmpty()) return;
+    if (it == m_ports.end() || line.trimmed().isEmpty()) return;
+    // Health counts every line, fed or not: it is about the wire.
+    it->health.note(SerialLineHealth::lineDecodes(line), ms);
+    if (!it->feed || !m_dispatcher) return;
     const QString port = it->link->config().portName;
     // Tab named by the port's short name ("COM3", "ttyUSB0"); keyed by the
     // full name, so two paths never share a tab.
@@ -157,4 +187,36 @@ bool SerialManager::loadPortSettings(QSettings &s, const QString &portName,
     config->portName = portName;
     *feed = s.value(g + QStringLiteral("/feed"), true).toBool();
     return true;
+}
+
+// ---- line health ----------------------------------------------------------------------
+
+bool SerialLineHealth::lineDecodes(const QByteArray &line)
+{
+    if (!line.startsWith('@')) return false;      // cheap reject: text, garbage
+    const CaptureLine c = CaptureDecoder::parseLine(QString::fromLatin1(line));
+    return c.valid && c.type != CapType::Unknown;
+}
+
+void SerialLineHealth::note(bool decodes, qint64 ms)
+{
+    ++m_lines;
+    if (decodes) ++m_decoded;
+    if (m_lastMs >= 0) m_longestGapMs = qMax(m_longestGapMs, ms - m_lastMs);
+    m_lastMs = ms;
+    m_recent.append(ms);
+    while (!m_recent.isEmpty() && ms - m_recent.first() > kRateWindowMs) m_recent.removeFirst();
+}
+
+SerialLineHealth::Stats SerialLineHealth::stats(qint64 nowMs) const
+{
+    Stats s;
+    s.lines = m_lines;
+    s.decoded = m_decoded;
+    s.longestGapMs = m_longestGapMs;
+    s.sinceLastMs = m_lastMs < 0 ? -1 : nowMs - m_lastMs;
+    int inWindow = 0;
+    for (qint64 t : m_recent) if (nowMs - t <= kRateWindowMs) ++inWindow;
+    s.perSecond = inWindow * 1000.0 / kRateWindowMs;
+    return s;
 }

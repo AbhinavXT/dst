@@ -31,6 +31,7 @@
 #include <QTableView>
 #include <QTemporaryDir>
 #include <QToolButton>
+#include <QElapsedTimer>
 #include "logmodel.h"
 #include "uicolors.h"
 #include "workspacesnapshot.h"
@@ -120,12 +121,24 @@ int main(int argc, char **argv) {
             ::close(slave);
             SerialConfig c;
             c.portName = QString::fromLocal8Bit(name);
+            // Not fed to the console: later checks count this window's tabs.
+            mgr->setFeed(c.portName, false);
             CHECK(mgr->open(c), "a port opens in MainWindow's serial manager");
             QApplication::processEvents();
             QToolButton *chip = chips->findChild<QToolButton *>(QStringLiteral("serialChip"));
             CHECK(chips->isVisible() && chip
                       && chip->text().contains(SerialManager::shortName(c.portName)),
                   "an open port shows a chip, named after it, with no terminal open");
+            // Session 104: lines that do not decode (a wrong baud rate) turn
+            // the chip into a warning within its one-second refresh.
+            const QByteArray garbage = QByteArray::fromHex("8fe31cf0007e9bc3f806e0fe180d0a");
+            for (int i = 0; i < 12; ++i) (void)::write(master, garbage.constData(), size_t(garbage.size()));
+            QElapsedTimer waited;
+            waited.start();
+            while (waited.elapsed() < 1500) QApplication::processEvents(QEventLoop::AllEvents, 20);
+            chip = chips->findChild<QToolButton *>(QStringLiteral("serialChip"));
+            CHECK(chip && chip->text().startsWith(QChar(0x26A0)) && chip->toolTip().contains(QLatin1String("check baud")),
+                  "a port whose lines do not decode shows a warning chip, and says what to check");
             mgr->closeAll();
             QApplication::processEvents();
             CHECK(!chips->isVisible(), "the chip goes when the port closes");

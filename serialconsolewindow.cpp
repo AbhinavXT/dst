@@ -185,10 +185,16 @@ void SerialConsoleWindow::build()
     m_state = new QLabel(this);
     m_state->setObjectName(QStringLiteral("serialState"));
     m_counts = new QLabel(this);
+    m_health = new QLabel(this);
+    m_health->setObjectName(QStringLiteral("serialHealth"));
+    m_health->setToolTip(tr("Line health since the port opened. \u201CDecode\u201D is the share of lines that are "
+                            "well-formed @ capture lines of a known type: a wrong baud rate or parity shows up "
+                            "at once as nearly 0%. Qt 5.15 does not report framing or parity errors separately; "
+                            "\u201Cdriver errors\u201D counts every error the driver did report."));
     auto *resetCounts = new QToolButton(this);
     resetCounts->setText(tr("Reset"));
     auto *stRow = new QHBoxLayout;
-    stRow->addWidget(m_state, 1); stRow->addWidget(m_counts); stRow->addWidget(resetCounts);
+    stRow->addWidget(m_state, 1); stRow->addWidget(m_health); stRow->addWidget(m_counts); stRow->addWidget(resetCounts);
 
     auto *root = new QVBoxLayout(this);
     root->addLayout(cfg);
@@ -281,7 +287,16 @@ void SerialConsoleWindow::build()
     m_countTimer = new QTimer(this);
     m_countTimer->setInterval(500);
     connect(m_countTimer, &QTimer::timeout, this, [this]() {
-        if (!m_link) { m_counts->clear(); return; }
+        if (!m_link) { m_counts->clear(); m_health->clear(); return; }
+        const QString port = m_link->config().portName;
+        if (isOpen()) {
+            const qint64 now = QDateTime::currentMSecsSinceEpoch();
+            m_health->setText(m_mgr->healthText(port, now));
+            m_health->setStyleSheet(m_mgr->health(port, now).failing() ? UiColor::warningStyle()
+                                                                      : UiColor::mutedStyle());
+        } else {
+            m_health->clear();
+        }
         m_counts->setText(tr("RX %1 · TX %2 · to console %3 lines")
                               .arg(m_link->rxBytes()).arg(m_link->txBytes())
                               .arg(m_mgr->fedLines(m_link->config().portName)));
@@ -593,6 +608,7 @@ void SerialConsoleWindow::setLogging(bool on)
 
 QString SerialConsoleWindow::receivedText() const { return m_view->toPlainText(); }
 QString SerialConsoleWindow::statusText() const { return m_state->text(); }
+QString SerialConsoleWindow::healthText() const { return m_health->text(); }
 QString SerialConsoleWindow::tabKey() const
 {
     return SerialManager::tabKeyFor(m_link ? m_link->config().portName : configFromUi().portName);

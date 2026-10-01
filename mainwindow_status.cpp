@@ -631,18 +631,37 @@ void MainWindow::rebuildSerialChips()
         auto *chip = new QToolButton(m_serialChips);
         chip->setAutoRaise(true);
         chip->setObjectName(QStringLiteral("serialChip"));
-        // The dot and the name, not colour alone.
-        chip->setText(QStringLiteral("\u25CF ") + SerialManager::shortName(port));
-        chip->setStyleSheet(UiColor::okStyle());
-        chip->setToolTip(tr("%1 open, %2%3\nClick to open a terminal on it.")
-                             .arg(port, link ? link->config().summary() : QString(),
-                                  m_serial->feeds(port)
-                                      ? tr(", feeding tab \u201C%1\u201D").arg(SerialManager::tabTitleFor(port))
-                                      : tr(", not feeding the console")));
-        chip->setAccessibleName(tr("Serial port %1 open").arg(port));
+        chip->setProperty("port", port);
         connect(chip, &QToolButton::clicked, this, [this, port]() { openSerialTerminal(port); });
         row->addWidget(chip);
     }
     m_serialChips->setVisible(!ports.isEmpty());
+    refreshSerialChips();
+#endif
+}
+
+void MainWindow::refreshSerialChips()
+{
+#ifdef DL_HAVE_SERIAL
+    if (!m_serialChips || !m_serial) return;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    for (QToolButton *chip : m_serialChips->findChildren<QToolButton *>(QStringLiteral("serialChip"))) {
+        const QString port = chip->property("port").toString();
+        const SerialLink *link = m_serial->link(port);
+        const bool failing = m_serial->health(port, now).failing();
+        // The dot and the name, not colour alone; a warning sign when the
+        // lines do not decode (wrong baud, most likely).
+        chip->setText((failing ? QStringLiteral("\u26A0 ") : QStringLiteral("\u25CF "))
+                      + SerialManager::shortName(port));
+        chip->setStyleSheet(failing ? UiColor::warningStyle() : UiColor::okStyle());
+        chip->setToolTip(tr("%1 open, %2%3\n%4\nClick to open a terminal on it.")
+                             .arg(port, link ? link->config().summary() : QString(),
+                                  m_serial->feeds(port)
+                                      ? tr(", feeding tab \u201C%1\u201D").arg(SerialManager::tabTitleFor(port))
+                                      : tr(", not feeding the console"),
+                                  m_serial->healthText(port, now)));
+        chip->setAccessibleName(failing ? tr("Serial port %1 open, lines not decoding").arg(port)
+                                        : tr("Serial port %1 open").arg(port));
+    }
 #endif
 }

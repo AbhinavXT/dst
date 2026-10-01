@@ -255,6 +255,7 @@ SerialPortWorker::SerialPortWorker()
 bool SerialPortWorker::openPort(const SerialConfig &config, QString *error, QString *latencyNote)
 {
     m_split.clear();
+    errors = 0;
     m_errorBurstStartMs = 0;
     m_errorBurstCount = 0;
     m_port->setPortName(config.portName);
@@ -332,6 +333,7 @@ SerialErrorOutcome SerialPortWorker::judgeError(QSerialPort::SerialPortError e)
 {
     SerialErrorOutcome o;
     if (e == QSerialPort::NoError) return o;
+    ++errors;
 
     // An error that repeats in a burst is a port that is gone but still
     // "open": a virtual port whose far end vanished reported ReadError about
@@ -436,6 +438,7 @@ bool SerialLink::isOpen() const { return m_open; }
 
 quint64 SerialLink::rxBytes() const { return m_worker->rx.load(); }
 quint64 SerialLink::txBytes() const { return m_worker->tx.load(); }
+quint64 SerialLink::errorCount() const { return m_worker->errors.load(); }
 void SerialLink::resetCounters() { m_worker->rx = 0; m_worker->tx = 0; }
 void SerialLink::setIdleFlushMs(int ms) { m_worker->idleMs = ms; }
 

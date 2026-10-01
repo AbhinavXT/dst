@@ -151,6 +151,9 @@ public:
 
     quint64 rxBytes() const;
     quint64 txBytes() const;
+    // Every error the driver reported since open, including the ones a
+    // burst folds into one report.
+    quint64 errorCount() const;
     void resetCounters();
 
     // How long a partial line may sit before it is delivered anyway.
@@ -198,6 +201,7 @@ public:
     SerialErrorOutcome judgeError(QSerialPort::SerialPortError e);
 
     std::atomic<quint64> rx{ 0 }, tx{ 0 };
+    std::atomic<quint64> errors{ 0 };   // every driver error, burst or not
     std::atomic<int>     idleMs{ 500 };
 
 signals:

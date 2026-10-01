@@ -71,6 +71,7 @@ public:
     bool sendText(const QString &text);        // honours hex / line-ending settings
     QString receivedText() const;
     QString statusText() const;
+    QString healthText() const;                // the line-health label
     QString tabKey() const;                    // the console tab fed from this port
     static quint16 kvchForPort(const QString &portName);   // SerialManager's
     static constexpr quint8 kSerialSourceId = 254;
@@ -113,7 +114,7 @@ private:
     QPushButton *m_sendBtn = nullptr;
     QTimer    *m_repeatTimer = nullptr;
 
-    QLabel *m_state = nullptr, *m_counts = nullptr;
+    QLabel *m_state = nullptr, *m_counts = nullptr, *m_health = nullptr;
     QTimer *m_countTimer = nullptr;
 
     QFile  *m_log = nullptr;
