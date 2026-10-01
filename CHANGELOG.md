@@ -11,6 +11,75 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-111"></a>
+## Session 111 — Serial: find the baud rate
+
+From the serial test report: "Auto-baud. Try the standard rates for a second
+each and pick the one where the most lines decode as @xxx frames." This is
+the last item of that report.
+
+### What the operator sees
+
+A **Find** button beside Baud. It closes the port if it is open, then
+tries the twelve standard rates for a second each, common ones first
+(115200, 9600, 57600, 38400, 19200, …). The status shows `Finding the
+baud rate: trying 57600 (3 of 12)…`, and the button becomes **Stop**.
+
+- **It picks the rate where the most lines decode** as `@` capture frames
+  (session 104's test). Ties go to the higher share. Most bytes is not
+  the test: garbage at a wrong rate can be plentiful.
+- **It stops early** once a rate is plainly right: 3 or more lines, at
+  least 90% decoding.
+- **Then it sets the baud and opens the port at it**, and the terminal says
+  why: `── baud: 57600: 12 of 12 lines decode (115200: 0 of 9 · 9600: 0 of
+  2) ──`.
+- **When no rate decodes**, it claims none: `no rate gave decodable @
+  lines (…)`. The card may be silent, or not print `@` lines. A port that
+  will not open stops it at once, saying so.
+- **The probe never feeds the console.** It reads on a link of its own, so
+  the garbage at wrong rates reaches neither the console tab nor the port's
+  line health.
+
+### How it is built
+
+`serialautobaud.h/.cpp`: `SerialAutoBaud`, with its own `SerialLink`.
+It works through the rates on a dwell timer, counting lines and decoded
+lines per rate. `pickBest`, `plainlyRight` and `summary` are static and
+tested on their own. In the terminal, `findBaud()` and the Find/Stop
+button.
+
+### Tests
+
+`tests/test_session111.cpp`, 21 checks:
+
+- choosing: decoded lines beat raw volume; nothing decodes, so no rate;
+  ties go to the share; the plainly-right threshold; the order; the summary
+  text.
+- **A stand-in card at a fixed baud**: a pty whose far end reads the speed
+  the console set (a pty shares one termios between its ends; checked
+  first). Like a real card read at the wrong rate, it gives garbage unless
+  the speed is 57600, where it prints a real `@dop1` line from `replay/`.
+  - The engine finds 57600 and stops before trying 19200; the wrong rates
+    show lines that did not decode.
+  - A card that never prints `@` lines gives "no rate…".
+  - A port that will not open stops it at once.
+  - In the terminal: open at 9600 (0% decode), Find, the port is closed
+    while it looks, then found, set and opened at 57600. The console tab
+    received **nothing** from the probe, and the card's lines now decode
+    100%.
+
+Five consecutive runs, no failures. The first version of the test card
+barely printed: it restarted its own tick on every call. That was a test
+bug, caught because the engine honestly reported "0 of 0".
+
+Gate: 11/11 validators, `dltests` 167 suites / 5353 checks, menu audit,
+smoke. All green.
+
+Not tested: a real card at a real wrong baud. Garbage at a wrong rate is
+stood in for by a fixed byte pattern.
+
+---
+
 <a id="session-110"></a>
 ## Session 110 — Serial terminal: Show only and Highlight, in the console's query language
 

@@ -38,6 +38,7 @@
 
 #include "seriallink.h"
 #include "serialfilesender.h"
+#include "serialautobaud.h"
 #include "serialmanager.h"
 #include "logentry.h"
 #include "logquery.h"
@@ -79,6 +80,11 @@ public:
     // Send file without the file and options dialogs (session 108).
     bool sendFileData(const QByteArray &data, const QString &name, const SerialSendOptions &options);
     SerialFileSender *fileSender() const { return m_sender; }
+
+    // Session 111: Find (the baud). Closes the port if open, tries the
+    // rates, sets the winner and opens at it. False if it could not start.
+    bool findBaud(const QVector<qint32> &rates = SerialAutoBaud::defaultOrder(), int dwellMs = 1000);
+    SerialAutoBaud *autoBaud() const { return m_autoBaud; }
 
     // Macros (session 109): the current profile's, or the default set.
     QVector<SerialMacro> macros() const { return m_macros; }
@@ -166,6 +172,8 @@ private:
 
     QFile  *m_log = nullptr;
     SerialFileSender *m_sender = nullptr;      // session 108: paced file send
+    SerialAutoBaud   *m_autoBaud = nullptr;    // session 111
+    class QToolButton *m_findBaud = nullptr;
     QProgressBar *m_sendProgress = nullptr;
     QPushButton  *m_sendStop = nullptr;
     QString       m_sendingName;

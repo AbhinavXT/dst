@@ -165,7 +165,13 @@ void SerialConsoleWindow::build()
     auto *cfg = new QHBoxLayout;
     auto label = [this](const QString &t) { return new QLabel(t, this); };
     cfg->addWidget(label(tr("Port")));      cfg->addWidget(m_port); cfg->addWidget(refresh);
-    cfg->addWidget(label(tr("Baud")));      cfg->addWidget(m_baud);
+    m_findBaud = new QToolButton(this);
+    m_findBaud->setObjectName(QStringLiteral("serialFindBaud"));
+    m_findBaud->setText(tr("Find"));
+    m_findBaud->setToolTip(tr("Find the baud rate: try each standard rate for a second and keep the one "
+                              "where the card's lines decode as @ frames. Closes the port while it looks, "
+                              "and opens it at the rate it finds."));
+    cfg->addWidget(label(tr("Baud")));      cfg->addWidget(m_baud); cfg->addWidget(m_findBaud);
     cfg->addWidget(label(tr("Data")));      cfg->addWidget(m_dataBits);
     cfg->addWidget(label(tr("Parity")));    cfg->addWidget(m_parity);
     cfg->addWidget(label(tr("Stop")));      cfg->addWidget(m_stopBits);
@@ -263,6 +269,7 @@ void SerialConsoleWindow::build()
     txRow->addWidget(m_repeat); txRow->addWidget(m_repeatMs);
     txRow->addWidget(m_sendBtn); txRow->addWidget(sendFile);
     m_sender = new SerialFileSender(this);
+    m_autoBaud = new SerialAutoBaud(this);
     m_sendProgress = new QProgressBar(this);
     m_sendProgress->setObjectName(QStringLiteral("serialSendProgress"));
     m_sendProgress->setMaximumWidth(220);
@@ -416,6 +423,26 @@ void SerialConsoleWindow::build()
         sendFileData(data, QFileInfo(path).fileName(), o);
     });
     connect(m_sendStop, &QPushButton::clicked, m_sender, &SerialFileSender::stop);
+    connect(m_findBaud, &QToolButton::clicked, this, [this]() {
+        if (m_autoBaud->isRunning()) m_autoBaud->stop(); else findBaud();
+    });
+    connect(m_autoBaud, &SerialAutoBaud::trying, this, [this](qint32 rate, int index, int count) {
+        m_state->setText(tr("Finding the baud rate: trying %1 (%2 of %3)\u2026").arg(rate).arg(index + 1).arg(count));
+        m_state->setStyleSheet(UiColor::mutedStyle());
+    });
+    connect(m_autoBaud, &SerialAutoBaud::finished, this, [this](bool ok, qint32 rate, const QString &message) {
+        m_findBaud->setText(tr("Find"));
+        m_open->setEnabled(true);
+        appendView(tr("\u2500\u2500 baud: %1 \u2500\u2500").arg(message));
+        if (!ok) {
+            updateState();
+            m_state->setText(tr("\u2715 Baud not found: %1").arg(message));
+            m_state->setStyleSheet(UiColor::errorStyle());
+            return;
+        }
+        m_baud->setEditText(QString::number(rate));
+        openPort();
+    });
     connect(m_sender, &SerialFileSender::progress, this, [this](qint64 sent, qint64 total) {
         // Bytes, scaled to int range for the bar.
         m_sendProgress->setMaximum(1000);
@@ -1216,4 +1243,20 @@ void SerialConsoleWindow::editMacros()
         if (!m.label.isEmpty()) out << m;
     }
     setMacros(out);
+}
+
+// ---- find the baud (session 111) ----------------------------------------------------
+
+bool SerialConsoleWindow::findBaud(const QVector<qint32> &rates, int dwellMs)
+{
+    if (m_autoBaud->isRunning()) return false;
+    SerialConfig c = configFromUi();
+    if (c.portName.isEmpty()) { m_state->setText(tr("Choose a port first.")); return false; }
+    // It probes on a link of its own, so the port must be free — and the
+    // garbage read at wrong rates must not reach the console.
+    if (isOpen() || m_mgr->isReconnecting(c.portName)) closePort();
+    if (!m_autoBaud->start(c, rates, dwellMs)) return false;
+    m_findBaud->setText(tr("Stop"));
+    m_open->setEnabled(false);
+    return true;
 }
