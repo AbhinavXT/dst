@@ -11,6 +11,109 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-100"></a>
+## Session 100 — Filter query mode: time that works, and a small query engine
+
+Reported: time queries in the filter bar showed "could not read". Asked
+for: the filter's query mode made "powerful like a mini querying engine".
+Scope confirmed before building: fix time, plus clock-time ranges,
+comparisons without a colon, value lists, and a replay-relative `last:`;
+a time with no date matches that clock time on any date.
+
+### What was wrong with time
+
+Probed against the real parser, not guessed:
+
+- **Refused:** `after:9:05` and `after:14:2` (one-digit hour/minute),
+  `after: 14:02` (the space made it "'after:' has no value"), and
+  day-first dates `08-08-2026`, `08/08/2026`.
+- **Parsed and asked a different question:** `after:2026-08-08 14:02`
+  split at the space, so `14:02` became a separate TEXT term ANDed on.
+  It ran without an error and matched only rows whose text contained "14:02".
+- **Matched nothing, silently:** every clock time meant *today*. On a
+  replay, or any log from another day, `after:14:02` hid every row (and
+  `before:` showed every row). That looks just like a quiet bus.
+
+### What the operator sees
+
+Query mode (the **Query** box on any tab's filter bar, and Tools ▸ Search):
+
+| Type | Means |
+|---|---|
+| `time:14:02` | that whole minute, on any date |
+| `time:14:02..14:09`, `time:14:02-14:09` | a clock window; `23:50..00:10` wraps midnight |
+| `after:9:05`, `time>=9:05`, `before:14:09` | an upper bound covers the whole unit typed (14:09:45 is "before 14:09", as the Time column reads it) |
+| `time:2026-08-08`, `time:08-08-2026` | that whole day |
+| `after:08-08-2026 14:02` | date and time, unquoted; T, space or quotes all work |
+| `last:15m` | the last 15 minutes **of this data**: counts back from the newest row, so it works on replays |
+| `after:-15m`, `after:-1h30m` | relative to now, as before; compound durations |
+| `len>64`, `len >= 10`, `sev!=info`, `dir=in` | comparisons without a colon, spaces allowed |
+| `TRAIN_SPEED>60`, `FRAME_NUM&7=3`, `SIG_OV=1` | decoded fields without `field:` |
+| `src:33_1,21_1`, `sev:warn,error`, `LOCO_MODE=6,7` | any of; with `!=`, none of |
+| `len:10..64`, `ABS_LOCO_LOC=163000..164000` | inclusive ranges; either end may be open |
+
+Clock times are read in the zone the Time column shows, and toggling
+Local/UTC re-applies the filter. A `Z` or `+05:30` on a dated time
+overrides the zone. The timeline ribbon's range drag now writes its stamps
+in the displayed zone; before, they were local even in UTC mode.
+
+### Refused, by name, never silently matching nothing
+
+- `TRAN_SPEED>60` → "unknown field 'TRAN_SPEED' — write field:TRAN_SPEED
+  to force a decoded field, or quote the term to search text". Unknown names
+  are checked against the field catalogue and the active schema.
+- `after:15m` → "a duration needs its sign: -15m counts back from now;
+  last:15m counts back from the newest row".
+- `after:06-27-2026` → month-first is refused, not guessed.
+- `time:25:00`, `after:31-02-2026`, a dated range ending before it starts,
+  an empty list item, `sev>info`, a mask on a non-decoded field.
+
+Unchanged: a bare `14:02` is still a text search, `-`/`!` still negate, an
+unquoted `hex:0a 1b` still splits, `msg:` never splits on commas, and an
+invalid query still shows every row plus the error.
+
+### How it is built
+
+- `logquery.h/.cpp`: one `time` node (low/high bounds, epoch or
+  ms-since-midnight) replaces `after`/`before`; `after:`, `before:`,
+  `time:` and `last:` all build it. `parseTimePoint()` records the
+  precision typed, so an upper bound covers the whole unit.
+  `setUtc()`/`setDataEnd()` are set before `parse()`. The tokenizer joins a
+  term across a space only after a field colon, around an operator, or
+  between a date and its time on a time field. Colon-less comparisons are
+  rewritten to the colon form and parsed by the same code, so the two
+  spellings cannot drift. Lists and ranges expand into ordinary OR/AND
+  terms, so each value still gets the catalogue's symbol resolution.
+  Local time-of-day per row is cached per 15-minute slot (`thread_local`:
+  archive search matches on a worker thread).
+- `filterbar.cpp`: passes the column's zone and the newest row's time; re-applies on the UTC
+  toggle; new tooltip. `searchwindow.cpp`: the same zone and anchor across
+  tabs. `querylineedit.cpp`: `time:` and `last:` completions.
+  `mainwindow.cpp`: ribbon stamps in the displayed zone.
+
+### Tests
+
+`tests/test_session100.cpp`, 125 checks: every reported failure, a row
+from 27 June 2026 (not today) matched by clock time, the ribbon's local and
+UTC stamps round-tripping, unit-precision bounds, midnight wrap, UTC mode,
+`last:` against a data end, lists/ranges/colon-less comparisons, decoded
+fields on the **real LSRP frame** from
+`replay/loco_1_1_27062026_140226.cap` (FRAME_NUM 50548, LOCO_MODE 7,
+ABS_LOCO_LOC 163821), each refusal, the old behaviours above, and a real
+`FilterBar` over a past-dated model (row counts, and the UTC toggle
+re-filtering).
+
+Gate: 11/11 validators, `dltests` 156 suites / 5088 checks, menu audit
+140, headless smoke 500 datagrams. All green.
+
+Not tested: the Windows build. Archive search (Tools ▸ Archive search)
+gets the new syntax, but its worker does not yet receive the display zone
+or a data end. There, clock times are local and `last:` counts from now.
+DST edges were not tested (India has none); local time-of-day relies on
+zone transitions falling on quarter hours.
+
+---
+
 <a id="session-99"></a>
 ## Session 99 — Track diagram by absolute location (queued feature 3 of 3)
 

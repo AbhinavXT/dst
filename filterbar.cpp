@@ -60,9 +60,12 @@ public:
     // Query mode replaces the text/column/regex path with a full boolean
     // expression. The chips still AND on top, so the one-click severity
     // buttons keep working alongside a typed query.
-    void setQuery(const QString &text, bool enabled)
+    void setQuery(const QString &text, bool enabled,
+                  bool utc = false, qint64 dataEnd = 0)
     {
         m_queryEnabled = enabled;
+        m_query.setUtc(utc);
+        m_query.setDataEnd(dataEnd);
         m_queryOk = m_query.parse(text);
         m_queryError = m_query.errorString();
         m_queryErrorOffset = m_query.errorOffset();
@@ -240,9 +243,14 @@ FilterBar::FilterBar(LogModel *source, QWidget *parent)
     m_queryCb->setToolTip(
         tr("Boolean query mode.\n\n"
            "  sev:error src:33_1 RAD NOT \"No Error\"\n"
-           "  (dir:in OR dir:out) after:14:02 before:14:09\n"
-           "  msg:/Link\\s+\\d+/ len:>64 hex:0a1b\n\n"
-           "Fields: msg src name sev dir hex len after before\n"
+           "  time:14:02..14:09   after:9:05   last:15m\n"
+           "  after:08-08-2026 14:02   time:23:50..00:10\n"
+           "  len>64   len:10..64   sev:warn,error   src!=33_1\n"
+           "  TRAIN_SPEED>60   LOCO_MODE=FS,SR   FRAME_NUM&7=3\n"
+           "  msg:/Link\\s+\\d+/ hex:0a1b\n\n"
+           "Fields: msg src name sev dir hex len time after before last field\n"
+           "A time without a date matches that clock time on any day, as the\n"
+           "Time column shows it. last: counts back from the newest row.\n"
            "Adjacent terms are ANDed. Use OR, NOT/!/-, and parentheses."));
 
     // Parse errors are shown here rather than swallowed. An invalid query
@@ -331,6 +339,11 @@ FilterBar::FilterBar(LogModel *source, QWidget *parent)
     connect(m_proxy,  &QAbstractItemModel::modelReset,
             this,     &FilterBar::updateCountsLabel);
 
+    // Local/UTC toggle: the Time column header changes, and a clock-time
+    // query has to follow it or it stops meaning what the column shows.
+    connect(m_source, &QAbstractItemModel::headerDataChanged,
+            this, [this]() { if (queryModeOn()) applyFilter(); });
+
     updateCountsLabel();
 }
 
@@ -388,7 +401,15 @@ void FilterBar::applyFilter()
     m_columnBox->setEnabled(!queryMode);
 
     if (queryMode) {
-        proxy->setQuery(m_edit->text(), true);
+        // Clock times are read in the zone the Time column is showing, and
+        // last: counts back from the newest row — so a replay from last
+        // week filters by what is on screen, not by today's clock.
+        qint64 newest = 0;
+        for (int r = 0; r < m_source->count(); ++r) {
+            const LogEntryPtr e = m_source->entryAt(r);
+            if (e && e->epochMs > newest) newest = e->epochMs;
+        }
+        proxy->setQuery(m_edit->text(), true, m_source->showUtc(), newest);
         if (!proxy->queryOk()) {
             // Column, not just a message: with several terms on one line,
             // "unexpected ')'" alone does not say which one.

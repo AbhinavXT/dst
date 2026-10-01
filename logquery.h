@@ -48,9 +48,23 @@
 //                             terms like anywhere else, so a space-delimited
 //                             run must be quoted: hex:"0a 1b" — which is the
 //                             form you get pasting out of the hex panel.
-//      len:                   payload length, with = != > >= < <=
-//      after:  before:        time bounds, see below
+//      len:                   payload length, with = != > >= < <= or a..b
+//      time: after: before:   time bounds, see TIME below
+//      last:                  the last N of this data, e.g. last:15m
 //      field:                 a SCHEMA-DECODED field, see below
+//
+//  COMPARISONS WITHOUT A COLON
+//      len>64   time>=9:05   sev!=info   TRAIN_SPEED>60   SIG_OV=1
+//    NAME op VALUE, op one of = == != > >= < <= ~, spaces around op
+//    allowed. A query field name wins; any other name must be a decoded
+//    field the schema or the field catalogue knows — an unknown name is an
+//    ERROR, not a silent text search ("TRAN_SPEED>60" would otherwise run
+//    and match nothing). To search message text containing '=', quote it.
+//
+//  LISTS AND RANGES
+//      src:33_1,21_1   sev:warn,error   dir:in,out   len:4,10
+//      LOCO_MODE=FS,SR          any of (with != : none of)
+//      len:10..64   TRAIN_SPEED=40..60   either end may be left open
 //
 //  DECODED FIELDS
 //      field:SIG_OV               the field exists and is non-zero
@@ -71,10 +85,29 @@
 //    the same thing the find bar's "Any column" does.
 //
 //  TIME
-//      after:2026-08-08T14:02:33     full ISO
-//      after:2026-08-08              date, at 00:00 local
-//      after:14:02:33                time today (seconds optional)
-//      after:-15m                    relative to now: s / m / h / d
+//    A time with NO DATE is a clock time and matches that time of day on
+//    ANY date, read in the zone the Time column shows (setUtc). A replay
+//    recorded last week filters by the times on screen; "today" would match
+//    nothing and look exactly like a quiet bus.
+//
+//      time:14:02                the whole minute 14:02:00.000–14:02:59.999
+//      time:14:02..14:09         a window; 14:02-14:09 also works
+//      time:23:50..00:10         a clock window may wrap midnight
+//      time>=9:05  after:9:05    from 09:05 on, any day
+//      before:14:09              up to the END of 14:09 — an upper bound
+//                                covers the whole unit typed, as the Time
+//                                column shows it
+//      time:2026-08-08           that whole day
+//      after:2026-08-08 14:02    date and time (T, space or quotes)
+//      after:08-08-2026 14:02    day-first dates, - / or . separated
+//      after:...14:02:33Z        Z or +05:30 overrides the display zone
+//      after:-15m  before:-1h30m relative to now: ms s m h d, compound ok
+//      last:15m                  counts back from the NEWEST row in the
+//                                data (setDataEnd), so it works on replays
+//
+//    Two separate clock bounds AND together, so after:23:50 before:00:10
+//    matches nothing; the range form time:23:50..00:10 is the one that
+//    wraps.
 //
 //  MATCHING
 //    Bare and quoted values are case-insensitive substring matches.
@@ -143,6 +176,16 @@ public:
     QString errorString() const { return m_error; }
     int     errorOffset() const { return m_errorOffset; }
 
+    // Both are read by parse(), so set them first.
+    //
+    // `utc`: dates and clock times are in UTC rather than local time —
+    // whichever the Time column is showing, so a query means what the
+    // operator reads off the screen. Default local.
+    void setUtc(bool utc) { m_utc = utc; }
+    // `ms`: the newest timestamp in the data being filtered; last:15m
+    // counts back from it. 0 (the default) means "now".
+    void setDataEnd(qint64 ms) { m_dataEnd = ms; }
+
     // Evaluate against one entry. `names` supplies the friendly name for
     // name:/bare-term matching and may be null.
     bool match(const LogEntry &e, const NameMap *names = nullptr) const;
@@ -170,7 +213,7 @@ private:
     enum class Op   { And, Or, Not, Term };
     enum class Field {
         Any, Message, Source, Friendly, Severity, Direction,
-        Hex, Length, After, Before, Decoded
+        Hex, Length, Time, Decoded
     };
     enum class Cmp  { Eq, Ne, Gt, Ge, Lt, Le };
 
@@ -191,6 +234,13 @@ private:
         Severity           sev      = Severity::Info;
         Direction          dir      = Direction::None;
         QByteArray         hexBytes;
+
+        // Time terms: inclusive bounds, epoch ms, or ms since midnight in
+        // the display zone when `clock`. A clock window with lo > hi wraps
+        // midnight.
+        bool               clock = false;
+        bool               hasLo = false, hasHi = false;
+        qint64             lo = 0, hi = 0;
 
         // Decoded-field terms: the field name, an optional mask, and
         // whether the comparison is numeric or a substring of the rendered
@@ -219,18 +269,32 @@ private:
     NodePtr parseNot  (const QVector<Token> &t, int *i);
     NodePtr parsePrim (const QVector<Token> &t, int *i);
     NodePtr makeTerm  (const QString &raw, int pos);
+    NodePtr makeComparison(const QString &name, const QString &mask,
+                           const QString &op, const QString &rhs,
+                           const QString &raw, int pos);
+    NodePtr makeTimeTerm(const QString &field, const QString &value, int pos);
+    NodePtr fail(const QString &why, int pos);
+    static NodePtr combine(Op op, const QVector<NodePtr> &kids);
 
     bool    evalNode  (const Node &n, const LogEntry &e,
                        const NameMap *names) const;
-    static QString describe(const Node &n, int indent);
+    QString describe(const Node &n, int indent) const;
 
-    static bool    parseTimeSpec(const QString &s, qint64 *outMs);
+    // One point in time as typed. `start`..`end` is the span its
+    // precision covers ("14:02" is a whole minute); `clock` means no date
+    // was given and both are ms since midnight.
+    struct TimePoint { bool clock = false; qint64 start = 0, end = 0; };
+    bool parseTimePoint(const QString &text, TimePoint *out,
+                        QString *why) const;
+    static bool parseDuration(const QString &text, qint64 *outMs);
     static QString fieldName(Field f);
 
     NodePtr m_root;
     QString m_error;
     int     m_errorOffset = -1;
     QString m_source;
+    bool    m_utc     = false;
+    qint64  m_dataEnd = 0;
 };
 
 #endif // LOGQUERY_H

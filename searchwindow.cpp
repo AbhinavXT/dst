@@ -151,7 +151,23 @@ void SearchWindow::runSearch()
         return;
     }
 
+    // Time read the same way the per-tab filter reads it: in the zone the
+    // tables show, and last: counted back from the newest row of any tab.
     LogQuery query;
+    {
+        qint64 newest = 0;
+        bool   utc    = false;
+        for (const QString &key : m_dispatcher->knownKeys()) {
+            LogModel *model = m_dispatcher->modelForKey(key);
+            if (!model) continue;
+            utc = model->showUtc();
+            if (model->count() == 0) continue;
+            const LogEntryPtr last = model->entryAt(model->count() - 1);
+            if (last && last->epochMs > newest) newest = last->epochMs;
+        }
+        query.setUtc(utc);
+        query.setDataEnd(newest);
+    }
     if (!query.parse(text)) {
         m_results->setRowCount(0);
         m_hits.clear();

@@ -1,12 +1,106 @@
 #include "logquery.h"
 
+#include "capturedecoder.h"
 #include "fieldcatalog.h"
 #include "fieldindex.h"
 #include "namemap.h"
 #include "fieldplot.h"
+#include "schema/schemadecoder.h"
 
 #include <QDate>
 #include <QTime>
+
+#include <limits>
+
+namespace {
+
+// Whether the term in `buf` carries on past the whitespace at s[j].
+// 0 = no, 1 = join with nothing between, 2 = join keeping one space.
+//
+// People type `after: 14:02`, `len > 64` and `after:2026-08-08 14:02`.
+// Splitting those at the space produced either an error ("'after:' has no
+// value") or — worse — a query that parsed and meant something else: the
+// "14:02" of a date-and-time became a separate TEXT term, ANDed on, and the
+// filter quietly asked a different question.
+int joinAcrossSpace(const QString &buf, const QString &s, int j)
+{
+    if (buf.isEmpty() || buf.startsWith(QLatin1Char('"'))
+        || buf.startsWith(QLatin1Char('/'))) {
+        return 0;
+    }
+    const QString next = s.mid(j);
+    if (next.startsWith(QLatin1Char('(')) || next.startsWith(QLatin1Char(')'))) {
+        return 0;
+    }
+    // A field prefix still waiting for its value.
+    if (buf.endsWith(QLatin1Char(':'))
+        && LogQuery::knownFields().contains(buf.chopped(1).toLower())) {
+        return 1;
+    }
+    // An operator on either side of the gap.
+    static const QRegularExpression opEnd(QStringLiteral("(>|<|=|~|\\.\\.)$"));
+    static const QRegularExpression opStart(
+        QStringLiteral("^(>=|<=|!=|==|=|>|<|~|\\.\\.)"));
+    if (opEnd.match(buf).hasMatch() || opStart.match(next).hasMatch()) return 1;
+    // A date on a time field, its time-of-day after the space.
+    static const QRegularExpression dateEnd(QStringLiteral(
+        "(^|[:=<>~.])(\\d{4}[-/.]\\d{1,2}[-/.]\\d{1,2}|\\d{1,2}[-/.]\\d{1,2}[-/.]\\d{4})$"));
+    static const QRegularExpression timeStart(QStringLiteral("^\\d{1,2}:\\d"));
+    const QString low = buf.toLower();
+    const bool timeField = low.startsWith(QLatin1String("after:"))
+                        || low.startsWith(QLatin1String("before:"))
+                        || low.startsWith(QLatin1String("time"));
+    if (timeField && dateEnd.match(buf).hasMatch() && timeStart.match(next).hasMatch()) {
+        return 2;
+    }
+    return 0;
+}
+
+// Whether `name` is a decoded field the catalogue or the active schema
+// knows. Same prefix rule as FieldIndex::value(): "Loco_Health" names
+// "Loco_Health (faults 6-11)".
+bool isDecodedFieldName(const QString &name)
+{
+    if (FieldCatalog::instance().find(name)) return true;
+    const QString want = name.toLower();
+    for (const QString &f : kavachSchema().allFieldNames()) {
+        const QString have = f.trimmed().toLower();
+        if (have == want) return true;
+        if (have.size() > want.size() && have.startsWith(want)
+            && (have.at(want.size()) == QLatin1Char(' ')
+                || have.at(want.size()) == QLatin1Char('('))) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Time of day in ms, in UTC or local time.
+//
+// Per row, inside a proxy filter, so the local-time conversion is cached:
+// a zone's UTC offset only changes at a transition, and transitions fall on
+// quarter-hour boundaries, so one lookup serves a whole 15-minute slot.
+// thread_local because archive search matches on a worker thread.
+qint64 timeOfDayMs(qint64 epochMs, bool utc)
+{
+    constexpr qint64 day = 86400000LL;
+    qint64 offsetMs = 0;
+    if (!utc) {
+        constexpr qint64 slotMs = 15 * 60 * 1000LL;
+        thread_local qint64 cachedSlot = std::numeric_limits<qint64>::min();
+        thread_local qint64 cachedOffset = 0;
+        const qint64 slot = epochMs >= 0 ? epochMs / slotMs
+                                         : (epochMs - slotMs + 1) / slotMs;
+        if (slot != cachedSlot) {
+            cachedSlot   = slot;
+            cachedOffset = QDateTime::fromMSecsSinceEpoch(epochMs).offsetFromUtc() * 1000LL;
+        }
+        offsetMs = cachedOffset;
+    }
+    return ((epochMs + offsetMs) % day + day) % day;
+}
+
+} // namespace
 
 // ============================== tokenizer ==================================
 
@@ -27,7 +121,8 @@ QVector<LogQuery::Token> LogQuery::tokenize(const QString &s,
         if (c == '(') { out.push_back({ Token::LParen, QString(), i }); ++i; continue; }
         if (c == ')') { out.push_back({ Token::RParen, QString(), i }); ++i; continue; }
 
-        if (c == '!' || c == '-') {
+        // "!=" is a comparison that lost its left side to a space, not NOT.
+        if ((c == '!' && !(i + 1 < n && s.at(i + 1) == '=')) || c == '-') {
             // '-' is only negation when it starts a token AND something
             // follows it. A bare '-' or one inside a word (a timestamp, a
             // hyphenated name) is ordinary text.
@@ -50,7 +145,16 @@ QVector<LogQuery::Token> LogQuery::tokenize(const QString &s,
         QString buf;
         while (i < n) {
             const QChar ch = s.at(i);
-            if (ch.isSpace() || ch == '(' || ch == ')') break;
+            if (ch == '(' || ch == ')') break;
+            if (ch.isSpace()) {
+                int j = i;
+                while (j < n && s.at(j).isSpace()) ++j;
+                const int join = j < n ? joinAcrossSpace(buf, s, j) : 0;
+                if (join == 0) break;
+                if (join == 2) buf += QLatin1Char(' ');
+                i = j;
+                continue;
+            }
 
             if (ch == '"' || ch == '/') {
                 const QChar closer = ch;
@@ -271,19 +375,89 @@ HexPattern parseHexPattern(const QString &pattern)
     return out;
 }
 
+LogQuery::NodePtr LogQuery::fail(const QString &why, int pos)
+{
+    // First error wins: a nested term (one item of a list, one end of a
+    // range) reports its own problem, and the caller unwinding must not
+    // overwrite it with a vaguer one.
+    if (m_error.isEmpty()) {
+        m_error       = why;
+        m_errorOffset = pos;
+    }
+    return {};
+}
+
+LogQuery::NodePtr LogQuery::combine(Op op, const QVector<NodePtr> &kids)
+{
+    if (kids.size() == 1 && op != Op::Not) return kids.first();
+    auto node = NodePtr::create();
+    node->op   = op;
+    node->kids = kids;
+    return node;
+}
+
+// NAME op VALUE without a colon: len>64, time>=9:05, sev!=info,
+// TRAIN_SPEED>60. Rewritten into the colon form and parsed by makeTerm, so
+// the two spellings cannot drift apart.
+LogQuery::NodePtr LogQuery::makeComparison(const QString &name,
+                                           const QString &mask,
+                                           const QString &op,
+                                           const QString &rhs,
+                                           const QString &raw, int pos)
+{
+    const QString key = name.toLower();
+    const bool eq = (op == QLatin1String("=") || op == QLatin1String("=="));
+
+    if (knownFields().contains(key) && key != QLatin1String("field")) {
+        if (!mask.isEmpty()) {
+            return fail(QStringLiteral("a mask (&) applies only to decoded "
+                                       "fields, not %1").arg(key), pos);
+        }
+        if (key == QLatin1String("len")) {
+            return makeTerm(QStringLiteral("len:") + (eq ? QStringLiteral("=") : op) + rhs, pos);
+        }
+        if (key == QLatin1String("time")) {
+            return makeTerm(QStringLiteral("time:") + (eq ? QString() : op) + rhs, pos);
+        }
+        if (key == QLatin1String("after") || key == QLatin1String("before")
+            || key == QLatin1String("last")) {
+            if (!eq) {
+                return fail(QStringLiteral("%1 takes a value after ':' "
+                                           "(e.g. %1:14:02); use time%2 to "
+                                           "compare").arg(key, op), pos);
+            }
+            return makeTerm(key + QLatin1Char(':') + rhs, pos);
+        }
+        // The text-like fields: = and ~ both mean "matches", != negates.
+        if (op == QLatin1String("!=")) {
+            NodePtr k = makeTerm(key + QLatin1Char(':') + rhs, pos);
+            return k ? combine(Op::Not, { k }) : k;
+        }
+        if (eq || op == QLatin1String("~")) return makeTerm(key + QLatin1Char(':') + rhs, pos);
+        return fail(QStringLiteral("%1 cannot be compared with '%2'; "
+                                   "use =, != or ~").arg(key, op), pos);
+    }
+
+    if (isDecodedFieldName(name)) return makeTerm(QStringLiteral("field:") + raw, pos);
+
+    // Refused rather than searched for as text: "TRAN_SPEED>60" run as a
+    // text search would match nothing, and look like a quiet bus.
+    return fail(QStringLiteral("unknown field '%1' — write field:%1 to force "
+                               "a decoded field, or quote the term to search "
+                               "text: \"%2\"").arg(name, raw), pos);
+}
+
 LogQuery::NodePtr LogQuery::makeTerm(const QString &raw, int pos)
 {
-    auto node = NodePtr::create();
-    node->op = Op::Term;
-
     QString field, value = raw;
+    const bool literalTerm = raw.startsWith('"') || raw.startsWith('/');
 
     // Split on the first colon — but only when it looks like a field
     // prefix. A bare "14:02" or an unprefixed "a:b" inside quotes must stay
     // a literal, so the colon only counts if what precedes it is a known
     // field name.
     const int colon = raw.indexOf(':');
-    if (colon > 0 && !raw.startsWith('"') && !raw.startsWith('/')) {
+    if (colon > 0 && !literalTerm) {
         const QString maybe = raw.left(colon).toLower();
         if (knownFields().contains(maybe)) {
             field = maybe;
@@ -291,11 +465,67 @@ LogQuery::NodePtr LogQuery::makeTerm(const QString &raw, int pos)
         }
     }
 
-    if (value.isEmpty()) {
-        m_error = QStringLiteral("'%1:' has no value").arg(field);
-        m_errorOffset = pos;
-        return {};
+    if (field.isEmpty() && !literalTerm) {
+        static const QRegularExpression cmpRe(QStringLiteral(
+            "^([A-Za-z_][A-Za-z0-9_]*)(&[^=!<>~]*)?(>=|<=|!=|==|=|>|<|~)(.*)$"));
+        const QRegularExpressionMatch mm = cmpRe.match(raw);
+        if (mm.hasMatch()) {
+            return makeComparison(mm.captured(1), mm.captured(2),
+                                  mm.captured(3), mm.captured(4), raw, pos);
+        }
     }
+
+    if (value.isEmpty()) {
+        return fail(QStringLiteral("'%1:' has no value").arg(field), pos);
+    }
+
+    const bool literalValue = value.startsWith('"') || value.startsWith('/');
+
+    if (field == QLatin1String("after") || field == QLatin1String("before")
+        || field == QLatin1String("time") || field == QLatin1String("last")) {
+        if (value.startsWith('/')) {
+            return fail(QStringLiteral("%1: takes a time, not a /regex/").arg(field), pos);
+        }
+        if (value.size() >= 2 && value.startsWith('"') && value.endsWith('"')) {
+            value = value.mid(1, value.size() - 2);
+        }
+        return makeTimeTerm(field, value, pos);
+    }
+
+    if (!literalValue) {
+        // Lists: any of. Not on msg: or bare text, where a comma is far
+        // more likely to be part of what is being searched for.
+        static const QStringList listFields = {
+            "src", "source", "name", "friendly", "sev", "severity",
+            "dir", "direction", "len" };
+        if (listFields.contains(field) && value.contains(QLatin1Char(','))) {
+            QVector<NodePtr> kids;
+            for (const QString &item : value.split(QLatin1Char(','))) {
+                if (item.trimmed().isEmpty()) {
+                    return fail(QStringLiteral("%1: list has an empty item").arg(field), pos);
+                }
+                NodePtr k = makeTerm(field + QLatin1Char(':') + item.trimmed(), pos);
+                if (!k) return {};
+                kids << k;
+            }
+            return combine(Op::Or, kids);
+        }
+        if (field == QLatin1String("len") && value.contains(QLatin1String(".."))) {
+            const int dd = value.indexOf(QLatin1String(".."));
+            const QString lo = value.left(dd).trimmed(), hi = value.mid(dd + 2).trimmed();
+            if (lo.isEmpty() && hi.isEmpty()) {
+                return fail(QStringLiteral("len: range needs at least one end"), pos);
+            }
+            QVector<NodePtr> kids;
+            if (!lo.isEmpty()) kids << makeTerm(QStringLiteral("len:>=") + lo, pos);
+            if (!hi.isEmpty()) kids << makeTerm(QStringLiteral("len:<=") + hi, pos);
+            for (const NodePtr &k : kids) if (!k) return {};
+            return combine(Op::And, kids);
+        }
+    }
+
+    auto node = NodePtr::create();
+    node->op = Op::Term;
 
     // Strip quoting / regex delimiters.
     if (value.size() >= 2 && value.startsWith('/') && value.endsWith('/')) {
@@ -325,8 +555,6 @@ LogQuery::NodePtr LogQuery::makeTerm(const QString &raw, int pos)
     else if (field == "dir"  || field == "direction")  node->field = Field::Direction;
     else if (field == "len")                           node->field = Field::Length;
     else if (field == "field")                         node->field = Field::Decoded;
-    else if (field == "after")                         node->field = Field::After;
-    else if (field == "before")                        node->field = Field::Before;
 
     switch (node->field) {
     case Field::Severity: {
@@ -372,24 +600,46 @@ LogQuery::NodePtr LogQuery::makeTerm(const QString &raw, int pos)
         }
         break;
     }
-    case Field::After:
-    case Field::Before: {
-        qint64 ms = 0;
-        if (!parseTimeSpec(node->literal, &ms)) {
-            m_error = QStringLiteral("could not read '%1' as a time "
-                                     "(try 14:02:33, 2026-08-08T14:02, or -15m)")
-                          .arg(node->literal);
-            m_errorOffset = pos;
-            return {};
-        }
-        node->number = ms;
-        break;
-    }
     case Field::Decoded: {
         // Grammar: NAME [ & MASK ] [ op VALUE ], op being = == != > >= < <=
         // or ~ for substring. Parsed here rather than at match time so a
         // malformed term is an error the user sees, not a silent no-match.
         QString spec = node->literal;      // already lower-cased and unquoted
+
+        // Lists and ranges: NAME=a,b is any of, NAME=a..b is between
+        // (inclusive), and != negates either. Expanded into ordinary terms
+        // so each value still gets the symbol resolution below.
+        static const QRegularExpression setRe(
+            QStringLiteral("^([^=!<>~]+?)\\s*(==|!=|=)\\s*(.*)$"));
+        const QRegularExpressionMatch sm = setRe.match(spec);
+        if (sm.hasMatch() && (sm.captured(3).contains(QLatin1Char(','))
+                              || sm.captured(3).contains(QLatin1String("..")))) {
+            const QString lhs = QStringLiteral("field:") + sm.captured(1).trimmed();
+            const QString rhs = sm.captured(3);
+            const bool    neg = sm.captured(2) == QLatin1String("!=");
+            QVector<NodePtr> kids;
+            Op op = Op::Or;
+            if (rhs.contains(QLatin1String(".."))) {
+                op = Op::And;
+                const int dd = rhs.indexOf(QLatin1String(".."));
+                const QString lo = rhs.left(dd).trimmed(), hi = rhs.mid(dd + 2).trimmed();
+                if (lo.isEmpty() && hi.isEmpty()) {
+                    return fail(QStringLiteral("field: range needs at least one end"), pos);
+                }
+                if (!lo.isEmpty()) kids << makeTerm(lhs + QStringLiteral(">=") + lo, pos);
+                if (!hi.isEmpty()) kids << makeTerm(lhs + QStringLiteral("<=") + hi, pos);
+            } else {
+                for (const QString &item : rhs.split(QLatin1Char(','))) {
+                    if (item.trimmed().isEmpty()) {
+                        return fail(QStringLiteral("field: list has an empty item"), pos);
+                    }
+                    kids << makeTerm(lhs + QLatin1Char('=') + item.trimmed(), pos);
+                }
+            }
+            for (const NodePtr &k : kids) if (!k) return {};
+            const NodePtr all = combine(op, kids);
+            return neg ? combine(Op::Not, { all }) : all;
+        }
 
         const int amp = spec.indexOf(QLatin1Char('&'));
         if (amp >= 0) {
@@ -635,68 +885,304 @@ bool LogQuery::evalNode(const Node &n, const LogEntry &e,
         return false;
     }
 
-    case Field::After:  return e.epochMs >= n.number;
-    case Field::Before: return e.epochMs <= n.number;
+    case Field::Time: {
+        const qint64 v = n.clock ? timeOfDayMs(e.epochMs, m_utc) : e.epochMs;
+        if (n.clock && n.hasLo && n.hasHi && n.lo > n.hi) {
+            return v >= n.lo || v <= n.hi;          // wraps midnight
+        }
+        return (!n.hasLo || v >= n.lo) && (!n.hasHi || v <= n.hi);
+    }
     }
     return false;
 }
 
 // ============================== helpers ====================================
 
-bool LogQuery::parseTimeSpec(const QString &s, qint64 *outMs)
+LogQuery::NodePtr LogQuery::makeTimeTerm(const QString &field,
+                                         const QString &value, int pos)
 {
-    const QString v = s.trimmed();
+    auto node = NodePtr::create();
+    node->op    = Op::Term;
+    node->field = Field::Time;
+
+    QString v = value.trimmed();
+    QString why;
+
+    if (field == QLatin1String("last")) {
+        qint64 d = 0;
+        if (!parseDuration(v, &d)) {
+            return fail(QStringLiteral("last: expects a duration such as "
+                                       "30s, 15m, 2h or 1h30m"), pos);
+        }
+        const qint64 end = m_dataEnd > 0 ? m_dataEnd
+                                         : QDateTime::currentMSecsSinceEpoch();
+        node->hasLo = true;
+        node->lo    = end - d;
+        return node;
+    }
+
+    auto point = [&](const QString &t, TimePoint *p) -> bool {
+        why.clear();
+        if (parseTimePoint(t, p, &why)) return true;
+        fail(why.isEmpty()
+                 ? QStringLiteral("could not read '%1' as a time (try 14:02, "
+                                  "9:05:30, 2026-08-08 14:02, 08-08-2026 or "
+                                  "-15m)").arg(t)
+                 : QStringLiteral("could not read '%1' as a time: %2").arg(t, why),
+             pos);
+        return false;
+    };
+
+    if (field == QLatin1String("after") || field == QLatin1String("before")) {
+        TimePoint p;
+        if (!point(v, &p)) return {};
+        node->clock = p.clock;
+        if (field == QLatin1String("after")) { node->hasLo = true; node->lo = p.start; }
+        else                                 { node->hasHi = true; node->hi = p.end;   }
+        return node;
+    }
+
+    // time: [op] point | a..b | clock-clock
+    QString op;
+    for (const char *o : { ">=", "<=", "!=", "==", ">", "<", "=" }) {
+        if (v.startsWith(QLatin1String(o))) {
+            op = QLatin1String(o);
+            v  = v.mid(op.size()).trimmed();
+            break;
+        }
+    }
+    if (v.isEmpty()) return fail(QStringLiteral("'time:' has no value"), pos);
+
+    QString loText, hiText;
+    bool isRange = false;
+    const int dd = v.indexOf(QLatin1String(".."));
+    if (dd >= 0) {
+        isRange = true;
+        loText  = v.left(dd).trimmed();
+        hiText  = v.mid(dd + 2).trimmed();
+    } else {
+        // 14:02-14:09. Only between two clock times: with dates in play the
+        // dash is part of the date.
+        static const QRegularExpression clockDash(QStringLiteral(
+            "^(\\d{1,2}:[\\d:.,]+)\\s*-\\s*(\\d{1,2}:[\\d:.,]+)$"));
+        const QRegularExpressionMatch cm = clockDash.match(v);
+        if (cm.hasMatch()) {
+            isRange = true;
+            loText  = cm.captured(1);
+            hiText  = cm.captured(2);
+        }
+    }
+
+    if (isRange) {
+        if (!op.isEmpty()) {
+            return fail(QStringLiteral("a time range takes no comparison operator"), pos);
+        }
+        if (loText.isEmpty() && hiText.isEmpty()) {
+            return fail(QStringLiteral("time: range needs at least one end"), pos);
+        }
+        TimePoint a, b;
+        if (!loText.isEmpty() && !point(loText, &a)) return {};
+        if (!hiText.isEmpty() && !point(hiText, &b)) return {};
+
+        if (!loText.isEmpty() && !hiText.isEmpty() && a.clock != b.clock) {
+            if (a.clock) {
+                return fail(QStringLiteral("time: give the start of the range "
+                                           "a date too, or neither end"), pos);
+            }
+            // "2026-08-08 23:50..00:10": the end takes the start's date,
+            // rolling over midnight when it has to.
+            const QDateTime startDt = m_utc ? QDateTime::fromMSecsSinceEpoch(a.start, Qt::UTC)
+                                            : QDateTime::fromMSecsSinceEpoch(a.start);
+            QDateTime endDt(startDt.date(), QTime::fromMSecsSinceStartOfDay(int(b.start)),
+                            m_utc ? Qt::UTC : Qt::LocalTime);
+            if (endDt.toMSecsSinceEpoch() < a.start) endDt = endDt.addDays(1);
+            const qint64 span = b.end - b.start;
+            b.clock = false;
+            b.start = endDt.toMSecsSinceEpoch();
+            b.end   = b.start + span;
+        }
+
+        node->clock = !loText.isEmpty() ? a.clock : b.clock;
+        if (!loText.isEmpty()) { node->hasLo = true; node->lo = a.start; }
+        if (!hiText.isEmpty()) { node->hasHi = true; node->hi = b.end;   }
+        // A clock window that "ends before it starts" wraps midnight; a
+        // dated one is a mistake.
+        if (!node->clock && node->hasLo && node->hasHi && node->lo > node->hi) {
+            return fail(QStringLiteral("time: range ends before it starts"), pos);
+        }
+        return node;
+    }
+
+    TimePoint p;
+    if (!point(v, &p)) return {};
+    node->clock = p.clock;
+    if      (op == QLatin1String(">=")) { node->hasLo = true; node->lo = p.start;     }
+    else if (op == QLatin1String(">"))  { node->hasLo = true; node->lo = p.end + 1;   }
+    else if (op == QLatin1String("<=")) { node->hasHi = true; node->hi = p.end;       }
+    else if (op == QLatin1String("<"))  { node->hasHi = true; node->hi = p.start - 1; }
+    else {
+        // time:14:02 is the whole of what was typed: that minute.
+        node->hasLo = node->hasHi = true;
+        node->lo = p.start;
+        node->hi = p.end;
+    }
+    return op == QLatin1String("!=") ? combine(Op::Not, { node }) : node;
+}
+
+bool LogQuery::parseTimePoint(const QString &text, TimePoint *out,
+                              QString *why) const
+{
+    const QString v = text.trimmed().toLower();
     if (v.isEmpty()) return false;
 
-    // Relative: -15m, -2h, -30s, -1d. Anchored to "now", which is what
-    // someone means by "the last fifteen minutes".
-    if (v.startsWith('-')) {
-        const QChar unit = v.at(v.size() - 1).toLower();
-        bool ok = false;
-        const qint64 qty = v.mid(1, v.size() - 2).toLongLong(&ok);
-        if (!ok || qty < 0) return false;
-        qint64 mult = 0;
-        switch (unit.toLatin1()) {
-        case 's': mult = 1000LL;             break;
-        case 'm': mult = 60LL * 1000;        break;
-        case 'h': mult = 3600LL * 1000;      break;
-        case 'd': mult = 86400LL * 1000;     break;
-        default: return false;
-        }
-        *outMs = QDateTime::currentMSecsSinceEpoch() - qty * mult;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (v == QLatin1String("now")) {
+        out->clock = false;
+        out->start = out->end = now;
+        return true;
+    }
+    // Relative: -15m, -1h30m. Anchored to "now", which is what someone
+    // means by "the last fifteen minutes" of a live session; last: is the
+    // form anchored to the data.
+    if (v.startsWith(QLatin1Char('-'))) {
+        qint64 d = 0;
+        if (!parseDuration(v.mid(1), &d)) return false;
+        out->clock = false;
+        out->start = out->end = now - d;
         return true;
     }
 
-    // Full ISO, with or without the 'T'.
-    QDateTime dt = QDateTime::fromString(v, Qt::ISODateWithMs);
-    if (!dt.isValid()) dt = QDateTime::fromString(v, Qt::ISODate);
-    if (!dt.isValid()) {
-        QString alt = v;
-        alt.replace(' ', 'T');
-        dt = QDateTime::fromString(alt, Qt::ISODate);
+    // "after:15m" — a duration without its sign. Said so, rather than the
+    // generic "could not read", because the fix is one character.
+    {
+        qint64 d = 0;
+        if (parseDuration(v, &d)) {
+            *why = QStringLiteral("a duration needs its sign: -%1 counts back "
+                                  "from now; last:%1 counts back from the "
+                                  "newest row").arg(v);
+            return false;
+        }
     }
-    if (dt.isValid()) { *outMs = dt.toMSecsSinceEpoch(); return true; }
 
-    // Date only.
-    const QDate d = QDate::fromString(v, QStringLiteral("yyyy-MM-dd"));
-    if (d.isValid()) {
-        *outMs = QDateTime(d, QTime(0, 0)).toMSecsSinceEpoch();
+    // Date: year-first (2026-08-08) or day-first (08-08-2026, the way it
+    // is written here), with - / or . between. Never month-first: 08-09
+    // would be ambiguous, and a date read the wrong way round filters a
+    // different day without any sign of it.
+    static const QRegularExpression dateRe(QStringLiteral(
+        "^(?:(\\d{4})[-/.](\\d{1,2})[-/.](\\d{1,2})|(\\d{1,2})[-/.](\\d{1,2})[-/.](\\d{4}))"));
+    QDate date;
+    QString rest = v;
+    const QRegularExpressionMatch dm = dateRe.match(v);
+    if (dm.hasMatch()) {
+        const bool yearFirst = !dm.captured(1).isEmpty();
+        const int y  = (yearFirst ? dm.captured(1) : dm.captured(6)).toInt();
+        const int mo = (yearFirst ? dm.captured(2) : dm.captured(5)).toInt();
+        const int d  = (yearFirst ? dm.captured(3) : dm.captured(4)).toInt();
+        date = QDate(y, mo, d);
+        if (!date.isValid()) {
+            *why = QStringLiteral("%1 is not a date (year-first 2026-08-25 or "
+                                  "day-first 25-08-2026)").arg(dm.captured(0));
+            return false;
+        }
+        rest = v.mid(dm.capturedLength(0));
+        if (!rest.isEmpty()) {
+            const QChar sep = rest.at(0);
+            if (sep != QLatin1Char('t') && sep != QLatin1Char(' ')
+                && sep != QLatin1Char('_') && sep != QLatin1Char(',')) {
+                return false;
+            }
+            rest = rest.mid(1).trimmed();
+            if (rest.isEmpty()) return false;
+        }
+    }
+
+    // Time of day, hours and minutes at least, an optional zone after it.
+    enum class Prec { Day, Minute, Second, Milli } prec = Prec::Day;
+    int h = 0, mi = 0, se = 0, ms = 0, tzSecs = 0;
+    bool hasTz = false;
+    if (!rest.isEmpty()) {
+        static const QRegularExpression timeRe(QStringLiteral(
+            "^(\\d{1,2}):(\\d{1,2})(?::(\\d{1,2})(?:[.,](\\d{1,9}))?)?\\s*(z|[+-]\\d{2}:?\\d{2})?$"));
+        const QRegularExpressionMatch tm = timeRe.match(rest);
+        if (!tm.hasMatch()) return false;
+        h  = tm.captured(1).toInt();
+        mi = tm.captured(2).toInt();
+        prec = Prec::Minute;
+        if (!tm.captured(3).isEmpty()) { se = tm.captured(3).toInt(); prec = Prec::Second; }
+        if (!tm.captured(4).isEmpty()) {
+            ms   = tm.captured(4).leftJustified(3, QLatin1Char('0')).left(3).toInt();
+            prec = Prec::Milli;
+        }
+        if (h > 23 || mi > 59 || se > 59) {
+            *why = QStringLiteral("%1 is not a time of day").arg(rest);
+            return false;
+        }
+        const QString tz = tm.captured(5);
+        if (!tz.isEmpty()) {
+            hasTz = true;
+            if (tz != QLatin1String("z")) {
+                QString hhmm = tz.mid(1);
+                hhmm.remove(QLatin1Char(':'));
+                tzSecs = (tz.startsWith(QLatin1Char('-')) ? -1 : 1)
+                       * (hhmm.left(2).toInt() * 3600 + hhmm.mid(2).toInt() * 60);
+            }
+        }
+    }
+
+    // An upper bound covers the whole unit typed: before:14:09 includes
+    // 14:09:45, because that row's Time column reads 14:09.
+    const qint64 span = prec == Prec::Minute ? 59999
+                      : prec == Prec::Second ? 999 : 0;
+
+    if (!date.isValid()) {
+        if (hasTz) {
+            *why = QStringLiteral("a time zone needs a date with it");
+            return false;
+        }
+        out->clock = true;
+        out->start = ((h * 60LL + mi) * 60 + se) * 1000 + ms;
+        out->end   = out->start + span;
         return true;
     }
 
-    // Time only -> today. Tried longest-first so 14:02:33.500 isn't
-    // truncated by the shorter patterns.
-    static const char *timeFormats[] = {
-        "HH:mm:ss.zzz", "HH:mm:ss", "HH:mm"
-    };
-    for (const char *fmt : timeFormats) {
-        const QTime t = QTime::fromString(v, QLatin1String(fmt));
-        if (t.isValid()) {
-            *outMs = QDateTime(QDate::currentDate(), t).toMSecsSinceEpoch();
-            return true;
-        }
+    const QDateTime dt = hasTz
+        ? QDateTime(date, QTime(h, mi, se, ms), Qt::OffsetFromUTC, tzSecs)
+        : QDateTime(date, QTime(h, mi, se, ms), m_utc ? Qt::UTC : Qt::LocalTime);
+    out->clock = false;
+    out->start = dt.toMSecsSinceEpoch();
+    out->end   = prec == Prec::Day ? dt.addDays(1).toMSecsSinceEpoch() - 1
+                                   : out->start + span;
+    return true;
+}
+
+bool LogQuery::parseDuration(const QString &text, qint64 *outMs)
+{
+    // One or more <number><unit>: 15m, 1h30m, 90s, 1.5h. Longest unit
+    // spellings first so "min" is not read as "m" followed by junk.
+    static const QRegularExpression partRe(QStringLiteral(
+        "\\G(\\d+(?:\\.\\d+)?)\\s*(msec|ms|seconds|second|secs|sec|s|minutes|"
+        "minute|mins|min|m|hours|hour|hrs|hr|h|days|day|d)"));
+    const QString v = text.trimmed().toLower();
+    if (v.isEmpty()) return false;
+
+    qint64 total = 0;
+    int pos = 0;
+    while (pos < v.size()) {
+        const QRegularExpressionMatch m = partRe.match(v, pos);
+        if (!m.hasMatch()) return false;
+        const QString u = m.captured(2);
+        qint64 mult;
+        if      (u.startsWith(QLatin1String("ms")))  mult = 1;
+        else if (u.startsWith(QLatin1Char('s')))      mult = 1000;
+        else if (u.startsWith(QLatin1Char('m')))      mult = 60LL * 1000;
+        else if (u.startsWith(QLatin1Char('h')))      mult = 3600LL * 1000;
+        else                                          mult = 86400LL * 1000;
+        total += qint64(m.captured(1).toDouble() * double(mult));
+        pos = m.capturedEnd(0);
+        while (pos < v.size() && v.at(pos).isSpace()) ++pos;
     }
-    return false;
+    *outMs = total;
+    return true;
 }
 
 QString LogQuery::andConstraint(const QString &userQuery,
@@ -713,7 +1199,7 @@ QStringList LogQuery::knownFields()
 {
     return { "msg", "text", "src", "source", "name", "friendly",
              "sev", "severity", "dir", "direction",
-             "hex", "len", "field", "after", "before" };
+             "hex", "len", "field", "time", "after", "before", "last" };
 }
 
 QString LogQuery::fieldName(Field f)
@@ -727,14 +1213,13 @@ QString LogQuery::fieldName(Field f)
     case Field::Direction: return QStringLiteral("dir");
     case Field::Hex:       return QStringLiteral("hex");
     case Field::Length:    return QStringLiteral("len");
-    case Field::After:     return QStringLiteral("after");
-    case Field::Before:    return QStringLiteral("before");
+    case Field::Time:      return QStringLiteral("time");
     case Field::Decoded:   return QStringLiteral("field");
     }
     return QString();
 }
 
-QString LogQuery::describe(const Node &n, int indent)
+QString LogQuery::describe(const Node &n, int indent) const
 {
     const QString pad(indent * 2, ' ');
     switch (n.op) {
@@ -759,9 +1244,23 @@ QString LogQuery::describe(const Node &n, int indent)
 
     QString what = n.useRegex ? QStringLiteral("regex /%1/").arg(n.regex.pattern())
                               : QStringLiteral("\"%1\"").arg(n.literal);
-    if (n.field == Field::After || n.field == Field::Before) {
-        what = QDateTime::fromMSecsSinceEpoch(n.number)
-                   .toString(Qt::ISODateWithMs);
+    if (n.field == Field::Time) {
+        auto at = [&](qint64 v) {
+            if (n.clock) {
+                return QTime::fromMSecsSinceStartOfDay(int(qBound<qint64>(0, v, 86399999)))
+                    .toString(QStringLiteral("HH:mm:ss.zzz"));
+            }
+            return (m_utc ? QDateTime::fromMSecsSinceEpoch(v, Qt::UTC)
+                          : QDateTime::fromMSecsSinceEpoch(v))
+                .toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz"));
+        };
+        what = (n.hasLo ? at(n.lo) : QStringLiteral("…")) + QStringLiteral(" .. ")
+             + (n.hasHi ? at(n.hi) : QStringLiteral("…"));
+        if (n.clock) {
+            what += (n.hasLo && n.hasHi && n.lo > n.hi)
+                        ? QStringLiteral("  (clock time, any date, across midnight)")
+                        : QStringLiteral("  (clock time, any date)");
+        }
     }
     return pad + fieldName(n.field) + " " + what + "\n";
 }

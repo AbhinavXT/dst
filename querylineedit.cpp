@@ -76,8 +76,15 @@ QStringList queryCompletionsFor(const QString &token)
             // Relative forms first: they are the ones people want and the
             // ones least likely to be guessed.
             values = QStringList{ QStringLiteral("-5m"), QStringLiteral("-15m"), QStringLiteral("-1h"), QStringLiteral("-24h") };
+        } else if (field == QLatin1String("time")) {
+            // The forms nobody guesses: a range, a midnight wrap, a
+            // comparison.
+            values = QStringList{ QStringLiteral("14:00..14:10"), QStringLiteral("23:50..00:10"),
+                                  QStringLiteral(">=09:00"), QStringLiteral("2026-01-31") };
+        } else if (field == QLatin1String("last")) {
+            values = QStringList{ QStringLiteral("5m"), QStringLiteral("15m"), QStringLiteral("1h"), QStringLiteral("24h") };
         } else if (field == QLatin1String("len")) {
-            values = QStringList{ QStringLiteral(">64"), QStringLiteral("<16"), QStringLiteral("=0") };
+            values = QStringList{ QStringLiteral(">64"), QStringLiteral("<16"), QStringLiteral("=0"), QStringLiteral("10..64") };
         } else if (field == QLatin1String("field")) {
             // Schema field names, so the language is discoverable without
             // the user having to know kavach.xml. Only the commonly-asserted

@@ -2057,10 +2057,16 @@ void MainWindow::applyTimeRangeFilter(const QString &tabKey,
     // combine it with other terms, and clear it the same way as any other
     // filter — none of which is true of a range stored invisibly on the
     // side.
+    //
+    // In the zone the Time column shows, since that is how the query reads
+    // a date without one; UTC carries its 'Z', so it is unambiguous anyway.
+    const bool utc = Settings::showUtc();
+    auto stamp = [utc](qint64 ms) {
+        return (utc ? QDateTime::fromMSecsSinceEpoch(ms, Qt::UTC)
+                    : QDateTime::fromMSecsSinceEpoch(ms)).toString(Qt::ISODateWithMs);
+    };
     const QString expr =
-        QStringLiteral("after:%1 before:%2")
-            .arg(QDateTime::fromMSecsSinceEpoch(fromMs).toString(Qt::ISODateWithMs),
-                 QDateTime::fromMSecsSinceEpoch(toMs).toString(Qt::ISODateWithMs));
+        QStringLiteral("after:%1 before:%2").arg(stamp(fromMs), stamp(toMs));
 
     it->filterBar->setQuery(expr);
 
