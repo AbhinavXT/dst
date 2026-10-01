@@ -138,6 +138,14 @@ QVector<SerialLineSplitter::Line> SerialLineSplitter::feed(const QByteArray &byt
 {
     QVector<Line> out;
     for (const char c : bytes) {
+        if ((c == '\n' || c == '\r') && m_buf.isEmpty() && m_afterIdleFlush) {
+            // "login:" was flushed on idle; this is its line end arriving.
+            // After a CR, the usual CR-LF rule absorbs the LF that follows.
+            m_lastWasCr = (c == '\r');
+            m_afterIdleFlush = false;
+            continue;
+        }
+        m_afterIdleFlush = false;
         if (c == '\n') {
             if (!m_lastWasCr || !m_buf.isEmpty()) out.append({ m_buf, m_firstMs ? m_firstMs : nowMs });
             m_buf.clear(); m_firstMs = 0; m_lastWasCr = false;
@@ -164,9 +172,13 @@ QVector<SerialLineSplitter::Line> SerialLineSplitter::feed(const QByteArray &byt
 QVector<SerialLineSplitter::Line> SerialLineSplitter::flushIdle(qint64 nowMs, qint64 idleMs)
 {
     QVector<Line> out;
-    if (!m_buf.isEmpty() && nowMs - m_lastMs >= idleMs) {
+    if (m_buf.isEmpty()) return out;
+    const qint64 wait = (idleMs > 0 && m_buf.startsWith('@')) ? qMax(idleMs, kLogLineIdleMs)
+                                                               : idleMs;
+    if (nowMs - m_lastMs >= wait) {
         out.append({ m_buf, m_firstMs });
         m_buf.clear(); m_firstMs = 0;
+        m_afterIdleFlush = true;
     }
     return out;
 }
@@ -192,6 +204,8 @@ bool SerialLink::open(const SerialConfig &config)
     close();
     m_config = config;
     m_error.clear();
+    m_errorBurstStartMs = 0;
+    m_errorBurstCount = 0;
     m_split.clear();
     m_port->setPortName(config.portName);
     if (!m_port->open(QIODevice::ReadWrite)) {
@@ -264,12 +278,36 @@ void SerialLink::onIdleTick()
 void SerialLink::onError(QSerialPort::SerialPortError e)
 {
     if (e == QSerialPort::NoError) return;
-    m_error = m_port->errorString();
-    emit errorOccurred(m_error);
-    // The cable was pulled or the adapter vanished: the port is gone.
-    if (e == QSerialPort::ResourceError && m_port->isOpen()) {
-        m_idle->stop();
-        m_port->close();
-        emit closed();
+
+    // An error that repeats in a burst is a port that is gone but still
+    // "open": a virtual port whose far end vanished reported ReadError about
+    // 114,000 times a second, each one restyling the terminal's status label.
+    // Counted per burst so a stray framing error now and then never trips it.
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now - m_errorBurstStartMs > kErrorBurstWindowMs) {
+        m_errorBurstStartMs = now;
+        m_errorBurstCount = 0;
     }
+    ++m_errorBurstCount;
+    // Report the first of a burst, and the one that trips the guard; the
+    // rest of the burst is the same news.
+    if (m_errorBurstCount > 1 && m_errorBurstCount != kErrorBurstLimit) return;
+
+    // Gone for good: the adapter vanished (ResourceError, what a real USB
+    // adapter reports), or reading/writing it fails (ReadError/WriteError,
+    // what a virtual port reports when its far end goes).
+    const bool fatal = e == QSerialPort::ResourceError || e == QSerialPort::ReadError
+                    || e == QSerialPort::WriteError;
+    const bool storm = m_errorBurstCount >= kErrorBurstLimit;
+
+    m_error = m_port->errorString();
+    if (storm) {
+        m_error = tr("%1 (repeated %2 times in %3 ms; port closed)")
+                      .arg(m_error).arg(m_errorBurstCount).arg(kErrorBurstWindowMs);
+    }
+    if ((fatal || storm) && m_port->isOpen()) {
+        m_port->clearError();
+        close();
+    }
+    emit errorOccurred(m_error);
 }

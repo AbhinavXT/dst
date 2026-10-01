@@ -11,6 +11,67 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-101"></a>
+## Session 101 — Serial: three bugs found in testing
+
+The bugs from the serial-interface test report. Its smaller problems and
+enhancements are not in this patch (scope to be confirmed).
+
+### 1. A log line printed in two parts was cut in two
+
+`@dop1_1_1 … 0C 17 17 `, a 400 ms pause, then `17 17 0C 0C\r\n` arrived
+as two lines, and neither half decodes. The 300 ms idle flush could not
+tell "the card went quiet" from "the card is between two printfs".
+
+Now a partial line that starts with `@` is a log line, not a prompt. It is
+held for `kLogLineIdleMs` (5 s) instead of 300 ms, so a card that really
+stopped mid-line still shows it. Closing the link delivers it at once, as
+before. Prompts (`login:`, `x>`) still flush at 300 ms.
+
+### 2. A stray empty line after a flushed prompt
+
+`login:`, then `\r\n` 600 ms later, gave `[login:]` and then `[]`. After
+an idle flush, the next CR, LF or CR LF now ends *that* line. A second line
+end is still a genuine blank line.
+
+### 3. A read error looped and never closed the port
+
+When a virtual port's far end disappeared, Qt reported `ReadError` (code 8),
+not `ResourceError`. The port stayed "open" and fired about 114,000 errors a
+second, each one restyling the terminal's status label.
+
+`SerialLink::onError` now closes on `ReadError` and `WriteError` as well as
+`ResourceError`. Any error repeating 20 times within 100 ms also closes the
+port ("… (repeated 20 times in 100 ms; port closed)"). Within a burst only
+the first error and the one that trips the guard are reported, so the label
+is styled twice, not 114,000 times. A stray framing or parity error now
+and then is reported and leaves the port open.
+
+### Files
+
+`seriallink.h/.cpp`. `SerialLink::onError` is public, for tests only.
+
+### Tests
+
+`tests/test_session101.cpp`, 30 checks. Bug 1 uses the real `@dop1` line
+from `replay/loco_2_1_29062026_134128.cap`, split where the tester split it
+and checked to rejoin byte for byte. Bug 2 covers CR LF, a lone CR, a lone
+LF, a later genuine blank line, and the session-85 behaviour.
+
+Bug 3 uses a real open pseudo-terminal (`openpty`, Unix only): Read, Write
+and Resource errors each close it; one parity error does not; a burst of 20
+does, with one report and a reason.
+
+Gate: 11/11 validators, `dltests` 157 suites / 5118 checks, menu audit,
+smoke. All green.
+
+Not tested: the tester's actual storm, end to end. On macOS, closing a pty's
+far end makes Qt report nothing at all (no error, no readyRead), so a
+vanished virtual port could not be reproduced here. A real USB adapter on
+Windows was not tested either.
+
+---
+
 <a id="session-100"></a>
 ## Session 100 — Filter query mode: time that works, and a small query engine
 

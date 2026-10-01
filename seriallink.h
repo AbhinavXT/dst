@@ -70,16 +70,26 @@ public:
     // A partial line whose LAST byte is `idleMs` old is flushed as a line (a
     // card that printed without a newline and went quiet; a prompt). A line
     // still trickling in is not cut. Empty when none is due.
+    //
+    // A partial that starts with '@' is a LOG line, not a prompt: cards
+    // print one in several printf calls, and a pause between two of them
+    // is not the card going quiet. Cutting it there gave two halves that
+    // neither decode. Those wait kLogLineIdleMs instead (or for the link
+    // to close, which flushes with idleMs 0 regardless).
     QVector<Line> flushIdle(qint64 nowMs, qint64 idleMs);
     int pendingBytes() const { return m_buf.size(); }
-    void clear() { m_buf.clear(); m_firstMs = 0; m_lastWasCr = false; }
+    void clear() { m_buf.clear(); m_firstMs = 0; m_lastWasCr = false; m_afterIdleFlush = false; }
     static constexpr int kMaxLine = 4096;          // longer is split, not held forever
+    static constexpr qint64 kLogLineIdleMs = 5000;
 
 private:
     QByteArray m_buf;
     qint64     m_firstMs = 0;
     qint64     m_lastMs = 0;
     bool       m_lastWasCr = false;
+    // An idle flush delivered a line with no line end yet. The CR/LF that
+    // finally arrives ends THAT line, not a new empty one.
+    bool       m_afterIdleFlush = false;
 };
 
 // ---- the port -----------------------------------------------------------------
@@ -117,7 +127,10 @@ signals:
 
 private:
     void onReadyRead();
+    // Public for tests only: a dead port cannot be produced on demand.
+public:
     void onError(QSerialPort::SerialPortError e);
+private:
     void onIdleTick();
 
     QSerialPort        *m_port = nullptr;
@@ -127,6 +140,12 @@ private:
     int                 m_idleMs = 500;
     QString             m_error;
     quint64             m_rx = 0, m_tx = 0;
+
+    // Error-storm guard, see onError().
+    static constexpr qint64 kErrorBurstWindowMs = 100;
+    static constexpr int    kErrorBurstLimit    = 20;
+    qint64              m_errorBurstStartMs = 0;
+    int                 m_errorBurstCount   = 0;
 };
 
 #endif // SERIALLINK_H
