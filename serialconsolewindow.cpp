@@ -24,6 +24,8 @@
 #include <QLineEdit>
 #include <QPlainTextEdit>
 #include <QDialog>
+#include <QHeaderView>
+#include <QTableWidget>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QProgressBar>
@@ -262,12 +264,27 @@ void SerialConsoleWindow::build()
     root->addLayout(rxRow);
     root->addWidget(m_view, 1);
     root->addLayout(txRow);
+    // ---- macros (session 109) ----------------------------------------------------
+    m_macroBar = new QWidget(this);
+    m_macroBar->setObjectName(QStringLiteral("serialMacros"));
+    auto *macroRow = new QHBoxLayout(m_macroBar);
+    macroRow->setContentsMargins(0, 0, 0, 0);
+    root->addWidget(m_macroBar);
+    m_confirmMacro = [this](const SerialMacro &m) {
+        const QString port = m_link ? m_link->config().portName : QString();
+        return QMessageBox::question(this, tr("Send %1").arg(m.label),
+                                     tr("Send \u201C%1\u201D to %2?\n\n%3\n\nThe card acts on it.")
+                                         .arg(m.label, port, m.text),
+                                     QMessageBox::Yes | QMessageBox::No, QMessageBox::No)
+               == QMessageBox::Yes;
+    };
     root->addLayout(stRow);
 
     // ---- remembered ---------------------------------------------------------------
     QSettings s(Settings::iniPath(), QSettings::IniFormat);
     refreshPorts();
     refreshProfiles();
+    loadMacros();
     {
         // A port already running in the background comes first: reopening
         // the terminal shows what is capturing. Then the last port used,
@@ -792,7 +809,7 @@ void SerialConsoleWindow::selectProfile(const QString &name)
     QSettings s(Settings::iniPath(), QSettings::IniFormat);
     const QVector<SerialProfile> all = SerialProfile::loadAll(s);
     const int i = SerialProfile::indexOf(all, name);
-    if (i < 0) { m_profile->setCurrentIndex(0); return; }
+    if (i < 0) { m_profile->setCurrentIndex(0); loadMacros(); return; }
     const SerialProfile &p = all.at(i);
     m_profile->setCurrentIndex(qMax(0, m_profile->findData(p.name)));
     // Through showPort: a profile whose port is already running shows it
@@ -805,6 +822,7 @@ void SerialConsoleWindow::selectProfile(const QString &name)
         m_attaching = false;
     }
     m_autoOpen->setChecked(p.autoOpen);
+    loadMacros();
     updateState();
 }
 
@@ -815,6 +833,7 @@ bool SerialConsoleWindow::saveProfile(const QString &name)
     p.config = isOpen() ? m_link->config() : configFromUi();
     p.feed = m_feed->isChecked();
     p.autoOpen = m_autoOpen->isChecked();
+    p.macros = m_macros;              // the row on screen goes with it
     if (p.name.isEmpty() || p.config.portName.isEmpty()) {
         m_state->setText(tr("A profile needs a name and a port."));
         return false;
@@ -839,6 +858,7 @@ bool SerialConsoleWindow::deleteProfile(const QString &name)
     SerialProfile::saveAll(s, all);
     s.sync();
     refreshProfiles();
+    loadMacros();
     return true;
 }
 
@@ -907,4 +927,151 @@ bool SerialConsoleWindow::askSendOptions(SerialSendOptions *o, const QString &fi
     o->prompt = prompt->text();
     o->promptTimeoutMs = timeout->value();
     return true;
+}
+
+// ---- macros (session 109) -----------------------------------------------------------
+
+void SerialConsoleWindow::loadMacros()
+{
+    QSettings s(Settings::iniPath(), QSettings::IniFormat);
+    const QVector<SerialProfile> all = SerialProfile::loadAll(s);
+    const int i = SerialProfile::indexOf(all, currentProfile());
+    m_macros = i >= 0 ? all.at(i).macros : SerialMacro::loadList(s, QStringLiteral("serial/macros"));
+    rebuildMacroButtons();
+}
+
+void SerialConsoleWindow::setMacros(const QVector<SerialMacro> &macros)
+{
+    m_macros = macros;
+    QSettings s(Settings::iniPath(), QSettings::IniFormat);
+    QVector<SerialProfile> all = SerialProfile::loadAll(s);
+    const int i = SerialProfile::indexOf(all, currentProfile());
+    if (i >= 0) {
+        all[i].macros = macros;               // saved with the profile
+        SerialProfile::saveAll(s, all);
+    } else {
+        SerialMacro::saveList(s, QStringLiteral("serial/macros"), macros);
+    }
+    s.sync();
+    rebuildMacroButtons();
+}
+
+void SerialConsoleWindow::rebuildMacroButtons()
+{
+    QLayout *row = m_macroBar->layout();
+    while (QLayoutItem *it = row->takeAt(0)) {
+        if (QWidget *w = it->widget()) w->deleteLater();
+        delete it;
+    }
+    row->addWidget(new QLabel(currentProfile().isEmpty() ? tr("Macros")
+                                                         : tr("Macros (%1)").arg(currentProfile()),
+                              m_macroBar));
+    for (int i = 0; i < m_macros.size(); ++i) {
+        const SerialMacro &m = m_macros.at(i);
+        auto *b = new QToolButton(m_macroBar);
+        b->setObjectName(QStringLiteral("serialMacro"));
+        // A confirm macro says so on its face, not only when clicked.
+        b->setText(m.confirm ? m.label + QStringLiteral(" \u26A0") : m.label);
+        b->setToolTip(tr("Sends %1%2%3").arg(m.hex ? tr("hex ") : QString(), m.text,
+                                             m.confirm ? tr("\nAsks first: the card acts on it.") : QString()));
+        connect(b, &QToolButton::clicked, this, [this, i]() { runMacro(i); });
+        row->addWidget(b);
+    }
+    if (m_macros.isEmpty()) {
+        auto *hint = new QLabel(tr("none yet \u2014 Edit\u2026 to add STATUS?, DIAG?, RESET"), m_macroBar);
+        hint->setStyleSheet(UiColor::mutedStyle());
+        row->addWidget(hint);
+    }
+    static_cast<QHBoxLayout *>(row)->addStretch(1);
+    auto *editBtn = new QToolButton(m_macroBar);
+    editBtn->setObjectName(QStringLiteral("serialEditMacros"));
+    editBtn->setText(tr("Edit\u2026"));
+    connect(editBtn, &QToolButton::clicked, this, &SerialConsoleWindow::editMacros);
+    row->addWidget(editBtn);
+}
+
+bool SerialConsoleWindow::runMacro(int index)
+{
+    if (index < 0 || index >= m_macros.size()) return false;
+    const SerialMacro m = m_macros.at(index);
+    if (!isOpen()) { m_state->setText(tr("Open the port first.")); return false; }
+    bool ok = false;
+    const QByteArray bytes = m.bytes(&ok);
+    if (!ok) {
+        m_state->setText(tr("\u2715 Macro %1 is not hex bytes: %2").arg(m.label, m.text));
+        m_state->setStyleSheet(UiColor::errorStyle());
+        return false;
+    }
+    if (m.confirm && !(m_confirmMacro && m_confirmMacro(m))) {
+        m_state->setText(tr("Macro %1 not sent.").arg(m.label));
+        return false;
+    }
+    return m_link->write(bytes) == bytes.size();
+}
+
+void SerialConsoleWindow::editMacros()
+{
+    QDialog d(this);
+    d.setWindowTitle(currentProfile().isEmpty() ? tr("Serial macros")
+                                                : tr("Serial macros \u2014 %1").arg(currentProfile()));
+    auto *table = new QTableWidget(0, 5, &d);
+    table->setHorizontalHeaderLabels({ tr("Button"), tr("Sends"), tr("Hex"), tr("Line end"), tr("Ask first") });
+    table->horizontalHeader()->setStretchLastSection(false);
+    table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    auto addRow = [table](const SerialMacro &m) {
+        const int r = table->rowCount();
+        table->insertRow(r);
+        table->setItem(r, 0, new QTableWidgetItem(m.label));
+        table->setItem(r, 1, new QTableWidgetItem(m.text));
+        auto *hex = new QTableWidgetItem;
+        hex->setFlags(Qt::ItemIsEnabled | Qt::ItemIsUserCheckable);
+        hex->setCheckState(m.hex ? Qt::Checked : Qt::Unchecked);
+        table->setItem(r, 2, hex);
+        auto *end = new QComboBox(table);
+        end->addItem(QObject::tr("none"), QByteArray());
+        end->addItem(QStringLiteral("CR"), QByteArray("\r"));
+        end->addItem(QStringLiteral("LF"), QByteArray("\n"));
+        end->addItem(QStringLiteral("CR+LF"), QByteArray("\r\n"));
+        end->setCurrentIndex(qMax(0, end->findData(m.ending)));
+        table->setCellWidget(r, 3, end);
+        auto *ask = new QTableWidgetItem;
+        ask->setFlags(Qt::ItemIsEnabled | Qt::ItemIsUserCheckable);
+        ask->setCheckState(m.confirm ? Qt::Checked : Qt::Unchecked);
+        table->setItem(r, 4, ask);
+    };
+    for (const SerialMacro &m : m_macros) addRow(m);
+    // A new row whose text looks like RESET / ERASE / FLASH gets Ask first
+    // ticked as it is typed; the operator can still untick it.
+    connect(table, &QTableWidget::itemChanged, &d, [table](QTableWidgetItem *it) {
+        if (it->column() != 0 && it->column() != 1) return;
+        const int r = it->row();
+        const QString words = (table->item(r, 0) ? table->item(r, 0)->text() : QString()) + QLatin1Char(' ')
+                            + (table->item(r, 1) ? table->item(r, 1)->text() : QString());
+        if (SerialMacro::looksDangerous(words) && table->item(r, 4)) table->item(r, 4)->setCheckState(Qt::Checked);
+    });
+    auto *add = new QPushButton(tr("Add"), &d);
+    auto *del = new QPushButton(tr("Remove"), &d);
+    connect(add, &QPushButton::clicked, &d, [=]() { addRow(SerialMacro{}); table->editItem(table->item(table->rowCount() - 1, 0)); });
+    connect(del, &QPushButton::clicked, &d, [table]() { if (table->currentRow() >= 0) table->removeRow(table->currentRow()); });
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Save | QDialogButtonBox::Cancel, &d);
+    connect(buttons, &QDialogButtonBox::accepted, &d, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &d, &QDialog::reject);
+    auto *lay = new QVBoxLayout(&d);
+    lay->addWidget(table);
+    auto *btns = new QHBoxLayout;
+    btns->addWidget(add); btns->addWidget(del); btns->addStretch(1); btns->addWidget(buttons);
+    lay->addLayout(btns);
+    d.resize(640, 320);
+    if (d.exec() != QDialog::Accepted) return;
+    QVector<SerialMacro> out;
+    for (int r = 0; r < table->rowCount(); ++r) {
+        SerialMacro m;
+        m.label = table->item(r, 0) ? table->item(r, 0)->text().trimmed() : QString();
+        m.text = table->item(r, 1) ? table->item(r, 1)->text() : QString();
+        m.hex = table->item(r, 2) && table->item(r, 2)->checkState() == Qt::Checked;
+        if (auto *end = qobject_cast<QComboBox *>(table->cellWidget(r, 3))) m.ending = end->currentData().toByteArray();
+        m.confirm = table->item(r, 4) && table->item(r, 4)->checkState() == Qt::Checked;
+        if (!m.label.isEmpty()) out << m;
+    }
+    setMacros(out);
 }

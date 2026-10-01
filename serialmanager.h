@@ -74,6 +74,28 @@ private:
     QVector<qint64> m_recent;          // line times inside the rate window
 };
 
+// A one-click command for the terminal's macro row (session 109): STATUS?,
+// DIAG?, RESET. Text takes the send box's escapes (\r \n \xHH), or is hex
+// bytes; `ending` goes after it. `confirm` asks before sending — for the
+// ones the card ACTS on.
+struct SerialMacro {
+    QString    label;
+    QString    text;
+    bool       hex = false;
+    QByteArray ending = "\r\n";
+    bool       confirm = false;
+
+    // The bytes it sends; ok false (nothing to send) for hex that is not
+    // hex — refused rather than sending something other than what was set.
+    QByteArray bytes(bool *ok = nullptr) const;
+    // RESET, REBOOT, ERASE, FORMAT, FLASH, FACTORY, DELETE, CLEAR, BURN,
+    // WRITE: the words that make an editor tick "confirm" by default.
+    static bool looksDangerous(const QString &labelOrText);
+
+    static QVector<SerialMacro> loadList(QSettings &s, const QString &arrayName);
+    static void saveList(QSettings &s, const QString &arrayName, const QVector<SerialMacro> &macros);
+};
+
 // A named port setup (session 105): "IOA Input = COM5 115200 8N1, feed
 // on, auto-open". Saved in serial/profiles; opening one sets everything at
 // once, "Open all" starts every IOA card in one click, and auto-open ones
@@ -83,6 +105,7 @@ struct SerialProfile {
     SerialConfig config;
     bool         feed = true;
     bool         autoOpen = false;
+    QVector<SerialMacro> macros;     // session 109: its own macro row
 
     static QVector<SerialProfile> loadAll(QSettings &s);
     static void saveAll(QSettings &s, const QVector<SerialProfile> &profiles);

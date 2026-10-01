@@ -32,11 +32,13 @@
 // =============================================================================
 
 #include <QPointer>
+#include <functional>
 #include <QStringList>
 #include <QWidget>
 
 #include "seriallink.h"
 #include "serialfilesender.h"
+#include "serialmanager.h"
 
 class MessageDispatcher;
 class SerialManager;
@@ -74,6 +76,14 @@ public:
     // Send file without the file and options dialogs (session 108).
     bool sendFileData(const QByteArray &data, const QString &name, const SerialSendOptions &options);
     SerialFileSender *fileSender() const { return m_sender; }
+
+    // Macros (session 109): the current profile's, or the default set.
+    QVector<SerialMacro> macros() const { return m_macros; }
+    void setMacros(const QVector<SerialMacro> &macros);   // saves them
+    // Click on macro `index`. A confirm macro asks through the confirmer
+    // (a dialog, unless a test replaces it). True when it was sent.
+    bool runMacro(int index);
+    void setMacroConfirmer(std::function<bool(const SerialMacro &)> f) { m_confirmMacro = std::move(f); }
     QString receivedText() const;
     QString statusText() const;
     QString healthText() const;                // the line-health label
@@ -105,6 +115,9 @@ private:
     void onWritten(const QByteArray &bytes, qint64 ms);
     void flushHexRow();
     bool askSendOptions(SerialSendOptions *o, const QString &fileName, qint64 size);
+    void loadMacros();
+    void rebuildMacroButtons();
+    void editMacros();
     void updateState();
     void setLogging(bool on);
     QString stamp(qint64 ms) const;
@@ -139,6 +152,9 @@ private:
     QProgressBar *m_sendProgress = nullptr;
     QPushButton  *m_sendStop = nullptr;
     QString       m_sendingName;
+    QVector<SerialMacro> m_macros;
+    QWidget      *m_macroBar = nullptr;
+    std::function<bool(const SerialMacro &)> m_confirmMacro;
     SerialHexDumper m_hex;                     // session 107: 16-byte rows
     QTimer *m_hexFlush = nullptr;
     int     m_held = 0;

@@ -6,6 +6,7 @@
 #include <QDateTime>
 #include <QFileInfo>
 #include <QSerialPortInfo>
+#include <QRegularExpression>
 #include <QSettings>
 #include <QTimer>
 
@@ -434,6 +435,7 @@ QVector<SerialProfile> SerialProfile::loadAll(QSettings &s)
         p.config = SerialConfig::load(s, QStringLiteral("config"));
         p.feed = s.value(QStringLiteral("feed"), true).toBool();
         p.autoOpen = s.value(QStringLiteral("autoOpen"), false).toBool();
+        p.macros = SerialMacro::loadList(s, QStringLiteral("macros"));
         if (!p.name.isEmpty() && !p.config.portName.isEmpty()) out << p;
     }
     s.endArray();
@@ -451,6 +453,7 @@ void SerialProfile::saveAll(QSettings &s, const QVector<SerialProfile> &profiles
         p.config.save(s, QStringLiteral("config"));
         s.setValue(QStringLiteral("feed"), p.feed);
         s.setValue(QStringLiteral("autoOpen"), p.autoOpen);
+        SerialMacro::saveList(s, QStringLiteral("macros"), p.macros);
     }
     s.endArray();
 }
@@ -475,4 +478,58 @@ bool SerialProfile::remove(QVector<SerialProfile> *profiles, const QString &name
     if (i < 0) return false;
     profiles->remove(i);
     return true;
+}
+
+// ---- macros ---------------------------------------------------------------------------
+
+QByteArray SerialMacro::bytes(bool *ok) const
+{
+    bool good = true;
+    QByteArray out = hex ? serialParseHex(text, &good) : serialUnescape(text);
+    if (ok) *ok = good;
+    if (!good) return QByteArray();
+    return out + ending;
+}
+
+bool SerialMacro::looksDangerous(const QString &labelOrText)
+{
+    static const QRegularExpression re(QStringLiteral(
+        "\\b(RESET|REBOOT|RESTART|ERASE|FORMAT|FLASH|FACTORY|DELETE|CLEAR|BURN|WRITE|PROG(RAM)?)\\b"),
+        QRegularExpression::CaseInsensitiveOption);
+    return re.match(labelOrText).hasMatch();
+}
+
+QVector<SerialMacro> SerialMacro::loadList(QSettings &s, const QString &arrayName)
+{
+    QVector<SerialMacro> out;
+    const int n = s.beginReadArray(arrayName);
+    for (int i = 0; i < n; ++i) {
+        s.setArrayIndex(i);
+        SerialMacro m;
+        m.label = s.value(QStringLiteral("label")).toString();
+        m.text = s.value(QStringLiteral("text")).toString();
+        m.hex = s.value(QStringLiteral("hex"), false).toBool();
+        m.ending = QByteArray::fromHex(s.value(QStringLiteral("ending"), QStringLiteral("0d0a")).toByteArray());
+        m.confirm = s.value(QStringLiteral("confirm"), false).toBool();
+        if (!m.label.trimmed().isEmpty()) out << m;
+    }
+    s.endArray();
+    return out;
+}
+
+void SerialMacro::saveList(QSettings &s, const QString &arrayName, const QVector<SerialMacro> &macros)
+{
+    s.remove(arrayName);
+    s.beginWriteArray(arrayName, macros.size());
+    for (int i = 0; i < macros.size(); ++i) {
+        s.setArrayIndex(i);
+        const SerialMacro &m = macros.at(i);
+        s.setValue(QStringLiteral("label"), m.label);
+        s.setValue(QStringLiteral("text"), m.text);
+        s.setValue(QStringLiteral("hex"), m.hex);
+        // As hex: an ending is bytes (CR, LF), which an ini mangles as text.
+        s.setValue(QStringLiteral("ending"), QString::fromLatin1(m.ending.toHex()));
+        s.setValue(QStringLiteral("confirm"), m.confirm);
+    }
+    s.endArray();
 }

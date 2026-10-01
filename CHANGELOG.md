@@ -11,6 +11,68 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-109"></a>
+## Session 109 — Serial: macro buttons, per profile, asking before the dangerous ones
+
+From the serial test report: "Macro buttons. A row of user-defined commands
+(STATUS?, DIAG?, RESET), saved per profile, with a confirm step on dangerous
+ones like the send guard."
+
+### What the operator sees
+
+- **A macro row under the send row**: one button per macro, then
+  **Edit…**. With none yet, it reads "none yet — Edit… to add STATUS?,
+  DIAG?, RESET". It is titled with the profile's name when one is chosen.
+- **A click sends it**:
+  - text with the send box's escapes (`\r \n \xHH`) or hex bytes, then
+    the macro's own line end (none, CR, LF, CR+LF);
+  - nothing goes while the port is closed;
+  - a hex macro that is not hex is refused by name, and nothing is sent.
+- **Ask first**: such a macro is marked `⚠` on its button and asks "Send
+  "RESET" to COM5? … The card acts on it." with **No** as the default.
+  Cancelling sends nothing and says so.
+- **Edit…**: a table with Button, Sends, Hex, Line end and Ask first,
+  plus Add and Remove. Typing a label or text with RESET, REBOOT,
+  RESTART, ERASE, FORMAT, FLASH, FACTORY, DELETE, CLEAR, BURN, WRITE or
+  PROG(RAM) ticks Ask first by itself. It can be unticked.
+- **Saved per profile**: choosing a profile brings up its macros. With no
+  profile chosen there is a default set. Save as profile takes the row on
+  screen with it.
+
+### How it is built
+
+`SerialMacro` (in `serialmanager.h`) has `bytes()`, `looksDangerous()`
+and load/save. Macros are a nested array inside each `serial/profiles`
+entry, with the default set in `serial/macros`. Line ends are stored as
+hex, because an ini mangles CR and LF as text. In the terminal:
+`loadMacros()`, `setMacros()` (which saves), `runMacro()`, the editor, and
+a replaceable confirmer for tests.
+
+### Tests
+
+`tests/test_session109.cpp`, 28 checks:
+
+- bytes for text, escapes, hex and line ends; bad hex refused;
+- the dangerous-word list against harmless commands;
+- two profiles with different macros round-trip, with confirm and the exact
+  line end (CR alone, LF alone);
+- **over a pty**:
+  - buttons appear, the confirm one marked;
+  - nothing goes while the port is closed;
+  - a click puts `STATUS?\r\n` on the wire;
+  - RESET asks: No sends nothing, Yes sends `RESET\r\n`;
+  - a plain macro never asks;
+  - switching profile, and back to none, switches the row.
+- The suite restores the test ini's profiles and macros afterwards.
+
+Gate: 11/11 validators, `dltests` 165 suites / 5314 checks, menu audit,
+smoke. All green.
+
+Not tested: the editor dialog itself (modal). Its result goes through
+`setMacros()`, which is tested.
+
+---
+
 <a id="session-108"></a>
 ## Session 108 — Serial: paced file send with progress and Stop
 
