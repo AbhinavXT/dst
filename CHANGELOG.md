@@ -11,6 +11,105 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-99"></a>
+## Session 99 — Track diagram by absolute location (queued feature 3 of 3)
+
+Tools ▸ Monitor ▸ **Trac&k diagram…** (Ctrl+Alt+K). The last of the three
+queued features. One tab, one line (no map, no internet): RFID tags,
+signals and the movement authority end against absolute track location,
+the loco riding the rail at a draggable time cursor, events pinned where
+they happened.
+
+### Scope, confirmed before building
+
+Three calls: a **new standalone window** for one tab (live, loaded, or
+recorded — not wired into `ReplayWindow`'s existing `TimelineWidget`, which
+already draws rails/RFID/a loco box but is replay-only and has no
+signal/MA markers); signals and the MA end **deduped to one marker each**
+(the same physical signal is re-reported, at a slightly different computed
+location, on every frame while it's ahead); and a **draggable time
+scrubber** (a `QSlider` + Play/Pause, not a static picture) — the literal
+"loco moving along it over time."
+
+### Signals and MA: both had to be derived, not read
+
+Neither has an absolute-location field anywhere in the schema: `@dmi`
+gives `appr_sig_dist` (distance *ahead of the loco right now*) and
+`ma_w_r_t_sig` (distance ahead of *that signal* — `dmiAssumptions()`,
+dmipanel.cpp). So `signal = loco's location that frame + appr_sig_dist`,
+`MA end = signal + ma_w_r_t_sig`, both via `SpeedDistance::targetLocation()`
+— the same helper that already places a DMI target. Decoded through
+`dmiStateFromCapture()` (dmipanel.h), the live DMI panel's own decode —
+not a second copy of its field lookups or the signal-name regex. Deduped
+by name, keeping the reading with the **smallest** `appr_sig_dist` (the
+closest, and so most accurate, fix); its MA is taken from that *same*
+frame, so the two numbers are never stitched from different instants —
+tested with two readings of one real signal 1250 m and 1800 m out, with
+different MA values, to prove the closer one wins and its own MA comes
+along with it, not the farther reading's.
+
+One loco's own `abs_loco_loc` needed none of session 98's anchoring
+concern: that was about reconciling two *different* locos' origins; one
+loco's location is self-consistent across its own session.
+
+### How it is built
+
+- **`trackdiagram.h/.cpp`** (no UI): `build()` reuses
+  `SpeedDistance::extract()` unchanged for the loco's own trace; walks
+  `@rfid` frames for tags with a real fix (`CaptureDecoder::decodeRfid`,
+  the same "0 and 0x7FFFFF both mean no fix" rule `ReplayWindow`'s track
+  axis uses); walks `@dmi` for signals/MA as above; and pins
+  `RunReport::summarise()`'s mode changes/overspeed/emergencies and
+  `TwoLocoView::extractEvents()`'s SoS/head-on/rear-end (single-tab use —
+  pairing is Two-loco view's job, not this module's) by matching each
+  event's own row (or, for faults, which carry none, its time) against the
+  trace for "the loco's last known location at or before this" — the same
+  rule DMI time travel uses for a frame, applied to a location instead.
+  Reject-rule findings are **not** pinned: `RunReport::Summary` keeps only
+  per-clause counts, not each match's row, so there is nothing to look a
+  location up against without changing what `RunReport` outputs — left for
+  later rather than guessed at.
+- **`trackdiagramwindow.h/.cpp`**: `TrackDiagramCanvas` (one rail, RFID
+  diamonds, signal posts coloured by aspect via `dmiLitLamps()` +
+  `UiColor::signalLamp()`, a dashed line to the MA flag, event ticks, the
+  loco box at the cursor — everything at or before the cursor drawn at
+  full strength, everything still ahead faded, so a static repaint still
+  shows "moving along it over time" without literally animating) and
+  `TrackDiagramWindow` (`QSlider` + Play/Pause `QTimer` at a fixed step,
+  not real-time-scaled — noted as a simplification, not claimed as exact).
+- Menu audit triggers it alongside Speed vs distance / Run summary report
+  — no modal picker, so safe to fire in the offscreen run.
+
+### Tests
+
+- **`session99` (21 checks):** built from **real captures wherever one
+  exists** (CLAUDE.md's rule) — a real `@rfid` frame (id 560, location
+  152720 m, CRC-30 verified) and a real `@dmi` frame naming a real signal
+  ("DN MAIN Dist", 1250 m out, MA 3251 m) from `replay/`, only the
+  surrounding climb and the dedup counter-example synthesised. Covers the
+  trace/direction, the tag, the dedup (closer wins, MA from the same
+  frame), event pinning by location, the span widening to cover tags/
+  signals/MA, the canvas's cursor clamping and signal, the window's slider
+  range and Play/Pause wiring, image export, and an empty tab.
+
+**`verify.sh`: 0 stages failed.**
+- unit suite **155 suites / 4958 checks**;
+- menu audit 140 ok;
+- smoke alive.
+
+**Not tested:** the Windows/MSVC build and Qt 6.4 (macOS/Qt 5.15.19 again,
+the only Qt in this environment); the Play/Pause timer's actual frame
+advance over real wall-clock time (only that toggling it starts/stops the
+`QTimer`, not a multi-second real run of it); a second loco's track
+diagram side by side with this one (explicitly out of scope — that
+question belongs to Two-loco view, session 98, not this feature).
+
+All three queued features from CLAUDE.md's list are now built: Incident
+report pack (97), Two-loco view (98), Track diagram by absolute location
+(99).
+
+---
+
 <a id="session-98"></a>
 ## Session 98 — Two-loco view (queued feature 2 of 3)
 

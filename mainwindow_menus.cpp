@@ -484,6 +484,13 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                               "collision/head-on/rear-end events (@lsos)"));
     connect(actTwoLoco, &QAction::triggered, this, &MainWindow::onActionTwoLocoView);
 
+    // Session 99: the track, by absolute location.
+    QAction *actTrackDiagram = monitorMenu->addAction(tr("Trac&k diagram…"));
+    actTrackDiagram->setShortcut(QKeySequence("Ctrl+Alt+K"));
+    actTrackDiagram->setToolTip(tr("RFID tags, signals and the movement authority end on one line, by absolute "
+                                   "location, with the loco riding it over a draggable time cursor"));
+    connect(actTrackDiagram, &QAction::triggered, this, &MainWindow::onActionTrackDiagram);
+
     // Schema reload. Pairs with the decode-failure dock: edit kavach.xml,
     // reload, and the dock repopulates with whatever the new schema still
     // cannot handle — which is the decoder development loop.

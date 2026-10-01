@@ -100,6 +100,7 @@
 #include "incidentreportwindow.h"
 #include "speeddistance.h"
 #include "twolocowindow.h"
+#include "trackdiagramwindow.h"
 #include "workspacesnapshot.h"
 #include "tabtags.h"
 #include "textzoom.h"
@@ -492,6 +493,20 @@ void MainWindow::onActionIncidentReport()
 void MainWindow::onActionTwoLocoView()
 {
     auto *w = new TwoLocoWindow(m_dispatcher, this);
+    w->show();
+    w->raise();
+}
+
+void MainWindow::onActionTrackDiagram()
+{
+    const QString key = currentTabKey();
+    LogModel *model = key.isEmpty() ? nullptr : m_dispatcher->modelForKey(key);
+    if (!model || model->count() == 0) {
+        notify(NoteLevel::Info, tr("Select a tab with messages first."));
+        return;
+    }
+    QString name = m_tabs.value(key).friendlyName;
+    auto *w = new TrackDiagramWindow(model, key, name.isEmpty() ? key : name, this);
     w->show();
     w->raise();
 }

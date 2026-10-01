@@ -672,6 +672,11 @@ int main(int argc, char **argv) {
               "Tools > Monitor > Speed vs distance, on Ctrl+Alt+V");
         CHECK(rr && rr->shortcut() == QKeySequence(QStringLiteral("Ctrl+Alt+R")),
               "Tools > Monitor > Run summary report, on Ctrl+Alt+R");
+        // Session 99: the track diagram, like Speed vs distance -- opens
+        // straight into the window, no modal picker, so it is safe to trigger.
+        QAction *tdAct = monitorM ? findAction(monitorM, "Track diagram") : nullptr;
+        CHECK(tdAct && tdAct->shortcut() == QKeySequence(QStringLiteral("Ctrl+Alt+K")),
+              "Tools > Monitor > Track diagram, on Ctrl+Alt+K");
         auto countWindows = [](const char *cls) {
             int n = 0;
             for (QWidget *t : QApplication::topLevelWidgets()) if (t->inherits(cls) && t->isVisible()) ++n;
@@ -698,13 +703,16 @@ int main(int argc, char **argv) {
             }
         }
         const int sdBefore = countWindows("SpeedDistanceWindow"), rrBefore = countWindows("RunReportWindow");
+        const int tdBefore = countWindows("TrackDiagramWindow");
         if (sd) sd->trigger();
         if (rr) rr->trigger();
+        if (tdAct) tdAct->trigger();
         for (int i = 0; i < 5; ++i) QApplication::processEvents();
-        const bool opened = countWindows("SpeedDistanceWindow") == sdBefore + 1 && countWindows("RunReportWindow") == rrBefore + 1;
-        CHECK(opened, "both open on the current tab");
+        const bool opened = countWindows("SpeedDistanceWindow") == sdBefore + 1 && countWindows("RunReportWindow") == rrBefore + 1
+                          && countWindows("TrackDiagramWindow") == tdBefore + 1;
+        CHECK(opened, "all three open on the current tab");
         for (QWidget *t : QApplication::topLevelWidgets())
-            if (t->inherits("SpeedDistanceWindow") || t->inherits("RunReportWindow")) t->close();
+            if (t->inherits("SpeedDistanceWindow") || t->inherits("RunReportWindow") || t->inherits("TrackDiagramWindow")) t->close();
         for (int i = 0; i < 5; ++i) { QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete); QApplication::processEvents(); }
 
         if (seeded) seeded->clear();   // leave the tab as the later checks expect it
