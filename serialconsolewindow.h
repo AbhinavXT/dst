@@ -39,6 +39,8 @@
 #include "seriallink.h"
 #include "serialfilesender.h"
 #include "serialmanager.h"
+#include "logentry.h"
+#include "logquery.h"
 
 class MessageDispatcher;
 class SerialManager;
@@ -49,6 +51,7 @@ class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
 class QProgressBar;
+class QueryLineEdit;
 class QPushButton;
 class QSpinBox;
 class QTimer;
@@ -87,6 +90,11 @@ public:
     QString receivedText() const;
     QString statusText() const;
     QString healthText() const;                // the line-health label
+    // Session 110: Show only / Highlight, as typed (tests set them).
+    void setViewFilter(const QString &query);
+    void setViewHighlight(const QString &query);
+    QString viewQueryError() const;
+    int highlightedLines() const;              // blocks currently highlighted
 
     // Profiles (session 105). saveProfile is the Save button without its
     // name prompt; it stores the current settings under `name`.
@@ -109,7 +117,16 @@ private:
     bool isOpen() const { return m_link && m_link->isOpen(); }
     void refreshPorts();
     void refreshProfiles(const QString &select = QString());
-    void appendView(const QString &text);
+    // Every line the view shows goes through here. `raw` empty = a marker
+    // ("── opened … ──", a hex row): always shown. Otherwise it is a line
+    // the card sent (In) or we sent (Out), subject to Show only / Highlight.
+    void appendView(const QString &text, const QByteArray &raw = QByteArray(),
+                    qint64 ms = 0, Direction dir = Direction::None);
+    struct ViewLine { QString text; QByteArray raw; qint64 ms = 0; Direction dir = Direction::None; };
+    bool passesFilter(const ViewLine &l) const;
+    void showLine(const ViewLine &l);
+    void applyViewQueries();                   // parse both boxes, rebuild the view
+    LogEntry entryFor(const ViewLine &l) const;
     void onLine(const QByteArray &line, qint64 ms);
     void onBytes(const QByteArray &bytes, qint64 ms);
     void onWritten(const QByteArray &bytes, qint64 ms);
@@ -158,7 +175,13 @@ private:
     SerialHexDumper m_hex;                     // session 107: 16-byte rows
     QTimer *m_hexFlush = nullptr;
     int     m_held = 0;
-    QStringList m_heldLines;
+    QVector<ViewLine> m_heldLines;
+    QVector<ViewLine> m_buffer;                // what the view can be rebuilt from
+    // Session 110: Show only / Highlight, in the console's query language.
+    QueryLineEdit *m_filterEdit = nullptr, *m_highlightEdit = nullptr;
+    QLabel   *m_queryError = nullptr;
+    QTimer   *m_queryDebounce = nullptr;
+    LogQuery  m_filter, m_highlight;
 };
 
 #endif // SERIALCONSOLEWINDOW_H

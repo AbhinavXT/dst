@@ -23,6 +23,8 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
+#include <QTextBlock>
+#include "querylineedit.h"
 #include <QDialog>
 #include <QHeaderView>
 #include <QTableWidget>
@@ -197,6 +199,36 @@ void SerialConsoleWindow::build()
     rxRow->addStretch(1);
     rxRow->addWidget(m_feed); rxRow->addWidget(m_logFile);
 
+    // ---- show only / highlight (session 110) -------------------------------------
+    m_filterEdit = new QueryLineEdit(this);
+    m_filterEdit->setObjectName(QStringLiteral("serialFilter"));
+    m_filterEdit->setPlaceholderText(tr("Show only: @dop2   msg:/FAIL/   field:SIG_OV=1   dir:out"));
+    m_filterEdit->setClearButtonEnabled(true);
+    m_filterEdit->setToolTip(tr("Show only the lines that match, in the console's own query language "
+                                "(the same as a tab's filter in Query mode). Changing it re-filters what is "
+                                "already on screen. The log file and the console still get every line."));
+    m_highlightEdit = new QueryLineEdit(this);
+    m_highlightEdit->setObjectName(QStringLiteral("serialHighlight"));
+    m_highlightEdit->setPlaceholderText(tr("Highlight: /LINK.*FAIL/   dir:out   time:14:02..14:05"));
+    m_highlightEdit->setClearButtonEnabled(true);
+    m_highlightEdit->setToolTip(tr("Mark the lines that match: a \u25B6 at the start and a tinted background."));
+    m_queryError = new QLabel(this);
+    m_queryError->setObjectName(QStringLiteral("serialQueryError"));
+    m_queryError->setStyleSheet(UiColor::errorStyle());
+    m_queryError->hide();
+    auto *qRow = new QHBoxLayout;
+    qRow->addWidget(new QLabel(tr("Show only"), this));
+    qRow->addWidget(m_filterEdit, 1);
+    qRow->addWidget(new QLabel(tr("Highlight"), this));
+    qRow->addWidget(m_highlightEdit, 1);
+    qRow->addWidget(m_queryError);
+    m_queryDebounce = new QTimer(this);
+    m_queryDebounce->setSingleShot(true);
+    m_queryDebounce->setInterval(200);
+    connect(m_queryDebounce, &QTimer::timeout, this, &SerialConsoleWindow::applyViewQueries);
+    connect(m_filterEdit, &QLineEdit::textChanged, m_queryDebounce, [this]() { m_queryDebounce->start(); });
+    connect(m_highlightEdit, &QLineEdit::textChanged, m_queryDebounce, [this]() { m_queryDebounce->start(); });
+
     m_view = new QPlainTextEdit(this);
     m_view->setObjectName(QStringLiteral("serialView"));
     m_view->setReadOnly(true);
@@ -262,6 +294,7 @@ void SerialConsoleWindow::build()
     root->addLayout(profRow);
     root->addLayout(cfg);
     root->addLayout(rxRow);
+    root->addLayout(qRow);
     root->addWidget(m_view, 1);
     root->addLayout(txRow);
     // ---- macros (session 109) ----------------------------------------------------
@@ -344,14 +377,14 @@ void SerialConsoleWindow::build()
         m_mgr->setFeed(configFromUi().portName, on);
         updateState();
     });
-    connect(clear, &QPushButton::clicked, m_view, &QPlainTextEdit::clear);
+    connect(clear, &QPushButton::clicked, this, [this]() { m_view->clear(); m_buffer.clear(); });
     connect(m_hold, &QCheckBox::toggled, this, [this](bool on) {
         if (!on) {
             // Release: what arrived while held goes into the view, in order.
-            const QStringList held = m_heldLines;
+            const QVector<ViewLine> held = m_heldLines;
             m_heldLines.clear();
             m_held = 0;
-            for (const QString &t : held) m_view->appendPlainText(t);
+            for (const ViewLine &l : held) showLine(l);
             m_view->verticalScrollBar()->setValue(m_view->verticalScrollBar()->maximum());
         }
         updateState();
@@ -413,7 +446,10 @@ void SerialConsoleWindow::build()
         if (!m_hex.hasPartial()) { m_hexFlush->stop(); return; }
         if (QDateTime::currentMSecsSinceEpoch() - m_hex.lastByteMs() >= 60) flushHexRow();
     });
-    connect(m_hexView, &QCheckBox::toggled, this, [this](bool) {
+    connect(m_hexView, &QCheckBox::toggled, this, [this](bool on) {
+        // Hex rows are not lines: Show only / Highlight apply to the text view.
+        m_filterEdit->setEnabled(!on);
+        m_highlightEdit->setEnabled(!on);
         flushHexRow();
         m_hex.reset();                             // offsets count from the switch
     });
@@ -437,6 +473,8 @@ void SerialConsoleWindow::build()
                               .arg(m_mgr->fedLines(m_link->config().portName)));
     });
     m_countTimer->start();
+    m_filterEdit->setEnabled(!m_hexView->isChecked());
+    m_highlightEdit->setEnabled(!m_hexView->isChecked());
     onPortChosen();
 }
 
@@ -661,20 +699,122 @@ QString SerialConsoleWindow::stamp(qint64 ms) const
     return QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss.zzz"));
 }
 
-void SerialConsoleWindow::appendView(const QString &text)
+void SerialConsoleWindow::appendView(const QString &text, const QByteArray &raw, qint64 ms, Direction dir)
 {
+    // The log file gets everything, whatever the view is showing.
     if (m_log && m_log->isOpen()) { m_log->write(text.toUtf8()); m_log->write("\n"); m_log->flush(); }
+    const ViewLine l{ text, raw, ms, dir };
+    m_buffer.append(l);
+    if (m_buffer.size() > kMaxViewLines) m_buffer.removeFirst();
+    if (!passesFilter(l)) return;
     if (m_hold->isChecked()) {
         // Kept, not dropped: shown when Hold is released. Bounded like the view.
         ++m_held;
-        m_heldLines.append(text);
+        m_heldLines.append(l);
         if (m_heldLines.size() > kMaxViewLines) m_heldLines.removeFirst();
         return;
     }
+    showLine(l);
+}
+
+LogEntry SerialConsoleWindow::entryFor(const ViewLine &l) const
+{
+    // A LogEntry like the one the console tab holds for this line, so a
+    // query means the same here as there: the raw line as text (field:
+    // decodes it), the port's tab key for src:, the direction for dir:.
+    LogEntry e;
+    e.text = QString::fromUtf8(l.raw.constData(), l.raw.size());
+    e.epochMs = l.ms;
+    e.direction = l.dir;
+    e.header.source_id = SerialManager::kSerialSourceId;
+    e.header.kvchId = SerialManager::kvchForPort(m_link ? m_link->config().portName : configFromUi().portName);
+    e.header.message_len = quint16(qMin(l.raw.size(), 0xFFFF));
+    e.cacheDerived();
+    return e;
+}
+
+bool SerialConsoleWindow::passesFilter(const ViewLine &l) const
+{
+    if (l.raw.isEmpty() || m_filter.isEmpty() || !m_filter.isValid()) return true;
+    return m_filter.match(entryFor(l));
+}
+
+void SerialConsoleWindow::showLine(const ViewLine &l)
+{
+    const bool marked = !l.raw.isEmpty() && !m_highlight.isEmpty() && m_highlight.isValid()
+                        && m_highlight.match(entryFor(l));
     QScrollBar *bar = m_view->verticalScrollBar();
     const bool atEnd = bar->value() >= bar->maximum() - 2;
-    m_view->appendPlainText(text);
+    // A glyph as well as the tint: not colour alone.
+    m_view->appendPlainText(marked ? QStringLiteral("\u25B6 ") + l.text : l.text);
+    // Set on every line, marked or not: a new block inherits the previous
+    // block's format, so after one highlighted line every line after it
+    // came out tinted too.
+    QTextCursor c(m_view->document()->lastBlock());
+    QTextBlockFormat f;
+    if (marked) {
+        QColor tint = palette().highlight().color();
+        tint.setAlpha(90);
+        f.setBackground(tint);
+        f.setProperty(QTextFormat::UserProperty, true);
+    }
+    c.setBlockFormat(f);
     if (atEnd) bar->setValue(bar->maximum());
+}
+
+void SerialConsoleWindow::applyViewQueries()
+{
+    // An unreadable query filters nothing and says why — never "matches
+    // nothing", which would look like a silent card.
+    m_filter.parse(m_filterEdit->text());
+    m_highlight.parse(m_highlightEdit->text());
+    QString err;
+    if (!m_filter.isValid()) {
+        err = tr("Show only: %1").arg(m_filter.errorString());
+        m_filterEdit->setQueryError(m_filter.errorString(), m_filter.errorOffset());
+    } else {
+        m_filterEdit->clearQueryError();
+    }
+    if (!m_highlight.isValid()) {
+        if (!err.isEmpty()) err += QStringLiteral(" \u00B7 ");
+        err += tr("Highlight: %1").arg(m_highlight.errorString());
+        m_highlightEdit->setQueryError(m_highlight.errorString(), m_highlight.errorOffset());
+    } else {
+        m_highlightEdit->clearQueryError();
+    }
+    m_queryError->setText(err);
+    m_queryError->setVisible(!err.isEmpty());
+
+    // Rebuild what is on screen from what was received.
+    m_view->clear();
+    m_heldLines.clear();
+    m_held = 0;
+    for (const ViewLine &l : qAsConst(m_buffer))
+        if (passesFilter(l)) showLine(l);
+    updateState();
+}
+
+void SerialConsoleWindow::setViewFilter(const QString &query)
+{
+    m_filterEdit->setText(query);
+    applyViewQueries();
+}
+
+void SerialConsoleWindow::setViewHighlight(const QString &query)
+{
+    m_highlightEdit->setText(query);
+    applyViewQueries();
+}
+
+// isHidden, not isVisible: true of a label in a window not (yet) shown.
+QString SerialConsoleWindow::viewQueryError() const { return m_queryError->isHidden() ? QString() : m_queryError->text(); }
+
+int SerialConsoleWindow::highlightedLines() const
+{
+    int n = 0;
+    for (QTextBlock b = m_view->document()->begin(); b.isValid(); b = b.next())
+        if (b.blockFormat().property(QTextFormat::UserProperty).toBool()) ++n;
+    return n;
 }
 
 void SerialConsoleWindow::onLine(const QByteArray &line, qint64 ms)
@@ -684,7 +824,8 @@ void SerialConsoleWindow::onLine(const QByteArray &line, qint64 ms)
     // Escape codes removed and control bytes drawn, for the eye only: the
     // console and the decoder got the line as it came.
     const QString text = serialDisplayText(line);
-    appendView(m_timestamps->isChecked() ? stamp(ms) + QStringLiteral("  ") + text : text);
+    appendView(m_timestamps->isChecked() ? stamp(ms) + QStringLiteral("  ") + text : text,
+               line, ms, Direction::In);
     if (m_hold->isChecked()) updateState();
 }
 
@@ -714,7 +855,8 @@ void SerialConsoleWindow::onWritten(const QByteArray &bytes, qint64 ms)
     while (body.endsWith('\r') || body.endsWith('\n')) body.chop(1);
     QString shown = m_hexView->isChecked() ? serialToHex(bytes) : serialDisplayText(body);
     shown = QStringLiteral("TX> ") + shown;
-    appendView(m_timestamps->isChecked() ? stamp(ms) + QStringLiteral("  ") + shown : shown);
+    appendView(m_timestamps->isChecked() ? stamp(ms) + QStringLiteral("  ") + shown : shown,
+               m_hexView->isChecked() ? QByteArray() : body, ms, Direction::Out);
 }
 
 // ---- send ---------------------------------------------------------------------------

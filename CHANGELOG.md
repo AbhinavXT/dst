@@ -11,6 +11,77 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-110"></a>
+## Session 110 — Serial terminal: Show only and Highlight, in the console's query language
+
+From the serial test report: "Highlight and filter in the terminal view,
+e.g. regex highlight and 'show only @dop2'. Reuse your query language so it
+matches the main window."
+
+### What the operator sees
+
+A row above the terminal view has **Show only** and **Highlight** boxes.
+They use the same language, the same completer and the same error marking
+as a tab's filter in Query mode (`LogQuery`, `QueryLineEdit`):
+
+- `@dop2`, `NOT @dop`, `msg:/LINK\s+FAIL/`, `field:SIG_OV=1` (decoded
+  from the line, as in the console), `dir:out` (what was sent), and `time:`
+  ranges all work.
+- **Show only** re-filters what is already on screen, not just what
+  arrives next. The view is rebuilt from the last 20,000 lines received.
+- **Highlight** marks matching lines with a leading `▶` and a tint (the
+  palette highlight, as the raw-bytes panel uses): not colour alone. Both
+  boxes work together.
+- **Markers always show** (`── opened …`, `── lost …`, `── sending …`):
+  what happened to the port is never filtered away.
+- **A broken query filters nothing.** It is marked in the box and named
+  beside it, never "matches nothing", which would look like a silent card.
+- **The log file and the console tab get every line**, whatever the
+  terminal shows.
+- In **hex view** the two boxes are off, because hex rows are not lines.
+
+### A bug the tests found
+
+`QPlainTextEdit::appendPlainText` gives a new block **the previous block's
+format**. After one highlighted line, every line after it came out tinted
+(seven instead of two in the test). Every line now sets its own block
+format.
+
+### How it is built
+
+The terminal keeps a buffer of what it received: display text, raw bytes,
+time, direction. Each line is matched as a `LogEntry` built like the one in
+the console tab: the raw line as text (so `field:` decodes it), the port's
+tab key for `src:`, and the direction for `dir:`. The queries are parsed
+after a 200 ms debounce, and the view is rebuilt from the buffer. Hold
+keeps its lines as before, with their highlight.
+
+Files: `serialconsolewindow.h/.cpp`.
+
+### Tests
+
+`tests/test_session110.cpp`, 18 checks, over a pty with real `@dop1` and
+`@dop2` lines from `replay/`:
+
+- "show only @dop2" re-filters lines already received and applies to new
+  ones;
+- markers stay;
+- a regex, `NOT`, and `dir:out` (the sent line) work;
+- a broken query is named and filters nothing;
+- Highlight marks exactly the two `@dop1` lines, with `▶`; it works with
+  Show only, and clears;
+- the console tab got all six lines;
+- hex view turns Show only off.
+
+Gate: 11/11 validators, `dltests` 166 suites / 5332 checks, menu audit,
+smoke. All green.
+
+Not tested: the terminal assigns no severities, so `sev:` matches nothing
+there (the console's colour rules do that, in the tab). That is why the
+placeholder suggests `dir:out` instead.
+
+---
+
 <a id="session-109"></a>
 ## Session 109 — Serial: macro buttons, per profile, asking before the dangerous ones
 
