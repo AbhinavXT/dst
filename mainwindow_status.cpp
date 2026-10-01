@@ -625,7 +625,7 @@ void MainWindow::rebuildSerialChips()
         if (QWidget *w = it->widget()) w->deleteLater();
         delete it;
     }
-    const QStringList ports = m_serial->openPorts();
+    const QStringList ports = m_serial->openPorts() + m_serial->reconnectingPorts();
     for (const QString &port : ports) {
         const SerialLink *link = m_serial->link(port);
         auto *chip = new QToolButton(m_serialChips);
@@ -648,14 +648,24 @@ void MainWindow::refreshSerialChips()
     for (QToolButton *chip : m_serialChips->findChildren<QToolButton *>(QStringLiteral("serialChip"))) {
         const QString port = chip->property("port").toString();
         const SerialLink *link = m_serial->link(port);
-        const bool failing = m_serial->health(port, now).failing();
+        const bool waiting = m_serial->isReconnecting(port);
+        const bool failing = waiting || m_serial->health(port, now).failing();
         // The dot and the name, not colour alone; a warning sign when the
         // lines do not decode (wrong baud, most likely).
         const QString label = m_serial->label(port);
-        chip->setText((failing ? QStringLiteral("\u26A0 ") : QStringLiteral("\u25CF "))
+        chip->setText((waiting ? QStringLiteral("\u25CC ")
+                               : failing ? QStringLiteral("\u26A0 ") : QStringLiteral("\u25CF "))
                       + SerialManager::shortName(port)
-                      + (label.isEmpty() ? QString() : QStringLiteral(" ") + label));
+                      + (label.isEmpty() ? QString() : QStringLiteral(" ") + label)
+                      + (waiting ? tr(" reconnecting\u2026") : QString()));
         chip->setStyleSheet(failing ? UiColor::warningStyle() : UiColor::okStyle());
+        if (waiting) {
+            chip->setToolTip(tr("%1 was lost (the adapter went away). It reopens by itself when the "
+                                "same adapter comes back, under any port name.\nClick to open a terminal on it.")
+                                 .arg(port));
+            chip->setAccessibleName(tr("Serial port %1 lost, reconnecting").arg(port));
+            continue;
+        }
         chip->setToolTip(tr("%1 open, %2%3\n%4\nClick to open a terminal on it.")
                              .arg(port, link ? link->config().summary() : QString(),
                                   m_serial->feeds(port)

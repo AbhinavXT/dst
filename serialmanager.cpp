@@ -3,7 +3,11 @@
 #include "capturedecoder.h"
 #include "messagedispatcher.h"
 
+#include <QDateTime>
+#include <QFileInfo>
+#include <QSerialPortInfo>
 #include <QSettings>
+#include <QTimer>
 
 #include <algorithm>
 
@@ -11,6 +15,10 @@ SerialManager::SerialManager(MessageDispatcher *dispatcher, QObject *parent)
     : QObject(parent)
     , m_dispatcher(dispatcher)
 {
+    m_reconnectTimer = new QTimer(this);
+    m_reconnectTimer->setInterval(1000);
+    connect(m_reconnectTimer, &QTimer::timeout, this, &SerialManager::tryReconnect);
+    m_finder = &SerialManager::findPortBySerial;
 }
 
 SerialManager::~SerialManager()
@@ -20,36 +28,58 @@ SerialManager::~SerialManager()
     closeAll();
 }
 
+SerialManager::EntryPtr SerialManager::entry(const QString &portName) const
+{
+    return m_ports.value(key(portName));
+}
+
+QVector<SerialManager::EntryPtr> SerialManager::entries() const
+{
+    // Unique: a port renamed on reconnect is one entry under two names.
+    QVector<EntryPtr> out;
+    for (const EntryPtr &e : m_ports) if (!out.contains(e)) out << e;
+    return out;
+}
+
 SerialLink *SerialManager::link(const QString &portName) const
 {
-    const auto it = m_ports.constFind(key(portName));
-    return it == m_ports.constEnd() ? nullptr : it->link;
+    const EntryPtr e = entry(portName);
+    return e ? e->link : nullptr;
 }
 
 SerialLink *SerialManager::linkFor(const QString &portName)
 {
-    const QString k = key(portName);
-    auto it = m_ports.find(k);
-    if (it != m_ports.end()) return it->link;
+    if (const EntryPtr found = entry(portName)) return found->link;
 
-    Entry e;
-    e.link = new SerialLink(this);
-    e.link->setIdleFlushMs(300);
-    connect(e.link, &SerialLink::lineReceived, this,
-            [this, k](const QByteArray &line, qint64 ms) { onLine(k, line, ms); });
-    connect(e.link, &SerialLink::opened, this, [this, k]() {
-        auto it = m_ports.find(k);
-        if (it != m_ports.end()) it->health.reset();     // health is per session
+    EntryPtr e = EntryPtr::create();
+    e->tabPort = portName.trimmed();
+    e->link = new SerialLink(this);
+    e->link->setIdleFlushMs(300);
+    Entry *raw = e.data();
+    connect(e->link, &SerialLink::lineReceived, this,
+            [this, raw](const QByteArray &line, qint64 ms) { onLine(raw, line, ms); });
+    connect(e->link, &SerialLink::opened, this, [this, raw]() {
+        // Health is per session; a reconnect continues the session, so its
+        // gap shows in "longest gap" rather than being wiped.
+        if (!raw->reconnecting) raw->health.reset();
+        // Remember which adapter this is: Windows renumbers COM ports, the
+        // USB serial number stays.
+        const QString sn = usbSerialFor(raw->link->config().portName);
+        if (!sn.isEmpty()) raw->usbSerial = sn;
         emit portsChanged();
     });
-    connect(e.link, &SerialLink::closed, this, &SerialManager::portsChanged);
-    m_ports.insert(k, e);
-    return e.link;
+    connect(e->link, &SerialLink::closed, this, &SerialManager::portsChanged);
+    connect(e->link, &SerialLink::lost, this, [this, raw](const QString &why) { onLost(raw, why); });
+    m_ports.insert(key(portName), e);
+    return e->link;
 }
 
 bool SerialManager::open(const SerialConfig &config)
 {
-    return linkFor(config.portName)->open(config);
+    SerialLink *l = linkFor(config.portName);
+    if (const EntryPtr e = entry(config.portName)) e->lostAtMs = 0;   // an explicit open ends any wait
+    updateReconnectTimer();
+    return l->open(config);
 }
 
 bool SerialManager::openProfile(const SerialProfile &profile)
@@ -81,37 +111,50 @@ QStringList SerialManager::openProfiles(const QVector<SerialProfile> &profiles)
 void SerialManager::setLabel(const QString &portName, const QString &label)
 {
     linkFor(portName);
-    m_ports[key(portName)].label = label.trimmed();
+    entry(portName)->label = label.trimmed();
     emit portsChanged();
 }
 
 QString SerialManager::label(const QString &portName) const
 {
-    const auto it = m_ports.constFind(key(portName));
-    return it == m_ports.constEnd() ? QString() : it->label;
+    const EntryPtr e = entry(portName);
+    return e ? e->label : QString();
 }
 
 QString SerialManager::titleFor(const QString &portName) const
 {
-    const QString l = label(portName);
-    return l.isEmpty() ? tabTitleFor(portName) : l;
+    const EntryPtr e = entry(portName);
+    if (e && !e->label.isEmpty()) return e->label;
+    return tabTitleFor(e ? e->tabPort : portName);
 }
 
 void SerialManager::close(const QString &portName)
 {
-    if (SerialLink *l = link(portName)) l->close();
+    const EntryPtr e = entry(portName);
+    if (!e) return;
+    // A Close stops a wait for the adapter too: closing is the operator
+    // saying "not this port", whatever state it is in.
+    const bool waiting = e->lostAtMs > 0;
+    e->lostAtMs = 0;
+    updateReconnectTimer();
+    e->link->close();
+    if (waiting) emit portsChanged();
 }
 
 void SerialManager::closeAll()
 {
-    for (const Entry &e : qAsConst(m_ports)) e.link->close();
+    for (const EntryPtr &e : entries()) {
+        e->lostAtMs = 0;
+        e->link->close();
+    }
+    updateReconnectTimer();
 }
 
 QStringList SerialManager::openPorts() const
 {
     QStringList out;
-    for (const Entry &e : m_ports) {
-        if (e.link->isOpen()) out << e.link->config().portName;
+    for (const EntryPtr &e : entries()) {
+        if (e->link->isOpen()) out << e->link->config().portName;
     }
     std::sort(out.begin(), out.end(), [](const QString &a, const QString &b) {
         return a.compare(b, Qt::CaseInsensitive) < 0;
@@ -119,37 +162,54 @@ QStringList SerialManager::openPorts() const
     return out;
 }
 
+QStringList SerialManager::reconnectingPorts() const
+{
+    QStringList out;
+    for (const EntryPtr &e : entries()) {
+        if (e->lostAtMs > 0) out << e->link->config().portName;
+    }
+    std::sort(out.begin(), out.end(), [](const QString &a, const QString &b) {
+        return a.compare(b, Qt::CaseInsensitive) < 0;
+    });
+    return out;
+}
+
+bool SerialManager::isReconnecting(const QString &portName) const
+{
+    const EntryPtr e = entry(portName);
+    return e && e->lostAtMs > 0;
+}
+
 void SerialManager::setFeed(const QString &portName, bool on)
 {
     linkFor(portName);
-    m_ports[key(portName)].feed = on;
+    entry(portName)->feed = on;
 }
 
 bool SerialManager::feeds(const QString &portName) const
 {
-    const auto it = m_ports.constFind(key(portName));
-    return it != m_ports.constEnd() && it->feed;
+    const EntryPtr e = entry(portName);
+    return e && e->feed;
 }
 
 int SerialManager::fedLines(const QString &portName) const
 {
-    const auto it = m_ports.constFind(key(portName));
-    return it == m_ports.constEnd() ? 0 : it->fedLines;
+    const EntryPtr e = entry(portName);
+    return e ? e->fedLines : 0;
 }
 
 void SerialManager::resetFedLines(const QString &portName)
 {
-    auto it = m_ports.find(key(portName));
-    if (it != m_ports.end()) {
-        it->fedLines = 0;
-        it->health.reset();
+    if (const EntryPtr e = entry(portName)) {
+        e->fedLines = 0;
+        e->health.reset();
     }
 }
 
 SerialLineHealth::Stats SerialManager::health(const QString &portName, qint64 nowMs) const
 {
-    const auto it = m_ports.constFind(key(portName));
-    return it == m_ports.constEnd() ? SerialLineHealth::Stats() : it->health.stats(nowMs);
+    const EntryPtr e = entry(portName);
+    return e ? e->health.stats(nowMs) : SerialLineHealth::Stats();
 }
 
 QString SerialManager::healthText(const QString &portName, qint64 nowMs) const
@@ -165,18 +225,113 @@ QString SerialManager::healthText(const QString &portName, qint64 nowMs) const
     return t;
 }
 
-void SerialManager::onLine(const QString &k, const QByteArray &line, qint64 ms)
+void SerialManager::onLine(Entry *e, const QByteArray &line, qint64 ms)
 {
-    auto it = m_ports.find(k);
-    if (it == m_ports.end() || line.trimmed().isEmpty()) return;
+    if (line.trimmed().isEmpty()) return;
     // Health counts every line, fed or not: it is about the wire.
-    it->health.note(SerialLineHealth::lineDecodes(line), ms);
-    if (!it->feed || !m_dispatcher) return;
-    const QString port = it->link->config().portName;
-    // Tab named by the port's short name ("COM3", "ttyUSB0"); keyed by the
-    // full name, so two paths never share a tab.
-    m_dispatcher->ingestLocal(kSerialSourceId, kvchForPort(port), line, ms, titleFor(port));
-    ++it->fedLines;
+    e->health.note(SerialLineHealth::lineDecodes(line), ms);
+    if (!e->feed || !m_dispatcher) return;
+    // Into the tab of the name the port FIRST had: a port renamed on
+    // reconnect (COM5 -> COM7) carries on in the same tab. Titled by the
+    // profile's name when it has one.
+    m_dispatcher->ingestLocal(kSerialSourceId, kvchForPort(e->tabPort), line, ms,
+                              e->label.isEmpty() ? tabTitleFor(e->tabPort) : e->label);
+    ++e->fedLines;
+}
+
+// ---- auto-reconnect -------------------------------------------------------------------
+
+void SerialManager::marker(Entry *e, const QString &text, qint64 ms)
+{
+    // A line in the console tab, so the gap in the log is visible where
+    // the log is read, not only in a terminal that may not be open.
+    if (e->feed && m_dispatcher) {
+        m_dispatcher->ingestLocal(kSerialSourceId, kvchForPort(e->tabPort), text.toUtf8(), ms,
+                                  e->label.isEmpty() ? tabTitleFor(e->tabPort) : e->label);
+    }
+}
+
+void SerialManager::onLost(Entry *e, const QString &why)
+{
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    e->lostAtMs = now;
+    const QString port = e->link->config().portName;
+    marker(e, tr("── lost %1: %2; waiting for it to come back ──").arg(port, why), now);
+    emit portLost(port, why);
+    emit portsChanged();
+    updateReconnectTimer();
+}
+
+void SerialManager::tryReconnect()
+{
+    for (const EntryPtr &e : entries()) {
+        if (e->lostAtMs <= 0) continue;
+        SerialConfig c = e->link->config();
+        const QString oldName = c.portName;
+        const QString found = m_finder(e->usbSerial, oldName);
+        if (found.isEmpty()) continue;                    // not back yet
+        c.portName = found;
+        e->reconnecting = true;
+        const bool ok = e->link->open(c);
+        e->reconnecting = false;
+        if (!ok) continue;                                // enumerated, not ready: next tick
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        const qint64 gap = now - e->lostAtMs;
+        e->lostAtMs = 0;
+        if (key(found) != key(oldName)) m_ports.insert(key(found), e);   // same entry, new name
+        marker(e.data(), key(found) == key(oldName)
+                   ? tr("── reconnected %1, gap %2 s ──").arg(found).arg(gap / 1000.0, 0, 'f', 1)
+                   : tr("── reconnected as %1 (was %2), gap %3 s ──")
+                         .arg(found, oldName).arg(gap / 1000.0, 0, 'f', 1),
+               now);
+        emit portReconnected(found, gap);
+        emit portsChanged();
+    }
+    updateReconnectTimer();
+}
+
+void SerialManager::updateReconnectTimer()
+{
+    bool waiting = false;
+    for (const EntryPtr &e : m_ports) if (e->lostAtMs > 0) { waiting = true; break; }
+    if (waiting && !m_reconnectTimer->isActive()) m_reconnectTimer->start();
+    if (!waiting) m_reconnectTimer->stop();
+}
+
+void SerialManager::setReconnectIntervalMs(int ms) { m_reconnectTimer->setInterval(ms); }
+
+QString SerialManager::usbSerialFor(const QString &portName)
+{
+    const QString shortN = shortName(portName);
+    for (const QSerialPortInfo &i : QSerialPortInfo::availablePorts()) {
+        if (i.portName().compare(shortN, Qt::CaseInsensitive) == 0
+            || i.systemLocation() == portName) {
+            return i.serialNumber();
+        }
+    }
+    return QString();
+}
+
+QString SerialManager::findPortBySerial(const QString &usbSerial, const QString &lastName)
+{
+    const QList<QSerialPortInfo> ports = QSerialPortInfo::availablePorts();
+    if (!usbSerial.isEmpty()) {
+        // By the adapter, under whatever name it now has.
+        for (const QSerialPortInfo &i : ports)
+            if (i.serialNumber() == usbSerial) return i.portName();
+        return QString();
+    }
+    // No serial number (a virtual port, a built-in UART): by name.
+    for (const QSerialPortInfo &i : ports)
+        if (i.portName().compare(shortName(lastName), Qt::CaseInsensitive) == 0
+            || i.systemLocation() == lastName) {
+            return lastName;
+        }
+#ifdef Q_OS_UNIX
+    // Not enumerated (a pty, a path the enumerator does not list) but there.
+    if (lastName.startsWith(QLatin1Char('/')) && QFileInfo::exists(lastName)) return lastName;
+#endif
+    return QString();
 }
 
 // ---- naming ---------------------------------------------------------------------------

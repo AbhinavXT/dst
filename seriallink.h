@@ -172,6 +172,9 @@ signals:
     void opened();
     void closed();
     void errorOccurred(const QString &text);
+    // Closed by the driver (the adapter vanished), not by close(): emitted
+    // after closed(). What auto-reconnect waits on.
+    void lost(const QString &why);
 
 private:
     void applyError(const SerialErrorOutcome &o);

@@ -11,6 +11,83 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-106"></a>
+## Session 106 — Serial: auto-reconnect, by USB serial number
+
+From the serial test report: "When the adapter comes back (matched by USB
+serial number, not COM number, since Windows renumbers ports), reopen it and
+log `── reconnected, gap 4.2 s ──`, so log gaps are visible."
+
+### What the operator sees
+
+- **A port the driver lost** (the adapter pulled, a ReadError/WriteError,
+  or an error storm; session 101) is **waited for**, not forgotten. A
+  **Close** is not a loss: a port the operator closed stays closed.
+- **In the console tab**: `── lost COM5: …; waiting for it to come back ──`,
+  then `── reconnected COM5, gap 4.2 s ──`, or `── reconnected as COM7
+  (was COM5), gap 4.2 s ──`. The gap is visible where the log is read,
+  whether or not a terminal is open.
+- **It comes back into the same tab**, under the same profile name, with
+  the same settings and Feed console, even when Windows gives it a new COM
+  number.
+- **The terminal** shows the lost and reconnected lines, follows a rename,
+  and while waiting its button reads **Stop waiting**. The status reads
+  `◌ COM5 lost — reconnecting when the adapter comes back (found by its
+  USB serial number, under any port name)`.
+- **The chip** reads `◌ COM5 IOA Input reconnecting…` in the warning
+  colour while waiting.
+- **Line health continues** across a reconnect, so the outage shows as the
+  longest gap.
+
+### How it is built
+
+- `SerialLink::lost(why)` is emitted after `closed()`, only when the
+  driver closed the port.
+- At each open, `SerialManager` records the adapter's USB serial number
+  (`QSerialPortInfo`). While a port is lost, it ticks once a second:
+  - It finds the same serial number under any name and reopens.
+  - With no serial number (virtual ports, built-in UARTs, ptys), it finds
+    the port by name, or on Unix by the path still existing.
+  - A port that is enumerated but not yet openable is tried again next
+    tick.
+- Entries are now shared. A renamed port is **one entry under both
+  names**. Its console tab stays keyed by the name it first had, so a
+  rename never splits a log across two tabs.
+- `close()` and `closeAll()` end a wait.
+- `setReconnectIntervalMs()` and `setPortFinder()` exist for tests.
+
+Files: `seriallink.h/.cpp`, `serialmanager.h/.cpp`,
+`serialconsolewindow.cpp`, `mainwindow_status.cpp`.
+
+### Tests
+
+`tests/test_session106.cpp`, 22 checks. The enumerator is replaced by a
+stand-in, so the adapter can vanish and return on cue. The ports
+themselves are two real ptys, and the line is a real `@dop1` from
+`replay/`.
+
+- The adapter is pulled: the port is waited for; the tab and the terminal
+  say "lost"; the button offers Stop waiting; the manager keeps looking.
+- It comes back **under the second pty's name**: the same link reopens with
+  its baud and profile name; the tab says "reconnected as … gap"; lines
+  from the new name land in the **same** tab, and no second tab is made;
+  health continues; the terminal follows.
+- Stop waiting ends the search.
+- A Close is not a loss.
+- With the real enumerator, a pty with no serial number is found again by
+  its name.
+
+Six consecutive runs, no failures.
+
+Gate: 11/11 validators, `dltests` 162 suites / 5234 checks, menu audit,
+smoke. All green.
+
+Not tested: a real USB adapter unplugged and replugged, and Windows
+renumbering a COM port. Matching by serial number is exercised only
+through the stand-in enumerator.
+
+---
+
 <a id="session-105"></a>
 ## Session 105 — Serial: named port profiles
 

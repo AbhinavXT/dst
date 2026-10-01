@@ -479,11 +479,13 @@ void SerialLink::onError(QSerialPort::SerialPortError e)
 
 void SerialLink::applyError(const SerialErrorOutcome &o)
 {
-    if (o.closed && m_open) {
+    const bool lostNow = o.closed && m_open;
+    if (lostNow) {
         m_open = false;
         for (const SerialLineSplitter::Line &l : o.flushed) emit lineReceived(l.text, l.firstByteMs);
         emit closed();
     }
     m_error = o.text;
     emit errorOccurred(m_error);
+    if (lostNow) emit lost(m_error);
 }

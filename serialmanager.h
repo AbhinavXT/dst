@@ -27,9 +27,12 @@
 
 #include <QHash>
 #include <QObject>
+#include <QSharedPointer>
 #include <QString>
 #include <QStringList>
 #include <QVector>
+
+#include <functional>
 
 #include "seriallink.h"
 
@@ -111,6 +114,21 @@ public:
 
     QStringList openPorts() const;           // sorted, as the user typed them
 
+    // Auto-reconnect (session 106). A port the DRIVER lost (the adapter was
+    // pulled; not a Close) is waited for: each tick the manager looks for
+    // the same adapter by its USB serial number, under any name, and
+    // reopens it with the same settings, feed and label — into the same
+    // console tab, with "── lost … ──" and "── reconnected, gap 4.2 s ──"
+    // lines in it so the gap in the log is visible. Close stops the wait.
+    QStringList reconnectingPorts() const;
+    bool isReconnecting(const QString &portName) const;
+    // Tests: a faster tick, and a stand-in for the port enumerator.
+    void setReconnectIntervalMs(int ms);
+    using PortFinder = std::function<QString(const QString &usbSerial, const QString &lastName)>;
+    void setPortFinder(PortFinder f) { m_finder = std::move(f); }
+    static QString usbSerialFor(const QString &portName);
+    static QString findPortBySerial(const QString &usbSerial, const QString &lastName);
+
     // Opens a profile's port with its settings and feed, labelled with the
     // profile's name. False with the reason in the link's errorText().
     bool openProfile(const SerialProfile &profile);
@@ -152,7 +170,9 @@ public:
                                  SerialConfig *config, bool *feed);
 
 signals:
-    void portsChanged();                     // a port opened or closed
+    void portsChanged();                     // a port opened, closed, was lost or came back
+    void portLost(const QString &portName, const QString &why);
+    void portReconnected(const QString &portName, qint64 gapMs);
 
 private:
     struct Entry {
@@ -161,12 +181,27 @@ private:
         int  fedLines = 0;
         SerialLineHealth health;
         QString label;
+        QString tabPort;            // the name its console tab is keyed by (the first)
+        QString usbSerial;          // the adapter, for finding it again
+        qint64  lostAtMs = 0;       // > 0: lost, waiting for it
+        bool    reconnecting = false;
     };
+    using EntryPtr = QSharedPointer<Entry>;
     static QString key(const QString &portName) { return portName.trimmed().toUpper(); }
-    void onLine(const QString &key, const QByteArray &line, qint64 ms);
+    EntryPtr entry(const QString &portName) const;
+    QVector<EntryPtr> entries() const;
+    void onLine(Entry *e, const QByteArray &line, qint64 ms);
+    void onLost(Entry *e, const QString &why);
+    void marker(Entry *e, const QString &text, qint64 ms);
+    void tryReconnect();
+    void updateReconnectTimer();
 
-    MessageDispatcher     *m_dispatcher = nullptr;
-    QHash<QString, Entry>  m_ports;
+    MessageDispatcher        *m_dispatcher = nullptr;
+    // Keyed by port name; a port renamed on reconnect is one entry under
+    // both names.
+    QHash<QString, EntryPtr>  m_ports;
+    class QTimer             *m_reconnectTimer = nullptr;
+    PortFinder                m_finder;
 };
 
 #endif // SERIALMANAGER_H

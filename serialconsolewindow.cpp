@@ -281,7 +281,28 @@ void SerialConsoleWindow::build()
 
     // ---- wiring -------------------------------------------------------------------
     connect(refresh, &QToolButton::clicked, this, &SerialConsoleWindow::refreshPorts);
-    connect(m_open, &QPushButton::clicked, this, [this]() { if (isOpen()) closePort(); else openPort(); });
+    connect(m_open, &QPushButton::clicked, this, [this]() {
+        const bool waiting = m_link && m_mgr->isReconnecting(m_link->config().portName);
+        if (isOpen() || waiting) closePort(); else openPort();
+    });
+    // Session 106: the port this window shows was lost, or came back.
+    connect(m_mgr, &SerialManager::portLost, this, [this](const QString &port, const QString &why) {
+        if (!m_link || m_mgr->link(port) != m_link) return;
+        appendView(tr("── lost %1 at %2: %3; waiting for it to come back ──")
+                       .arg(port, stamp(QDateTime::currentMSecsSinceEpoch()), why));
+        updateState();
+    });
+    connect(m_mgr, &SerialManager::portReconnected, this, [this](const QString &port, qint64 gapMs) {
+        if (!m_link || m_mgr->link(port) != m_link) return;
+        // Possibly under a new name (Windows renumbers COM ports).
+        m_attaching = true;
+        setConfigToUi(m_link->config());
+        m_attaching = false;
+        appendView(tr("── reconnected %1 at %2, gap %3 s ──")
+                       .arg(port, stamp(QDateTime::currentMSecsSinceEpoch()))
+                       .arg(gapMs / 1000.0, 0, 'f', 1));
+        updateState();
+    });
     connect(m_dtr, &QCheckBox::toggled, this, [this](bool on) { if (m_link) m_link->setDtr(on); });
     connect(m_rts, &QCheckBox::toggled, this, [this](bool on) { if (m_link) m_link->setRts(on); });
     connect(m_port, &QComboBox::currentTextChanged, this, &SerialConsoleWindow::onPortChosen);
@@ -522,7 +543,8 @@ void SerialConsoleWindow::closePort()
 {
     m_repeat->setChecked(false);
     const bool was = isOpen();
-    if (m_link) m_link->close();
+    // Through the manager: it also stops a wait for a lost adapter.
+    if (m_link) m_mgr->close(m_link->config().portName);
     if (was) appendView(tr("── closed at %1 ──").arg(stamp(QDateTime::currentMSecsSinceEpoch())));
     updateState();
 }
@@ -549,6 +571,13 @@ void SerialConsoleWindow::updateState()
         if (m_hold->isChecked() && m_held) t += m_held == 1 ? tr(" · holding 1 line") : tr(" · holding %1 lines").arg(m_held);
         m_state->setText(t);
         m_state->setStyleSheet(UiColor::okStyle());
+    } else if (m_link && m_mgr->isReconnecting(m_link->config().portName)) {
+        const SerialConfig &c = m_link->config();
+        m_open->setText(tr("Stop waiting"));
+        setWindowTitle(tr("Serial — %1 (lost)").arg(c.portName));
+        m_state->setText(tr("\u25CC %1 lost \u2014 reconnecting when the adapter comes back "
+                            "(found by its USB serial number, under any port name)").arg(c.portName));
+        m_state->setStyleSheet(UiColor::warningStyle());
     } else {
         setWindowTitle(tr("Serial Port Terminal"));
         m_state->setText(tr("Closed"));
