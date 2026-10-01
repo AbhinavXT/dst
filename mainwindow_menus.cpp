@@ -469,6 +469,14 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                                 "silences, clock skew, faults, reject conditions"));
     connect(actRunReport, &QAction::triggered, this, &MainWindow::onActionRunReport);
 
+    // Session 97: one incident, read in one pass.
+    QAction *actIncidentReport = monitorMenu->addAction(tr("&Incident report…"));
+    actIncidentReport->setShortcut(QKeySequence("Ctrl+Alt+I"));
+    actIncidentReport->setToolTip(tr("Pick a moment: the DMI at the key moments around it, the speed/permitted/"
+                                     "target plot, mode changes, EB/FSB applications, reject findings and the "
+                                     "raw frames, in one HTML file"));
+    connect(actIncidentReport, &QAction::triggered, this, &MainWindow::onActionIncidentReport);
+
     // Schema reload. Pairs with the decode-failure dock: edit kavach.xml,
     // reload, and the dock repopulates with whatever the new schema still
     // cannot handle — which is the decoder development loop.

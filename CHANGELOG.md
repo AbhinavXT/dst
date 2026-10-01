@@ -11,6 +11,90 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-97"></a>
+## Session 97 — Incident report pack (queued feature 1 of 3)
+
+Tools ▸ Monitor ▸ **Incident report…** (Ctrl+Alt+I). The first of the three
+queued features: pick a moment on one tab, get one self-contained HTML file
+about it — the DMI as the loco pilot saw it at the key moments around that
+moment, the speed/permitted/target plot, mode changes, EB/FSB applications,
+SLRP reject-rule matches, and the raw frames in the window. Same rule as the
+existing Run summary report: **OBSERVED only, no verdict.**
+
+### Scope, confirmed before building
+
+Three decisions were confirmed up front rather than assumed: the picker is a
+menu action with a time + before/after dialog (not a row right-click or a
+row-range selection); the report covers one tab/one loco, like Run summary
+report (not every loco at once); output is HTML with images embedded inline
+(`RunReportWindow`'s existing pattern — opens in a browser, prints to PDF
+from there), not a native PDF writer.
+
+### How it is built — mostly reuse, little new decoding
+
+- **`RunReport::Options` gained a window** (`hasWindow`, `fromMs`, `toMs`).
+  `summarise()` now skips rows outside it and passes the window to
+  `SpeedDistance::extract()` too, so overspeed/max-speed are windowed as well.
+  Unset (the default), nothing changes — Run summary report is untouched.
+- **`SpeedDistance::extract()` gained optional `fromMs`/`toMs`**, threaded
+  straight into `collectRowFields()`, which already supported a window for
+  its other callers.
+- **`RunReport::EpisodeTracker`** (open/extend/close a spell from a boolean
+  condition — already how overspeed and emergency-status are tracked) moved
+  from `runreport.cpp`'s anonymous namespace into `runreport.h` so
+  `IncidentReport` can track EB/FSB applications the same way, instead of a
+  second copy of the same ten lines.
+- **New `incidentreport.h/.cpp`**: assembles a windowed `RunReport::Summary`,
+  an EB/FSB episode list (`@dmi brake_type`, schema values 3/4 —
+  `FULL_SERVICE_BRAKE`/`EMERGENCY_BRAKE`, a field that already existed), a
+  windowed `SpeedDistance::Trace` rendered to PNG via a headless
+  `SpeedDistanceCanvas`, and the DMI panel at each key moment rendered via a
+  headless `DmiView` fed by `dmiMomentFromModels()` (dmitimetravel.h) — the
+  exact "latest @dmi at or before" rule the live DMI window's Follow-cursor
+  uses. Key moments: window start, window end, every mode change and every
+  EB/FSB onset inside the window, capped at 8 (`maxDmiMoments`) in time
+  order — the excess is dropped and the report says so, because rendering a
+  DMI panel is not free. Raw frames are capped at 500 (`maxRawFrames`) the
+  same way, with a "N more" note.
+- **New `incidentreportdialog.h/.cpp`**: a small modal picker (moment +
+  before/after, seconds), mirroring `GotoTimestampDialog`'s shape.
+- **New `incidentreportwindow.h/.cpp`**: shows the HTML, Rebuild/Copy/Save
+  HTML, mirroring `RunReportWindow`.
+- **No modal trigger in the menu audit.** Unlike Run summary report and
+  Speed vs distance, this action opens a dialog first; the audit checks it
+  exists and carries Ctrl+Alt+I, and does not `trigger()` it — doing so would
+  block the offscreen run on a dialog nothing can answer.
+
+### Tests
+
+- **`session97` (39 checks):** `RunReport`'s window (included rows, the
+  mode-at-window-start, only the in-window mode change, windowed overspeed
+  and max speed, unwindowed behaviour unchanged); `SpeedDistance::extract`'s
+  window; `IncidentReport::build()` end to end (window bounds, the FSB
+  episode's span and name, the plot rendering, raw-frame capping and its "N
+  more" count, the four key moments and their DMI panels, an empty window, a
+  tab with no `@dmi` at all — `SpeedDistance`'s own LSRP fallback still
+  plots, but no DMI panel exists to show); the dialog's clamping and
+  before/after defaults; the window building and saving its HTML on
+  construction.
+- `test_contrastaudit.cpp`: `incidentreport.cpp` added to the standalone-HTML
+  colour-literal allowlist, next to `runreport.cpp` — same reason (a document
+  with its own white background, no palette to follow).
+
+**`verify.sh`: 0 stages failed.**
+- unit suite **153 suites / 4914 checks**;
+- menu audit 139 ok;
+- smoke alive.
+
+**Not tested:** the Windows/MSVC build (still unbuilt there since the
+library split, patch 88) and Qt 6.4; this session's gate ran on macOS/Qt
+5.15.19 (Homebrew), the only Qt available in this environment. Rendering of
+the DMI panel and the speed plot was only exercised offscreen
+(`QT_QPA_PLATFORM=offscreen`) via `QWidget::grab()`, not against a real
+on-screen window.
+
+---
+
 <a id="session-96"></a>
 ## Session 96 — Singletons, 2 and 3 of 4: `TabTags`, `SessionKeyStore`
 

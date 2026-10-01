@@ -53,7 +53,7 @@ double targetLocation(double locM, double targetDistM, int direction)
     return direction < 0 ? locM - targetDistM : locM + targetDistM;
 }
 
-Trace extract(const LogModel *model, int maxRows)
+Trace extract(const LogModel *model, int maxRows, qint64 fromMs, qint64 toMs)
 {
     Trace t;
     if (!model) return t;
@@ -61,7 +61,7 @@ Trace extract(const LogModel *model, int maxRows)
     const QStringList dmiFields{ QStringLiteral("abs_loco_loc"), QStringLiteral("train_speed"),
                                  QStringLiteral("speed_limit_permissible"), QStringLiteral("target_distance"),
                                  QStringLiteral("target_speed"), QStringLiteral("loco_mode") };
-    QVector<RowFields> rows = collectRowFields(model, QStringLiteral("dmi"), dmiFields, maxRows, 0, 0, &capped);
+    QVector<RowFields> rows = collectRowFields(model, QStringLiteral("dmi"), dmiFields, maxRows, fromMs, toMs, &capped);
     bool dmi = false;
     for (const RowFields &r : rows) dmi = dmi || (r.has(QStringLiteral("abs_loco_loc")) && r.has(QStringLiteral("train_speed")));
     QString locKey = QStringLiteral("abs_loco_loc"), speedKey = QStringLiteral("train_speed"),
@@ -71,7 +71,7 @@ Trace extract(const LogModel *model, int maxRows)
     } else {
         rows = collectRowFields(model, QStringLiteral("lsrp"),
                                 { QStringLiteral("ABS_LOCO_LOC"), QStringLiteral("TRAIN_SPEED"), QStringLiteral("LOCO_MODE") },
-                                maxRows, 0, 0, &capped);
+                                maxRows, fromMs, toMs, &capped);
         locKey = QStringLiteral("ABS_LOCO_LOC");
         speedKey = QStringLiteral("TRAIN_SPEED");
         modeKey = QStringLiteral("LOCO_MODE");

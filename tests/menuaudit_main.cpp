@@ -628,6 +628,13 @@ int main(int argc, char **argv) {
         QAction *sd = monitorM ? findAction(monitorM, "Speed vs distance") : nullptr;
         QAction *rr = monitorM ? findAction(monitorM, "Run summary report") : nullptr;
         QAction *dmiAct = monitorM ? findAction(monitorM, "DMI (LP-OCIP)") : nullptr;
+        // Session 97: Incident report opens a modal picker first (atMs +
+        // before/after), so it is checked for presence/wiring only -- not
+        // triggered, which would block this offscreen run on a dialog no
+        // one can answer.
+        QAction *irAct = monitorM ? findAction(monitorM, "Incident report") : nullptr;
+        CHECK(irAct && irAct->shortcut() == QKeySequence(QStringLiteral("Ctrl+Alt+I")),
+              "Tools > Monitor > Incident report, on Ctrl+Alt+I");
         CHECK(dmiAct && dmiAct->shortcut() == QKeySequence(QStringLiteral("Ctrl+Alt+D")),
               "Tools > Monitor > DMI (LP-OCIP), on Ctrl+Alt+D");
         if (dmiAct) {

@@ -81,6 +81,9 @@ SOURCES += \
     $$PWD/clockskewalarm.cpp \
     $$PWD/runreport.cpp \
     $$PWD/runreportwindow.cpp \
+    $$PWD/incidentreport.cpp \
+    $$PWD/incidentreportdialog.cpp \
+    $$PWD/incidentreportwindow.cpp \
     $$PWD/workspacesnapshot.cpp \
     $$PWD/settingsbundle.cpp \
     $$PWD/namemap.cpp \
@@ -193,6 +196,9 @@ HEADERS += \
     $$PWD/clockskewalarm.h \
     $$PWD/runreport.h \
     $$PWD/runreportwindow.h \
+    $$PWD/incidentreport.h \
+    $$PWD/incidentreportdialog.h \
+    $$PWD/incidentreportwindow.h \
     $$PWD/workspacesnapshot.h \
     $$PWD/settingsbundle.h \
     $$PWD/namemap.h \

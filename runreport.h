@@ -31,6 +31,8 @@
 #include <QString>
 #include <QVector>
 
+#include <cmath>
+
 class LogModel;
 
 namespace RunReport {
@@ -38,11 +40,44 @@ namespace RunReport {
 struct Options {
     qint64 gapThresholdMs = 5000;
     int    maxListRows    = 200;
+    // Session 97: restrict summarise() to rows with fromMs <= epochMs <=
+    // toMs (the incident report's window). Unset (the default) reads the
+    // whole tab, exactly as before.
+    bool   hasWindow = false;
+    qint64 fromMs = 0;
+    qint64 toMs   = 0;
 };
 
 struct Gap        { qint64 fromMs = 0; qint64 toMs = 0; QString lastBefore; };
 struct Change     { qint64 ms = 0; int row = -1; QString from; QString to; };
 struct Episode    { qint64 fromMs = 0; qint64 toMs = 0; QString what; double worst = 0.0; int row = -1; };
+
+// Turns a boolean condition sampled over time into distinct episodes (an
+// overspeed spell, an emergency-status spell, ...): consecutive active
+// samples extend the current episode and keep its worst value; an inactive
+// sample closes it. Shared with IncidentReport (incidentreport.h), which
+// tracks EB/FSB applications the same way RunReport tracks overspeed.
+struct EpisodeTracker {
+    QVector<Episode> *out = nullptr;
+    bool open = false;
+    void observe(bool active, qint64 ms, int row, const QString &what, double worst, bool worseIsMore = true)
+    {
+        if (active) {
+            if (!open) {
+                Episode e; e.fromMs = e.toMs = ms; e.what = what; e.worst = worst; e.row = row;
+                out->append(e);
+                open = true;
+            } else {
+                Episode &e = out->last();
+                e.toMs = ms;
+                const bool worse = worseIsMore ? std::abs(worst) > std::abs(e.worst) : false;
+                if (worse) { e.worst = worst; e.what = what; }
+            }
+        } else {
+            open = false;
+        }
+    }
+};
 struct FaultEvent { qint64 ms = 0; bool raised = true; QString text; };
 
 struct Summary {

@@ -96,6 +96,8 @@
 #include "serialconsolewindow.h"
 #endif
 #include "runreportwindow.h"
+#include "incidentreportdialog.h"
+#include "incidentreportwindow.h"
 #include "speeddistance.h"
 #include "workspacesnapshot.h"
 #include "tabtags.h"
@@ -454,6 +456,34 @@ void MainWindow::onActionRunReport()
     }
     QString name = m_tabs.value(key).friendlyName;
     auto *w = new RunReportWindow(model, key, name.isEmpty() ? key : name, this);
+    w->show();
+    w->raise();
+}
+
+void MainWindow::onActionIncidentReport()
+{
+    const QString key = currentTabKey();
+    LogModel *model = key.isEmpty() ? nullptr : m_dispatcher->modelForKey(key);
+    if (!model || model->count() == 0) {
+        notify(NoteLevel::Info, tr("Select a tab with messages first."));
+        return;
+    }
+    const LogEntryPtr first = model->entryAt(0);
+    const LogEntryPtr last = model->entryAt(model->count() - 1);
+    if (!first || !last) {
+        notify(NoteLevel::Info, tr("Select a tab with messages first."));
+        return;
+    }
+
+    IncidentReportDialog dlg(last->epochMs, first->epochMs, last->epochMs, this);
+    if (dlg.exec() != QDialog::Accepted) return;
+
+    IncidentReport::Options options;
+    options.beforeMs = dlg.beforeMs();
+    options.afterMs = dlg.afterMs();
+
+    QString name = m_tabs.value(key).friendlyName;
+    auto *w = new IncidentReportWindow(model, key, name.isEmpty() ? key : name, dlg.atMs(), options, this);
     w->show();
     w->raise();
 }

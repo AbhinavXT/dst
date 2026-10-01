@@ -59,6 +59,7 @@ bool literalsAllowed(const QString &file)
         || file == QLatin1String("testassertions.cpp")
         || file == QLatin1String("faultpanelwindow.cpp")
         || file == QLatin1String("runreport.cpp")          // session 81: the run summary
+        || file == QLatin1String("incidentreport.cpp")     // session 97: the incident report pack
         // A fixed dark plot canvas, deliberately independent of the theme.
         || file == QLatin1String("replaywindow.cpp");
 }

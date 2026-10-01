@@ -89,8 +89,10 @@ struct Trace {
     bool isEmpty() const { return samples.isEmpty(); }
 };
 
-// Pull the trace out of a tab: DMI if it has any, else LSRP.
-Trace extract(const LogModel *model, int maxRows = 200000);
+// Pull the trace out of a tab: DMI if it has any, else LSRP. fromMs/toMs
+// (session 97, both 0 by default) restrict it to that window, as
+// fieldplot.h's collectRowFields() already does for one field.
+Trace extract(const LogModel *model, int maxRows = 200000, qint64 fromMs = 0, qint64 toMs = 0);
 
 // +1 / -1 / 0 from the locations (sum of consecutive steps, ignoring jumps
 // over 500 m which are location resets, not travel).

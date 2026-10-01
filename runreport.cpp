@@ -30,29 +30,6 @@ QString durationText(qint64 ms)
 
 QString esc(const QString &t) { return t.toHtmlEscaped(); }
 
-// Close an open episode list entry, or open one.
-struct EpisodeTracker {
-    QVector<Episode> *out = nullptr;
-    bool open = false;
-    void observe(bool active, qint64 ms, int row, const QString &what, double worst, bool worseIsMore = true)
-    {
-        if (active) {
-            if (!open) {
-                Episode e; e.fromMs = e.toMs = ms; e.what = what; e.worst = worst; e.row = row;
-                out->append(e);
-                open = true;
-            } else {
-                Episode &e = out->last();
-                e.toMs = ms;
-                const bool worse = worseIsMore ? std::abs(worst) > std::abs(e.worst) : false;
-                if (worse) { e.worst = worst; e.what = what; }
-            }
-        } else {
-            open = false;
-        }
-    }
-};
-
 }  // namespace
 
 Summary summarise(const LogModel *model, const QString &tabKey, const QString &tabName, const Options &options)
@@ -77,11 +54,15 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
     bool faultsSeen = false;
     EpisodeTracker emergency{ &s.emergencies };
     EpisodeTracker skew{ &s.clockSkew };
+    int included = 0;
+    bool haveFirst = false;
 
     for (int i = 0; i < n; ++i) {
         const LogEntryPtr e = model->entryAt(i);
         if (!e) continue;
-        if (i == 0) s.firstMs = e->epochMs;
+        if (options.hasWindow && (e->epochMs < options.fromMs || e->epochMs > options.toMs)) continue;
+        ++included;
+        if (!haveFirst) { s.firstMs = e->epochMs; haveFirst = true; }
         s.lastMs = qMax(s.lastMs, e->epochMs);
         const QString type = captureTypeOf(e->text);
         s.packetCounts[type.isEmpty() ? QStringLiteral("(text)") : type] += 1;
@@ -171,9 +152,12 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
         }
     }
     s.distinctTags = tags.size();
+    if (options.hasWindow) s.rows = included;
 
     // ---- speed, from the same extraction as the speed–distance view ----------------
-    const SpeedDistance::Trace trace = SpeedDistance::extract(model);
+    const SpeedDistance::Trace trace = options.hasWindow
+        ? SpeedDistance::extract(model, 200000, options.fromMs, options.toMs)
+        : SpeedDistance::extract(model);
     s.speedSource = trace.source;
     EpisodeTracker over{ &s.overspeed };
     for (const SpeedDistance::Sample &smp : trace.samples) {
