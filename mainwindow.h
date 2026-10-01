@@ -560,6 +560,9 @@ private:
     void openSerialTerminal(const QString &port = QString());   // mainwindow_tools.cpp
     void rebuildSerialChips();                                   // mainwindow_status.cpp
     void refreshSerialChips();                                   // tooltips and health, each second
+    // Open saved serial profiles (all, or only the auto-open ones); a
+    // failure is a notification naming the profile, never a dialog.
+    void openSerialProfiles(bool autoOpenOnly);                  // mainwindow_tools.cpp
 
     // 2f: refresh tab text colors based on staleness + visibility.
     void refreshTabHealth();

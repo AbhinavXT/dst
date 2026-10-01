@@ -625,6 +625,9 @@ MainWindow::MainWindow(QWidget *parent)
         });
         chipTimer->start();
     }
+    // Session 105: auto-open profiles start with the console, once the
+    // window is up (and never in the menu audit, which saves none).
+    QTimer::singleShot(0, this, [this]() { openSerialProfiles(true); });
 #endif
     connect(m_dispatcher, &MessageDispatcher::entryAppended, m_statusPins, &StatusPins::onEntry);
 

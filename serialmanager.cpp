@@ -52,6 +52,51 @@ bool SerialManager::open(const SerialConfig &config)
     return linkFor(config.portName)->open(config);
 }
 
+bool SerialManager::openProfile(const SerialProfile &profile)
+{
+    setFeed(profile.config.portName, profile.feed);
+    setLabel(profile.config.portName, profile.name);
+    return open(profile.config);
+}
+
+QStringList SerialManager::openProfiles(const QVector<SerialProfile> &profiles)
+{
+    QStringList failed;
+    for (const SerialProfile &p : profiles) {
+        SerialLink *l = link(p.config.portName);
+        if (l && l->isOpen()) {
+            // Already running: a second "Open all" must not reopen (and so
+            // briefly drop) a port that is capturing.
+            setLabel(p.config.portName, p.name);
+            continue;
+        }
+        if (!openProfile(p)) {
+            failed << tr("%1 (%2): %3").arg(p.name, p.config.portName,
+                                            linkFor(p.config.portName)->errorText());
+        }
+    }
+    return failed;
+}
+
+void SerialManager::setLabel(const QString &portName, const QString &label)
+{
+    linkFor(portName);
+    m_ports[key(portName)].label = label.trimmed();
+    emit portsChanged();
+}
+
+QString SerialManager::label(const QString &portName) const
+{
+    const auto it = m_ports.constFind(key(portName));
+    return it == m_ports.constEnd() ? QString() : it->label;
+}
+
+QString SerialManager::titleFor(const QString &portName) const
+{
+    const QString l = label(portName);
+    return l.isEmpty() ? tabTitleFor(portName) : l;
+}
+
 void SerialManager::close(const QString &portName)
 {
     if (SerialLink *l = link(portName)) l->close();
@@ -130,7 +175,7 @@ void SerialManager::onLine(const QString &k, const QByteArray &line, qint64 ms)
     const QString port = it->link->config().portName;
     // Tab named by the port's short name ("COM3", "ttyUSB0"); keyed by the
     // full name, so two paths never share a tab.
-    m_dispatcher->ingestLocal(kSerialSourceId, kvchForPort(port), line, ms, tabTitleFor(port));
+    m_dispatcher->ingestLocal(kSerialSourceId, kvchForPort(port), line, ms, titleFor(port));
     ++it->fedLines;
 }
 
@@ -219,4 +264,60 @@ SerialLineHealth::Stats SerialLineHealth::stats(qint64 nowMs) const
     for (qint64 t : m_recent) if (nowMs - t <= kRateWindowMs) ++inWindow;
     s.perSecond = inWindow * 1000.0 / kRateWindowMs;
     return s;
+}
+
+// ---- profiles -------------------------------------------------------------------------
+
+QVector<SerialProfile> SerialProfile::loadAll(QSettings &s)
+{
+    QVector<SerialProfile> out;
+    const int n = s.beginReadArray(QStringLiteral("serial/profiles"));
+    for (int i = 0; i < n; ++i) {
+        s.setArrayIndex(i);
+        SerialProfile p;
+        p.name = s.value(QStringLiteral("name")).toString().trimmed();
+        p.config = SerialConfig::load(s, QStringLiteral("config"));
+        p.feed = s.value(QStringLiteral("feed"), true).toBool();
+        p.autoOpen = s.value(QStringLiteral("autoOpen"), false).toBool();
+        if (!p.name.isEmpty() && !p.config.portName.isEmpty()) out << p;
+    }
+    s.endArray();
+    return out;
+}
+
+void SerialProfile::saveAll(QSettings &s, const QVector<SerialProfile> &profiles)
+{
+    s.remove(QStringLiteral("serial/profiles"));
+    s.beginWriteArray(QStringLiteral("serial/profiles"), profiles.size());
+    for (int i = 0; i < profiles.size(); ++i) {
+        s.setArrayIndex(i);
+        const SerialProfile &p = profiles.at(i);
+        s.setValue(QStringLiteral("name"), p.name);
+        p.config.save(s, QStringLiteral("config"));
+        s.setValue(QStringLiteral("feed"), p.feed);
+        s.setValue(QStringLiteral("autoOpen"), p.autoOpen);
+    }
+    s.endArray();
+}
+
+int SerialProfile::indexOf(const QVector<SerialProfile> &profiles, const QString &name)
+{
+    for (int i = 0; i < profiles.size(); ++i)
+        if (profiles.at(i).name.compare(name.trimmed(), Qt::CaseInsensitive) == 0) return i;
+    return -1;
+}
+
+void SerialProfile::upsert(QVector<SerialProfile> *profiles, const SerialProfile &p)
+{
+    const int i = indexOf(*profiles, p.name);
+    if (i >= 0) (*profiles)[i] = p;
+    else profiles->append(p);
+}
+
+bool SerialProfile::remove(QVector<SerialProfile> *profiles, const QString &name)
+{
+    const int i = indexOf(*profiles, name);
+    if (i < 0) return false;
+    profiles->remove(i);
+    return true;
 }

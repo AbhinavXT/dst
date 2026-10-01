@@ -11,6 +11,85 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-105"></a>
+## Session 105 — Serial: named port profiles
+
+From the serial test report: "Named port profiles. For example 'IOA Input =
+COM5 115200 8N1, feed on, auto-open'. Opening one starts all three IOA
+cards in one click."
+
+### What the operator sees
+
+- **In the terminal**, a profile row: **Profile** box, **Open at start**,
+  **Save as profile…** and **Delete**.
+  - Choosing a profile fills in the port, the line settings and Feed console.
+    If its port is already running, it shows that port as it runs.
+  - Save stores the current settings under a name. An existing name, in any
+    case, is replaced.
+- **Tools ▸ Serial Profiles**:
+  - **Open all profiles** starts every saved card in one click;
+  - **Close all serial ports**;
+  - one entry per profile, checked while its port runs (clicking a running
+    one opens a terminal on it).
+  - With none saved, it says to save one from the terminal.
+- **Open at start**: those profiles open when DLConsole starts, once the
+  window is up. An adapter that is not plugged in becomes a notification
+  naming the profile and port (`Serial profile not opened: IOA Spare
+  (COM9): …`). The console still comes up, on Ethernet.
+- **A port opened from a profile carries its name** on the status chip
+  (`● COM5 IOA Input`) and as its console tab's title ("IOA Input").
+- **Open all never drops a running port**: one already open is left alone,
+  not reopened.
+
+### How it is built
+
+`SerialProfile` (name, `SerialConfig`, feed, auto-open) is stored as the
+`serial/profiles` array. `SerialManager` gains `openProfile`,
+`openProfiles` (which returns `name (port): why` for each failure),
+`setLabel`/`label` and `titleFor`. The terminal labels the port only when
+the chosen profile's port is the one being opened. MainWindow gains
+`openSerialProfiles(autoOpenOnly)` and the lazily built menu.
+
+Files: `serialmanager.h/.cpp`, `serialconsolewindow.h/.cpp`,
+`mainwindow.h/.cpp`, `mainwindow_menus.cpp`, `mainwindow_status.cpp`,
+`mainwindow_tools.cpp`.
+
+### Tests
+
+`tests/test_session105.cpp`, 24 checks:
+
+- three profiles round-trip (name, port, baud, feed, auto-open);
+  replace-by-name in any case; delete; no stale entries; nameless entries
+  skipped;
+- **three ptys opened as three profiles in one call**, each with its own
+  baud; labels; the tab titled "IOA Input" from a real `@dop1` line; the
+  unfed card makes no tab;
+- Open all again opens nothing anew;
+- a missing adapter is reported by profile name and port, and the others
+  still open;
+- in the terminal: save, select (settings come back), open labels the port,
+  Delete, and opening with no profile chosen leaves no label. The suite
+  restores the test ini's profiles afterwards.
+
+Menu audit (+1): with none saved, Tools ▸ Serial Profiles has Open all
+disabled and says how to make one.
+
+Gate: 11/11 validators, `dltests` 161 suites / 5212 checks, menu audit,
+smoke. All green.
+
+The first gate run went red for an environmental reason. Partway through,
+the Mac's log files briefly reported "Operation not permitted", and three
+pixel-based GUI suites failed (tabmetrics, flasher, presentationmode). The
+same three failed on the **unchanged, already-pushed patch-104 build**,
+which had passed the gate earlier. A rerun minutes later was fully green
+with no code change: the display, not this patch.
+
+Not tested: auto-open at a real start-up with a real adapter. The menu
+audit's ini has no profiles, so the start-up path runs with an empty list
+only.
+
+---
+
 <a id="session-104"></a>
 ## Session 104 — Serial: line health per port
 

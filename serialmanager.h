@@ -71,6 +71,24 @@ private:
     QVector<qint64> m_recent;          // line times inside the rate window
 };
 
+// A named port setup (session 105): "IOA Input = COM5 115200 8N1, feed
+// on, auto-open". Saved in serial/profiles; opening one sets everything at
+// once, "Open all" starts every IOA card in one click, and auto-open ones
+// start with DLConsole.
+struct SerialProfile {
+    QString      name;
+    SerialConfig config;
+    bool         feed = true;
+    bool         autoOpen = false;
+
+    static QVector<SerialProfile> loadAll(QSettings &s);
+    static void saveAll(QSettings &s, const QVector<SerialProfile> &profiles);
+    // Replace a profile of the same name (case-insensitive), or add it.
+    static void upsert(QVector<SerialProfile> *profiles, const SerialProfile &p);
+    static bool remove(QVector<SerialProfile> *profiles, const QString &name);
+    static int  indexOf(const QVector<SerialProfile> &profiles, const QString &name);
+};
+
 class SerialManager : public QObject
 {
     Q_OBJECT
@@ -92,6 +110,19 @@ public:
     void closeAll();
 
     QStringList openPorts() const;           // sorted, as the user typed them
+
+    // Opens a profile's port with its settings and feed, labelled with the
+    // profile's name. False with the reason in the link's errorText().
+    bool openProfile(const SerialProfile &profile);
+    // Opens each; returns "name: why" for each that failed (empty = all open).
+    QStringList openProfiles(const QVector<SerialProfile> &profiles);
+
+    // A port's label: the profile it was opened from, else empty. Shown on
+    // its chip and as its console tab's title.
+    void setLabel(const QString &portName, const QString &label);
+    QString label(const QString &portName) const;
+    // "IOA Input" for a labelled port, else "Serial COM5".
+    QString titleFor(const QString &portName) const;
 
     // Feed console: every received line also enters the dispatcher, into a
     // tab named "Serial <port>".
@@ -129,6 +160,7 @@ private:
         bool feed = true;
         int  fedLines = 0;
         SerialLineHealth health;
+        QString label;
     };
     static QString key(const QString &portName) { return portName.trimmed().toUpper(); }
     void onLine(const QString &key, const QByteArray &line, qint64 ms);

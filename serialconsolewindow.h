@@ -72,6 +72,13 @@ public:
     QString receivedText() const;
     QString statusText() const;
     QString healthText() const;                // the line-health label
+
+    // Profiles (session 105). saveProfile is the Save button without its
+    // name prompt; it stores the current settings under `name`.
+    bool saveProfile(const QString &name);
+    bool deleteProfile(const QString &name);
+    void selectProfile(const QString &name);   // loads it into the window
+    QString currentProfile() const;            // empty: none selected
     QString tabKey() const;                    // the console tab fed from this port
     static quint16 kvchForPort(const QString &portName);   // SerialManager's
     static constexpr quint8 kSerialSourceId = 254;
@@ -86,6 +93,7 @@ private:
     void saveSettings();
     bool isOpen() const { return m_link && m_link->isOpen(); }
     void refreshPorts();
+    void refreshProfiles(const QString &select = QString());
     void appendView(const QString &text);
     void onLine(const QByteArray &line, qint64 ms);
     void onBytes(const QByteArray &bytes, qint64 ms);
@@ -102,6 +110,8 @@ private:
     QComboBox *m_port = nullptr, *m_baud = nullptr, *m_dataBits = nullptr,
               *m_parity = nullptr, *m_stopBits = nullptr, *m_flow = nullptr;
     QPushButton *m_open = nullptr;
+    QComboBox *m_profile = nullptr;
+    QCheckBox *m_autoOpen = nullptr;
     QCheckBox *m_dtr = nullptr, *m_rts = nullptr, *m_lowLatency = nullptr;
 
     QCheckBox *m_hexView = nullptr, *m_timestamps = nullptr, *m_echo = nullptr,

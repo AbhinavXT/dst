@@ -564,3 +564,25 @@ void MainWindow::openSerialTerminal(const QString &port)
     Q_UNUSED(port);
 #endif
 }
+
+void MainWindow::openSerialProfiles(bool autoOpenOnly)
+{
+#ifdef DL_HAVE_SERIAL
+    if (!m_serial) return;
+    QSettings s(Settings::iniPath(), QSettings::IniFormat);
+    QVector<SerialProfile> chosen;
+    for (const SerialProfile &p : SerialProfile::loadAll(s))
+        if (!autoOpenOnly || p.autoOpen) chosen << p;
+    if (chosen.isEmpty()) return;
+    const QStringList failed = m_serial->openProfiles(chosen);
+    // A missing adapter at start-up is news, not an obstacle: the console
+    // still comes up, on Ethernet, and says which card is not being read.
+    for (const QString &f : failed) notify(NoteLevel::Warning, tr("Serial profile not opened: %1").arg(f));
+    const int opened = chosen.size() - failed.size();
+    if (opened > 0)
+        notify(NoteLevel::Info, opened == 1 ? tr("Opened 1 serial profile.")
+                                            : tr("Opened %1 serial profiles.").arg(opened));
+#else
+    Q_UNUSED(autoOpenOnly);
+#endif
+}

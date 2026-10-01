@@ -16,7 +16,9 @@
 #include <QFontDatabase>
 #include <QFileInfo>
 #include <QGridLayout>
+#include <QInputDialog>
 #include <QIntValidator>
+#include <QMessageBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -109,6 +111,48 @@ void SerialConsoleWindow::build()
     m_dtr->setToolTip(tr("Data Terminal Ready line (some adapters reset the card on it)"));
     m_rts->setToolTip(tr("Request To Send line (driven by the driver under RTS/CTS flow control)"));
 
+    // ---- profiles -----------------------------------------------------------------
+    m_profile = new QComboBox(this);
+    m_profile->setObjectName(QStringLiteral("serialProfile"));
+    m_profile->setMinimumWidth(180);
+    m_profile->setToolTip(tr("A named port setup: port, line settings, Feed console and auto-open. "
+                             "Choosing one fills the window in; Tools \u25B8 Serial Profiles opens them, "
+                             "or all of them at once."));
+    m_autoOpen = new QCheckBox(tr("Open at start"), this);
+    m_autoOpen->setObjectName(QStringLiteral("serialAutoOpen"));
+    m_autoOpen->setToolTip(tr("Open this profile's port when DLConsole starts (saved with the profile)"));
+    auto *saveProf = new QPushButton(tr("Save as profile\u2026"), this);
+    saveProf->setObjectName(QStringLiteral("serialSaveProfile"));
+    auto *delProf = new QToolButton(this);
+    delProf->setText(tr("Delete"));
+    delProf->setObjectName(QStringLiteral("serialDeleteProfile"));
+    auto *profRow = new QHBoxLayout;
+    profRow->addWidget(new QLabel(tr("Profile"), this));
+    profRow->addWidget(m_profile);
+    profRow->addWidget(m_autoOpen);
+    profRow->addWidget(saveProf);
+    profRow->addWidget(delProf);
+    profRow->addStretch(1);
+    connect(m_profile, QOverload<int>::of(&QComboBox::activated), this, [this](int) {
+        selectProfile(m_profile->currentData().toString());
+    });
+    connect(saveProf, &QPushButton::clicked, this, [this]() {
+        bool ok = false;
+        const QString name = QInputDialog::getText(this, tr("Save serial profile"),
+                                                   tr("Name (e.g. IOA Input):"), QLineEdit::Normal,
+                                                   currentProfile(), &ok);
+        if (ok && !name.trimmed().isEmpty()) saveProfile(name);
+    });
+    connect(delProf, &QToolButton::clicked, this, [this]() {
+        const QString name = currentProfile();
+        if (name.isEmpty()) return;
+        if (QMessageBox::question(this, tr("Delete serial profile"),
+                                  tr("Delete the profile \u201C%1\u201D? Its port is not closed.").arg(name))
+            == QMessageBox::Yes) {
+            deleteProfile(name);
+        }
+    });
+
     auto *cfg = new QHBoxLayout;
     auto label = [this](const QString &t) { return new QLabel(t, this); };
     cfg->addWidget(label(tr("Port")));      cfg->addWidget(m_port); cfg->addWidget(refresh);
@@ -197,6 +241,7 @@ void SerialConsoleWindow::build()
     stRow->addWidget(m_state, 1); stRow->addWidget(m_health); stRow->addWidget(m_counts); stRow->addWidget(resetCounts);
 
     auto *root = new QVBoxLayout(this);
+    root->addLayout(profRow);
     root->addLayout(cfg);
     root->addLayout(rxRow);
     root->addWidget(m_view, 1);
@@ -206,6 +251,7 @@ void SerialConsoleWindow::build()
     // ---- remembered ---------------------------------------------------------------
     QSettings s(Settings::iniPath(), QSettings::IniFormat);
     refreshPorts();
+    refreshProfiles();
     {
         // A port already running in the background comes first: reopening
         // the terminal shows what is capturing. Then the last port used,
@@ -452,6 +498,16 @@ bool SerialConsoleWindow::openPort()
     }
     attach(m_mgr->linkFor(c.portName));
     m_mgr->setFeed(c.portName, m_feed->isChecked());
+    // Opened from a profile (its port still the one chosen): carry its name
+    // onto the chip and the console tab. Otherwise no label.
+    {
+        QSettings ps(Settings::iniPath(), QSettings::IniFormat);
+        const QVector<SerialProfile> all = SerialProfile::loadAll(ps);
+        const int i = SerialProfile::indexOf(all, currentProfile());
+        const bool fromProfile = i >= 0
+            && all.at(i).config.portName.compare(c.portName, Qt::CaseInsensitive) == 0;
+        m_mgr->setLabel(c.portName, fromProfile ? all.at(i).name : QString());
+    }
     if (!m_mgr->open(c)) { updateState(); m_state->setText(tr("\u2715 %1").arg(m_link->errorText())); return false; }
     m_link->setDtr(m_dtr->isChecked());
     m_link->setRts(m_rts->isChecked());
@@ -488,7 +544,7 @@ void SerialConsoleWindow::updateState()
         setWindowTitle(tr("Serial — %1 %2").arg(c.portName, c.summary()));
         QString t = tr("\u25CF %1 open, %2").arg(c.portName, c.summary());
         if (m_mgr->feeds(c.portName) && m_mgr->dispatcher())
-            t += tr(" · feeding tab \u201C%1\u201D").arg(SerialManager::tabTitleFor(c.portName));
+            t += tr(" · feeding tab \u201C%1\u201D").arg(m_mgr->titleFor(c.portName));
         if (!m_ownsMgr) t += tr(" · keeps running when this window closes");
         if (m_hold->isChecked() && m_held) t += m_held == 1 ? tr(" · holding 1 line") : tr(" · holding %1 lines").arg(m_held);
         m_state->setText(t);
@@ -612,4 +668,79 @@ QString SerialConsoleWindow::healthText() const { return m_health->text(); }
 QString SerialConsoleWindow::tabKey() const
 {
     return SerialManager::tabKeyFor(m_link ? m_link->config().portName : configFromUi().portName);
+}
+
+// ---- profiles -----------------------------------------------------------------------
+
+void SerialConsoleWindow::refreshProfiles(const QString &select)
+{
+    QSettings s(Settings::iniPath(), QSettings::IniFormat);
+    const QVector<SerialProfile> all = SerialProfile::loadAll(s);
+    const QString keep = select.isEmpty() ? currentProfile() : select;
+    m_profile->clear();
+    m_profile->addItem(tr("\u2014 none \u2014"), QString());
+    for (const SerialProfile &p : all)
+        m_profile->addItem(tr("%1 \u2014 %2 %3").arg(p.name, p.config.portName, p.config.summary()), p.name);
+    const int i = keep.isEmpty() ? 0 : m_profile->findData(keep);
+    m_profile->setCurrentIndex(qMax(0, i));
+}
+
+QString SerialConsoleWindow::currentProfile() const
+{
+    return m_profile->currentData().toString();
+}
+
+void SerialConsoleWindow::selectProfile(const QString &name)
+{
+    QSettings s(Settings::iniPath(), QSettings::IniFormat);
+    const QVector<SerialProfile> all = SerialProfile::loadAll(s);
+    const int i = SerialProfile::indexOf(all, name);
+    if (i < 0) { m_profile->setCurrentIndex(0); return; }
+    const SerialProfile &p = all.at(i);
+    m_profile->setCurrentIndex(qMax(0, m_profile->findData(p.name)));
+    // Through showPort: a profile whose port is already running shows it
+    // as it runs, rather than settings that are not in force.
+    showPort(p.config.portName);
+    if (!isOpen()) {
+        m_attaching = true;
+        setConfigToUi(p.config);
+        m_feed->setChecked(p.feed);
+        m_attaching = false;
+    }
+    m_autoOpen->setChecked(p.autoOpen);
+    updateState();
+}
+
+bool SerialConsoleWindow::saveProfile(const QString &name)
+{
+    SerialProfile p;
+    p.name = name.trimmed();
+    p.config = isOpen() ? m_link->config() : configFromUi();
+    p.feed = m_feed->isChecked();
+    p.autoOpen = m_autoOpen->isChecked();
+    if (p.name.isEmpty() || p.config.portName.isEmpty()) {
+        m_state->setText(tr("A profile needs a name and a port."));
+        return false;
+    }
+    QSettings s(Settings::iniPath(), QSettings::IniFormat);
+    QVector<SerialProfile> all = SerialProfile::loadAll(s);
+    SerialProfile::upsert(&all, p);
+    SerialProfile::saveAll(s, all);
+    s.sync();
+    refreshProfiles(p.name);
+    if (isOpen() && m_link->config().portName.compare(p.config.portName, Qt::CaseInsensitive) == 0)
+        m_mgr->setLabel(p.config.portName, p.name);
+    m_state->setText(tr("Saved profile \u201C%1\u201D: %2 %3").arg(p.name, p.config.portName, p.config.summary()));
+    return true;
+}
+
+bool SerialConsoleWindow::deleteProfile(const QString &name)
+{
+    QSettings s(Settings::iniPath(), QSettings::IniFormat);
+    QVector<SerialProfile> all = SerialProfile::loadAll(s);
+    if (!SerialProfile::remove(&all, name)) return false;
+    SerialProfile::saveAll(s, all);
+    s.sync();
+    refreshProfiles();
+    return true;
 }

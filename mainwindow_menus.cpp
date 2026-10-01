@@ -94,6 +94,7 @@
 #include "dmitimetravel.h"
 #ifdef DL_HAVE_SERIAL
 #include "serialconsolewindow.h"
+#include "serialmanager.h"
 #endif
 #include "runreportwindow.h"
 #include "speeddistance.h"
@@ -606,6 +607,42 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     // presses Open in it. The console runs on Ethernet with no serial port
     // present, open, or even built in.
     connect(actSerial, &QAction::triggered, this, [this]() { openSerialTerminal(); });
+    // Session 105: named port setups. Built when shown, from what is saved.
+    QMenu *profilesMenu = toolsMenu->addMenu(tr("Serial Pro&files"));
+    profilesMenu->setObjectName(QStringLiteral("serialProfilesMenu"));
+    connect(profilesMenu, &QMenu::aboutToShow, this, [this, profilesMenu]() {
+        profilesMenu->clear();
+        QSettings s(Settings::iniPath(), QSettings::IniFormat);
+        const QVector<SerialProfile> all = SerialProfile::loadAll(s);
+        QAction *openAll = profilesMenu->addAction(tr("Open &all profiles"));
+        openAll->setEnabled(!all.isEmpty());
+        connect(openAll, &QAction::triggered, this, [this]() { openSerialProfiles(false); });
+        QAction *closeAll = profilesMenu->addAction(tr("&Close all serial ports"));
+        closeAll->setEnabled(m_serial && !m_serial->openPorts().isEmpty());
+        connect(closeAll, &QAction::triggered, this, [this]() { if (m_serial) m_serial->closeAll(); });
+        profilesMenu->addSeparator();
+        if (all.isEmpty()) {
+            QAction *none = profilesMenu->addAction(tr("No profiles yet \u2014 save one from the terminal"));
+            none->setEnabled(false);
+        }
+        for (const SerialProfile &p : all) {
+            const SerialLink *l = m_serial ? m_serial->link(p.config.portName) : nullptr;
+            const bool open = l && l->isOpen();
+            QAction *a = profilesMenu->addAction(
+                tr("%1 \u2014 %2 %3%4").arg(p.name, p.config.portName, p.config.summary(),
+                                           p.autoOpen ? tr(", opens at start") : QString()));
+            a->setCheckable(true);
+            a->setChecked(open);
+            a->setToolTip(open ? tr("Running; click to open a terminal on it")
+                               : tr("Open this port with these settings"));
+            connect(a, &QAction::triggered, this, [this, p, open]() {
+                if (open) { openSerialTerminal(p.config.portName); return; }
+                if (!m_serial->openProfile(p))
+                    notify(NoteLevel::Error, tr("Serial profile %1: %2")
+                                                 .arg(p.name, m_serial->link(p.config.portName)->errorText()));
+            });
+        }
+    });
 #else
     actSerial->setEnabled(false);
     actSerial->setToolTip(tr("Not available: this DLConsole was built without Qt's Serial Port module. "

@@ -651,13 +651,15 @@ void MainWindow::refreshSerialChips()
         const bool failing = m_serial->health(port, now).failing();
         // The dot and the name, not colour alone; a warning sign when the
         // lines do not decode (wrong baud, most likely).
+        const QString label = m_serial->label(port);
         chip->setText((failing ? QStringLiteral("\u26A0 ") : QStringLiteral("\u25CF "))
-                      + SerialManager::shortName(port));
+                      + SerialManager::shortName(port)
+                      + (label.isEmpty() ? QString() : QStringLiteral(" ") + label));
         chip->setStyleSheet(failing ? UiColor::warningStyle() : UiColor::okStyle());
         chip->setToolTip(tr("%1 open, %2%3\n%4\nClick to open a terminal on it.")
                              .arg(port, link ? link->config().summary() : QString(),
                                   m_serial->feeds(port)
-                                      ? tr(", feeding tab \u201C%1\u201D").arg(SerialManager::tabTitleFor(port))
+                                      ? tr(", feeding tab \u201C%1\u201D").arg(m_serial->titleFor(port))
                                       : tr(", not feeding the console"),
                                   m_serial->healthText(port, now)));
         chip->setAccessibleName(failing ? tr("Serial port %1 open, lines not decoding").arg(port)

@@ -111,6 +111,17 @@ int main(int argc, char **argv) {
         // Session 102: a chip per open port; none open, so none shown.
         QWidget *chips = w.findChild<QWidget *>(QStringLiteral("serialChips"));
         CHECK(chips && !chips->isVisible(), "the serial port chips are in the status bar, hidden with no port open");
+        // Session 105: Tools > Serial Profiles, built when shown. The audit
+        // saves none, so it offers nothing to open and says where to start.
+        QMenu *profiles = w.findChild<QMenu *>(QStringLiteral("serialProfilesMenu"));
+        if (profiles) emit profiles->aboutToShow();
+        bool hint = false, openAllOff = false;
+        for (QAction *a : profiles ? profiles->actions() : QList<QAction *>()) {
+            if (a->text().startsWith(QLatin1String("No profiles yet")) && !a->isEnabled()) hint = true;
+            if (a->text().contains(QLatin1String("all profiles")) && !a->isEnabled()) openAllOff = true;
+        }
+        CHECK(profiles && hint && openAllOff,
+              "Tools > Serial Profiles: with none saved, Open all is off and it says how to make one");
 #  ifdef Q_OS_UNIX
         // A port opened in MainWindow's manager shows a chip, with no
         // terminal window open, and the chip goes when the port closes.
