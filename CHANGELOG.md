@@ -11,6 +11,75 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-107"></a>
+## Session 107 — Serial terminal: 16-byte hex rows; control characters and ANSI
+
+From the serial test report: "Hex view prints whatever chunk read returned,
+so rows have uneven lengths. Fixed 16-byte rows with an offset and an ASCII
+column would be easier to read." and "Control characters and ANSI colour
+codes are shown raw."
+
+### What the operator sees
+
+- **Hex view**: `00000010  40 64 6F 70 31 …  … |@dop1_2_1 2026-0|`. Each row
+  is 16 bytes with a running offset, a gap after eight, and an ASCII
+  column, however the driver split the reads.
+  - The last partial row appears once the line has been quiet for 60 ms,
+    padded so its ASCII column lines up.
+  - The offset carries on from where it stopped.
+  - Offsets restart when the port opens, when Hex is switched, and on
+    Clear.
+  - With timestamps on, a row is stamped with its first byte's time.
+- **Text view**: ANSI escape sequences are removed (CSI colour codes, OSC
+  titles ending in BEL or ST, two-byte ESC sequences). Other control bytes
+  are drawn as Unicode control pictures: `␇` BEL, `␀` NUL, `␛` ESC, `␡`
+  DEL. A tab stays a tab.
+- **For the eye only.** The console tab, the decoder and line health get the
+  line exactly as it came.
+- **TX echo**: shows what was sent without its line end turning into
+  `␍␊`.
+
+### A bug the tests found
+
+Qt 5's `QString::fromUtf8(QByteArray)` stops at the first NUL, so a line
+containing a NUL was cut short on display, at exactly the byte this patch
+is meant to show. The display path now passes the length. **Not fixed
+here:** serial lines reach the console tab through the shared UDP
+pipeline (`MessageDispatcher::ingestLocal` → the general payload-to-text
+path), which was not changed. Whether that path has the same truncation,
+for UDP as well, is a separate question for its own patch.
+
+Files: `seriallink.h/.cpp` (`serialStripAnsi`, `serialDisplayText`,
+`SerialHexDumper`), `serialconsolewindow.h/.cpp`.
+
+### Tests
+
+`tests/test_session107.cpp`, 26 checks:
+
+- The real `@dop1` payload (exactly 16 bytes) as one exact row.
+- The whole real line fed in uneven reads: only whole rows; row 0 shows
+  `@dop1` in hex and ASCII; row 1 at offset 0x10; first-byte times; the
+  padded partial row; the offset carrying on after a flush.
+- Escape-code removal: CSI, OSC with BEL, OSC with ST, two-byte ESC, and
+  look-alike text kept.
+- The control pictures, a tab kept, and a coloured `@dop1` line showing as
+  the line.
+- Over a pty:
+  - the terminal shows the text and `␇`, with no ESC;
+  - the console tab gets the raw line;
+  - the echo has no `␍`;
+  - the hex view gives 16-byte rows from offset 0 across a split write,
+    plus the partial row.
+
+Gate: 11/11 validators, `dltests` 163 suites / 5260 checks, menu audit,
+smoke. All green.
+
+Not tested: session 85's Linux-only hex check, which waits 150 ms for 3
+bytes; the 60 ms partial-row flush is chosen to meet it. ANSI colour is
+removed, not rendered.
+
+---
+
 <a id="session-106"></a>
 ## Session 106 — Serial: auto-reconnect, by USB serial number
 

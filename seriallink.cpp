@@ -141,6 +141,94 @@ QByteArray serialUnescape(const QString &text)
 }
 
 // =============================================================================
+//  Terminal display (session 107)
+// =============================================================================
+
+QByteArray serialStripAnsi(const QByteArray &in)
+{
+    QByteArray out;
+    out.reserve(in.size());
+    const int n = in.size();
+    for (int i = 0; i < n; ++i) {
+        const char c = in.at(i);
+        if (c != '\x1b') { out.append(c); continue; }
+        if (i + 1 >= n) break;                        // a lone ESC at the end
+        const char k = in.at(i + 1);
+        if (k == '[') {
+            // CSI: parameters and intermediates, then a final byte @..~.
+            int j = i + 2;
+            while (j < n && !(in.at(j) >= '@' && in.at(j) <= '~')) ++j;
+            i = j;                                    // the final byte is skipped too
+        } else if (k == ']') {
+            // OSC: up to BEL or ST (ESC \).
+            int j = i + 2;
+            while (j < n && in.at(j) != '\x07' && !(in.at(j) == '\x1b' && j + 1 < n && in.at(j + 1) == '\\')) ++j;
+            i = (j < n && in.at(j) == '\x1b') ? j + 1 : j;
+        } else {
+            i += 1;                                   // two-byte ESC x
+        }
+    }
+    return out;
+}
+
+QString serialDisplayText(const QByteArray &bytes)
+{
+    const QByteArray clean = serialStripAnsi(bytes);
+    // With the length: Qt 5's fromUtf8(QByteArray) stops at the first NUL,
+    // which cut a line short at exactly the byte this is meant to show.
+    QString out = QString::fromUtf8(clean.constData(), clean.size());
+    for (int i = 0; i < out.size(); ++i) {
+        const ushort u = out.at(i).unicode();
+        if (u == '\t') continue;
+        if (u < 0x20) out[i] = QChar(0x2400 + u);     // control pictures
+        else if (u == 0x7F) out[i] = QChar(0x2421);
+    }
+    return out;
+}
+
+QString SerialHexDumper::formatRow(quint64 offset, const QByteArray &bytes)
+{
+    QString hex, ascii;
+    for (int i = 0; i < kRowBytes; ++i) {
+        if (i == 8) hex += QLatin1Char(' ');          // the half-row gap
+        if (i < bytes.size()) {
+            const uchar b = uchar(bytes.at(i));
+            hex += QStringLiteral("%1 ").arg(b, 2, 16, QLatin1Char('0')).toUpper();
+            ascii += (b >= 0x20 && b < 0x7F) ? QChar(b) : QLatin1Char('.');
+        } else {
+            hex += QStringLiteral("   ");              // keeps the ASCII column aligned
+        }
+    }
+    return QStringLiteral("%1  %2 |%3|").arg(offset, 8, 16, QLatin1Char('0')).arg(hex, ascii);
+}
+
+QVector<SerialHexDumper::Row> SerialHexDumper::feed(const QByteArray &bytes, qint64 nowMs)
+{
+    QVector<Row> out;
+    for (const char c : bytes) {
+        if (m_row.isEmpty()) m_firstMs = nowMs;
+        m_row.append(c);
+        if (m_row.size() == kRowBytes) {
+            out.append({ formatRow(m_offset, m_row), m_firstMs });
+            m_offset += kRowBytes;
+            m_row.clear();
+        }
+    }
+    if (!bytes.isEmpty()) m_lastMs = nowMs;
+    return out;
+}
+
+QVector<SerialHexDumper::Row> SerialHexDumper::flushPartial()
+{
+    if (m_row.isEmpty()) return {};
+    const Row r{ formatRow(m_offset, m_row), m_firstMs };
+    // The next row starts where this one stopped, so offsets stay true.
+    m_offset += quint64(m_row.size());
+    m_row.clear();
+    return { r };
+}
+
+// =============================================================================
 //  Line splitter
 // =============================================================================
 

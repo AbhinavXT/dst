@@ -64,6 +64,36 @@ QString    serialToHex(const QByteArray &bytes);        // "AA 55 0D 0A"
 // C-style escapes in typed text: \r \n \t \\ \xHH. Unknown escapes are kept.
 QByteArray serialUnescape(const QString &text);
 
+// For the terminal's eyes only (session 107). ANSI escape sequences (CSI
+// colour codes, OSC titles, two-byte ESC x) are removed, and the remaining
+// control bytes are drawn as their Unicode control pictures (BEL -> U+2407,
+// NUL -> U+2400, ESC -> U+241B, DEL -> U+2421); a tab stays a tab. What goes
+// into the console, the log file and the decoder is unchanged.
+QString serialDisplayText(const QByteArray &bytes);
+QByteArray serialStripAnsi(const QByteArray &bytes);
+
+// The hex view's rows (session 107): 16 bytes each, the running offset, and
+// an ASCII column — "00000010  41 42 …  …  |AB..|" — instead of one row per
+// chunk the driver happened to return. A row keeps the time of its first
+// byte. A partial row is held until it fills or flushPartial() is asked.
+class SerialHexDumper
+{
+public:
+    struct Row { QString text; qint64 firstByteMs = 0; };
+    QVector<Row> feed(const QByteArray &bytes, qint64 nowMs);
+    QVector<Row> flushPartial();             // the held partial row, padded
+    bool hasPartial() const { return !m_row.isEmpty(); }
+    qint64 lastByteMs() const { return m_lastMs; }
+    void reset() { m_row.clear(); m_offset = 0; m_firstMs = m_lastMs = 0; }
+    static QString formatRow(quint64 offset, const QByteArray &bytes);
+    static constexpr int kRowBytes = 16;
+
+private:
+    QByteArray m_row;
+    quint64    m_offset = 0;                 // offset of m_row's first byte
+    qint64     m_firstMs = 0, m_lastMs = 0;
+};
+
 // Splits a byte stream into lines on LF (a CR before it is dropped; a lone
 // CR also ends a line, as some cards print CR only). Each line carries the
 // time its first byte arrived.

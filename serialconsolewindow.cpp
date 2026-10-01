@@ -351,6 +351,21 @@ void SerialConsoleWindow::build()
         updateState();
     });
 
+    // A partial hex row is shown once the line goes quiet: 60 ms, checked
+    // every 30. Short, so a few bytes and then silence still appear at once;
+    // long against a 16-byte row's time on the wire at 9600 baud (17 ms).
+    m_hexFlush = new QTimer(this);
+    m_hexFlush->setInterval(30);
+    connect(m_hexFlush, &QTimer::timeout, this, [this]() {
+        if (!m_hex.hasPartial()) { m_hexFlush->stop(); return; }
+        if (QDateTime::currentMSecsSinceEpoch() - m_hex.lastByteMs() >= 60) flushHexRow();
+    });
+    connect(m_hexView, &QCheckBox::toggled, this, [this](bool) {
+        flushHexRow();
+        m_hex.reset();                             // offsets count from the switch
+    });
+    connect(clear, &QPushButton::clicked, this, [this]() { m_hex.reset(); });
+
     m_countTimer = new QTimer(this);
     m_countTimer->setInterval(500);
     connect(m_countTimer, &QTimer::timeout, this, [this]() {
@@ -532,6 +547,7 @@ bool SerialConsoleWindow::openPort()
     if (!m_mgr->open(c)) { updateState(); m_state->setText(tr("\u2715 %1").arg(m_link->errorText())); return false; }
     m_link->setDtr(m_dtr->isChecked());
     m_link->setRts(m_rts->isChecked());
+    m_hex.reset();                                 // hex offsets count from the open
     saveSettings();
     appendView(tr("── opened %1 %2 at %3 ──").arg(c.portName, c.summary(), stamp(QDateTime::currentMSecsSinceEpoch())));
     if (!m_link->latencyNote().isEmpty()) appendView(tr("── %1 ──").arg(m_link->latencyNote()));
@@ -612,7 +628,9 @@ void SerialConsoleWindow::onLine(const QByteArray &line, qint64 ms)
 {
     // The console feed is the manager's (it must not depend on a window).
     if (m_hexView->isChecked()) return;             // the hex view shows chunks
-    const QString text = QString::fromUtf8(line);
+    // Escape codes removed and control bytes drawn, for the eye only: the
+    // console and the decoder got the line as it came.
+    const QString text = serialDisplayText(line);
     appendView(m_timestamps->isChecked() ? stamp(ms) + QStringLiteral("  ") + text : text);
     if (m_hold->isChecked()) updateState();
 }
@@ -620,14 +638,24 @@ void SerialConsoleWindow::onLine(const QByteArray &line, qint64 ms)
 void SerialConsoleWindow::onBytes(const QByteArray &bytes, qint64 ms)
 {
     if (!m_hexView->isChecked()) return;
-    const QString hex = serialToHex(bytes);
-    appendView(m_timestamps->isChecked() ? stamp(ms) + QStringLiteral("  ") + hex : hex);
+    for (const SerialHexDumper::Row &r : m_hex.feed(bytes, ms))
+        appendView(m_timestamps->isChecked() ? stamp(r.firstByteMs) + QStringLiteral("  ") + r.text : r.text);
+    if (m_hex.hasPartial() && !m_hexFlush->isActive()) m_hexFlush->start();
+}
+
+void SerialConsoleWindow::flushHexRow()
+{
+    for (const SerialHexDumper::Row &r : m_hex.flushPartial())
+        appendView(m_timestamps->isChecked() ? stamp(r.firstByteMs) + QStringLiteral("  ") + r.text : r.text);
 }
 
 void SerialConsoleWindow::onWritten(const QByteArray &bytes, qint64 ms)
 {
     if (!m_echo->isChecked()) return;
-    QString shown = m_hexView->isChecked() ? serialToHex(bytes) : QString::fromUtf8(bytes).trimmed();
+    // The line end that was sent is not shown as \u240D\u240A.
+    QByteArray body = bytes;
+    while (body.endsWith('\r') || body.endsWith('\n')) body.chop(1);
+    QString shown = m_hexView->isChecked() ? serialToHex(bytes) : serialDisplayText(body);
     shown = QStringLiteral("TX> ") + shown;
     appendView(m_timestamps->isChecked() ? stamp(ms) + QStringLiteral("  ") + shown : shown);
 }

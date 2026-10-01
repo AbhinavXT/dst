@@ -98,6 +98,7 @@ private:
     void onLine(const QByteArray &line, qint64 ms);
     void onBytes(const QByteArray &bytes, qint64 ms);
     void onWritten(const QByteArray &bytes, qint64 ms);
+    void flushHexRow();
     void updateState();
     void setLogging(bool on);
     QString stamp(qint64 ms) const;
@@ -128,6 +129,8 @@ private:
     QTimer *m_countTimer = nullptr;
 
     QFile  *m_log = nullptr;
+    SerialHexDumper m_hex;                     // session 107: 16-byte rows
+    QTimer *m_hexFlush = nullptr;
     int     m_held = 0;
     QStringList m_heldLines;
 };
