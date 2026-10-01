@@ -11,6 +11,73 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-103"></a>
+## Session 103 — Serial: read on its own thread; low-latency FTDI
+
+From the serial test report: "Timestamps can lag" and the FTDI latency
+timer.
+
+### Why
+
+The port was read on the GUI thread. While the GUI was busy (loading a
+replay, rebuilding a big table), bytes waited in the driver and were
+stamped when the GUI got round to them. IOA logs are lined up against VCC
+logs by time, so a late stamp is a wrong answer. The UDP receiver already
+reads on its own thread for this reason.
+
+### What changed
+
+- **`SerialLink` runs a `SerialPortWorker` in a `QThread` of its own**, one
+  per port. The `QSerialPort`, the line splitter, the idle timer and the
+  error-storm guard (session 101) now live there. Bytes are stamped on that
+  thread at the moment they are read, and reach the GUI by queued signal,
+  already stamped.
+- **The public API is unchanged and synchronous.** `open`, `close`,
+  `write`, `setDtr` and `setRts` call into the worker and wait. RX/TX
+  counters and the idle time are atomics. Lines already read are delivered
+  before a close returns, then the held partial line, then `closed()`.
+  When the worker closes on an error, the flushed lines come with that
+  error report.
+- **Low latency** (`SerialConfig::lowLatency`, default on, a **Low
+  latency** box in the terminal, remembered per port). An FTDI adapter
+  holds bytes up to its latency timer: 16 ms by default, so up to 16 ms of
+  jitter.
+  - **Linux:** the link sets `ASYNC_LOW_LATENCY`, which `ftdi_sio` turns
+    into a 1 ms timer.
+  - **Windows:** the timer can only be set in Device Manager. The terminal
+    says where when the port opens (`── low latency: set it in Device
+    Manager ▸ … ──`) rather than pretending.
+  - **macOS:** reported as not settable.
+  - Never fails an open.
+
+Files: `seriallink.h/.cpp`, `serialconsolewindow.h/.cpp`.
+
+### Tests
+
+`tests/test_session103.cpp`, 14 checks. The main one: the card prints a
+real `@dop1` line while the **GUI thread is blocked for 600 ms**, and the
+stamp is within 200 ms of the print, not 600 ms late. Run 15 times, with no
+failures.
+
+Also checked:
+
+- each link reads on a running thread that is not the GUI's;
+- writes and counters across the thread;
+- the partial line arrives on close, before `closed()`;
+- the latency note, and `lowLatency` remembered;
+- an open link destroyed without hanging.
+
+Sessions 85, 101 and 102 all pass unchanged on the threaded link.
+
+Gate: 11/11 validators, `dltests` 159 suites / 5163 checks, menu audit
+144, smoke. All green.
+
+Not tested: the low-latency ioctl on a real FTDI adapter. It needs Linux
+with a ttyUSB device; the pty here reports "not a serial driver that offers
+it". Windows and its Device Manager note were not tested.
+
+---
+
 <a id="session-102"></a>
 ## Session 102 — Serial: background capture, a chip per port, settings per port
 

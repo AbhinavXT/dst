@@ -1,8 +1,16 @@
 #include "seriallink.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
+#include <QFileInfo>
 #include <QSettings>
+#include <QThread>
 #include <QTimer>
+
+#ifdef Q_OS_LINUX
+#  include <linux/serial.h>
+#  include <sys/ioctl.h>
+#endif
 
 // =============================================================================
 //  Config
@@ -52,6 +60,7 @@ void SerialConfig::save(QSettings &s, const QString &group) const
     s.setValue(QStringLiteral("parity"), int(parity));
     s.setValue(QStringLiteral("stopBits"), int(stopBits));
     s.setValue(QStringLiteral("flow"), int(flow));
+    s.setValue(QStringLiteral("lowLatency"), lowLatency);
     s.endGroup();
 }
 
@@ -70,6 +79,7 @@ SerialConfig SerialConfig::load(QSettings &s, const QString &group)
     c.stopBits = (sb >= 1 && sb <= 3) ? QSerialPort::StopBits(sb) : QSerialPort::OneStop;
     const int fl = s.value(QStringLiteral("flow"), 0).toInt();
     c.flow = (fl >= 0 && fl <= 2) ? QSerialPort::FlowControl(fl) : QSerialPort::NoFlowControl;
+    c.lowLatency = s.value(QStringLiteral("lowLatency"), true).toBool();
     s.endGroup();
     return c;
 }
@@ -184,33 +194,72 @@ QVector<SerialLineSplitter::Line> SerialLineSplitter::flushIdle(qint64 nowMs, qi
 }
 
 // =============================================================================
-//  SerialLink
+//  Low latency
 // =============================================================================
 
-SerialLink::SerialLink(QObject *parent) : QObject(parent)
+QString serialLatencyTimerPath(const QString &portName)
 {
-    m_port = new QSerialPort(this);
-    connect(m_port, &QSerialPort::readyRead, this, &SerialLink::onReadyRead);
-    connect(m_port, &QSerialPort::errorOccurred, this, &SerialLink::onError);
-    m_idle = new QTimer(this);
-    m_idle->setInterval(100);
-    connect(m_idle, &QTimer::timeout, this, &SerialLink::onIdleTick);
+    const QString dev = QFileInfo(portName).fileName();
+    if (!dev.startsWith(QLatin1String("ttyUSB"))) return QString();
+    return QStringLiteral("/sys/bus/usb-serial/devices/%1/latency_timer").arg(dev);
 }
 
-SerialLink::~SerialLink() { close(); }
+namespace {
 
-bool SerialLink::open(const SerialConfig &config)
+// Ask the driver for low latency. Never fails the open: a port that cannot
+// do it is still a working port, and the note says what happened.
+QString requestLowLatency(QSerialPort *port, const SerialConfig &config)
 {
-    close();
-    m_config = config;
-    m_error.clear();
+    if (!config.lowLatency) return QString();
+#ifdef Q_OS_LINUX
+    const int fd = int(port->handle());
+    serial_struct ss{};
+    if (fd < 0 || ::ioctl(fd, TIOCGSERIAL, &ss) != 0) {
+        return QObject::tr("low latency: not a serial driver that offers it");
+    }
+    ss.flags |= ASYNC_LOW_LATENCY;
+    if (::ioctl(fd, TIOCSSERIAL, &ss) != 0) {
+        return QObject::tr("low latency: the driver refused it");
+    }
+    return QObject::tr("low latency: on (an FTDI timer goes to 1 ms)");
+#elif defined(Q_OS_WIN)
+    Q_UNUSED(port);
+    return QObject::tr("low latency: set it in Device Manager ▸ the port ▸ Port Settings "
+                       "▸ Advanced ▸ Latency Timer = 1 ms (a program cannot)");
+#else
+    Q_UNUSED(port);
+    return QObject::tr("low latency: not settable on this platform");
+#endif
+}
+
+}  // namespace
+
+// =============================================================================
+//  SerialPortWorker — the reader thread's half
+// =============================================================================
+
+SerialPortWorker::SerialPortWorker()
+{
+    // Children, so they move to the reader thread with this object.
+    m_port = new QSerialPort(this);
+    connect(m_port, &QSerialPort::readyRead, this, &SerialPortWorker::onReadyRead);
+    connect(m_port, &QSerialPort::errorOccurred, this, [this](QSerialPort::SerialPortError e) {
+        const SerialErrorOutcome o = judgeError(e);
+        if (o.report) emit errorJudged(o);
+    });
+    m_idle = new QTimer(this);
+    m_idle->setInterval(100);
+    connect(m_idle, &QTimer::timeout, this, &SerialPortWorker::onIdleTick);
+}
+
+bool SerialPortWorker::openPort(const SerialConfig &config, QString *error, QString *latencyNote)
+{
+    m_split.clear();
     m_errorBurstStartMs = 0;
     m_errorBurstCount = 0;
-    m_split.clear();
     m_port->setPortName(config.portName);
     if (!m_port->open(QIODevice::ReadWrite)) {
-        m_error = m_port->errorString();
-        emit errorOccurred(m_error);
+        *error = m_port->errorString();
         return false;
     }
     // Set after open: some drivers reset the line settings on open.
@@ -218,66 +267,71 @@ bool SerialLink::open(const SerialConfig &config)
                   && m_port->setParity(config.parity) && m_port->setStopBits(config.stopBits)
                   && m_port->setFlowControl(config.flow);
     if (!set) {
-        m_error = tr("%1 opened, but refused %2: %3").arg(config.portName, config.summary(), m_port->errorString());
+        *error = QObject::tr("%1 opened, but refused %2: %3")
+                     .arg(config.portName, config.summary(), m_port->errorString());
         m_port->close();
-        emit errorOccurred(m_error);
         return false;
     }
+    *latencyNote = requestLowLatency(m_port, config);
     m_idle->start();
-    emit opened();
     return true;
 }
 
-void SerialLink::close()
+QVector<SerialLineSplitter::Line> SerialPortWorker::closePort()
 {
-    if (!m_port || !m_port->isOpen()) return;
-    // Deliver what is held: the last line of a log that stopped mid-line.
-    for (const SerialLineSplitter::Line &l : m_split.flushIdle(QDateTime::currentMSecsSinceEpoch(), 0))
-        emit lineReceived(l.text, l.firstByteMs);
+    if (!m_port->isOpen()) return {};
+    // Read what the driver still holds, then deliver the partial line: the
+    // last line of a log that stopped mid-line.
+    onReadyRead();
+    const QVector<SerialLineSplitter::Line> held =
+        m_split.flushIdle(QDateTime::currentMSecsSinceEpoch(), 0);
     m_idle->stop();
+    m_port->clearError();
     m_port->close();
-    emit closed();
+    return held;
 }
 
-bool SerialLink::isOpen() const { return m_port && m_port->isOpen(); }
-
-qint64 SerialLink::write(const QByteArray &bytes)
+qint64 SerialPortWorker::writeBytes(const QByteArray &bytes)
 {
-    if (!isOpen() || bytes.isEmpty()) return 0;
+    if (!m_port->isOpen()) return 0;
     const qint64 n = m_port->write(bytes);
-    if (n > 0) {
-        m_tx += quint64(n);
-        emit bytesWritten(bytes.left(int(n)), QDateTime::currentMSecsSinceEpoch());
-    }
+    if (n > 0) tx += quint64(n);
     return n;
 }
 
-bool SerialLink::setDtr(bool on) { return isOpen() && m_port->setDataTerminalReady(on); }
-bool SerialLink::setRts(bool on)
+bool SerialPortWorker::setDtr(bool on)
+{
+    return m_port->isOpen() && m_port->setDataTerminalReady(on);
+}
+
+bool SerialPortWorker::setRts(bool on, bool hardwareFlow)
 {
     // RTS belongs to the driver under hardware flow control.
-    return isOpen() && m_config.flow != QSerialPort::HardwareControl && m_port->setRequestToSend(on);
+    return m_port->isOpen() && !hardwareFlow && m_port->setRequestToSend(on);
 }
 
-void SerialLink::onReadyRead()
+void SerialPortWorker::onReadyRead()
 {
+    if (!m_port->isOpen()) return;
     const QByteArray bytes = m_port->readAll();
     if (bytes.isEmpty()) return;
+    // Stamped HERE, on the reader thread, when the bytes are read.
     const qint64 now = QDateTime::currentMSecsSinceEpoch();
-    m_rx += quint64(bytes.size());
-    emit bytesReceived(bytes, now);
-    for (const SerialLineSplitter::Line &l : m_split.feed(bytes, now)) emit lineReceived(l.text, l.firstByteMs);
+    rx += quint64(bytes.size());
+    emit bytesRead(bytes, now);
+    for (const SerialLineSplitter::Line &l : m_split.feed(bytes, now)) emit lineRead(l.text, l.firstByteMs);
 }
 
-void SerialLink::onIdleTick()
+void SerialPortWorker::onIdleTick()
 {
-    for (const SerialLineSplitter::Line &l : m_split.flushIdle(QDateTime::currentMSecsSinceEpoch(), m_idleMs))
-        emit lineReceived(l.text, l.firstByteMs);
+    for (const SerialLineSplitter::Line &l : m_split.flushIdle(QDateTime::currentMSecsSinceEpoch(), idleMs.load()))
+        emit lineRead(l.text, l.firstByteMs);
 }
 
-void SerialLink::onError(QSerialPort::SerialPortError e)
+SerialErrorOutcome SerialPortWorker::judgeError(QSerialPort::SerialPortError e)
 {
-    if (e == QSerialPort::NoError) return;
+    SerialErrorOutcome o;
+    if (e == QSerialPort::NoError) return o;
 
     // An error that repeats in a burst is a port that is gone but still
     // "open": a virtual port whose far end vanished reported ReadError about
@@ -291,7 +345,7 @@ void SerialLink::onError(QSerialPort::SerialPortError e)
     ++m_errorBurstCount;
     // Report the first of a burst, and the one that trips the guard; the
     // rest of the burst is the same news.
-    if (m_errorBurstCount > 1 && m_errorBurstCount != kErrorBurstLimit) return;
+    if (m_errorBurstCount > 1 && m_errorBurstCount != kErrorBurstLimit) return o;
 
     // Gone for good: the adapter vanished (ResourceError, what a real USB
     // adapter reports), or reading/writing it fails (ReadError/WriteError,
@@ -300,14 +354,133 @@ void SerialLink::onError(QSerialPort::SerialPortError e)
                     || e == QSerialPort::WriteError;
     const bool storm = m_errorBurstCount >= kErrorBurstLimit;
 
-    m_error = m_port->errorString();
+    o.report = true;
+    o.text = m_port->errorString();
     if (storm) {
-        m_error = tr("%1 (repeated %2 times in %3 ms; port closed)")
-                      .arg(m_error).arg(m_errorBurstCount).arg(kErrorBurstWindowMs);
+        o.text = QObject::tr("%1 (repeated %2 times in %3 ms; port closed)")
+                     .arg(o.text).arg(m_errorBurstCount).arg(kErrorBurstWindowMs);
     }
     if ((fatal || storm) && m_port->isOpen()) {
-        m_port->clearError();
-        close();
+        o.flushed = closePort();
+        o.closed = true;
     }
+    return o;
+}
+
+// =============================================================================
+//  SerialLink — the GUI thread's half
+// =============================================================================
+
+SerialLink::SerialLink(QObject *parent) : QObject(parent)
+{
+    static const int registered = [] {
+        qRegisterMetaType<SerialErrorOutcome>("SerialErrorOutcome");
+        return 0;
+    }();
+    Q_UNUSED(registered);
+
+    m_thread = new QThread(this);
+    m_thread->setObjectName(QStringLiteral("serial reader"));
+    m_worker = new SerialPortWorker;
+    m_worker->moveToThread(m_thread);
+    connect(m_worker, &SerialPortWorker::bytesRead, this, &SerialLink::bytesReceived);
+    connect(m_worker, &SerialPortWorker::lineRead, this, &SerialLink::lineReceived);
+    connect(m_worker, &SerialPortWorker::errorJudged, this, &SerialLink::applyError);
+    m_thread->start();
+}
+
+SerialLink::~SerialLink()
+{
+    close();
+    m_thread->quit();
+    m_thread->wait();
+    delete m_worker;            // its thread has stopped; safe from here
+}
+
+bool SerialLink::open(const SerialConfig &config)
+{
+    close();
+    m_config = config;
+    m_error.clear();
+    m_latencyNote.clear();
+    bool ok = false;
+    QString err, note;
+    QMetaObject::invokeMethod(m_worker, [&]() { ok = m_worker->openPort(config, &err, &note); },
+                              Qt::BlockingQueuedConnection);
+    if (!ok) {
+        m_error = err;
+        emit errorOccurred(m_error);
+        return false;
+    }
+    m_latencyNote = note;
+    m_open = true;
+    emit opened();
+    return true;
+}
+
+void SerialLink::close()
+{
+    if (!m_open) return;
+    QVector<SerialLineSplitter::Line> held;
+    QMetaObject::invokeMethod(m_worker, [&]() { held = m_worker->closePort(); },
+                              Qt::BlockingQueuedConnection);
+    m_open = false;
+    // Lines already read are queued ahead of this; the held partial line
+    // goes last, then closed().
+    QCoreApplication::sendPostedEvents(this, QEvent::MetaCall);
+    for (const SerialLineSplitter::Line &l : held) emit lineReceived(l.text, l.firstByteMs);
+    emit closed();
+}
+
+bool SerialLink::isOpen() const { return m_open; }
+
+quint64 SerialLink::rxBytes() const { return m_worker->rx.load(); }
+quint64 SerialLink::txBytes() const { return m_worker->tx.load(); }
+void SerialLink::resetCounters() { m_worker->rx = 0; m_worker->tx = 0; }
+void SerialLink::setIdleFlushMs(int ms) { m_worker->idleMs = ms; }
+
+qint64 SerialLink::write(const QByteArray &bytes)
+{
+    if (!m_open || bytes.isEmpty()) return 0;
+    qint64 n = 0;
+    QMetaObject::invokeMethod(m_worker, [&]() { n = m_worker->writeBytes(bytes); },
+                              Qt::BlockingQueuedConnection);
+    if (n > 0) emit bytesWritten(bytes.left(int(n)), QDateTime::currentMSecsSinceEpoch());
+    return n;
+}
+
+bool SerialLink::setDtr(bool on)
+{
+    if (!m_open) return false;
+    bool ok = false;
+    QMetaObject::invokeMethod(m_worker, [&]() { ok = m_worker->setDtr(on); }, Qt::BlockingQueuedConnection);
+    return ok;
+}
+
+bool SerialLink::setRts(bool on)
+{
+    if (!m_open) return false;
+    bool ok = false;
+    const bool hw = m_config.flow == QSerialPort::HardwareControl;
+    QMetaObject::invokeMethod(m_worker, [&]() { ok = m_worker->setRts(on, hw); }, Qt::BlockingQueuedConnection);
+    return ok;
+}
+
+void SerialLink::onError(QSerialPort::SerialPortError e)
+{
+    SerialErrorOutcome o;
+    QMetaObject::invokeMethod(m_worker, [&]() { o = m_worker->judgeError(e); },
+                              Qt::BlockingQueuedConnection);
+    if (o.report) applyError(o);
+}
+
+void SerialLink::applyError(const SerialErrorOutcome &o)
+{
+    if (o.closed && m_open) {
+        m_open = false;
+        for (const SerialLineSplitter::Line &l : o.flushed) emit lineReceived(l.text, l.firstByteMs);
+        emit closed();
+    }
+    m_error = o.text;
     emit errorOccurred(m_error);
 }

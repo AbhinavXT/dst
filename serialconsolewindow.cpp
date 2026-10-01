@@ -96,6 +96,12 @@ void SerialConsoleWindow::build()
     m_flow->addItem(tr("None"), int(QSerialPort::NoFlowControl));
     m_flow->addItem(tr("RTS/CTS"), int(QSerialPort::HardwareControl));
     m_flow->addItem(tr("XON/XOFF"), int(QSerialPort::SoftwareControl));
+    m_lowLatency = new QCheckBox(tr("Low latency"), this);
+    m_lowLatency->setObjectName(QStringLiteral("serialLowLatency"));
+    m_lowLatency->setChecked(true);
+    m_lowLatency->setToolTip(tr("Ask for a 1 ms FTDI latency timer (the default 16 ms adds up to 16 ms of "
+                                "timestamp jitter). Linux can set it from here; on Windows it is set in "
+                                "Device Manager, and the terminal says so when the port opens."));
     m_open = new QPushButton(tr("Open"), this);
     m_open->setObjectName(QStringLiteral("serialOpen"));
     m_dtr = new QCheckBox(tr("DTR"), this);
@@ -111,6 +117,7 @@ void SerialConsoleWindow::build()
     cfg->addWidget(label(tr("Parity")));    cfg->addWidget(m_parity);
     cfg->addWidget(label(tr("Stop")));      cfg->addWidget(m_stopBits);
     cfg->addWidget(label(tr("Flow")));      cfg->addWidget(m_flow);
+    cfg->addWidget(m_lowLatency);
     cfg->addStretch(1);
     cfg->addWidget(m_dtr); cfg->addWidget(m_rts);
     cfg->addWidget(m_open);
@@ -387,6 +394,7 @@ SerialConfig SerialConsoleWindow::configFromUi() const
     c.parity = QSerialPort::Parity(m_parity->currentData().toInt());
     c.stopBits = QSerialPort::StopBits(m_stopBits->currentData().toInt());
     c.flow = QSerialPort::FlowControl(m_flow->currentData().toInt());
+    c.lowLatency = m_lowLatency->isChecked();
     return c;
 }
 
@@ -402,6 +410,7 @@ void SerialConsoleWindow::setConfigToUi(const SerialConfig &c)
     m_parity->setCurrentIndex(qMax(0, m_parity->findData(int(c.parity))));
     m_stopBits->setCurrentIndex(qMax(0, m_stopBits->findData(int(c.stopBits))));
     m_flow->setCurrentIndex(qMax(0, m_flow->findData(int(c.flow))));
+    m_lowLatency->setChecked(c.lowLatency);
 }
 
 void SerialConsoleWindow::refreshPorts()
@@ -433,6 +442,7 @@ bool SerialConsoleWindow::openPort()
     m_link->setRts(m_rts->isChecked());
     saveSettings();
     appendView(tr("── opened %1 %2 at %3 ──").arg(c.portName, c.summary(), stamp(QDateTime::currentMSecsSinceEpoch())));
+    if (!m_link->latencyNote().isEmpty()) appendView(tr("── %1 ──").arg(m_link->latencyNote()));
     updateState();
     return true;
 }
@@ -454,7 +464,8 @@ void SerialConsoleWindow::updateState()
     // this one running.
     for (QWidget *w : { static_cast<QWidget *>(m_baud),
                         static_cast<QWidget *>(m_dataBits), static_cast<QWidget *>(m_parity),
-                        static_cast<QWidget *>(m_stopBits), static_cast<QWidget *>(m_flow) })
+                        static_cast<QWidget *>(m_stopBits), static_cast<QWidget *>(m_flow),
+                        static_cast<QWidget *>(m_lowLatency) })
         w->setEnabled(!open);
     m_sendBtn->setEnabled(open);
     if (open) {

@@ -101,7 +101,7 @@ private:
     QComboBox *m_port = nullptr, *m_baud = nullptr, *m_dataBits = nullptr,
               *m_parity = nullptr, *m_stopBits = nullptr, *m_flow = nullptr;
     QPushButton *m_open = nullptr;
-    QCheckBox *m_dtr = nullptr, *m_rts = nullptr;
+    QCheckBox *m_dtr = nullptr, *m_rts = nullptr, *m_lowLatency = nullptr;
 
     QCheckBox *m_hexView = nullptr, *m_timestamps = nullptr, *m_echo = nullptr,
               *m_hold = nullptr, *m_logFile = nullptr, *m_feed = nullptr;

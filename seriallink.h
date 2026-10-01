@@ -30,7 +30,11 @@
 #include <QStringList>
 #include <QVector>
 
+#include <atomic>
+
 class QSettings;
+class QThread;
+class QTimer;
 
 struct SerialConfig {
     QString portName;                  // "COM3", "ttyUSB0", or a full path
@@ -39,6 +43,7 @@ struct SerialConfig {
     QSerialPort::Parity      parity   = QSerialPort::NoParity;
     QSerialPort::StopBits    stopBits = QSerialPort::OneStop;
     QSerialPort::FlowControl flow     = QSerialPort::NoFlowControl;
+    bool lowLatency = true;            // ask for a 1 ms FTDI latency timer (see SerialLink)
 
     QString summary() const;           // "115200 8N1", "9600 7E2 RTS/CTS"
     void save(QSettings &s, const QString &group) const;
@@ -93,6 +98,38 @@ private:
 };
 
 // ---- the port -----------------------------------------------------------------
+//
+// READ ON ITS OWN THREAD (session 103)
+//   The port used to be read on the GUI thread, so while the GUI was busy
+//   (loading a replay, rebuilding a big table) bytes sat in the driver and
+//   were stamped late — the same reason UDPCommunication reads on a thread
+//   of its own. Now each link runs a SerialPortWorker in its own QThread:
+//   the QSerialPort, the line splitter and the idle timer live there, and
+//   bytes are stamped when they are read. The GUI receives them by queued
+//   signal, already stamped.
+//
+//   The public API is unchanged and synchronous: open(), close(), write(),
+//   setDtr()/setRts() call into the worker and wait for it. The lines a
+//   close flushes are handed back with it, so they still arrive before
+//   closed().
+//
+// LOW LATENCY
+//   An FTDI adapter holds received bytes up to its latency timer (16 ms by
+//   default) before passing them on: up to 16 ms of timestamp jitter. With
+//   SerialConfig::lowLatency the link asks for 1 ms where the platform lets
+//   a program ask: on Linux, ASYNC_LOW_LATENCY (which ftdi_sio maps to a
+//   1 ms timer). Windows and macOS only set it in the driver's settings;
+//   latencyNote() says so rather than pretending.
+
+class SerialPortWorker;
+
+struct SerialErrorOutcome {
+    bool    report = false;         // say something (first of a burst, or the storm)
+    bool    closed = false;         // the port was closed because of it
+    QString text;
+    QVector<SerialLineSplitter::Line> flushed;   // partial line delivered on close
+};
+
 class SerialLink : public QObject
 {
     Q_OBJECT
@@ -105,17 +142,25 @@ public:
     bool isOpen() const;
     const SerialConfig &config() const { return m_config; }
     QString errorText() const { return m_error; }
+    // What happened to the low-latency request at the last open.
+    QString latencyNote() const { return m_latencyNote; }
 
     qint64 write(const QByteArray &bytes);
     bool setDtr(bool on);
     bool setRts(bool on);
 
-    quint64 rxBytes() const { return m_rx; }
-    quint64 txBytes() const { return m_tx; }
-    void resetCounters() { m_rx = m_tx = 0; }
+    quint64 rxBytes() const;
+    quint64 txBytes() const;
+    void resetCounters();
 
     // How long a partial line may sit before it is delivered anyway.
-    void setIdleFlushMs(int ms) { m_idleMs = ms; }
+    void setIdleFlushMs(int ms);
+
+    // The thread the port is read on (tests check it is not the GUI's).
+    QThread *readerThread() const { return m_thread; }
+
+    // Public for tests only: a dead port cannot be produced on demand.
+    void onError(QSerialPort::SerialPortError e);
 
 signals:
     void bytesReceived(const QByteArray &bytes, qint64 atMs);
@@ -126,26 +171,59 @@ signals:
     void errorOccurred(const QString &text);
 
 private:
-    void onReadyRead();
-    // Public for tests only: a dead port cannot be produced on demand.
+    void applyError(const SerialErrorOutcome &o);
+
+    QThread            *m_thread = nullptr;
+    SerialPortWorker   *m_worker = nullptr;
+    SerialConfig        m_config;
+    QString             m_error;
+    QString             m_latencyNote;
+    bool                m_open = false;
+};
+
+// The half of SerialLink that lives on the reader thread. Internal: only
+// SerialLink talks to it.
+class SerialPortWorker : public QObject
+{
+    Q_OBJECT
 public:
-    void onError(QSerialPort::SerialPortError e);
+    SerialPortWorker();
+
+    // Called on the worker's thread (SerialLink invokes them blocking).
+    bool openPort(const SerialConfig &config, QString *error, QString *latencyNote);
+    QVector<SerialLineSplitter::Line> closePort();
+    qint64 writeBytes(const QByteArray &bytes);
+    bool setDtr(bool on);
+    bool setRts(bool on, bool hardwareFlow);
+    SerialErrorOutcome judgeError(QSerialPort::SerialPortError e);
+
+    std::atomic<quint64> rx{ 0 }, tx{ 0 };
+    std::atomic<int>     idleMs{ 500 };
+
+signals:
+    void bytesRead(const QByteArray &bytes, qint64 atMs);
+    void lineRead(const QByteArray &line, qint64 firstByteMs);
+    void errorJudged(const SerialErrorOutcome &outcome);
+
 private:
+    void onReadyRead();
     void onIdleTick();
 
     QSerialPort        *m_port = nullptr;
-    SerialConfig        m_config;
+    QTimer             *m_idle = nullptr;
     SerialLineSplitter  m_split;
-    class QTimer       *m_idle = nullptr;
-    int                 m_idleMs = 500;
-    QString             m_error;
-    quint64             m_rx = 0, m_tx = 0;
 
-    // Error-storm guard, see onError().
+    // Error-storm guard, see judgeError().
     static constexpr qint64 kErrorBurstWindowMs = 100;
     static constexpr int    kErrorBurstLimit    = 20;
     qint64              m_errorBurstStartMs = 0;
     int                 m_errorBurstCount   = 0;
 };
+
+// Where Linux exposes an FTDI port's latency timer, for the note; empty
+// for a name that is not a USB serial device.
+QString serialLatencyTimerPath(const QString &portName);
+
+Q_DECLARE_METATYPE(SerialErrorOutcome)
 
 #endif // SERIALLINK_H
