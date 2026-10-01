@@ -84,6 +84,8 @@ SOURCES += \
     $$PWD/incidentreport.cpp \
     $$PWD/incidentreportdialog.cpp \
     $$PWD/incidentreportwindow.cpp \
+    $$PWD/twolocoview.cpp \
+    $$PWD/twolocowindow.cpp \
     $$PWD/workspacesnapshot.cpp \
     $$PWD/settingsbundle.cpp \
     $$PWD/namemap.cpp \
@@ -199,6 +201,8 @@ HEADERS += \
     $$PWD/incidentreport.h \
     $$PWD/incidentreportdialog.h \
     $$PWD/incidentreportwindow.h \
+    $$PWD/twolocoview.h \
+    $$PWD/twolocowindow.h \
     $$PWD/workspacesnapshot.h \
     $$PWD/settingsbundle.h \
     $$PWD/namemap.h \

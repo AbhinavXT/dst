@@ -58,8 +58,10 @@ enum class CapType {
     UBA,                      // @uba Target_Internal: a target + its braking
                               // curve (flat LE doubles, no header/CRC)
     Speed,                    // @speed STRUCT_SENSOR_SPEED_DATA, 14 B LE
-    AnalogTop, AnalogBottom   // @analog_top / @analog_bottom
+    AnalogTop, AnalogBottom,  // @analog_top / @analog_bottom
                               // STRUCT_ANALOG_SENSOR_DATA, 6 floats, 24 B LE, no CRC
+    Lsos                      // @lsos LOCO_SOS: SoS/collision/head-on/rear-end
+                              // status, 31 B flat LE, no header/CRC (session 98)
 };
 
 enum class CapDir { Unknown = 0, In, Out };   // provisional per-type direction

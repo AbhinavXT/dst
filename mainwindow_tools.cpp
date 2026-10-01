@@ -99,6 +99,7 @@
 #include "incidentreportdialog.h"
 #include "incidentreportwindow.h"
 #include "speeddistance.h"
+#include "twolocowindow.h"
 #include "workspacesnapshot.h"
 #include "tabtags.h"
 #include "textzoom.h"
@@ -484,6 +485,13 @@ void MainWindow::onActionIncidentReport()
 
     QString name = m_tabs.value(key).friendlyName;
     auto *w = new IncidentReportWindow(model, key, name.isEmpty() ? key : name, dlg.atMs(), options, this);
+    w->show();
+    w->raise();
+}
+
+void MainWindow::onActionTwoLocoView()
+{
+    auto *w = new TwoLocoWindow(m_dispatcher, this);
     w->show();
     w->raise();
 }

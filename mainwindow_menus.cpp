@@ -477,6 +477,13 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                                      "raw frames, in one HTML file"));
     connect(actIncidentReport, &QAction::triggered, this, &MainWindow::onActionIncidentReport);
 
+    // Session 98: two locos, one timeline.
+    QAction *actTwoLoco = monitorMenu->addAction(tr("&Two-loco view…"));
+    actTwoLoco->setShortcut(QKeySequence("Ctrl+Alt+T"));
+    actTwoLoco->setToolTip(tr("Two tabs' location and speed over time, the gap between them, and SoS/"
+                              "collision/head-on/rear-end events (@lsos)"));
+    connect(actTwoLoco, &QAction::triggered, this, &MainWindow::onActionTwoLocoView);
+
     // Schema reload. Pairs with the decode-failure dock: edit kavach.xml,
     // reload, and the dock repopulates with whatever the new schema still
     // cannot handle — which is the decoder development loop.

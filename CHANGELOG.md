@@ -11,6 +11,101 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-98"></a>
+## Session 98 — Two-loco view (queued feature 2 of 3)
+
+Tools ▸ Monitor ▸ **Two-loco view…** (Ctrl+Alt+T). Pick two tabs: both locos'
+location and speed over time, the gap between them, and SoS/collision/
+head-on/rear-end events, all on one shared time axis (two locos are rarely
+at the same track location at the same moment, so time — not location, as
+Speed vs distance uses — is the only axis both sides agree on).
+
+### Scope, confirmed before building
+
+Three calls, confirmed up front: the gap is computed by taking both locos'
+`abs_loco_loc` at face value (no RFID-anchoring to a shared origin, unlike
+`replaywindow.cpp`'s track-diagram view) — implausible pairings are
+**flagged, not corrected**, when the two locos' location ranges never
+overlap at all; SoS/collision/head-on/rear-end are drawn as **markers on
+the plot**, not a separate table; and this is a **live window only**
+(zoom/pan not included in this first cut — the whole span is drawn at
+once), no HTML export like the incident pack.
+
+### A real decoding gap, found while building this
+
+`LOCO_SOS` (`@lsos`, schema) already carries everything this feature asked
+for — SoS flags, head-on/rear-end flags, `collision_distance` — in one
+packet. But `CaptureDecoder` had no `CapType` entry for it: `describe()`
+switches on `CapType`, and with no case for "lsos" every `@lsos_` frame
+decoded to header rows only (type/seq/CRC), never its payload. Silent:
+nothing crashed, the fields were just never there — caught by a test that
+asserted on the decoded episode and got an empty one instead of a wrong
+one. Fixed the same way `@uba`/`@speed`/`@dip1`/... already work: a
+`CapType::Lsos`, the `"lsos"` token mapping, and one `schemaRows(b, "lsos",
+...)` case in `describe()`. No new per-field decode — the schema's generic
+flat-LE-struct path handles it exactly like its siblings; this is a capture
+tag `CaptureDecoder` didn't know yet, not a new wire format.
+
+### How it is built
+
+- **`twolocoview.h/.cpp`** (no UI): `extractEvents()` reads `@lsos` per tab
+  — SoS (`is_access_sos_recvd`/`is_unusual_stop_recvd`/`is_train_parted_recvd`,
+  tracked together) and head-on/rear-end (their own episodes, `worst` =
+  `collision_distance`) — via `RunReport::EpisodeTracker` (now its third use,
+  after overspeed/emergency-status in `RunReport` and EB/FSB in
+  `IncidentReport`). `build()` reuses `SpeedDistance::extract()` per tab
+  unchanged, pairs the two traces' samples by nearest-at-or-before within a
+  tolerance (default 2 s), and flags implausibility by checking the two
+  locos' location ranges for any overlap at all.
+- **`twolocowindow.h/.cpp`**: `TwoLocoCanvas` (two lanes sharing one time
+  axis — location with the gap shaded between the two curves, speed below;
+  event ticks across both; `UiColor::series/warning/error`, no literal
+  colours) and `TwoLocoWindow` (two `QComboBox` source pickers against
+  `MessageDispatcher`, mirroring `CompareWindow`'s pattern; Save image/Save
+  gap CSV).
+- Menu audit checks the action's presence and shortcut only — it opens
+  straight into the window (no modal dialog, unlike Incident report), so it
+  is safe to `trigger()` there like Speed vs distance and Run summary report.
+
+### A flaky test, and why it was one
+
+`QTest::mouseMove()` on the canvas passed alone but failed inside the full
+`dltests` run — not noise: `QTest::mouseMove` warps the *global* cursor and
+relies on window stacking to route the event, which is unreliable under
+`QT_QPA_PLATFORM=offscreen` once other suites' windows are still alive in
+the same process. Replaced with a `QMouseEvent` sent straight to the canvas
+via `QApplication::sendEvent()` — same code path (`mouseMoveEvent()`,
+`setCursor()`, `cursorChanged`), no dependency on compositing. Stable
+across repeated full-suite runs afterward.
+
+### Tests
+
+- **`session98` (23 checks):** `extractEvents()`'s three episode kinds and
+  their window; `build()`'s paired traces, gap values, CSV, the tolerance
+  excluding a stale match, and the non-overlap flag naming both tabs; the
+  canvas holding its pair and reporting a cursor instant; the window
+  building from a `MessageDispatcher`'s own models and saving its image and
+  gap CSV.
+- No new validator: `@lsos` has no golden replay fixture yet (session 97's
+  `schema/validate_*.py` corpus doesn't include one), so the `CapType::Lsos`
+  fix is covered by this session's synthetic frames only, not a golden one.
+
+**`verify.sh`: 0 stages failed.**
+- unit suite **154 suites / 4937 checks**;
+- menu audit 139 ok;
+- smoke alive.
+
+**Not tested:** the Windows/MSVC build and Qt 6.4 (macOS/Qt 5.15.19 again,
+the only Qt in this environment); a real `@lsos` frame from a live capture
+or `replay/` (none exists yet — this session's LOCO_SOS fixtures are
+synthetic, built the same way session 81/97's DMI fixtures are, from a
+schema-correct zero-filled frame with fields rewritten at the decoder's own
+bit offsets); the RFID-anchoring question this view deliberately defers
+(flagged in CLAUDE.md's queued-feature notes above as the open problem for
+a more exact gap).
+
+---
+
 <a id="session-97"></a>
 ## Session 97 — Incident report pack (queued feature 1 of 3)
 

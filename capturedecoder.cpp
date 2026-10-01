@@ -451,6 +451,7 @@ CapType typeFromToken(const QString &token)
     if (token == "aep")     return CapType::Aep;
     if (token == "linfo")   return CapType::Linfo;
     if (token == "uba")     return CapType::UBA;
+    if (token == "lsos")    return CapType::Lsos;
     if (token == "speed")   return CapType::Speed;
     if (token == "analog_top")    return CapType::AnalogTop;
     if (token == "analog_bottom") return CapType::AnalogBottom;
@@ -496,6 +497,7 @@ const char *typeLabel(CapType t)
     case CapType::Linfo:    return "linfo";
     case CapType::Random:   return "random num";
     case CapType::UBA:      return "uba";
+    case CapType::Lsos:     return "lsos";
     case CapType::Speed:    return "speed";
     case CapType::AnalogTop:    return "analog top";
     case CapType::AnalogBottom: return "analog bottom";
@@ -1472,6 +1474,8 @@ QVector<FieldRow> describe(const CaptureLine &c, const QHash<int, qint64> *tagLo
     // @uba Target_Internal. No frame CRC and no message header: the loco
     // memcpy's the struct out as-is, so the schema decodes from byte 0.
     case CapType::UBA:   r += schemaRows(b, QStringLiteral("uba"),   nullptr, -1, rawValues); break;
+    // @lsos LOCO_SOS: flat LE struct, no header/CRC (session 98).
+    case CapType::Lsos:  r += schemaRows(b, QStringLiteral("lsos"),  nullptr, -1, rawValues); break;
     // @speed / @analog_*: flat LE structs, decoded from byte 0 (session 67).
     // @analog_* is six floats with no CRC; the schema shows them %g.
     case CapType::Speed: r += schemaRows(b, QStringLiteral("speed"), nullptr, -1, rawValues); break;

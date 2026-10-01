@@ -145,6 +145,7 @@ private slots:
     void onActionSpeedDistance(); // Tools → Monitor → Speed vs distance… (session 81)
     void onActionRunReport();     // Tools → Monitor → Run summary report… (session 81)
     void onActionIncidentReport(); // Tools → Monitor → Incident report… (session 97)
+    void onActionTwoLocoView();    // Tools → Monitor → Two-loco view… (session 98)
     void onActionReloadSchema();  // Tools → Reload schema… (Ctrl+Shift+R)
     void onActionLoadTestCases(); // Tools → Test cases → Load…
     void onActionSaveTestReport();
