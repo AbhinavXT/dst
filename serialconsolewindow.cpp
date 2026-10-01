@@ -23,6 +23,11 @@
 #include <QLabel>
 #include <QLineEdit>
 #include <QPlainTextEdit>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
+#include <QProgressBar>
+#include <QRadioButton>
 #include <QPushButton>
 #include <QRegularExpression>
 #include <QScrollBar>
@@ -223,6 +228,17 @@ void SerialConsoleWindow::build()
     txRow->addWidget(m_send, 1); txRow->addWidget(m_sendHex); txRow->addWidget(m_ending);
     txRow->addWidget(m_repeat); txRow->addWidget(m_repeatMs);
     txRow->addWidget(m_sendBtn); txRow->addWidget(sendFile);
+    m_sender = new SerialFileSender(this);
+    m_sendProgress = new QProgressBar(this);
+    m_sendProgress->setObjectName(QStringLiteral("serialSendProgress"));
+    m_sendProgress->setMaximumWidth(220);
+    m_sendProgress->setFormat(tr("%p% sent"));
+    m_sendProgress->hide();
+    m_sendStop = new QPushButton(tr("Stop"), this);
+    m_sendStop->setObjectName(QStringLiteral("serialSendStop"));
+    m_sendStop->setToolTip(tr("Stop sending the file"));
+    m_sendStop->hide();
+    txRow->addWidget(m_sendProgress); txRow->addWidget(m_sendStop);
     m_repeatTimer = new QTimer(this);
 
     // ---- status -------------------------------------------------------------------
@@ -336,13 +352,33 @@ void SerialConsoleWindow::build()
         if (!isOpen() || !sendText(m_send->currentText())) { m_repeat->setChecked(false); }
     });
     connect(sendFile, &QPushButton::clicked, this, [this]() {
+        if (!isOpen()) { m_state->setText(tr("Open the port first.")); return; }
+        if (m_sender->isRunning()) return;
         const QString path = QFileDialog::getOpenFileName(this, tr("Send file"));
         if (path.isEmpty()) return;
         QFile f(path);
         if (!f.open(QIODevice::ReadOnly)) { m_state->setText(tr("Cannot read %1").arg(path)); return; }
-        if (!isOpen()) { m_state->setText(tr("Open the port first.")); return; }
-        const qint64 n = m_link->write(f.readAll());
-        m_state->setText(tr("Sent %1 bytes from %2").arg(n).arg(QFileInfo(path).fileName()));
+        const QByteArray data = f.readAll();
+        QSettings s(Settings::iniPath(), QSettings::IniFormat);
+        SerialSendOptions o = SerialSendOptions::load(s);
+        if (!askSendOptions(&o, QFileInfo(path).fileName(), data.size())) return;
+        o.save(s);
+        sendFileData(data, QFileInfo(path).fileName(), o);
+    });
+    connect(m_sendStop, &QPushButton::clicked, m_sender, &SerialFileSender::stop);
+    connect(m_sender, &SerialFileSender::progress, this, [this](qint64 sent, qint64 total) {
+        // Bytes, scaled to int range for the bar.
+        m_sendProgress->setMaximum(1000);
+        m_sendProgress->setValue(total ? int(sent * 1000 / total) : 0);
+        m_sendProgress->setToolTip(tr("%1 of %2 bytes").arg(sent).arg(total));
+    });
+    connect(m_sender, &SerialFileSender::finished, this, [this](bool ok, const QString &message) {
+        m_sendProgress->hide();
+        m_sendStop->hide();
+        appendView(tr("── %1: %2 ──").arg(m_sendingName, message));
+        m_state->setText(ok ? tr("Sent %1: %2").arg(m_sendingName, message)
+                            : tr("\u2715 %1: %2").arg(m_sendingName, message));
+        m_state->setStyleSheet(ok ? UiColor::okStyle() : UiColor::errorStyle());
     });
     connect(resetCounts, &QToolButton::clicked, this, [this]() {
         if (!m_link) return;
@@ -652,6 +688,10 @@ void SerialConsoleWindow::flushHexRow()
 void SerialConsoleWindow::onWritten(const QByteArray &bytes, qint64 ms)
 {
     if (!m_echo->isChecked()) return;
+    // A file going out is summarised (start and end lines), not echoed
+    // piece by piece: a binary file as text is garbage, and a big one would
+    // bury everything the card says back.
+    if (m_sender && m_sender->isRunning()) return;
     // The line end that was sent is not shown as \u240D\u240A.
     QByteArray body = bytes;
     while (body.endsWith('\r') || body.endsWith('\n')) body.chop(1);
@@ -799,5 +839,72 @@ bool SerialConsoleWindow::deleteProfile(const QString &name)
     SerialProfile::saveAll(s, all);
     s.sync();
     refreshProfiles();
+    return true;
+}
+
+// ---- send file (session 108) --------------------------------------------------------
+
+bool SerialConsoleWindow::sendFileData(const QByteArray &data, const QString &name,
+                                       const SerialSendOptions &options)
+{
+    if (!isOpen()) { m_state->setText(tr("Open the port first.")); return false; }
+    m_sendingName = name;
+    if (!m_sender->start(m_link, data, options)) return false;
+    appendView(tr("── sending %1: %2 bytes, %3 ──").arg(name).arg(data.size()).arg(options.summary()));
+    if (m_sender->isRunning()) {
+        m_sendProgress->setValue(0);
+        m_sendProgress->show();
+        m_sendStop->show();
+    }
+    return true;
+}
+
+bool SerialConsoleWindow::askSendOptions(SerialSendOptions *o, const QString &fileName, qint64 size)
+{
+    QDialog d(this);
+    d.setWindowTitle(tr("Send %1").arg(fileName));
+    auto *chunks = new QRadioButton(tr("In chunks"), &d);
+    auto *lines = new QRadioButton(tr("Line by line"), &d);
+    (o->mode == SerialSendOptions::Mode::Lines ? lines : chunks)->setChecked(true);
+    auto *chunk = new QSpinBox(&d);
+    chunk->setRange(1, 1 << 20);
+    chunk->setSuffix(tr(" bytes"));
+    chunk->setValue(o->chunkBytes);
+    auto *delay = new QSpinBox(&d);
+    delay->setRange(0, 60000);
+    delay->setSuffix(tr(" ms"));
+    delay->setValue(o->delayMs);
+    auto *prompt = new QLineEdit(o->prompt, &d);
+    prompt->setPlaceholderText(tr("e.g. >   (empty: just the delay between lines)"));
+    auto *timeout = new QSpinBox(&d);
+    timeout->setRange(100, 600000);
+    timeout->setSuffix(tr(" ms"));
+    timeout->setValue(o->promptTimeoutMs);
+    auto *form = new QFormLayout(&d);
+    form->addRow(new QLabel(tr("%1 bytes").arg(size), &d));
+    form->addRow(chunks);
+    form->addRow(tr("Chunk size"), chunk);
+    form->addRow(lines);
+    form->addRow(tr("Wait for prompt"), prompt);
+    form->addRow(tr("Prompt timeout"), timeout);
+    form->addRow(tr("Delay between pieces"), delay);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &d);
+    buttons->button(QDialogButtonBox::Ok)->setText(tr("Send"));
+    form->addRow(buttons);
+    auto sync = [=]() {
+        chunk->setEnabled(chunks->isChecked());
+        prompt->setEnabled(lines->isChecked());
+        timeout->setEnabled(lines->isChecked());
+    };
+    connect(chunks, &QRadioButton::toggled, &d, sync);
+    sync();
+    connect(buttons, &QDialogButtonBox::accepted, &d, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &d, &QDialog::reject);
+    if (d.exec() != QDialog::Accepted) return false;
+    o->mode = lines->isChecked() ? SerialSendOptions::Mode::Lines : SerialSendOptions::Mode::Chunks;
+    o->chunkBytes = chunk->value();
+    o->delayMs = delay->value();
+    o->prompt = prompt->text();
+    o->promptTimeoutMs = timeout->value();
     return true;
 }

@@ -36,6 +36,7 @@
 #include <QWidget>
 
 #include "seriallink.h"
+#include "serialfilesender.h"
 
 class MessageDispatcher;
 class SerialManager;
@@ -45,6 +46,7 @@ class QFile;
 class QLabel;
 class QLineEdit;
 class QPlainTextEdit;
+class QProgressBar;
 class QPushButton;
 class QSpinBox;
 class QTimer;
@@ -69,6 +71,9 @@ public:
     bool openPort();
     void closePort();
     bool sendText(const QString &text);        // honours hex / line-ending settings
+    // Send file without the file and options dialogs (session 108).
+    bool sendFileData(const QByteArray &data, const QString &name, const SerialSendOptions &options);
+    SerialFileSender *fileSender() const { return m_sender; }
     QString receivedText() const;
     QString statusText() const;
     QString healthText() const;                // the line-health label
@@ -99,6 +104,7 @@ private:
     void onBytes(const QByteArray &bytes, qint64 ms);
     void onWritten(const QByteArray &bytes, qint64 ms);
     void flushHexRow();
+    bool askSendOptions(SerialSendOptions *o, const QString &fileName, qint64 size);
     void updateState();
     void setLogging(bool on);
     QString stamp(qint64 ms) const;
@@ -129,6 +135,10 @@ private:
     QTimer *m_countTimer = nullptr;
 
     QFile  *m_log = nullptr;
+    SerialFileSender *m_sender = nullptr;      // session 108: paced file send
+    QProgressBar *m_sendProgress = nullptr;
+    QPushButton  *m_sendStop = nullptr;
+    QString       m_sendingName;
     SerialHexDumper m_hex;                     // session 107: 16-byte rows
     QTimer *m_hexFlush = nullptr;
     int     m_held = 0;

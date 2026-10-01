@@ -11,6 +11,86 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-108"></a>
+## Session 108 — Serial: paced file send with progress and Stop
+
+From the serial test report: "Send file is one big write. There's no pacing
+or progress, and the whole file is echoed as one giant TX> line, which is
+garbage for a binary file." and "Paced file send with progress. Choose chunk
+size and delay, send line by line waiting for a prompt, and show a progress
+bar with Stop."
+
+### What the operator sees
+
+After choosing the file, **Send file…** asks how to send it (the choices
+are remembered):
+
+- **In chunks**: a chunk size (bytes) and a delay between chunks.
+- **Line by line**: each line with its own line end. After each one the
+  terminal waits for the card's prompt (e.g. `>`) before sending the next,
+  giving up after the prompt timeout. With no prompt given, it waits the
+  delay between lines instead.
+
+While it runs:
+
+- a **progress bar** (`%p% sent`; the tooltip gives bytes) and a **Stop**
+  button sit in the send row;
+- the terminal shows `── sending loco.cap: 18234 bytes, 1024-byte chunks
+  every 5 ms ──` and, at the end, `── loco.cap: sent 18234 bytes in 0.2 s
+  ──`. The file is **not** echoed as `TX>` lines.
+- A failure says where it stopped and why:
+  - `stopped at 2048 of 18234 bytes`;
+  - `no "OK>" from the card within 5.0 s after line 1 of 2; stopped (5 of
+    10 bytes sent)`;
+  - `the port closed; … sent`.
+- A second send while one runs is refused.
+
+"Sent" means the port accepted the bytes. On a slow line, the last chunk
+can still be in the driver's write buffer for a moment after the end line
+appears. The tests met exactly this on a pty and wait for the bytes to
+arrive.
+
+### How it is built
+
+- **`serialfilesender.h/.cpp`**: `SerialSendOptions` (mode, chunk, delay,
+  prompt, timeout, `summary()`, saved under `serial/fileSend`);
+  `serialSendPieces()`, which cuts the file; and `SerialFileSender`, which
+  runs off GUI-thread timers while the link writes on its reader thread
+  (session 103). It stops if the port closes, and watches the link's
+  received bytes for the prompt.
+- **The terminal**: the options dialog, the progress bar and Stop, summary
+  lines, and no per-piece echo while a file is going out. A test hook,
+  `sendFileData()`, skips the dialogs.
+
+### Tests
+
+`tests/test_session108.cpp`, 26 checks. The file sent is **a real capture
+from `replay/`** (`loco_2_1_29062026_134128.cap`), sent back byte for byte
+over a pty:
+
+- chunks: sizes, and that they rejoin to the file; lines keep their own
+  ends; options are remembered;
+- paced chunks arrive **exactly**, take at least the sum of the delays, and
+  report progress after every chunk;
+- a second start is refused;
+- Stop: what went is the start of the file, and nothing goes after;
+- **line by line against a card the test plays**: it answers each line with
+  `OK>`, and the next line never goes before the prompt;
+- no prompt: it gives up naming "after line 1 of 2", having sent only the
+  first line;
+- the terminal shows start and end lines, not a `TX> @…` line, and the
+  card gets the whole file.
+
+Three consecutive runs, no failures.
+
+Gate: 11/11 validators, `dltests` 164 suites / 5286 checks, menu audit,
+smoke. All green.
+
+Not tested: the options dialog itself (modal, so the test hook bypasses
+it), and a real card's boot loader.
+
+---
+
 <a id="session-107"></a>
 ## Session 107 — Serial terminal: 16-byte hex rows; control characters and ANSI
 
