@@ -56,6 +56,7 @@
 #include <QDockWidget>
 #include <QFileDialog>
 #include <QHBoxLayout>
+#include <QToolButton>
 #include <QHeaderView>
 #include <QInputDialog>
 #include <QMouseEvent>
@@ -95,6 +96,7 @@
 #include "dmitimetravel.h"
 #ifdef DL_HAVE_SERIAL
 #include "serialconsolewindow.h"
+#include "serialmanager.h"
 #endif
 #include "runreportwindow.h"
 #include "speeddistance.h"
@@ -151,6 +153,17 @@ void MainWindow::buildStatusBar()
         l->setCursor(Qt::PointingHandCursor);
     }
     statusBar()->addPermanentWidget(m_lblDiskStatus);
+
+    // Session 102: one chip per open serial port, so a port capturing with
+    // no terminal window open is never invisible. Empty and hidden until
+    // one opens.
+    m_serialChips = new QWidget(this);
+    m_serialChips->setObjectName(QStringLiteral("serialChips"));
+    auto *chipRow = new QHBoxLayout(m_serialChips);
+    chipRow->setContentsMargins(0, 0, 0, 0);
+    chipRow->setSpacing(2);
+    m_serialChips->hide();
+    statusBar()->addPermanentWidget(m_serialChips);
 
     connect(m_frameWatch, &FrameNumberWatch::observed,
             this, [this](qint64, int) { refreshFrameClock(); });
@@ -601,4 +614,35 @@ void MainWindow::onDecodeFailureActivated(int row)
 {
     if (row < 0 || row >= m_failRefs.size()) return;
     jumpToEntry(m_failRefs.at(row).first, m_failRefs.at(row).second);
+}
+
+void MainWindow::rebuildSerialChips()
+{
+#ifdef DL_HAVE_SERIAL
+    if (!m_serialChips || !m_serial) return;
+    QLayout *row = m_serialChips->layout();
+    while (QLayoutItem *it = row->takeAt(0)) {
+        if (QWidget *w = it->widget()) w->deleteLater();
+        delete it;
+    }
+    const QStringList ports = m_serial->openPorts();
+    for (const QString &port : ports) {
+        const SerialLink *link = m_serial->link(port);
+        auto *chip = new QToolButton(m_serialChips);
+        chip->setAutoRaise(true);
+        chip->setObjectName(QStringLiteral("serialChip"));
+        // The dot and the name, not colour alone.
+        chip->setText(QStringLiteral("\u25CF ") + SerialManager::shortName(port));
+        chip->setStyleSheet(UiColor::okStyle());
+        chip->setToolTip(tr("%1 open, %2%3\nClick to open a terminal on it.")
+                             .arg(port, link ? link->config().summary() : QString(),
+                                  m_serial->feeds(port)
+                                      ? tr(", feeding tab \u201C%1\u201D").arg(SerialManager::tabTitleFor(port))
+                                      : tr(", not feeding the console")));
+        chip->setAccessibleName(tr("Serial port %1 open").arg(port));
+        connect(chip, &QToolButton::clicked, this, [this, port]() { openSerialTerminal(port); });
+        row->addWidget(chip);
+    }
+    m_serialChips->setVisible(!ports.isEmpty());
+#endif
 }

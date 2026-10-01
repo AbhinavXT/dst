@@ -25,3 +25,5 @@ include($$PWD/../dlcore_link.pri)
 INCLUDEPATH += $$PWD
 
 SOURCES += $$PWD/menuaudit_main.cpp
+
+linux: LIBS += -lutil   # openpty() for the serial chip check

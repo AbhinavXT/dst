@@ -94,6 +94,7 @@
 #include "dmitimetravel.h"
 #ifdef DL_HAVE_SERIAL
 #include "serialconsolewindow.h"
+#include "serialmanager.h"
 #endif
 #include "runreportwindow.h"
 #include "incidentreportdialog.h"
@@ -546,4 +547,20 @@ void MainWindow::onActionCompareTabs()
             this, [this](const QString &f) { showFieldIndex(f); });
 
     cmp->show();
+}
+
+// Session 102: a terminal is a viewer of a port the SerialManager runs.
+// Closing it leaves the port capturing; `port` selects one (a status-bar
+// chip passes its own).
+void MainWindow::openSerialTerminal(const QString &port)
+{
+#ifdef DL_HAVE_SERIAL
+    auto *w = new SerialConsoleWindow(m_serial, this);
+    if (!port.isEmpty()) w->showPort(port);
+    w->show();
+    w->raise();
+    w->activateWindow();
+#else
+    Q_UNUSED(port);
+#endif
 }

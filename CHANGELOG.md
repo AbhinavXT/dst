@@ -11,6 +11,76 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-102"></a>
+## Session 102 — Serial: background capture, a chip per port, settings per port
+
+From the serial test report: "Closing the window stops the capture" and
+"Settings are shared". These are the first of its enhancements, done in
+order, one patch each.
+
+### What the operator sees
+
+- **Closing the terminal no longer stops the port.** It keeps feeding the
+  console tab until someone presses **Close** (or DLConsole exits). The
+  status line says "keeps running when this window closes".
+- **A chip per open port in the status bar**, e.g. `● COM5`. Its tooltip
+  gives the settings and whether it feeds a tab. Clicking it opens a terminal
+  on that port.
+- **Reopening Tools ▸ Serial Port Terminal shows the running port**, with
+  its own settings, Feed console state and Close button.
+- **One window can view several ports.** Choosing another port in the box
+  views that one and leaves the first running. The line settings lock only
+  while the port being viewed is open.
+- **Settings are per port** (`serial/ports/<name>`: line settings and Feed
+  console). Three IOA cards keep three sets; whichever window closes last no
+  longer overwrites the others. A port with nothing saved yet falls back to
+  the old `serial/last`.
+
+### How it is built
+
+- **`serialmanager.h/.cpp`**: owned by MainWindow and handed out, like
+  `FrameNumberWatch`. It holds one `SerialLink` per port name (found
+  case-insensitively, kept for its own lifetime so a viewer never holds a
+  dangling link) and the feed into the dispatcher, which moved out of the
+  window. It also handles the tab naming and per-port settings.
+- **`serialconsolewindow`**: attaches to a manager's link. Typing in the
+  editable port box makes no links; Open makes one. The old
+  `SerialConsoleWindow(MessageDispatcher*)` constructor remains as the
+  standalone form, with a manager of its own whose ports close with the
+  window. Session 85's Linux-only end-to-end test uses it unchanged.
+- **MainWindow**: creates the manager after the dispatcher (no port is
+  touched), adds `openSerialTerminal(port)`, and `rebuildSerialChips()` on
+  `portsChanged`.
+
+### Tests
+
+`tests/test_session102.cpp`, 31 checks, over a pseudo-terminal standing in
+for the card, with real `@dop1` lines from `replay/`:
+
+- the line reaches the tab with the window open, and **again after the
+  window is closed and deleted**;
+- a new terminal attaches to the running port with its settings, offers
+  Close, and can send;
+- Feed console off from the viewer stops the feed;
+- Close closes the port;
+- two ports at once, each with its own settings; `showPort`; switching
+  views leaves the first running;
+- no link per keystroke;
+- per-port settings for three ports;
+- the standalone window still closes its port.
+
+Menu audit (+4): the chip row is present and hidden at startup. A port
+opened in the real MainWindow's manager shows a chip named after it, with
+no terminal open, and the chip goes when the port closes.
+
+Gate: 11/11 validators, `dltests` 158 suites / 5149 checks, menu audit
+144, smoke. All green.
+
+Not tested: Windows COM ports and a real USB adapter. Session 85's
+end-to-end serial test runs only on Linux, so it was not run here.
+
+---
+
 <a id="session-101"></a>
 ## Session 101 — Serial: three bugs found in testing
 

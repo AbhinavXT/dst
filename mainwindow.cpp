@@ -89,6 +89,7 @@
 #include "dmitimetravel.h"
 #ifdef DL_HAVE_SERIAL
 #include "serialconsolewindow.h"
+#include "serialmanager.h"
 #endif
 #include "runreportwindow.h"
 #include "speeddistance.h"
@@ -609,6 +610,12 @@ MainWindow::MainWindow(QWidget *parent)
 
     m_receiver   = new UDPCommunication(udp_port, queue_cap, this);
     m_dispatcher = new MessageDispatcher(this);
+#ifdef DL_HAVE_SERIAL
+    // Session 102: serial ports outlive their terminal windows. No port is
+    // touched here; one opens only when the operator presses Open.
+    m_serial = new SerialManager(m_dispatcher, this);
+    connect(m_serial, &SerialManager::portsChanged, this, &MainWindow::rebuildSerialChips);
+#endif
     connect(m_dispatcher, &MessageDispatcher::entryAppended, m_statusPins, &StatusPins::onEntry);
 
     m_dispatcher->setColorRules(&m_colorRules);

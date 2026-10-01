@@ -605,11 +605,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     // Only a window is made here: no port is touched until the operator
     // presses Open in it. The console runs on Ethernet with no serial port
     // present, open, or even built in.
-    connect(actSerial, &QAction::triggered, this, [this]() {
-        auto *w = new SerialConsoleWindow(m_dispatcher, this);
-        w->show();
-        w->raise();
-    });
+    connect(actSerial, &QAction::triggered, this, [this]() { openSerialTerminal(); });
 #else
     actSerial->setEnabled(false);
     actSerial->setToolTip(tr("Not available: this DLConsole was built without Qt's Serial Port module. "

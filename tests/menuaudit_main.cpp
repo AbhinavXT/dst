@@ -40,6 +40,18 @@
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPushButton>
+#include <QToolButton>
+#ifdef DL_HAVE_SERIAL
+#  include "serialmanager.h"
+#endif
+#if defined(DL_HAVE_SERIAL) && defined(Q_OS_UNIX)
+#  include <unistd.h>
+#  if defined(Q_OS_MACOS)
+#    include <util.h>
+#  else
+#    include <pty.h>
+#  endif
+#endif
 #include <QTableWidget>
 #include "findbar.h"
 #include <QCheckBox>
@@ -94,6 +106,35 @@ int main(int argc, char **argv) {
         for (QWidget *t : QApplication::topLevelWidgets())
             if (t->inherits("SerialConsoleWindow")) ++serialObjects;
         CHECK(serialObjects == 0, "the console starts with no serial port, terminal or link");
+#ifdef DL_HAVE_SERIAL
+        // Session 102: a chip per open port; none open, so none shown.
+        QWidget *chips = w.findChild<QWidget *>(QStringLiteral("serialChips"));
+        CHECK(chips && !chips->isVisible(), "the serial port chips are in the status bar, hidden with no port open");
+#  ifdef Q_OS_UNIX
+        // A port opened in MainWindow's manager shows a chip, with no
+        // terminal window open, and the chip goes when the port closes.
+        SerialManager *mgr = w.findChild<SerialManager *>();
+        int master = -1, slave = -1;
+        char name[256] = {};
+        if (mgr && chips && ::openpty(&master, &slave, name, nullptr, nullptr) == 0) {
+            ::close(slave);
+            SerialConfig c;
+            c.portName = QString::fromLocal8Bit(name);
+            CHECK(mgr->open(c), "a port opens in MainWindow's serial manager");
+            QApplication::processEvents();
+            QToolButton *chip = chips->findChild<QToolButton *>(QStringLiteral("serialChip"));
+            CHECK(chips->isVisible() && chip
+                      && chip->text().contains(SerialManager::shortName(c.portName)),
+                  "an open port shows a chip, named after it, with no terminal open");
+            mgr->closeAll();
+            QApplication::processEvents();
+            CHECK(!chips->isVisible(), "the chip goes when the port closes");
+            ::close(master);
+        } else {
+            CHECK(mgr != nullptr, "MainWindow owns a serial manager");
+        }
+#  endif
+#endif
     }
 
     QMenuBar *bar = w.menuBar();

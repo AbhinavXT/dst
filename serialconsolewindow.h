@@ -20,6 +20,15 @@
 //    over Ethernet — get the same decoding, colour rules, find, query,
 //    plots, recording and session files as the VCC's. Each line is stamped
 //    with the time its first byte arrived.
+//
+//  A VIEWER OF A PORT, NOT ITS OWNER (session 102)
+//    The port and Feed console live in the SerialManager MainWindow owns.
+//    Closing this window leaves the port running and feeding the console
+//    (the status bar shows a chip for it); only Close stops it. Choosing a
+//    port that is already running attaches to it.
+//
+//    The MessageDispatcher constructor is the standalone form: it makes a
+//    manager of its own, so its ports close with the window, as before.
 // =============================================================================
 
 #include <QPointer>
@@ -29,6 +38,7 @@
 #include "seriallink.h"
 
 class MessageDispatcher;
+class SerialManager;
 class QCheckBox;
 class QComboBox;
 class QFile;
@@ -44,7 +54,12 @@ class SerialConsoleWindow : public QWidget
     Q_OBJECT
 public:
     explicit SerialConsoleWindow(MessageDispatcher *dispatcher, QWidget *parent = nullptr);
+    explicit SerialConsoleWindow(SerialManager *manager, QWidget *parent = nullptr);
     ~SerialConsoleWindow() override;
+
+    // Select a port and attach to it (a running port shows its own settings).
+    void showPort(const QString &portName);
+    SerialManager *manager() const { return m_mgr; }
 
     SerialLink *link() const { return m_link; }
     SerialConfig configFromUi() const;
@@ -57,13 +72,18 @@ public:
     QString receivedText() const;
     QString statusText() const;
     QString tabKey() const;                    // the console tab fed from this port
-    static quint16 kvchForPort(const QString &portName);
+    static quint16 kvchForPort(const QString &portName);   // SerialManager's
     static constexpr quint8 kSerialSourceId = 254;
 
 protected:
     void closeEvent(QCloseEvent *e) override;
 
 private:
+    void build();
+    void attach(SerialLink *link);
+    void onPortChosen();
+    void saveSettings();
+    bool isOpen() const { return m_link && m_link->isOpen(); }
     void refreshPorts();
     void appendView(const QString &text);
     void onLine(const QByteArray &line, qint64 ms);
@@ -73,8 +93,10 @@ private:
     void setLogging(bool on);
     QString stamp(qint64 ms) const;
 
-    MessageDispatcher *m_dispatcher = nullptr;
-    SerialLink     *m_link = nullptr;
+    SerialManager  *m_mgr = nullptr;
+    bool            m_ownsMgr = false;
+    SerialLink     *m_link = nullptr;          // attached; owned by m_mgr
+    bool            m_attaching = false;
 
     QComboBox *m_port = nullptr, *m_baud = nullptr, *m_dataBits = nullptr,
               *m_parity = nullptr, *m_stopBits = nullptr, *m_flow = nullptr;
@@ -97,7 +119,6 @@ private:
     QFile  *m_log = nullptr;
     int     m_held = 0;
     QStringList m_heldLines;
-    int     m_fedLines = 0;
 };
 
 #endif // SERIALCONSOLEWINDOW_H

@@ -516,7 +516,11 @@ private:
 
     FrameNumberWatch *m_frameWatch = nullptr;
     class TabTags    *m_tabTags = nullptr;
-    class SessionKeyStore *m_sessionKeys = nullptr;   // session 96: owned here, fed by live traffic      // session 96: owned here, shared with pop-outs and loco consoles   // session 95: owned here, handed to the Packet Makers
+    class SessionKeyStore *m_sessionKeys = nullptr;
+    // Session 102: the serial ports, running whether or not a terminal
+    // window is open; a status-bar chip per open port.
+    class SerialManager *m_serial = nullptr;
+    QWidget *m_serialChips = nullptr;   // session 96: owned here, fed by live traffic      // session 96: owned here, shared with pop-outs and loco consoles   // session 95: owned here, handed to the Packet Makers
     quint64 m_lastReportedMalformed = 0;   // session 90: drops by cause
     quint64 m_lastReportedQueueFull = 0;
     int     m_perTabCapacity    = 200'000;
@@ -553,6 +557,8 @@ private:
     };
     MenuRoots buildMenus();            // mainwindow_menus.cpp
     void buildStatusBar();             // mainwindow_status.cpp
+    void openSerialTerminal(const QString &port = QString());   // mainwindow_tools.cpp
+    void rebuildSerialChips();                                   // mainwindow_status.cpp
 
     // 2f: refresh tab text colors based on staleness + visibility.
     void refreshTabHealth();

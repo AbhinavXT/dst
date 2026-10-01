@@ -1,6 +1,7 @@
 #include "serialconsolewindow.h"
 
 #include "messagedispatcher.h"
+#include "serialmanager.h"
 #include "settings.h"
 #include "uicolors.h"
 #include "uistyle.h"
@@ -31,31 +32,40 @@
 #include <QVBoxLayout>
 
 namespace {
-const QString kGroup = QStringLiteral("serial/last");
+// Before session 102 every window saved here; still read when a port has
+// no settings of its own yet.
+const QString kLegacyGroup = QStringLiteral("serial/last");
 constexpr int kMaxViewLines = 20000;
 constexpr int kMaxHistory = 30;
 }
 
 quint16 SerialConsoleWindow::kvchForPort(const QString &portName)
 {
-    // Stable across runs and machines for the same name; never 0.
-    quint32 h = 2166136261u;                         // FNV-1a
-    for (const QChar c : portName.toUpper()) { h ^= c.unicode(); h *= 16777619u; }
-    return quint16(1 + (h % 65000u));
+    return SerialManager::kvchForPort(portName);
 }
 
 SerialConsoleWindow::SerialConsoleWindow(MessageDispatcher *dispatcher, QWidget *parent)
     : QWidget(parent, Qt::Window)
-    , m_dispatcher(dispatcher)
+    , m_mgr(new SerialManager(dispatcher, this))
+    , m_ownsMgr(true)
+{
+    build();
+}
+
+SerialConsoleWindow::SerialConsoleWindow(SerialManager *manager, QWidget *parent)
+    : QWidget(parent, Qt::Window)
+    , m_mgr(manager)
+{
+    build();
+}
+
+void SerialConsoleWindow::build()
 {
     setAttribute(Qt::WA_DeleteOnClose);
     setWindowTitle(tr("Serial Port Terminal"));
     WindowGeometry::makeResizableWindow(this);
     resize(900, 640);
     WindowGeometry::restore(this, QStringLiteral("serialWindow"));
-
-    m_link = new SerialLink(this);
-    m_link->setIdleFlushMs(300);
 
     // ---- line settings ------------------------------------------------------------
     m_port = new QComboBox(this);
@@ -183,11 +193,28 @@ SerialConsoleWindow::SerialConsoleWindow(MessageDispatcher *dispatcher, QWidget 
     // ---- remembered ---------------------------------------------------------------
     QSettings s(Settings::iniPath(), QSettings::IniFormat);
     refreshPorts();
-    setConfigToUi(SerialConfig::load(s, kGroup));
+    {
+        // A port already running in the background comes first: reopening
+        // the terminal shows what is capturing. Then the last port used,
+        // with ITS settings.
+        const QStringList running = m_mgr->openPorts();
+        const QString last = running.isEmpty() ? s.value(QStringLiteral("serial/lastPort")).toString()
+                                               : running.first();
+        SerialConfig c;
+        bool feed = true;
+        if (!running.isEmpty()) {
+            c = m_mgr->link(last)->config();
+            feed = m_mgr->feeds(last);
+        } else if (last.isEmpty() || !SerialManager::loadPortSettings(s, last, &c, &feed)) {
+            c = SerialConfig::load(s, kLegacyGroup);
+            feed = s.value(QStringLiteral("serial/feed"), true).toBool();
+        }
+        setConfigToUi(c);
+        m_feed->setChecked(feed);
+    }
     m_timestamps->setChecked(s.value(QStringLiteral("serial/timestamps"), true).toBool());
     m_hexView->setChecked(s.value(QStringLiteral("serial/hexView"), false).toBool());
     m_echo->setChecked(s.value(QStringLiteral("serial/echo"), true).toBool());
-    m_feed->setChecked(s.value(QStringLiteral("serial/feed"), true).toBool());
     m_sendHex->setChecked(s.value(QStringLiteral("serial/sendHex"), false).toBool());
     m_ending->setCurrentIndex(qBound(0, s.value(QStringLiteral("serial/ending"), 3).toInt(), 3));
     m_send->addItems(s.value(QStringLiteral("serial/history")).toStringList());
@@ -195,9 +222,15 @@ SerialConsoleWindow::SerialConsoleWindow(MessageDispatcher *dispatcher, QWidget 
 
     // ---- wiring -------------------------------------------------------------------
     connect(refresh, &QToolButton::clicked, this, &SerialConsoleWindow::refreshPorts);
-    connect(m_open, &QPushButton::clicked, this, [this]() { if (m_link->isOpen()) closePort(); else openPort(); });
-    connect(m_dtr, &QCheckBox::toggled, this, [this](bool on) { m_link->setDtr(on); });
-    connect(m_rts, &QCheckBox::toggled, this, [this](bool on) { m_link->setRts(on); });
+    connect(m_open, &QPushButton::clicked, this, [this]() { if (isOpen()) closePort(); else openPort(); });
+    connect(m_dtr, &QCheckBox::toggled, this, [this](bool on) { if (m_link) m_link->setDtr(on); });
+    connect(m_rts, &QCheckBox::toggled, this, [this](bool on) { if (m_link) m_link->setRts(on); });
+    connect(m_port, &QComboBox::currentTextChanged, this, &SerialConsoleWindow::onPortChosen);
+    connect(m_feed, &QCheckBox::toggled, this, [this](bool on) {
+        if (m_attaching || !m_link) return;
+        m_mgr->setFeed(configFromUi().portName, on);
+        updateState();
+    });
     connect(clear, &QPushButton::clicked, m_view, &QPlainTextEdit::clear);
     connect(m_hold, &QCheckBox::toggled, this, [this](bool on) {
         if (!on) {
@@ -220,35 +253,98 @@ SerialConsoleWindow::SerialConsoleWindow(MessageDispatcher *dispatcher, QWidget 
         if (m_repeatTimer->isActive()) m_repeatTimer->start(ms);
     });
     connect(m_repeatTimer, &QTimer::timeout, this, [this]() {
-        if (!m_link->isOpen() || !sendText(m_send->currentText())) { m_repeat->setChecked(false); }
+        if (!isOpen() || !sendText(m_send->currentText())) { m_repeat->setChecked(false); }
     });
     connect(sendFile, &QPushButton::clicked, this, [this]() {
         const QString path = QFileDialog::getOpenFileName(this, tr("Send file"));
         if (path.isEmpty()) return;
         QFile f(path);
         if (!f.open(QIODevice::ReadOnly)) { m_state->setText(tr("Cannot read %1").arg(path)); return; }
+        if (!isOpen()) { m_state->setText(tr("Open the port first.")); return; }
         const qint64 n = m_link->write(f.readAll());
         m_state->setText(tr("Sent %1 bytes from %2").arg(n).arg(QFileInfo(path).fileName()));
     });
-    connect(resetCounts, &QToolButton::clicked, this, [this]() { m_link->resetCounters(); m_fedLines = 0; updateState(); });
-
-    connect(m_link, &SerialLink::lineReceived, this, &SerialConsoleWindow::onLine);
-    connect(m_link, &SerialLink::bytesReceived, this, &SerialConsoleWindow::onBytes);
-    connect(m_link, &SerialLink::bytesWritten, this, &SerialConsoleWindow::onWritten);
-    connect(m_link, &SerialLink::closed, this, &SerialConsoleWindow::updateState);
-    connect(m_link, &SerialLink::errorOccurred, this, [this](const QString &t) {
-        m_state->setText(tr("\u2715 %1").arg(t));
-        m_state->setStyleSheet(UiColor::errorStyle());
+    connect(resetCounts, &QToolButton::clicked, this, [this]() {
+        if (!m_link) return;
+        m_link->resetCounters();
+        m_mgr->resetFedLines(m_link->config().portName);
+        updateState();
     });
 
     m_countTimer = new QTimer(this);
     m_countTimer->setInterval(500);
     connect(m_countTimer, &QTimer::timeout, this, [this]() {
+        if (!m_link) { m_counts->clear(); return; }
         m_counts->setText(tr("RX %1 · TX %2 · to console %3 lines")
-                              .arg(m_link->rxBytes()).arg(m_link->txBytes()).arg(m_fedLines));
+                              .arg(m_link->rxBytes()).arg(m_link->txBytes())
+                              .arg(m_mgr->fedLines(m_link->config().portName)));
     });
     m_countTimer->start();
+    onPortChosen();
+}
+
+void SerialConsoleWindow::attach(SerialLink *link)
+{
+    if (link == m_link) return;
+    if (m_link) disconnect(m_link, nullptr, this, nullptr);
+    m_link = link;
+    if (m_link) {
+        connect(m_link, &SerialLink::lineReceived, this, &SerialConsoleWindow::onLine);
+        connect(m_link, &SerialLink::bytesReceived, this, &SerialConsoleWindow::onBytes);
+        connect(m_link, &SerialLink::bytesWritten, this, &SerialConsoleWindow::onWritten);
+        connect(m_link, &SerialLink::opened, this, &SerialConsoleWindow::updateState);
+        connect(m_link, &SerialLink::closed, this, &SerialConsoleWindow::updateState);
+        connect(m_link, &SerialLink::errorOccurred, this, [this](const QString &t) {
+            m_state->setText(tr("\u2715 %1").arg(t));
+            m_state->setStyleSheet(UiColor::errorStyle());
+        });
+    }
+}
+
+void SerialConsoleWindow::onPortChosen()
+{
+    if (m_attaching) return;
+    // Choosing another port while one is open leaves that one running in
+    // the manager: this window just looks at a different port.
+    const QString port = configFromUi().portName;
+    // Only a port the manager already knows is attached: the box is
+    // editable, and making a link per keystroke ("C", "CO", "COM") would
+    // litter the manager. openPort() makes it.
+    SerialLink *l = port.isEmpty() ? nullptr : m_mgr->link(port);
+    attach(l);
+    if (l && l->isOpen()) {
+        // Running in the background: show it as it is.
+        m_attaching = true;
+        setConfigToUi(l->config());
+        m_feed->setChecked(m_mgr->feeds(port));
+        m_attaching = false;
+    }
     updateState();
+}
+
+void SerialConsoleWindow::showPort(const QString &portName)
+{
+    m_attaching = true;
+    const int i = m_port->findData(portName);
+    if (i >= 0) m_port->setCurrentIndex(i);
+    else m_port->setEditText(portName);
+    m_attaching = false;
+    SerialLink *l = m_mgr->linkFor(portName);
+    attach(l);
+    if (l->isOpen()) {
+        m_attaching = true;
+        setConfigToUi(l->config());
+        m_feed->setChecked(m_mgr->feeds(portName));
+        m_attaching = false;
+    }
+    updateState();
+}
+
+void SerialConsoleWindow::saveSettings()
+{
+    QSettings s(Settings::iniPath(), QSettings::IniFormat);
+    const SerialConfig c = (isOpen() ? m_link->config() : configFromUi());
+    SerialManager::savePortSettings(s, c, m_feed->isChecked());
 }
 
 SerialConsoleWindow::~SerialConsoleWindow()
@@ -258,12 +354,11 @@ SerialConsoleWindow::~SerialConsoleWindow()
 
 void SerialConsoleWindow::closeEvent(QCloseEvent *e)
 {
+    saveSettings();
     QSettings s(Settings::iniPath(), QSettings::IniFormat);
-    configFromUi().save(s, kGroup);
     s.setValue(QStringLiteral("serial/timestamps"), m_timestamps->isChecked());
     s.setValue(QStringLiteral("serial/hexView"), m_hexView->isChecked());
     s.setValue(QStringLiteral("serial/echo"), m_echo->isChecked());
-    s.setValue(QStringLiteral("serial/feed"), m_feed->isChecked());
     s.setValue(QStringLiteral("serial/sendHex"), m_sendHex->isChecked());
     s.setValue(QStringLiteral("serial/ending"), m_ending->currentIndex());
     QStringList hist;
@@ -271,7 +366,9 @@ void SerialConsoleWindow::closeEvent(QCloseEvent *e)
     s.setValue(QStringLiteral("serial/history"), hist);
     WindowGeometry::save(this, QStringLiteral("serialWindow"));
     m_repeatTimer->stop();
-    m_link->close();
+    // The standalone form owns its ports; MainWindow's manager keeps them
+    // running and feeding the console after this viewer goes.
+    if (m_ownsMgr) m_mgr->closeAll();
     QWidget::closeEvent(e);
 }
 
@@ -329,11 +426,12 @@ bool SerialConsoleWindow::openPort()
         m_state->setText(tr("Choose a port first."));
         return false;
     }
-    if (!m_link->open(c)) { updateState(); m_state->setText(tr("\u2715 %1").arg(m_link->errorText())); return false; }
+    attach(m_mgr->linkFor(c.portName));
+    m_mgr->setFeed(c.portName, m_feed->isChecked());
+    if (!m_mgr->open(c)) { updateState(); m_state->setText(tr("\u2715 %1").arg(m_link->errorText())); return false; }
     m_link->setDtr(m_dtr->isChecked());
     m_link->setRts(m_rts->isChecked());
-    QSettings s(Settings::iniPath(), QSettings::IniFormat);
-    c.save(s, kGroup);
+    saveSettings();
     appendView(tr("── opened %1 %2 at %3 ──").arg(c.portName, c.summary(), stamp(QDateTime::currentMSecsSinceEpoch())));
     updateState();
     return true;
@@ -342,17 +440,19 @@ bool SerialConsoleWindow::openPort()
 void SerialConsoleWindow::closePort()
 {
     m_repeat->setChecked(false);
-    const bool was = m_link->isOpen();
-    m_link->close();
+    const bool was = isOpen();
+    if (m_link) m_link->close();
     if (was) appendView(tr("── closed at %1 ──").arg(stamp(QDateTime::currentMSecsSinceEpoch())));
     updateState();
 }
 
 void SerialConsoleWindow::updateState()
 {
-    const bool open = m_link->isOpen();
+    const bool open = isOpen();
     m_open->setText(open ? tr("Close") : tr("Open"));
-    for (QWidget *w : { static_cast<QWidget *>(m_port), static_cast<QWidget *>(m_baud),
+    // The port box stays live: choosing another port views it, and leaves
+    // this one running.
+    for (QWidget *w : { static_cast<QWidget *>(m_baud),
                         static_cast<QWidget *>(m_dataBits), static_cast<QWidget *>(m_parity),
                         static_cast<QWidget *>(m_stopBits), static_cast<QWidget *>(m_flow) })
         w->setEnabled(!open);
@@ -361,7 +461,9 @@ void SerialConsoleWindow::updateState()
         const SerialConfig &c = m_link->config();
         setWindowTitle(tr("Serial — %1 %2").arg(c.portName, c.summary()));
         QString t = tr("\u25CF %1 open, %2").arg(c.portName, c.summary());
-        if (m_feed->isChecked() && m_dispatcher) t += tr(" · feeding tab \u201CSerial %1\u201D").arg(c.portName.section(QLatin1Char('/'), -1));
+        if (m_mgr->feeds(c.portName) && m_mgr->dispatcher())
+            t += tr(" · feeding tab \u201C%1\u201D").arg(SerialManager::tabTitleFor(c.portName));
+        if (!m_ownsMgr) t += tr(" · keeps running when this window closes");
         if (m_hold->isChecked() && m_held) t += m_held == 1 ? tr(" · holding 1 line") : tr(" · holding %1 lines").arg(m_held);
         m_state->setText(t);
         m_state->setStyleSheet(UiColor::okStyle());
@@ -397,15 +499,7 @@ void SerialConsoleWindow::appendView(const QString &text)
 
 void SerialConsoleWindow::onLine(const QByteArray &line, qint64 ms)
 {
-    // Into the console first: that path must not depend on view options.
-    if (m_feed->isChecked() && m_dispatcher && !line.trimmed().isEmpty()) {
-        const QString port = m_link->config().portName;
-        // Tab named by the port's short name ("COM3", "ttyUSB0"); keyed by the
-        // full name, so two paths never share a tab.
-        m_dispatcher->ingestLocal(kSerialSourceId, kvchForPort(port), line, ms,
-                                  tr("Serial %1").arg(port.section(QLatin1Char('/'), -1)));
-        ++m_fedLines;
-    }
+    // The console feed is the manager's (it must not depend on a window).
     if (m_hexView->isChecked()) return;             // the hex view shows chunks
     const QString text = QString::fromUtf8(line);
     appendView(m_timestamps->isChecked() ? stamp(ms) + QStringLiteral("  ") + text : text);
@@ -431,7 +525,7 @@ void SerialConsoleWindow::onWritten(const QByteArray &bytes, qint64 ms)
 
 bool SerialConsoleWindow::sendText(const QString &text)
 {
-    if (!m_link->isOpen()) { m_state->setText(tr("Open the port first.")); return false; }
+    if (!isOpen()) { m_state->setText(tr("Open the port first.")); return false; }
     QByteArray bytes;
     if (m_sendHex->isChecked()) {
         bool ok = false;
@@ -490,5 +584,5 @@ QString SerialConsoleWindow::receivedText() const { return m_view->toPlainText()
 QString SerialConsoleWindow::statusText() const { return m_state->text(); }
 QString SerialConsoleWindow::tabKey() const
 {
-    return QStringLiteral("%1_%2").arg(int(kSerialSourceId)).arg(int(kvchForPort(m_link->config().portName)));
+    return SerialManager::tabKeyFor(m_link ? m_link->config().portName : configFromUi().portName);
 }
