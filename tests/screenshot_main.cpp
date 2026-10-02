@@ -21,6 +21,7 @@
 #include "searchwindow.h"
 #include "lococonsolewindow.h"
 #include "dmipanel.h"
+#include "packetmakerdialog.h"
 #include "theme.h"
 #include "uistyle.h"
 #include "settings.h"
@@ -81,6 +82,7 @@ int main(int argc, char **argv)
                 }
                 disp.drainNow();
             }
+            if (which == QLatin1String("packet")) win = new PacketMakerDialog(nullptr);
             if (!win) return 2;
             win->resize(1100, 720);
             win->show();

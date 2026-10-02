@@ -11,6 +11,37 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-125"></a>
+## Session 125 — UI revamp, tool windows 4: Packet Maker (first pass)
+
+- **"Build && Verify" showed both ampersands** in seven status messages and
+  a tooltip. In a label `&&` is not a mnemonic escape. They now read "Build
+  & Verify". The button keeps `&&`, where it is the escape.
+- **Switched-off sections cost one line.** "Also send to", "Extra header
+  fields" and "Fill from buffer" already folded their bodies away, but kept
+  an empty framed box (about 40 px each), taken from the field editors. A
+  folded box is now flat: its switch and title, no frame. The new
+  `UiStyle::makeFoldable()` does this, with a stylesheet rule for flat
+  group boxes.
+- **Build & Verify is the window's primary action.** Sending stays behind
+  its Arm switch, as designed.
+
+Files: `uistyle.h/.cpp`, `packetmakerdialog.cpp`;
+`tests/screenshot_main.cpp` (`SHOT_WINDOW=packet`).
+
+Not done in this pass, because the usage limit was reached:
+
+- no screenshot was taken after the change;
+- no `test_session125` suite;
+- the dialog's minimum size was measured at 1127 × 801 before the change
+  and not re-measured;
+- the "Vary per send" table still clips its cells.
+
+Gate: 11/11 validators, `dltests` 176 suites / 5491 checks, menu audit
+157, smoke. All green.
+
+---
+
 <a id="session-124"></a>
 ## Session 124 — UI revamp, tool windows 3: the Live Loco Console
 

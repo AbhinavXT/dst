@@ -30,6 +30,7 @@
 
 class QAbstractButton;
 class QButtonGroup;
+class QGroupBox;
 class QLabel;
 class QTabWidget;
 class QWidget;
@@ -117,6 +118,10 @@ void makeSectionLabel(QLabel *l);
 // (the band a panel's header controls sit in).
 void makePanel(QWidget *w);
 void makeStrip(QWidget *w);
+
+// A checkable group box whose body folds away when it is switched off, and
+// whose frame goes with it (flat), so a section that is off costs one line.
+void makeFoldable(QGroupBox *box, QWidget *body);
 
 // The fixed-pitch face for a widget's TEXT (timestamps, values, counters):
 // monoFont() at the widget's own size.

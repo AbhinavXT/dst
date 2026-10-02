@@ -282,8 +282,7 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     }
     destGrid->setColumnStretch(4, 1);
     destOuter->addWidget(destBody);
-    destBody->setVisible(false);
-    connect(destBox, &QGroupBox::toggled, destBody, &QWidget::setVisible);
+    UiStyle::makeFoldable(destBox, destBody);  // session 125
     root->addWidget(destBox);
 
     auto *keyRow = new QHBoxLayout;
@@ -377,8 +376,7 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     exBtns->addStretch(1);
     exLay->addLayout(exBtns);
     exOuter->addWidget(exBody);
-    exBody->setVisible(false);
-    connect(m_extraBox, &QGroupBox::toggled, exBody, &QWidget::setVisible);
+    UiStyle::makeFoldable(m_extraBox, exBody); // session 125
     connect(exAdd, &QPushButton::clicked, this, &PacketMakerDialog::onExtraAdd);
     connect(exDel, &QPushButton::clicked, this, &PacketMakerDialog::onExtraRemove);
     connect(m_extraTable, &QTableWidget::itemChanged, this,
@@ -419,8 +417,7 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     bufLay->addWidget(bufBody);
     // A checkable QGroupBox only DISABLES its children; folding it away is
     // what buys the space back.
-    bufBody->setVisible(false);
-    connect(bufBox, &QGroupBox::toggled, bufBody, &QWidget::setVisible);
+    UiStyle::makeFoldable(bufBox, bufBody);    // session 125: off = one line, no empty frame
     root->addWidget(bufBox);
 
     // middle: [header form] | [sub-packets], resizable via a splitter
@@ -532,6 +529,7 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     // bottom buttons
     auto *btns = new QHBoxLayout;
     m_buildBtn = new QPushButton(tr("Build && Verify"), this);
+    UiStyle::makePrimary(m_buildBtn);          // session 125: the window's primary action
     m_sendOnceBtn = new QPushButton(tr("Send Once"), this);
     m_intervalSpin = new QSpinBox(this);
     m_intervalSpin->setRange(10, 600000);
@@ -685,9 +683,9 @@ void PacketMakerDialog::rebuildHeaderForm()
                 m_lastFrame.clear();
                 setSendEnabled(false);
                 m_status->say(fromLive
-                    ? tr("Frame number taken from live traffic — Build && Verify again.")
+                    ? tr("Frame number taken from live traffic — Build & Verify again.")
                     : tr("No ARP/LSRP seen yet; used the clock instead — "
-                         "Build && Verify again."));
+                         "Build & Verify again."));
             });
             hb->addWidget(now);
 
@@ -797,7 +795,7 @@ void PacketMakerDialog::onSubActivated()
             // bytes under the new intent.
             m_lastFrame.clear();
             setSendEnabled(false);
-            m_status->say(tr("Sub-packet edited — Build && Verify again."));
+            m_status->say(tr("Sub-packet edited — Build & Verify again."));
         });
     }
     m_subWindow->setTarget(&m_builder.encoder(), m_packetCombo->currentText(),
@@ -1648,7 +1646,7 @@ void PacketMakerDialog::onLoadPreset()
     }
     disarm(QString());     // a preset replaces the frame; the message below says so
     if (err.isEmpty()) {
-        m_status->ok(tr("Loaded %1. Build && Verify before sending.").arg(path));
+        m_status->ok(tr("Loaded %1. Build & Verify before sending.").arg(path));
     } else {
         m_status->warn(err);
     }
@@ -1821,7 +1819,7 @@ void PacketMakerDialog::onLoadBuffer()
 
     disarm(tr("Disarmed: the form was replaced from a buffer."));
     m_status->say(tr("Fields filled from a %1-byte buffer. Edit anything, "
-                         "then Build && Verify — PKT_LENGTH, the MAC and the CRC "
+                         "then Build & Verify — PKT_LENGTH, the MAC and the CRC "
                          "are all recomputed.").arg(frame.size()));
 }
 
@@ -1933,7 +1931,7 @@ void PacketMakerDialog::onPacketChanged()
         ? tr("message_id: %1").arg(MessageHeader::messageId(captype))
         : tr("message_id: — (no header for this type)"));
 
-    m_status->say(tr("Edit fields, then Build && Verify."));
+    m_status->say(tr("Edit fields, then Build & Verify."));
 }
 
 // =============================================================================
@@ -2083,7 +2081,7 @@ void PacketMakerDialog::onExtrasEdited()
     // any other edit: Build again before Send.
     if (m_builtOk && !m_sender.isRunning()) {
         setSendEnabled(false);
-        m_status->warn(tr("Extra header fields changed — Build && Verify again to send."));
+        m_status->warn(tr("Extra header fields changed — Build & Verify again to send."));
     }
 }
 

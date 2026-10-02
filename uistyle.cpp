@@ -12,6 +12,7 @@
 #include <QButtonGroup>
 #include <QFontDatabase>
 #include <QFontInfo>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPainter>
@@ -150,6 +151,12 @@ QString componentRules(const QPalette &p, bool isDark, const QColor &window,
         "QAbstractButton[dlRole=\"rail\"]:checked { background:%2; }")
         .arg(hover.name(), railOn.name());
 
+    // A flat group box (a folded, switched-off section): its title and
+    // switch only, no frame or padding (session 125).
+    s += QStringLiteral(
+        "QGroupBox[flat=\"true\"] { border:none; padding:0px; margin-top:%1px; }")
+        .arg(UiStyle::space(4));
+
     // The primary action.
     {
         const QColor acc = UiColor::accent();
@@ -258,6 +265,18 @@ void makePrimary(QAbstractButton *b)
     if (!b) return;
     b->setProperty("dlRole", QStringLiteral("primary"));
     repolish(b);
+}
+
+void makeFoldable(QGroupBox *box, QWidget *body)
+{
+    if (!box) return;
+    auto apply = [box, body](bool on) {
+        if (body) body->setVisible(on);
+        box->setFlat(!on);
+        repolish(box);
+    };
+    QObject::connect(box, &QGroupBox::toggled, box, apply);
+    apply(box->isChecked());
 }
 
 void makeSectionLabel(QLabel *l)
