@@ -418,11 +418,17 @@ QString sheet()
         "QCheckBox::indicator:hover, QRadioButton::indicator:hover {"
         " border-color:%3; }"
         "QCheckBox::indicator:checked, QRadioButton::indicator:checked {"
-        " background:%3; border-color:%3; }"
+        " background:%6; border-color:%6; }"
         "QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {"
         " background:%4; border-color:%5; }")
         .arg(base.name(), mix(window, text, isDark ? 0.42 : 0.38).name(),
-             hi.name(), window.name(), subtle.name());
+             hi.name(), window.name(), subtle.name(),
+             // Ticked = filled with the ACCENT (session 138). It was the
+             // selection highlight, which in the dark themes is a navy close
+             // to the background: every ticked box read as unticked ("Show
+             // only differences", the Loco Configuration targets). The accent
+             // is contrast-audited against Base in every theme.
+             UiColor::accent().name());
 
     // Text entry. The focus ring is the highlight colour, so it follows the
     // theme rather than being a fixed blue that clashes with the dark one.

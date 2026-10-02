@@ -40,6 +40,7 @@
 #include "lococonfigwindow.h"
 #include "replaywindow.h"
 #include "decodeworkbench.h"
+#include "framediffwindow.h"
 #include <QDir>
 #include <QTemporaryDir>
 #include <QDateTime>
@@ -262,6 +263,14 @@ int main(int argc, char **argv)
                 // A real @lsrp line from the capture.
                 for (const QString &l : lines)
                     if (l.startsWith(QLatin1String("@lsrp"))) { w->loadBuffer(l); break; }
+                win = w;
+            }
+            if (which == QLatin1String("framediff")) {
+                auto *w = new FrameDiffWindow(nullptr);
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
+                int side = 0;
+                for (const QString &l : lines)
+                    if (l.startsWith(QLatin1String("@lsrp")) && side < 3) w->setSide(side++, l);
                 win = w;
             }
             if (!win) return 2;

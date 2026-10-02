@@ -11,6 +11,58 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-138"></a>
+## Session 138 — UI revamp, tool windows 15: Frame Diff, and every checkbox
+
+**Ticked checkboxes looked unticked in the dark themes.** The app
+stylesheet filled a ticked box with the selection highlight. In the dark
+themes that is a navy close to the background, and the box has no tick
+mark. Every ticked checkbox read as off: Frame Diff's "Show only
+differences" (on by default), the Loco Configuration targets, "Follow
+new messages", and the rest. A ticked box is now filled with the theme's
+accent, which is contrast-audited against the background in every
+theme. A new test measures the drawn pixels in all 11 themes: ticked
+against the background, and ticked against unticked, are each at least
+3:1 (WCAG's floor for a control's state).
+
+**Frame Diff.**
+
+- **Hex and values are monospaced.** The frame boxes and the table used
+  `systemFont(FixedFont)`; they now use `UiStyle::monoFont()` (see
+  session 137).
+- **Each frame box shows a whole frame.** At 90 px, a 39-byte capture
+  line showed three of its five lines. The boxes are now seven lines,
+  and the input strip is exactly their height.
+- **Headers align left**, as in the other tool tables.
+- **The counts read as English:** "5 fields differ" / "1 field differs",
+  "3 bytes differ" (were "field(s)", "byte(s)").
+
+Tests: `test_session138`, 21 checks:
+
+- the ticked box, in every theme;
+- on three real @lsrp lines under the app stylesheet:
+  - values and hex are monospaced;
+  - each box shows its whole frame;
+  - headers align left, and the table keeps the bulk of the window;
+  - Show only differences is on;
+  - the summary text;
+  - fits;
+  - layout audit.
+
+`framediff`, `framediffmany`, `framediffwindowcols`, `contrastaudit`,
+`uipalette` and `colorblind` pass unchanged.
+
+**Screenshot harness:** `SHOT_WINDOW=framediff`.
+
+Files: `uistyle.cpp`, `framediffwindow.cpp`, `tests/screenshot_main.cpp`,
+`tests/test_session138.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+187 suites / 5721 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-137"></a>
 ## Session 137 — UI revamp, tool windows 14: the Decode Workbench
 

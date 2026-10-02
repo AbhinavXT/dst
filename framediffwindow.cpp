@@ -1,4 +1,5 @@
 #include "framediffwindow.h"
+#include "uistyle.h"
 #include "uicolors.h"
 
 #include "framediff.h"
@@ -17,6 +18,7 @@
 #include <QScrollArea>
 #include <QSplitter>
 #include <QTableWidget>
+#include <QScrollBar>
 #include <QVBoxLayout>
 
 namespace {
@@ -58,8 +60,11 @@ FrameDiffWindow::FrameDiffWindow(QWidget *parent)
     auto *inputScroll = new QScrollArea(central);
     inputScroll->setWidgetResizable(true);
     inputScroll->setWidget(inputHost);
-    inputScroll->setMinimumHeight(190);
-    inputScroll->setMaximumHeight(240);
+    inputScroll->setFrameShape(QFrame::NoFrame);
+    inputScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
+    inputScroll->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    // Exactly the frame boxes' height (set below, once one exists): the
+    // decoded table under them is what the window is for.
     root->addWidget(inputScroll);
     addFrameColumn();
     addFrameColumn();
@@ -96,7 +101,9 @@ FrameDiffWindow::FrameDiffWindow(QWidget *parent)
     m_table->verticalHeader()->setVisible(false);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_table->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    m_table->setFont(UiStyle::monoFont());
+    m_table->setObjectName(QStringLiteral("frameDiffTable"));
+    m_table->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);   // as the other tool tables
     m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     m_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     m_table->horizontalHeader()->setSectionResizeMode(2, QHeaderView::Stretch);
@@ -146,9 +153,12 @@ void FrameDiffWindow::addFrameColumn()
     v->addLayout(row);
 
     auto *edit = new QPlainTextEdit(box);
-    edit->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    edit->setFont(UiStyle::monoFont());
     edit->setPlaceholderText(tr("Paste a capture line or bare hex"));
-    edit->setMaximumHeight(90);
+    // Tall enough for a whole frame (session 138): at 90 px a 39-byte
+    // capture line showed three of its five lines.
+    edit->setObjectName(QStringLiteral("frameDiffInput"));
+    edit->setFixedHeight(edit->fontMetrics().lineSpacing() * 7 + 12);
     v->addWidget(edit);
 
     auto *head = new QLabel(QString(), box);
@@ -243,6 +253,8 @@ void FrameDiffWindow::rebuild()
     for (int s = 0; s < n; ++s) { heads << QString(QChar('A' + s)); }
     m_table->setColumnCount(heads.size());
     m_table->setHorizontalHeaderLabels(heads);
+    m_table->setObjectName(QStringLiteral("frameDiffTable"));
+    m_table->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);   // as the other tool tables
     m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     for (int col = 1; col < heads.size(); ++col) {
         m_table->horizontalHeader()->setSectionResizeMode(col, QHeaderView::Stretch);
@@ -275,8 +287,9 @@ void FrameDiffWindow::rebuild()
         } else {
             QStringList offs;
             for (int i = 0; i < bytes.size() && i < 12; ++i) { offs << QString::number(bytes[i]); }
-            byteText = tr(" — %1 byte(s) differ: %2%3")
+            byteText = tr(" — %1 %2 differ: %3%4")
                            .arg(bytes.size(), 0, 10)
+                           .arg(bytes.size() == 1 ? tr("byte") : tr("bytes"))
                            .arg(offs.join(QStringLiteral(", ")))
                            .arg(bytes.size() > 12 ? QStringLiteral(" …") : QString());
         }
@@ -289,9 +302,10 @@ void FrameDiffWindow::rebuild()
         m_status->state(tr("%1 frames, no field differences (%2 fields compared)%3")
                               .arg(decoded.size()).arg(sum.same).arg(byteText));
     } else {
-        m_status->state(tr("%1 frames · %2 field(s) differ, %3 the same, "
-                             "%4 missing from at least one%5")
+        m_status->state(tr("%1 frames · %2 %3, %4 the same, "
+                             "%5 missing from at least one%6")
                               .arg(decoded.size()).arg(sum.changed)
+                              .arg(sum.changed == 1 ? tr("field differs") : tr("fields differ"))
                               .arg(sum.same).arg(sum.partial).arg(byteText));
     }
 
