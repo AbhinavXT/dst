@@ -42,6 +42,7 @@
 #include "stickymenu.h"
 #include "schema/schemadecoder.h"
 #include "timelineribbon.h"
+#include "laneband.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -243,6 +244,12 @@ void MainWindow::buildOrShowTab(const QString &tabKey,
 
     connect(ribbon, &TimelineRibbon::timeClicked,
             this, [this, tabKey](qint64 ms) { jumpToEntry(tabKey, ms); });
+    // Session 121: lanes over the log — mode, safety, RFID, link, faults.
+    auto *lanes = new LaneBand;
+    lanes->setEnabled2(m_lanesOn);
+    lanes->setModel(model, tabKey, friendlyName);
+    connect(lanes, &LaneBand::timeClicked,
+            this, [this, tabKey](qint64 ms) { jumpToEntry(tabKey, ms); });
     connect(ribbon, &TimelineRibbon::rangeSelected,
             this, [this, tabKey](qint64 from, qint64 to) {
                 applyTimeRangeFilter(tabKey, from, to);
@@ -252,6 +259,7 @@ void MainWindow::buildOrShowTab(const QString &tabKey,
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(0);
     layout->addWidget(ribbon);
+    layout->addWidget(lanes);
     layout->addWidget(filterBar);
     layout->addWidget(findBar);
     layout->addWidget(view, 1);
@@ -266,6 +274,7 @@ void MainWindow::buildOrShowTab(const QString &tabKey,
     tab.findBar      = findBar;
     findBar->setScrollLockActive(tab.scrollLock);
     tab.ribbon       = ribbon;
+    tab.lanes        = lanes;
     tab.marks        = marks;
     tab.container    = container;
     tab.friendlyName = friendlyName;

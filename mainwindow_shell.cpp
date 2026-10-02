@@ -21,6 +21,8 @@
 
 #include "uicolors.h"
 #include "uistyle.h"
+#include "laneband.h"
+#include "settings.h"
 
 #include <QAction>
 #include <QCheckBox>
@@ -29,6 +31,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QPushButton>
+#include <QSettings>
 #include <QStatusBar>
 #include <QTabWidget>
 #include <QToolBar>
@@ -234,7 +237,34 @@ void MainWindow::buildShell()
     ui->verticalLayout->insertWidget(0, header);
     ui->rightFrame->hide();
 
-    connect(ui->tabWidget, &QTabWidget::currentChanged, this, [this](int) { refreshHeader(); });
+    connect(ui->tabWidget, &QTabWidget::currentChanged, this, [this](int) {
+        refreshHeader();
+        // The newly shown tab's lanes were left dirty while it was hidden.
+        auto it = m_tabs.find(currentTabKey());
+        if (it != m_tabs.end() && it->lanes) it->lanes->refreshLater();
+    });
+
+    // View ▸ Lanes over the log (session 121), remembered.
+    {
+        QSettings ini(Settings::iniPath(), QSettings::IniFormat);
+        m_lanesOn = ini.value(QStringLiteral("ui/laneBand"), true).toBool();
+    }
+    for (QAction *top : menuBar()->actions()) {
+        if (!top->menu() || top->text().remove(QLatin1Char('&')) != QLatin1String("View")) continue;
+        QAction *lanes = top->menu()->addAction(tr("&Lanes over the log"));
+        lanes->setObjectName(QStringLiteral("actLaneBand"));
+        lanes->setCheckable(true);
+        lanes->setChecked(m_lanesOn);
+        lanes->setToolTip(tr("Mode, safety, RFID, link and fault lanes above each tab's log"));
+        connect(lanes, &QAction::toggled, this, [this](bool on) {
+            m_lanesOn = on;
+            QSettings ini(Settings::iniPath(), QSettings::IniFormat);
+            ini.setValue(QStringLiteral("ui/laneBand"), on);
+            for (auto it = m_tabs.begin(); it != m_tabs.end(); ++it)
+                if (it->lanes) it->lanes->setEnabled2(on);
+        });
+        break;
+    }
     // The first currentChanged comes before the new tab is registered (its
     // key is not known yet), so the status tick refreshes it too (wired
     // where that timer is made, after this).

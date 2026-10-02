@@ -54,7 +54,7 @@ int main(int argc, char **argv)
         // before the picture: what a user sees after a moment, not at t=0.
         QElapsedTimer settle;
         settle.start();
-        while (settle.elapsed() < 2500) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        while (settle.elapsed() < 4000) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);   // past the lanes' 3 s debounce
         // The visible log table's row 8 (an @lsrp line in this capture): the
         // inspector follows the current row.
         for (QTableView *view : w.findChildren<QTableView *>()) {

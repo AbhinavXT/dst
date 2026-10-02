@@ -73,6 +73,7 @@ SOURCES += \
     $$PWD/mainwindow_tools.cpp \
     $$PWD/mainwindow_shell.cpp \
     $$PWD/sourcerowdelegate.cpp \
+    $$PWD/laneband.cpp \
     $$PWD/mainwindowsession.cpp \
     $$PWD/messagedispatcher.cpp \
     $$PWD/undolog.cpp \
@@ -192,6 +193,7 @@ HEADERS += \
     $$PWD/logwriter.h \
     $$PWD/mainwindow.h \
     $$PWD/sourcerowdelegate.h \
+    $$PWD/laneband.h \
     $$PWD/profileio.h \
     $$PWD/profileiodialogs.h \
     $$PWD/messagedispatcher.h \

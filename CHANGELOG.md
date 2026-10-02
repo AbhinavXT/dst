@@ -11,6 +11,70 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-121"></a>
+## Session 121 — UI revamp, step 5: lanes over the log
+
+The timeline-first idea from the design study, brought into the "Control
+Room" frame: **what happened when, at a glance, above each tab's log.**
+
+### What the operator sees
+
+A band of five lanes under the activity ribbon, over the newest stretch of
+the tab's traffic:
+
+- **Mode**: the loco's mode as named segments ("Trip", "Full_Supervision"),
+  a stable colour per mode.
+- **Safety**: emergency spells (fail colour) and overspeed (warning).
+- **RFID**: each tag read as a tick with its number.
+- **Link**: gaps where the source went quiet.
+- **Faults**: raised (fail) and cleared (ok).
+
+**Hover** a mark for what it is ("Mode Trip at 14:02:27", "RFID tag 902 at
+14:02:20", "No traffic 14:03:10 – 14:03:25 (15 s)"). **Click** a lane and
+the log jumps to that moment, the same jump as clicking the ribbon. A source
+with nothing the lanes can show (text diagnostics) shows no band.
+**View ▸ Lanes over the log** turns it off, and the choice is remembered.
+
+### Nothing new is decoded
+
+The band draws `RunReport::summarise()` over a window: the engine the run
+summary and the incident pack already use. So the lanes cannot say
+something those reports do not. The test checks exactly that against a
+direct call.
+
+### Cost, bounded
+
+`summarise()` decodes the frames in its window, so:
+
+- the window is the newest 15 minutes, or the newest 20,000 rows if that
+  is shorter;
+- it rebuilds at most every 3 s;
+- **a band on a tab that is not showing does no work**. It is rebuilt when
+  its tab is shown, because the tab switch refreshes it.
+
+Files: `laneband.h/.cpp` (new, in `dlcore.pri`), `mainwindow.h`,
+`mainwindow.cpp`, `mainwindow_tabs.cpp`, `mainwindow_shell.cpp` (View menu
+entry); `tests/screenshot_main.cpp` (waits past the 3 s debounce).
+
+### Tests
+
+`tests/test_session121.cpp`, 12 checks, on 2,000 real lines from `replay/`:
+
+- **the lanes' summary equals `RunReport::summarise()` over the same
+  window** (first mode, mode changes, tag reads);
+- a loco's traffic gives a visible band of five lanes;
+- hovering the mode lane names the mode;
+- a click asks the log to jump to a moment inside the window;
+- the window ends at the newest row and spans at most 15 minutes;
+- text-only traffic gives no band;
+- View off hides it, and on brings it back;
+- a hidden band is not rebuilt, and is rebuilt once shown.
+
+Gate: 11/11 validators, `dltests` 173 suites / 5463 checks, menu audit
+156, smoke. All green.
+
+---
+
 <a id="session-120"></a>
 ## Session 120 — UI revamp, step 4: the decoded inspector's summary card
 

@@ -223,6 +223,7 @@ private:
         QTableView *view      = nullptr;
         FilterBar  *filterBar = nullptr;
         class TimelineRibbon  *ribbon = nullptr;
+        class LaneBand        *lanes  = nullptr;   // session 121
         class MarkerScrollBar *marks  = nullptr;
         FindBar    *findBar   = nullptr;     // (Ctrl+F overlay) — hidden by default
         QWidget    *container = nullptr;
@@ -524,6 +525,7 @@ private:
     QAction *m_serialChipsAction = nullptr;   // its slot in the top strip (session 118)
     // Session 119: each source's count and when, for its rate.
     QHash<QString, QPair<int, qint64>> m_sourceRates;
+    bool m_lanesOn = true;                    // View > Lanes over the log (session 121)
     // Session 118: the frame — top strip, rail, log header.
     class QToolBar *m_strip = nullptr;
     class QToolBar *m_rail = nullptr;

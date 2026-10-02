@@ -38,6 +38,7 @@
 #include "stickymenu.h"
 #include "schema/schemadecoder.h"
 #include "timelineribbon.h"
+#include "laneband.h"
 
 #include <QAction>
 #include <QActionGroup>
@@ -806,6 +807,7 @@ void MainWindow::onEntriesAppended(QString tabKey, QVector<LogEntryPtr> entries)
     // behind its own timer, so a burst costs one rebuild rather than one
     // per batch.
     if (it->ribbon) it->ribbon->refreshLater();
+    if (it->lanes)  it->lanes->refreshLater();
     if (it->marks)  it->marks->refreshLater();
 
     // last-seen: take the timestamp of the LAST entry in the batch.
