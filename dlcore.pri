@@ -72,6 +72,7 @@ SOURCES += \
     $$PWD/mainwindow_tabs.cpp \
     $$PWD/mainwindow_tools.cpp \
     $$PWD/mainwindow_shell.cpp \
+    $$PWD/sourcerowdelegate.cpp \
     $$PWD/mainwindowsession.cpp \
     $$PWD/messagedispatcher.cpp \
     $$PWD/undolog.cpp \
@@ -190,6 +191,7 @@ HEADERS += \
     $$PWD/rejectrules.h \
     $$PWD/logwriter.h \
     $$PWD/mainwindow.h \
+    $$PWD/sourcerowdelegate.h \
     $$PWD/profileio.h \
     $$PWD/profileiodialogs.h \
     $$PWD/messagedispatcher.h \

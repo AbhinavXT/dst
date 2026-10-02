@@ -11,6 +11,54 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-119"></a>
+## Session 119 — UI revamp, step 3: the Sources panel
+
+### What the operator sees
+
+Each source is now a two-line row: **a health dot, the name, and a short
+line under it**. The message count and the silence stay in their columns,
+which still sort, in the mono face.
+
+- **Health:**
+  - live: a filled dot in the ok colour;
+  - late: a ring in the warning colour, and the line says "quiet";
+  - offline: a ring with a slash in the error colour, "offline";
+  - never heard: a hollow muted ring.
+
+  The shape changes as well as the colour (not colour alone), and late and
+  offline also say it in words. The thresholds are the same members as the
+  tab-title colouring (Settings ▸ tab amber / red after), so the panel and
+  the tabs cannot disagree.
+- **Rate:** the line under the name gives each source's current rate
+  ("12/s", "0.4/s", "idle"). It comes from how the count moved since the
+  last refresh; a trimmed or cleared tab counts as no traffic, not negative
+  traffic. When the row shows a friendly name, the line leads with the key.
+- **Silence reads as a duration:** "42s", "12m", "14h", "96d". It used to
+  be raw seconds, and "53195s" did not fit its column (the first digit was
+  clipped).
+
+### How it is built
+
+`SourceRowDelegate` (new, in `dlcore.pri`) paints the rows. The tree, its
+items, columns, sorting, filtering, italics for closed tabs and activation
+are all unchanged. `refreshSourceList()` sets the health and meta roles.
+
+Files: `sourcerowdelegate.h/.cpp`, `mainwindow.h/.cpp`, `dlcore.pri`;
+`tests/screenshot_main.cpp` (lets the window run a few status ticks before
+the picture).
+
+### Tests
+
+Menu audit (+1, 156): in the real MainWindow, after one status tick,
+**every source row carries a health state and a meta line**, drawn by its
+own delegate.
+
+Gate: 11/11 validators, `dltests` 171 suites / 5440 checks, menu audit
+156, smoke. All green.
+
+---
+
 <a id="session-118"></a>
 ## Session 118 — UI revamp, step 2: the main window's frame
 

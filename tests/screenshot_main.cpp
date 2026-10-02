@@ -6,6 +6,7 @@
 // Output: $SHOT_DIR (default /tmp)/shot_<theme>.png; SHOT_THEMES=dark,light
 // limits which themes are drawn.
 #include <QApplication>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QPixmap>
 #include <QTableView>
@@ -49,7 +50,11 @@ int main(int argc, char **argv)
             }
             disp->drainNow();
         }
-        for (int i = 0; i < 60; ++i) { QCoreApplication::processEvents(); }
+        // Let the window run a few status ticks (rates, health, the header)
+        // before the picture: what a user sees after a moment, not at t=0.
+        QElapsedTimer settle;
+        settle.start();
+        while (settle.elapsed() < 2500) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
         if (auto *view = w.findChild<QTableView *>()) view->selectRow(3);
         for (int i = 0; i < 20; ++i) { QCoreApplication::processEvents(); }
         w.grab().save(QStringLiteral("%1/shot_%2.png").arg(dir, ThemeUtil::toString(t)));

@@ -522,6 +522,8 @@ private:
     class SerialManager *m_serial = nullptr;
     QWidget *m_serialChips = nullptr;
     QAction *m_serialChipsAction = nullptr;   // its slot in the top strip (session 118)
+    // Session 119: each source's count and when, for its rate.
+    QHash<QString, QPair<int, qint64>> m_sourceRates;
     // Session 118: the frame — top strip, rail, log header.
     class QToolBar *m_strip = nullptr;
     class QToolBar *m_rail = nullptr;

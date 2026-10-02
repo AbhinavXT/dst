@@ -33,6 +33,7 @@
 #include "sessionfile.h"
 #include "sessionwindow.h"
 #include "settings.h"
+#include "sourcerowdelegate.h"
 #include "settingsdialog.h"
 #include "stickymenu.h"
 #include "schema/schemadecoder.h"
@@ -533,6 +534,11 @@ MainWindow::MainWindow(QWidget *parent)
     // side and the header is semibold, so 56 clipped "Msgs" to "Msg".
     m_sourceList->setColumnWidth(1, 64);
     m_sourceList->setColumnWidth(2, 74);
+    // Session 119: drawn as health dot, name and a meta line (rate, what the
+    // name does not say); the counters mono. Data, sorting and activation
+    // are unchanged.
+    m_sourceList->setItemDelegate(new SourceRowDelegate(m_sourceList));
+    m_sourceList->setAlternatingRowColors(false);
 
     auto *sourcePanel = new QWidget;
     auto *sourceLayout = new QVBoxLayout(sourcePanel);
@@ -877,7 +883,27 @@ void MainWindow::refreshSourceList()
         if (tabIt == m_tabs.constEnd()) continue;
 
         LogModel *model = m_dispatcher->modelForKey(key);
-        item->setText(1, model ? QString::number(model->count()) : QString());
+        const int count = model ? model->count() : 0;
+        item->setText(1, model ? QString::number(count) : QString());
+
+        // Session 119: a rate, from how the count moved since the last
+        // refresh (a trimmed or cleared tab counts as no traffic, not as
+        // negative traffic), and the line under the name.
+        double rate = 0;
+        {
+            auto prev = m_sourceRates.find(key);
+            if (prev != m_sourceRates.end() && nowMs > prev->second) {
+                rate = qMax(0, count - prev->first) * 1000.0 / double(nowMs - prev->second);
+            }
+            m_sourceRates.insert(key, qMakePair(count, nowMs));
+        }
+        // Short: the panel is narrow and the counters keep their columns
+        // (they sort). The key only when the row shows a friendly name.
+        const QString shownName = item->text(0);
+        const QString rateText = rate >= 10 ? QStringLiteral("%1/s").arg(qRound(rate))
+                               : rate > 0   ? QStringLiteral("%1/s").arg(rate, 0, 'f', 1)
+                                            : tr("idle");
+        QString meta = rateText;
 
         // Silence, in whole seconds. The same thresholds as the tab-title
         // colouring, read from the same members, so the two can never
@@ -886,7 +912,13 @@ void MainWindow::refreshSourceList()
         QColor colour;
         if (tabIt->lastSeenMs > 0) {
             const qint64 gap = nowMs - tabIt->lastSeenMs;
-            silent = QStringLiteral("%1s").arg(gap / 1000);
+            // Compact (session 119): "53195s" did not fit its column and
+            // is no way to read fourteen hours.
+            const qint64 sec = gap / 1000;
+            silent = sec < 60    ? QStringLiteral("%1s").arg(sec)
+                   : sec < 3600  ? QStringLiteral("%1m").arg(sec / 60)
+                   : sec < 86400 ? QStringLiteral("%1h").arg(sec / 3600)
+                                 : QStringLiteral("%1d").arg(sec / 86400);
             // A source that has gone quiet is an error or a warning like any
             // other; these were two hand-picked pairs saying the same thing
             // in slightly different colours.
@@ -899,6 +931,19 @@ void MainWindow::refreshSourceList()
             silent = QStringLiteral("—");
         }
         item->setText(2, silent);
+        // Health: the same thresholds as the colour, in a shape and words too.
+        int health = SourceRowDelegate::Unknown;
+        if (tabIt->lastSeenMs > 0) {
+            const qint64 gap = nowMs - tabIt->lastSeenMs;
+            health = (m_offlineErrSec > 0 && gap >= errMs)   ? SourceRowDelegate::Offline
+                   : (m_offlineWarnSec > 0 && gap >= warnMs) ? SourceRowDelegate::Late
+                                                             : SourceRowDelegate::Live;
+        }
+        if (health == SourceRowDelegate::Late) meta = tr("quiet");
+        if (health == SourceRowDelegate::Offline) meta = tr("offline");
+        if (shownName != key) meta = key + QStringLiteral(" \u00B7 ") + meta;
+        item->setData(0, SourceRowDelegate::HealthRole, health);
+        item->setData(0, SourceRowDelegate::MetaRole, meta);
         for (int c = 0; c < 3; ++c) item->setForeground(c, colour.isValid()
                                                               ? QBrush(colour)
                                                               : QBrush());

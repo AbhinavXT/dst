@@ -32,12 +32,14 @@
 #include <QTemporaryDir>
 #include <QToolButton>
 #include <QToolBar>
+#include <QTreeWidget>
 #include <QElapsedTimer>
 #include "logmodel.h"
 #include "uicolors.h"
 #include "workspacesnapshot.h"
 #include "clockskewalarm.h"
 #include "findbar.h"
+#include "sourcerowdelegate.h"
 #include <QCheckBox>
 #include <QLabel>
 #include <QMouseEvent>
@@ -209,6 +211,23 @@ int main(int argc, char **argv) {
         CHECK(bindChip && bindChip->isVisibleTo(&w) && bindChip->property("dlRole").toString() == QLatin1String("chip")
                   && bindChip->property("dlTone").toString() != QLatin1String("neutral"),
               "the UDP chip is shown and says how the bind went");
+
+        // Session 119: the Sources panel draws health, name and a meta line.
+        QDockWidget *srcDock = w.findChild<QDockWidget *>(QStringLiteral("sourceDock"));
+        QTreeWidget *srcList = srcDock ? srcDock->findChild<QTreeWidget *>() : nullptr;
+        QElapsedTimer tick;
+        tick.start();
+        while (tick.elapsed() < 1300) QApplication::processEvents(QEventLoop::AllEvents, 20);   // one status tick
+        int rows = 0, described = 0;
+        for (int i = 0; srcList && i < srcList->topLevelItemCount(); ++i) {
+            QTreeWidgetItem *it = srcList->topLevelItem(i);
+            ++rows;
+            if (!it->data(0, SourceRowDelegate::MetaRole).toString().isEmpty()
+                && it->data(0, SourceRowDelegate::HealthRole).isValid()) ++described;
+        }
+        CHECK(srcList && dynamic_cast<SourceRowDelegate *>(srcList->itemDelegate()) != nullptr
+                  && rows > 0 && described == rows,
+              "every source row carries a health state and a meta line, drawn by its own delegate");
     }
 
     QMenuBar *bar = w.menuBar();
