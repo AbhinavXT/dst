@@ -39,6 +39,7 @@
 #include "layoutaudit.h"
 #include "lococonfigwindow.h"
 #include "replaywindow.h"
+#include "decodeworkbench.h"
 #include <QDir>
 #include <QTemporaryDir>
 #include <QDateTime>
@@ -253,6 +254,14 @@ int main(int argc, char **argv)
                     QStringLiteral(DL_SRC_DIR "/replay/loco_1_1_%1.cap").arg(cap),
                     QStringLiteral(DL_SRC_DIR "/replay/loco_2_1_%1.cap").arg(cap) });
                 w->setAttribute(Qt::WA_DeleteOnClose, false);
+                win = w;
+            }
+            if (which == QLatin1String("workbench")) {
+                auto *w = new DecodeWorkbench(nullptr);
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
+                // A real @lsrp line from the capture.
+                for (const QString &l : lines)
+                    if (l.startsWith(QLatin1String("@lsrp"))) { w->loadBuffer(l); break; }
                 win = w;
             }
             if (!win) return 2;

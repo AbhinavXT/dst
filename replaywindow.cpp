@@ -979,7 +979,7 @@ ReplayWindow::ReplayWindow(const QStringList &capPaths, QWidget *parent)
     scrollRow->addWidget(m_scroll, 1);
     m_readout = new QLabel(QString(), central);
     m_readout->setObjectName(QStringLiteral("replayReadout"));
-    m_readout->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    m_readout->setFont(UiStyle::monoFont());
     m_readout->setTextInteractionFlags(Qt::TextSelectableByMouse);
     scrollRow->addWidget(m_readout);
     root->addLayout(scrollRow);
@@ -1092,7 +1092,7 @@ void ReplayWindow::addTypeTab(CapType t)
     tbl->setHorizontalHeaderLabels({tr("Field"), tr("Value")});
     tbl->verticalHeader()->setVisible(false);
     tbl->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    tbl->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    tbl->setFont(UiStyle::monoFont());
     tbl->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     tbl->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     m_tabs->addTab(tbl, QString::fromLatin1(CaptureDecoder::typeLabel(t)));
@@ -1162,7 +1162,7 @@ void ReplayWindow::buildEventLog()
     mkSev(tr("Info"),  0x1, sevColour(ReplayEvent::Info));
 
     m_eventCount = new QLabel(QString(), m_eventPanel);
-    m_eventCount->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    m_eventCount->setFont(UiStyle::monoFont());
     f->addWidget(m_eventCount);
     v->addLayout(f);
 
@@ -1173,7 +1173,7 @@ void ReplayWindow::buildEventLog()
     m_eventLog->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_eventLog->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_eventLog->setSelectionMode(QAbstractItemView::SingleSelection);
-    m_eventLog->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    m_eventLog->setFont(UiStyle::monoFont());
     m_eventLog->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     m_eventLog->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     m_eventLog->horizontalHeader()->setSectionResizeMode(2, QHeaderView::ResizeToContents);

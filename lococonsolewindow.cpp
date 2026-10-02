@@ -148,7 +148,7 @@ void LocoConsoleWindow::addTypeTab(CapType t)
     tbl->verticalHeader()->setVisible(false);
     tbl->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tbl->setSelectionBehavior(QAbstractItemView::SelectRows);
-    tbl->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    tbl->setFont(UiStyle::monoFont());
     tbl->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     tbl->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
     m_tabs->addTab(tbl, QString::fromLatin1(CaptureDecoder::typeLabel(t)));

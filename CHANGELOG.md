@@ -11,6 +11,58 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-137"></a>
+## Session 137 — UI revamp, tool windows 14: the Decode Workbench
+
+**Hex in a proportional font.** The Workbench set its hex input, status
+line and field table to `QFontDatabase::systemFont(FixedFont)`. On some
+platforms (the offscreen plugin, some Linux setups) that returns the
+proportional UI face, so pasted hex lost its columns and nothing said
+so. `UiStyle::monoFont()` exists for exactly this (session 117): it
+checks that the font is fixed-pitch, falls back by family, and follows
+the text-size setting. The Workbench uses it now. Three places had the
+same call and are fixed with it:
+
+- Replay's position readout (session 136's window);
+- the Live Loco Console's table (session 124);
+- the main window's raw-bytes panel: its header and hex dump.
+
+`fieldsweepdialog.cpp`, `faultpanelwindow.cpp` and `framediffwindow.cpp`
+still make the call. They are fixed in their own passes.
+
+**Layout.**
+
+- **The input box is five lines tall** and scrolls past that. A capture
+  line fits in two. At "up to 140 px" it always took the full 140.
+- **The session-key combo is sized to its entries.** It used to take
+  half the row.
+- **The field table's headers align left**, as in the other tool
+  tables.
+
+Tests: `test_session137`, 12 checks, on a real @lsrp line, under the app
+stylesheet:
+
+- the hex input and the field table are fixed-pitch;
+- the frame decodes;
+- the input is five lines, and the table gets most of the window;
+- the headers align left;
+- the key combo is less than half the row;
+- the raw-bytes panel's hex is fixed-pitch;
+- fits;
+- layout audit.
+
+**Screenshot harness:** `SHOT_WINDOW=workbench`.
+
+Files: `decodeworkbench.cpp`, `replaywindow.cpp`, `lococonsolewindow.cpp`,
+`rawbytespanel.cpp`, `tests/screenshot_main.cpp`,
+`tests/test_session137.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+186 suites / 5700 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-136"></a>
 ## Session 136 — UI revamp, tool windows 13: Replay
 

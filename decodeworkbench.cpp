@@ -1,4 +1,5 @@
 #include "decodeworkbench.h"
+#include "uistyle.h"
 #include "statusline.h"
 #include "uicolors.h"
 #include "windowgeometry.h"
@@ -99,7 +100,9 @@ DecodeWorkbench::DecodeWorkbench(QWidget *parent, SessionKeyStore *keys)
     m_keyBox->setToolTip(tr("Which captured set of auth keys + randoms + ids to\n"
                             "derive the session key from when checking the MAC.\n"
                             "Sets appear here as the log produces them."));
-    typeRow->addWidget(m_keyBox, 1);
+    // Sized to its entries, not half the row (session 137).
+    m_keyBox->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    typeRow->addWidget(m_keyBox);
 
     typeRow->addStretch(1);
     QPushButton *bClear = new QPushButton(tr("Clear"), central);
@@ -108,18 +111,21 @@ DecodeWorkbench::DecodeWorkbench(QWidget *parent, SessionKeyStore *keys)
 
     // --- hex input ------------------------------------------------------
     m_input = new QPlainTextEdit(central);
-    m_input->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    m_input->setFont(UiStyle::monoFont());
     m_input->setPlaceholderText(
         tr("Paste a hex frame  (e.g.  91 99 C5 DE 04 1E …  or  9199C5DE041E…)\n"
            "or a whole capture line  (@slrp_1_1 2026-06-18T16:08:16 6933 91 99 …).\n"
            "Spaces, commas, colons and 0x prefixes are ignored."));
-    m_input->setMaximumHeight(140);
+    // Five lines, scrolling past that (session 137): a capture line fits in
+    // two, and the decoded fields below are what the window is for. At up
+    // to 140 px it always took the 140.
+    m_input->setFixedHeight(m_input->fontMetrics().lineSpacing() * 5 + 12);
     root->addWidget(m_input);
 
     // --- status line ----------------------------------------------------
     m_status = new StatusLine(central);
     m_status->state(tr("Paste a hex frame to decode."));
-    m_status->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    m_status->setFont(UiStyle::monoFont());
     m_status->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_status->setWordWrap(true);
     root->addWidget(m_status);
@@ -130,9 +136,12 @@ DecodeWorkbench::DecodeWorkbench(QWidget *parent, SessionKeyStore *keys)
     m_table->verticalHeader()->setVisible(false);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_table->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    m_table->setFont(UiStyle::monoFont());
     m_table->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
     m_table->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    m_table->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);   // as the other tool tables
+    m_table->setObjectName(QStringLiteral("workbenchFields"));
+    m_input->setObjectName(QStringLiteral("workbenchInput"));
     root->addWidget(m_table, 1);
 
     setCentralWidget(central);

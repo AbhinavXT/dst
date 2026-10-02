@@ -1,4 +1,5 @@
 #include "rawbytespanel.h"
+#include "uistyle.h"
 #include "namemap.h"
 
 #include <QApplication>
@@ -23,7 +24,7 @@ RawBytesPanel::RawBytesPanel(QWidget *parent)
     auto *headerLayout = new QVBoxLayout(headerGroup);
     m_headerLabel = new QLabel;
     m_headerLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    m_headerLabel->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    m_headerLabel->setFont(UiStyle::monoFont());
     headerLayout->addWidget(m_headerLabel);
     root->addWidget(headerGroup);
 
@@ -37,7 +38,7 @@ RawBytesPanel::RawBytesPanel(QWidget *parent)
     auto *hexLayout = new QVBoxLayout(hexGroup);
     m_hexView = new QTextEdit;
     m_hexView->setReadOnly(true);
-    m_hexView->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    m_hexView->setFont(UiStyle::monoFont());
     m_hexView->setLineWrapMode(QTextEdit::NoWrap);
     // Right-click here to send the bytes somewhere useful. The panel is
     // where an operator is already looking when they decide a frame is
