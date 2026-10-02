@@ -77,6 +77,7 @@ SOURCES += \
     test_session132.cpp \
     test_session133.cpp \
     test_session134.cpp \
+    test_session135.cpp \
     test_undolog.cpp \
     test_workspacesnapshot.cpp \
     test_settingsbundle.cpp \

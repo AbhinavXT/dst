@@ -37,6 +37,7 @@
 #include "flasherqueuepage.h"
 #include "flashercore.h"
 #include "layoutaudit.h"
+#include "lococonfigwindow.h"
 #include <QDir>
 #include <QTemporaryDir>
 #include <QDateTime>
@@ -236,6 +237,11 @@ int main(int argc, char **argv)
                                                     && w->currentPage() == FlasherWindow::SummaryPageIndex))
                         QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
                 }
+                win = w;
+            }
+            if (which == QLatin1String("lococonfig")) {
+                auto *w = new LocoConfigWindow(nullptr, flashDir.path());
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
                 win = w;
             }
             if (!win) return 2;

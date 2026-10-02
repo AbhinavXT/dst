@@ -11,6 +11,55 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-135"></a>
+## Session 135 — UI revamp, tool windows 12: Loco Configuration
+
+**The field table gets the height.** The send bar took 304 px of a
+720-px window, and the table, which is the window's main content,
+showed 6 of its 170 fields. It now shows 10, and the send bar is 264 px
+under the app stylesheet. Nothing was removed from the bar.
+
+- **Export loco_info.bin… and Send to VCC… sit at the end of the bar's
+  title row.** Beside the notes, they took the right third of the bar
+  and wrapped every note to two lines.
+- **The summary and vcc_crc share a line.** The summary is shorter, "375
+  B · src 28 → dest 2 · msg 120 · loco_info_crc 0x…", with "The
+  375-byte datagram…" in its tooltip. vcc_crc reads "set by hand: must
+  match this loco's VCC build". At 1100 px it still wraps to a second
+  line; at 1280 px it does not.
+- **The no-reply note is one sentence:** "The VCC does not reply:
+  DLConsole records what it sent, not whether the loco applied it." It
+  is still in the send bar.
+- **The blocker line shows only when something blocks** (an invalid
+  address, no ticked target, a value out of range). Empty, it used to
+  cost its height and spacing.
+- Bar margins and spacing are slightly tighter.
+
+Tests: `test_session135`, 18 checks, under the app stylesheet (session
+134's lesson):
+
+- the bar is ≤ 270 px and the table shows ≥ 9 rows;
+- the summary's text and tooltip, on one line with vcc_crc, and
+  vcc_crc still says it is set by hand;
+- the no-reply note, on one line;
+- Send is in the title row;
+- the blocker line hidden, shown for a bad address, hidden again;
+- fits 1366 × 768;
+- layout audit.
+
+`lococonfig`, `lococonfigrun` and `session94` pass unchanged.
+
+**Screenshot harness:** `SHOT_WINDOW=lococonfig`.
+
+Files: `lococonfig/lococonfigwindow.cpp`, `tests/screenshot_main.cpp`,
+`tests/test_session135.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+184 suites / 5678 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-134"></a>
 ## Session 134 — UI revamp, tool windows 11: the Firmware Flasher
 

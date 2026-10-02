@@ -370,8 +370,8 @@ QWidget *LocoConfigWindow::buildSendBar()
     bar->setObjectName(QStringLiteral("locoSendBar"));
     m_cards.append(bar);
     auto *barLayout = new QVBoxLayout(bar);
-    barLayout->setContentsMargins(18, 14, 18, 14);
-    barLayout->setSpacing(8);
+    barLayout->setContentsMargins(18, 12, 18, 12);
+    barLayout->setSpacing(6);
 
     // ---- targets: up to four, in a 2 x 2 grid of [tick] IP Port ----------------
     auto *titleRow = new QHBoxLayout();
@@ -384,6 +384,9 @@ QWidget *LocoConfigWindow::buildSendBar()
     titleRow->addWidget(bulkHint);
     titleRow->addStretch(1);
     barLayout->addLayout(titleRow);
+    // Export and Send go at the end of this row (below): beside the notes
+    // they took the right third of the bar and wrapped every note to two
+    // lines (session 135).
 
     auto *targetGrid = new QGridLayout();
     targetGrid->setHorizontalSpacing(8);
@@ -439,28 +442,39 @@ QWidget *LocoConfigWindow::buildSendBar()
     targetGrid->setColumnStretch(6, 1);
     barLayout->addLayout(targetGrid);
 
+    // What will be sent, and the one field set by hand, on one line
+    // (session 135: on two, with the rest of the bar, it took 304 px and
+    // left the field table six of its 170 rows in a 720-px window).
+    auto *summaryRow = new QHBoxLayout();
+    summaryRow->setSpacing(16);
     m_summary = new QLabel(bar);
+    m_summary->setObjectName(QStringLiteral("locoSummary"));
     m_summary->setFont(UiStyle::monoFont());
     m_summary->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    barLayout->addWidget(m_summary);
-
+    summaryRow->addWidget(m_summary);
     m_vccCrc = new QLabel(bar);
+    m_vccCrc->setObjectName(QStringLiteral("locoVccCrc"));
     m_vccCrc->setWordWrap(true);
-    barLayout->addWidget(m_vccCrc);
+    summaryRow->addWidget(m_vccCrc, 1);
+    barLayout->addLayout(summaryRow);
 
     auto *bottomRow = new QHBoxLayout();
     bottomRow->setSpacing(12);
-    auto *noReply = new QLabel(tr("The VCC does not reply to this message. DLConsole records exactly what "
-                                  "it sent; it cannot tell whether the loco applied it."), bar);
+    auto *noReply = new QLabel(tr("The VCC does not reply: DLConsole records what it sent, "
+                                  "not whether the loco applied it."), bar);
+    noReply->setObjectName(QStringLiteral("locoNoReply"));
     noReply->setWordWrap(true);
     noReply->setStyleSheet(UiColor::mutedStyle());
     auto *textColumn = new QVBoxLayout();
+    textColumn->setSpacing(4);
     textColumn->addWidget(noReply);
     m_lastSent = new QLabel(bar);
     m_lastSent->setStyleSheet(UiColor::mutedStyle());
     textColumn->addWidget(m_lastSent);
     m_blocker = new QLabel(bar);
+    m_blocker->setObjectName(QStringLiteral("locoBlocker"));
     m_blocker->setWordWrap(true);
+    m_blocker->hide();   // shown only when something stops the send
     textColumn->addWidget(m_blocker);
 
     // The live check (see the header): what the loco itself reports.
@@ -505,14 +519,14 @@ QWidget *LocoConfigWindow::buildSendBar()
                                  .arg(m_layout.bodySize())
                                  .arg(LocoInfo::kFlashAddress, 8, 16, QLatin1Char('0')));
     connect(exportButton, &QPushButton::clicked, this, &LocoConfigWindow::exportBin);
-    bottomRow->addWidget(exportButton, 0, Qt::AlignBottom);
+    titleRow->addWidget(exportButton);
 
     m_sendButton = new QPushButton(tr("Send to VCC…"), bar);
     m_sendButton->setObjectName(QStringLiteral("locoSendButton"));
     m_sendButton->setMinimumHeight(38);
     m_sendButton->setMinimumWidth(150);
     connect(m_sendButton, &QPushButton::clicked, this, [this]() { sendNow(true); });
-    bottomRow->addWidget(m_sendButton, 0, Qt::AlignBottom);
+    titleRow->addWidget(m_sendButton);
     barLayout->addLayout(bottomRow);
     return bar;
 }
@@ -852,7 +866,10 @@ void LocoConfigWindow::refreshSummary()
     const QByteArray body = currentBody();
     if (!body.isEmpty()) {
         const quint32 crc = LocoInfo::crc32(body.left(body.size() - 4));
-        m_summary->setText(tr("%1-byte message · src %2 → dest %3 · msg %4 · loco_info_crc %5")
+        // Short enough to share its line with vcc_crc (session 135).
+        m_summary->setToolTip(tr("The %1-byte datagram: message header, then the LOCO_INFO body")
+                                  .arg(body.size() + LocoInfo::kHeaderBytes));
+        m_summary->setText(tr("%1 B · src %2 → dest %3 · msg %4 · loco_info_crc %5")
                                .arg(body.size() + LocoInfo::kHeaderBytes)
                                .arg(LocoInfo::kSourceId).arg(LocoInfo::kDestId).arg(LocoInfo::kMessageId)
                                .arg(LocoInfo::crcText(crc)));
@@ -864,7 +881,7 @@ void LocoConfigWindow::refreshSummary()
     // it is repeated here, where the operator is about to press Send.
     const LocoInfo::Field *vccField = m_layout.field(QStringLiteral("vcc_crc"));
     if (vccField != nullptr) {
-        m_vccCrc->setText(tr("vcc_crc %1 — set by hand; it must match the VCC build on this loco")
+        m_vccCrc->setText(tr("vcc_crc %1 — set by hand: must match this loco's VCC build")
                               .arg(LocoInfo::formatValue(*vccField, m_config.values.value(vccField->key))));
         m_vccCrc->setStyleSheet(UiColor::style(FlasherStyle::attention()));
     }
@@ -898,6 +915,7 @@ void LocoConfigWindow::refreshSummary()
     } else {
         m_sendButton->setText(tr("Send to VCC…"));
     }
+    m_blocker->setVisible(!blocker.isEmpty());   // an empty line still cost its height and spacing
     if (blocker.isEmpty()) {
         m_blocker->clear();
     } else {
