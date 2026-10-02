@@ -48,6 +48,10 @@
 #include "roundtripwindow.h"
 #include "runreportwindow.h"
 #include "sessionwindow.h"
+#include "fieldsweepdialog.h"
+#include <QComboBox>
+#include <QLineEdit>
+#include <QSpinBox>
 #include "logmodel.h"
 #include "colorrules.h"
 #include "sessionfile.h"
@@ -430,6 +434,26 @@ int main(int argc, char **argv)
                 w->loadFiles(paths);
                 win = w;
             }
+            if (which == QLatin1String("fieldsweep")) {
+                // Seeded from a real lsrp frame; a short sweep to the local
+                // discard port, so the results table has rows.
+                auto *w = new FieldSweepDialog(nullptr);
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
+                for (const QString &l : lines)
+                    if (l.startsWith(QLatin1String("@lsrp"))) { w->seedFromBuffer(l); break; }
+                for (QSpinBox *sb : w->findChildren<QSpinBox *>()) {
+                    if (sb->suffix().isEmpty()) sb->setValue(9);
+                    else sb->setValue(20);
+                }
+                w->resize(1100, 720);
+                w->show();
+                for (QPushButton *b : w->findChildren<QPushButton *>())
+                    if (b->text() == QLatin1String("Start sweep")) b->click();
+                QElapsedTimer t;
+                t.start();
+                while (t.elapsed() < 3000) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+                win = w;
+            }
             if (!win) return 2;
             if (which == QLatin1String("session")) win->resize(1200, 700);   // its own default
             else win->resize(1100, 720);
@@ -437,6 +461,16 @@ int main(int argc, char **argv)
             QElapsedTimer settle;
             settle.start();
             while (settle.elapsed() < 800) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (qEnvironmentVariableIsSet("SHOT_WIDE"))
+                for (QWidget *c : win->findChildren<QWidget *>())
+                    if ((c->isVisible() || qEnvironmentVariableIsSet("SHOT_HIDDEN")) && c->minimumSizeHint().width() > qEnvironmentVariable("SHOT_WIDE").toInt())
+                        printf("  wide: %s %s min=%d w=%d '%s'\n", c->metaObject()->className(), qPrintable(c->objectName()),
+                               c->minimumSizeHint().width(), c->width(), qPrintable(c->property("text").toString().left(30)));
+            if (qEnvironmentVariableIsSet("SHOT_TALL"))
+                for (QWidget *c : win->findChildren<QWidget *>())
+                    if (c->isVisible() && c->minimumSizeHint().height() > qEnvironmentVariable("SHOT_TALL").toInt())
+                        printf("  tall: %s %s minH=%d h=%d '%s'\n", c->metaObject()->className(), qPrintable(c->objectName()),
+                               c->minimumSizeHint().height(), c->height(), qPrintable(c->property("text").toString().left(30)));
             if (which == QLatin1String("session")) {
                 // A row selected, so the side panel has a frame to show.
                 for (QTableView *tv : win->findChildren<QTableView *>())

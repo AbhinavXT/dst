@@ -30,6 +30,7 @@
 class SessionKeyStore;
 class QCheckBox;
 class QComboBox;
+class QFormLayout;
 class QLabel;
 class StatusLine;
 class QLineEdit;
@@ -64,6 +65,7 @@ private slots:
     void onStartStop();
     void onStep();               // send the next value
     void refreshKeySets();
+    void updateModeRows();       // Range / List rows for the modes that read them
 
 private:
     void  setRunning(bool on);
@@ -82,6 +84,8 @@ private:
     QLineEdit   *m_toEdit     = nullptr;
     QLineEdit   *m_stepEdit   = nullptr;
     QLineEdit   *m_listEdit   = nullptr;
+    QWidget     *m_rangeRow   = nullptr;
+    QFormLayout *m_sweepForm  = nullptr;
     QTableWidget*m_baseTable  = nullptr;   // base header values
     QLineEdit   *m_destEdit   = nullptr;
     QSpinBox    *m_portSpin   = nullptr;

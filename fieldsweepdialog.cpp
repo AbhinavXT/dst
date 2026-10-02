@@ -1,6 +1,7 @@
 #include "fieldsweepdialog.h"
 #include "windowgeometry.h"
 #include "statusline.h"
+#include "uistyle.h"
 #include <QCloseEvent>
 #include "sendguard.h"
 
@@ -11,7 +12,7 @@
 #include <QRegularExpression>
 #include <QTime>
 #include <QComboBox>
-#include <QFontDatabase>
+#include <QCoreApplication>
 #include <QFormLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
@@ -43,6 +44,12 @@ QVector<qint64> parseList(const QString &text)
     return out;
 }
 
+// "1 value" / "5 values" (the status read "5 value(s) sent").
+QString countOf(int n, const char *one, const char *many)
+{
+    return QStringLiteral("%1 %2").arg(n).arg(QCoreApplication::translate("FieldSweepDialog", n == 1 ? one : many));
+}
+
 }  // namespace
 
 FieldSweepDialog::FieldSweepDialog(QWidget *parent, SessionKeyStore *keys)
@@ -51,9 +58,13 @@ FieldSweepDialog::FieldSweepDialog(QWidget *parent, SessionKeyStore *keys)
     m_keys = keys ? keys : new SessionKeyStore(this);
     setWindowTitle(tr("Field Sweep"));
     WindowGeometry::makeResizableWindow(this);
-    resize(880, 720);
+    // Setup in two columns over the results: stacked, the three boxes took
+    // 787 px (more than a 768-px screen) and left the results one row.
+    resize(1100, 700);
 
     auto *root = new QVBoxLayout(this);
+    auto *top = new QHBoxLayout;
+    auto *right = new QVBoxLayout;
 
     // ---- what to build ---------------------------------------------------
     auto *what = new QGroupBox(tr("Packet"), this);
@@ -69,10 +80,14 @@ FieldSweepDialog::FieldSweepDialog(QWidget *parent, SessionKeyStore *keys)
     m_baseTable = new QTableWidget(0, 2, what);
     m_baseTable->setHorizontalHeaderLabels({ tr("Field"), tr("Base value") });
     m_baseTable->verticalHeader()->setVisible(false);
-    m_baseTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::Stretch);
-    m_baseTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
-    m_baseTable->setMaximumHeight(170);
-    wf->addRow(tr("Base values:"), m_baseTable);
+    // Names whole ("SOURCE_LOCO_..." was cut); the value takes the rest.
+    m_baseTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    m_baseTable->horizontalHeader()->setSectionResizeMode(1, QHeaderView::Stretch);
+    m_baseTable->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    // As tall as the Sweep and Send column beside it (was capped at 170 px,
+    // and showed one field of lsrp's 29).
+    m_baseTable->setMinimumHeight(m_baseTable->verticalHeader()->defaultSectionSize() * 4);
+    wf->addRow(m_baseTable);     // full width: its header says what it holds
 
     auto *seedRow = new QHBoxLayout;
     auto *seedEdit = new QLineEdit(what);
@@ -84,11 +99,12 @@ FieldSweepDialog::FieldSweepDialog(QWidget *parent, SessionKeyStore *keys)
     connect(seedBtn, &QPushButton::clicked, this,
             [this, seedEdit]() { seedFromBuffer(seedEdit->text()); });
 
-    root->addWidget(what);
+    top->addWidget(what, 1);
 
     // ---- what to sweep ---------------------------------------------------
     auto *sweep = new QGroupBox(tr("Sweep"), this);
     auto *sf = new QFormLayout(sweep);
+    m_sweepForm = sf;
     m_fieldBox = new QComboBox(sweep);
     sf->addRow(tr("Field:"), m_fieldBox);
 
@@ -102,20 +118,22 @@ FieldSweepDialog::FieldSweepDialog(QWidget *parent, SessionKeyStore *keys)
                              "handling at -1, the code one past the last defined enum."));
     sf->addRow(tr("Mode:"), m_modeBox);
 
-    auto *rangeRow = new QHBoxLayout;
+    m_rangeRow = new QWidget(sweep);
+    auto *rangeRow = new QHBoxLayout(m_rangeRow);
+    rangeRow->setContentsMargins(0, 0, 0, 0);
     m_fromEdit = new QLineEdit(QStringLiteral("0"), sweep);
     m_toEdit   = new QLineEdit(QStringLiteral("10"), sweep);
     m_stepEdit = new QLineEdit(QStringLiteral("1"), sweep);
     rangeRow->addWidget(new QLabel(tr("from"), sweep)); rangeRow->addWidget(m_fromEdit);
     rangeRow->addWidget(new QLabel(tr("to"),   sweep)); rangeRow->addWidget(m_toEdit);
     rangeRow->addWidget(new QLabel(tr("step"), sweep)); rangeRow->addWidget(m_stepEdit);
-    sf->addRow(tr("Range:"), rangeRow);
+    sf->addRow(tr("Range:"), m_rangeRow);
 
     m_listEdit = new QLineEdit(sweep);
     m_listEdit->setPlaceholderText(tr("0, 1, 7, 0x1F …"));
     sf->addRow(tr("List:"), m_listEdit);
 
-    root->addWidget(sweep);
+    right->addWidget(sweep);
 
     // ---- how to send -----------------------------------------------------
     auto *send = new QGroupBox(tr("Send"), this);
@@ -143,6 +161,7 @@ FieldSweepDialog::FieldSweepDialog(QWidget *parent, SessionKeyStore *keys)
     timeRow->addWidget(m_gapSpin);
     timeRow->addWidget(new QLabel(tr("answer window"), send));
     timeRow->addWidget(m_windowSpin);
+    timeRow->addStretch(1);
     ef->addRow(tr("Timing:"), timeRow);
 
     m_replyEdit = new QLineEdit(send);
@@ -156,37 +175,46 @@ FieldSweepDialog::FieldSweepDialog(QWidget *parent, SessionKeyStore *keys)
     m_keyEdit->setMaxLength(32);
     m_keyEdit->setPlaceholderText(tr("session key (32 hex) — blank for a zero MAC"));
     m_keySetBox = new QComboBox(send);
-    keyRow->addWidget(m_keyEdit, 1);
+    keyRow->addWidget(m_keyEdit, 3);
     keyRow->addWidget(new QLabel(tr("from log:"), send));
-    keyRow->addWidget(m_keySetBox, 1);
+    keyRow->addWidget(m_keySetBox, 2);
     ef->addRow(tr("MAC key:"), keyRow);
 
     m_stopOnReply = new QCheckBox(tr("Stop at the first value that draws a reply"), send);
     ef->addRow(QString(), m_stopOnReply);
 
-    root->addWidget(send);
+    right->addWidget(send);
+    right->addStretch(1);
+    top->addLayout(right, 1);
+    root->addLayout(top);
 
     // ---- run -------------------------------------------------------------
+    // The buttons and what they report on one row.
     auto *runRow = new QHBoxLayout;
     auto *previewBtn = new QPushButton(tr("Preview plan"), this);
     m_startBtn = new QPushButton(tr("Start sweep"), this);
+    UiStyle::makePrimary(m_startBtn);
     runRow->addWidget(previewBtn);
     runRow->addWidget(m_startBtn);
-    runRow->addStretch(1);
-    root->addLayout(runRow);
 
     m_status = new StatusLine(this);
     m_status->say(tr("Pick a packet and a field."));
     m_status->setWordWrap(true);
     m_status->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    root->addWidget(m_status);
+    runRow->addWidget(m_status, 1);
+    root->addLayout(runRow);
 
     m_results = new QTableWidget(0, ColCount, this);
     m_results->setHorizontalHeaderLabels({ tr("Value"), tr("Why"), tr("Sent"),
                                            tr("Seen"), tr("Verdict") });
     m_results->verticalHeader()->setVisible(false);
     m_results->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_results->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    // UiStyle's mono, not systemFont(FixedFont), which can come out
+    // proportional. Every column but Seen fits its text ("23:32:03.4..."
+    // was clipped).
+    m_results->setFont(UiStyle::monoFont());
+    m_results->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    m_results->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_results->horizontalHeader()->setSectionResizeMode(ColSeen, QHeaderView::Stretch);
     root->addWidget(m_results, 1);
 
@@ -195,7 +223,8 @@ FieldSweepDialog::FieldSweepDialog(QWidget *parent, SessionKeyStore *keys)
     connect(m_fieldBox, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &FieldSweepDialog::onFieldChanged);
     connect(m_modeBox, qOverload<int>(&QComboBox::currentIndexChanged),
-            this, [this](int) { onPreview(); });
+            this, [this](int) { updateModeRows(); onPreview(); });
+    updateModeRows();
     connect(previewBtn, &QPushButton::clicked, this, &FieldSweepDialog::onPreview);
     connect(m_startBtn, &QPushButton::clicked, this, &FieldSweepDialog::onStartStop);
     connect(&m_stepTimer, &QTimer::timeout, this, &FieldSweepDialog::onStep);
@@ -219,6 +248,19 @@ FieldSweepDialog::FieldSweepDialog(QWidget *parent, SessionKeyStore *keys)
     });
 
     onPacketChanged();
+}
+
+void FieldSweepDialog::updateModeRows()
+{
+    // Range and List only in the modes that read them; Boundary and Enum
+    // codes take their values from the field itself.
+    const auto mode = FieldSweep::Mode(m_modeBox->currentData().toInt());
+    const bool range = mode == FieldSweep::Mode::Range;
+    const bool list  = mode == FieldSweep::Mode::List;
+    m_rangeRow->setVisible(range);
+    if (QWidget *l = m_sweepForm->labelForField(m_rangeRow)) l->setVisible(range);
+    m_listEdit->setVisible(list);
+    if (QWidget *l = m_sweepForm->labelForField(m_listEdit)) l->setVisible(list);
 }
 
 void FieldSweepDialog::refreshKeySets()
@@ -327,8 +369,8 @@ void FieldSweepDialog::onPreview()
     for (int i = 0; i < plan.size() && i < 12; ++i) {
         vals << QString::number(plan[i].value);
     }
-    m_status->say(tr("%1 value(s) for %2: %3%4  —  about %5 s at the current gap")
-                          .arg(plan.size()).arg(s.field)
+    m_status->say(tr("%1 for %2: %3%4  —  about %5 s at the current gap")
+                          .arg(countOf(plan.size(), "value", "values"), s.field)
                           .arg(vals.join(QStringLiteral(", ")))
                           .arg(plan.size() > 12 ? QStringLiteral(" …") : QString())
                           .arg((plan.size() * m_gapSpin->value()) / 1000));
@@ -386,7 +428,7 @@ void FieldSweepDialog::onStep()
 
     ++m_index;
     if (m_index >= m_plan.size()) {
-        m_status->ok(tr("Sweep finished — %1 value(s) sent.").arg(m_plan.size()));
+        m_status->ok(tr("Sweep finished — %1 sent.").arg(countOf(m_plan.size(), "value", "values")));
         setRunning(false);
         return;
     }

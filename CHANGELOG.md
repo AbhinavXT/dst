@@ -11,6 +11,57 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-145"></a>
+## Session 145 — UI revamp, tool windows 22: Field Sweep
+
+- **Setup in two columns over the results.** Stacked, the Packet, Sweep
+  and Send boxes took 787 px at their minimum, more than a 768-px screen.
+  They left the results table one row, and the base values one field of
+  lsrp's 29. Now Packet is on the left and Sweep + Send on the right. The
+  minimum is 958 x 495, and at 1100 x 700 the results show 8 rows and
+  the base values 6.
+- **The base values span their box.** The column fits the field names
+  ("SOURCE_LOCO_..." was cut), and the value takes the rest.
+- **Range and List show only in the modes that read them.** Boundary
+  values and Enum codes take their values from the field itself.
+- **Preview plan and Start sweep sit on one row with the status.** Start
+  is the primary button.
+- **Results** are in UiStyle's mono, not `systemFont(FixedFont)`, which
+  can come out proportional. Every column but Seen fits its text ("Sent"
+  read "23:32:03....").
+- **Timing** spin boxes keep their size. The MAC key field is wider than
+  the key-set box beside it.
+- **Counts in English:** "5 values for PKT_TYPE", "5 values sent" (was
+  "value(s)").
+
+Tests: `test_session145`, 22 checks, seeded from the first `@lsrp` of
+`replay/loco_1_1_27062026_140226.cap`:
+
+- fits;
+- at least five base values and five result rows in view;
+- names whole;
+- the left column;
+- mono results with fitted columns;
+- Range / List by mode;
+- the plan text;
+- the primary button;
+- the run row;
+- layout audit.
+
+`sendguard` passes unchanged.
+
+**Screenshot harness:** `SHOT_WINDOW=fieldsweep` (a real sweep to the
+local discard port).
+
+Files: `fieldsweepdialog.h/.cpp`, `tests/test_session145.cpp`,
+`tests/screenshot_main.cpp`, `tests/tests.pro`.
+
+Gate: run together with session 146 (committed next), on Qt 5.15.19 and
+Qt 6.11.2: all green.
+
+
+---
+
 <a id="session-144"></a>
 ## Session 144 — UI revamp, tool windows 21: the recorded-session window
 
