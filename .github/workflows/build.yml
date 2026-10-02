@@ -1,0 +1,101 @@
+# =============================================================================
+#  CI (session 114): the build on the PRIMARY target, Windows / MSVC / Qt 5.15,
+#  which had not been built since the library split (patch 88), plus the full
+#  gate on Linux, where the Linux-only paths live (pty parity refusal, -lutil,
+#  the low-latency ioctl).
+#
+#  Windows: library, app, unit suite and menu audit, the tests run offscreen.
+#  Linux:   ./verify.sh, the same gate as on a developer's machine.
+# =============================================================================
+name: build
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'patch-*' ]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Qt 5.15 (MSVC 2019, 64-bit)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.15.2'
+          host: windows
+          target: desktop
+          arch: win64_msvc2019_64
+          cache: true
+
+      - name: MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure
+        shell: cmd
+        run: |
+          mkdir build
+          cd build
+          qmake ..\DLConsole.pro CONFIG+=with_tests CONFIG+=release > qmake.log 2>&1
+          type qmake.log
+          findstr /C:"building without the serial terminal" qmake.log && (echo Qt Serial Port is missing: the serial code would not be built or tested & exit /b 1) || exit /b 0
+
+      - name: Build
+        shell: cmd
+        run: |
+          cd build
+          nmake
+
+      - name: Unit suite (offscreen)
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Recurse build -Filter dltests.exe | Select-Object -First 1
+          if (-not $exe) { throw "dltests.exe was not built" }
+          Push-Location tests
+          $env:QT_QPA_PLATFORM = "offscreen"
+          & $exe.FullName | Tee-Object -FilePath ..\dltests.log
+          $rc = $LASTEXITCODE
+          Pop-Location
+          if ($rc -ne 0) { throw "dltests: $rc failed check(s)" }
+
+      - name: Menu audit (offscreen)
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -Recurse build -Filter menuaudit.exe | Select-Object -First 1
+          if (-not $exe) { throw "menuaudit.exe was not built" }
+          Push-Location tests
+          $env:QT_QPA_PLATFORM = "offscreen"
+          & $exe.FullName
+          $rc = $LASTEXITCODE
+          Pop-Location
+          if ($rc -ne 0) { throw "menuaudit failed" }
+
+      - name: The program is where the docs say
+        shell: pwsh
+        run: |
+          if (-not (Test-Path build\DLConsole.exe)) {
+            Get-ChildItem -Recurse build -Filter DLConsole.exe | ForEach-Object { $_.FullName }
+            throw "DLConsole.exe is not at <build>\DLConsole.exe (app.pro DESTDIR)"
+          }
+
+  linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Qt 5 and tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qtbase5-dev qtbase5-dev-tools qt5-qmake libqt5serialport5-dev python3
+
+      - name: The gate
+        run: ./verify.sh
+
+      - name: Logs
+        if: always()
+        run: |
+          tail -40 build-verify/dltests.log || true
+          grep '^FAIL' build-verify/menuaudit.log || true
