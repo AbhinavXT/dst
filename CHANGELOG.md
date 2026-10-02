@@ -11,6 +11,52 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-136"></a>
+## Session 136 — UI revamp, tool windows 13: Replay
+
+**Replay did not fit a laptop.** The one row of controls ended with the
+position readout, which made the window at least 1483 px wide, wider
+than a 1366 × 768 screen. Even at that width the readout was cut off
+("@1_1"). The minimum is now 1269 px.
+
+- **The readout ends the scroll-slider row**, next to what it reads:
+  time, position, record and source. It is selectable.
+- **The play and jump buttons show their arrows.** At fixed 36 / 30 px
+  the app stylesheet's padding left a sliver of ▶, and the jump ◀ / ▶
+  were blank. Each is now sized to its glyph.
+- **The Jump combos show their text.** "Frame # (s/midnight)" was cut to
+  "Frame # (s/midn", and the value box's hint to "e or HH:MM:SS". The
+  field box fits its longest entry, and the value box fits its hint.
+
+Left as it is, on purpose: the timeline's fixed dark canvas. It does not
+follow the theme, and that is a recorded decision: `test_contrastaudit`
+allows its colour literals as "a fixed dark plot canvas, deliberately
+independent of the theme".
+
+**Screenshot harness:** `SHOT_WINDOW=replay` (both locos of a run;
+`SHOT_CAP` picks the run).
+
+Tests: `test_session136`, 10 checks, on both locos of
+`replay/loco_?_1_27062026_151052.cap`, under the app stylesheet:
+
+- fits 1366 × 768;
+- the readout ends the scroll row, reads time, position, record and
+  source, and is not cut off;
+- the three arrow buttons are wide enough for their glyphs;
+- the Jump field shows its text whole;
+- layout audit.
+
+`session82` and `session84`, which drive Replay, pass unchanged.
+
+Files: `replaywindow.cpp`, `tests/screenshot_main.cpp`,
+`tests/test_session136.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+185 suites / 5688 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-135"></a>
 ## Session 135 — UI revamp, tool windows 12: Loco Configuration
 

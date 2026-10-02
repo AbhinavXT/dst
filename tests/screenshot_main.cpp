@@ -38,6 +38,7 @@
 #include "flashercore.h"
 #include "layoutaudit.h"
 #include "lococonfigwindow.h"
+#include "replaywindow.h"
 #include <QDir>
 #include <QTemporaryDir>
 #include <QDateTime>
@@ -241,6 +242,16 @@ int main(int argc, char **argv)
             }
             if (which == QLatin1String("lococonfig")) {
                 auto *w = new LocoConfigWindow(nullptr, flashDir.path());
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
+                win = w;
+            }
+            if (which == QLatin1String("replay")) {
+                // Both locos of one real run (SHOT_CAP picks the run).
+                const QString cap = qEnvironmentVariableIsEmpty("SHOT_CAP") ? QStringLiteral("27062026_151052")
+                                                                            : qEnvironmentVariable("SHOT_CAP");
+                auto *w = new ReplayWindow(QStringList{
+                    QStringLiteral(DL_SRC_DIR "/replay/loco_1_1_%1.cap").arg(cap),
+                    QStringLiteral(DL_SRC_DIR "/replay/loco_2_1_%1.cap").arg(cap) });
                 w->setAttribute(Qt::WA_DeleteOnClose, false);
                 win = w;
             }

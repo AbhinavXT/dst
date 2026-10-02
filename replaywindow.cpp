@@ -895,7 +895,11 @@ ReplayWindow::ReplayWindow(const QStringList &capPaths, QWidget *parent)
     ctl->addWidget(m_keyBox);
 
     m_play = new QPushButton(tr("\u25B6"), central);
-    m_play->setFixedWidth(36);
+    m_play->setObjectName(QStringLiteral("replayPlay"));
+    // Wide enough for its glyph under the app's padding (session 136: at a
+    // fixed 36 px the triangle was a sliver; the jump arrows at 30 px were
+    // blank).
+    m_play->setMinimumWidth(m_play->fontMetrics().horizontalAdvance(QStringLiteral("\u25B6")) + 32);
     m_play->setToolTip(tr("Play / pause (Space)"));
     ctl->addWidget(m_play);
 
@@ -941,22 +945,23 @@ ReplayWindow::ReplayWindow(const QStringList &capPaths, QWidget *parent)
     m_jumpField->addItem(tr("Mode"),                 QStringLiteral("mode"));
     m_jumpField->addItem(tr("Emergency"),            QStringLiteral("emerg"));
     m_jumpField->addItem(tr("RFID id"),              QStringLiteral("rfid"));
-    m_jumpField->setFixedWidth(150);
+    m_jumpField->setSizeAdjustPolicy(QComboBox::AdjustToContents);   // "Frame # (s/midnight)" whole
     ctl->addWidget(m_jumpField);
     m_jumpValue = new QComboBox(central);
     m_jumpValue->setEditable(true);
     m_jumpValue->setInsertPolicy(QComboBox::NoInsert);
-    m_jumpValue->setFixedWidth(150);
+    m_jumpValue->setMinimumWidth(m_jumpValue->fontMetrics().horizontalAdvance(QStringLiteral("Frame or HH:MM:SS")) + 40);
     m_jumpValue->setToolTip(tr("Pick or type a value, then \u25C0 / \u25B6 to seek"));
     ctl->addWidget(m_jumpValue);
-    QPushButton *jprev = new QPushButton(tr("\u25C0"), central); jprev->setFixedWidth(30);
-    QPushButton *jnext = new QPushButton(tr("\u25B6"), central); jnext->setFixedWidth(30);
+    QPushButton *jprev = new QPushButton(tr("\u25C0"), central);
+    QPushButton *jnext = new QPushButton(tr("\u25B6"), central);
+    jprev->setObjectName(QStringLiteral("replayJumpPrev"));
+    jnext->setObjectName(QStringLiteral("replayJumpNext"));
+    for (QPushButton *b : { jprev, jnext })
+        b->setMinimumWidth(b->fontMetrics().horizontalAdvance(QStringLiteral("\u25B6")) + 32);
     ctl->addWidget(jprev); ctl->addWidget(jnext);
 
     ctl->addStretch(1);
-    m_readout = new QLabel(QString(), central);
-    m_readout->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-    ctl->addWidget(m_readout);
     root->addLayout(ctl);
 
     m_timeline = new TimelineWidget(central);
@@ -966,7 +971,18 @@ ReplayWindow::ReplayWindow(const QStringList &capPaths, QWidget *parent)
     m_scroll->setSingleStep(1);
     m_scroll->setPageStep(10);
     m_scroll->setToolTip(tr("Scroll through the capture (or drag the timeline / use \u2190 \u2192)"));
-    root->addWidget(m_scroll);
+    // The readout sits at the end of the scroll row, next to what it reads
+    // (session 136): at the end of the controls it made the window at least
+    // 1483 px wide, more than a 1366-px laptop, and was cut off even then.
+    auto *scrollRow = new QHBoxLayout();
+    scrollRow->setSpacing(12);
+    scrollRow->addWidget(m_scroll, 1);
+    m_readout = new QLabel(QString(), central);
+    m_readout->setObjectName(QStringLiteral("replayReadout"));
+    m_readout->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+    m_readout->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    scrollRow->addWidget(m_readout);
+    root->addLayout(scrollRow);
 
     m_tabs = new QTabWidget(central);
     UiStyle::useTabTooltips(m_tabs);
