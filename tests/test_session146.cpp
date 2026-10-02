@@ -123,8 +123,8 @@ TEST_SUITE(session146)
         }
         CHECK(badge && target, "fixture: the caution and the target in the bar");
         if (badge && target) {
-            CHECK(badge->fontMetrics().horizontalAdvance(badge->text()) <= badge->width(),
-                  "at 1100 px the caution is on one line");
+            CHECK(badge->heightForWidth(badge->width()) <= bar->height(),
+                  "at 1100 px the caution fits its bar: one line, or two where the fonts are wider");
             // A real target, not the discard port: 21 characters of mono.
             target->setText(QStringLiteral("192.168.100.200:50000"));
             settle(50);

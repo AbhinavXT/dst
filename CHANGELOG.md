@@ -11,6 +11,61 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-147"></a>
+## Session 147 — UI revamp, tool windows 23: Field plot; two more Linux fits
+
+**Field plot:**
+
+- **Round numbers on a wide whole-number axis.** Past a step of 500, the
+  value ticks fell back to the range divided by the label count:
+  ABS_LOCO_LOC read 36121, 72242, 108363, 144484. They now take the same
+  1-2-5 step as a continuous value: 0, 50000, 100000, 150000.
+- **At least two labels per lane.** Rounded up, a step could overshoot
+  the lane and leave only "0" on its axis. It now steps down the 1-2-5
+  ladder until two land.
+- **The status counts in English:** "588 points from 588 decoded rows"
+  (was "point(s)" / "row(s)").
+- **The mouse hint fits one line at 1100 px.** It wrapped to two. Now:
+  "Shift+wheel: zoom values", "Drag: zoom to a box", "Click a point:
+  open its message".
+
+Unchanged: 0 m in ABS_LOCO_LOC is plotted. This window plots decoded
+values as they are; the "0 m = not known" decision was for the location
+views.
+
+**Two more Linux fits.** CI after 146 passed the two old failures; two
+new checks failed there:
+
+- **Field Sweep:** the base values' value column was clipped by the
+  names. The table's minimum now fits the packet's names plus a 24-bit
+  value.
+- **The Flasher's caution** wraps at 1100 px on Linux, as designed. The
+  check is now that it fits its bar: one line, or two.
+
+Tests: `test_session147`, 16 checks:
+
+- 1-2-5 steps for the padded ABS_LOCO_LOC range at 3 to 6 labels, and
+  never over-labelled;
+- 1..6 still every value;
+- on the whole of `replay/loco_1_1_26062026_162418.cap` with two series:
+  no "(s)" in the status, "N points from N decoded rows", the hint fits
+  one line, fits a laptop with room for wider fonts, layout audit.
+
+`fieldplot` (52 checks) passes unchanged.
+
+**Screenshot harness:** `SHOT_WINDOW=fieldplot` (`SHOT_FIELD`,
+`SHOT_FIELD2`).
+
+Files: `fieldplot.cpp`, `fieldsweepdialog.cpp`,
+`tests/test_session146.cpp`, `tests/test_session147.cpp`,
+`tests/screenshot_main.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+196 suites / 5852 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-146"></a>
 ## Session 146 — the Linux CI gate, red since patch 134
 

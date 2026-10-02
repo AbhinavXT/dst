@@ -1,4 +1,5 @@
 #include "fieldplot.h"
+#include <QCoreApplication>
 #include "uicolors.h"
 #include "windowgeometry.h"
 
@@ -452,6 +453,7 @@ QVector<double> niceTicks(double lo, double hi, int target, bool integerOnly)
     const double mag  = std::pow(10.0, std::floor(std::log10(raw)));
     const double norm = raw / mag;
     double step = (norm <= 1.0 ? 1.0 : norm <= 2.0 ? 2.0 : norm <= 5.0 ? 5.0 : 10.0) * mag;
+    const double niceStep = step;
 
     // An integer field must not be labelled in fractions of a value it
     // cannot take — and where the whole range fits in a handful of steps of
@@ -462,15 +464,29 @@ QVector<double> niceTicks(double lo, double hi, int target, bool integerOnly)
         for (double cand : { 1.0, 2.0, 5.0, 10.0, 20.0, 50.0, 100.0, 200.0, 500.0 }) {
             if (std::floor((hi - lo) / cand) + 1 <= double(target) + 1.0) { step = cand; break; }
         }
-        if (step <= 0.0) { step = qMax(1.0, std::floor((hi - lo) / double(target - 1) + 0.5)); }
+        // Past 500, the same 1-2-5 step as a continuous value (session 147):
+        // range / (target - 1) labelled ABS_LOCO_LOC 36121, 72242, 108363.
+        if (step <= 0.0) { step = qMax(1.0, std::ceil(niceStep)); }
     }
 
-    const double first = std::ceil(lo / step - 1e-9) * step;
-    for (double v = first; v <= hi + step * 1e-9; v += step) {
-        // Snap away the accumulated error, or a 0.1 step produces
-        // 0.30000000000000004 in the label.
-        out << (integerOnly ? std::floor(v + 0.5) : std::round(v / step) * step);
-        if (out.size() > 64) { break; }          // runaway guard
+    for (;;) {
+        out.clear();
+        const double first = std::ceil(lo / step - 1e-9) * step;
+        for (double v = first; v <= hi + step * 1e-9; v += step) {
+            // Snap away the accumulated error, or a 0.1 step produces
+            // 0.30000000000000004 in the label.
+            out << (integerOnly ? std::floor(v + 0.5) : std::round(v / step) * step);
+            if (out.size() > 64) { break; }          // runaway guard
+        }
+        // Two labels at least (session 147): rounded up to 200000 over a
+        // 0..190000 lane, the step left one, "0", on the axis. Down the
+        // 1-2-5 ladder until two land.
+        if (out.size() >= 2) { break; }
+        const double m = std::pow(10.0, std::floor(std::log10(step) + 1e-9));
+        const double n = step / m;
+        const double smaller = (n > 4.5 ? 2.0 * m : n > 1.5 ? 1.0 * m : 0.5 * m);
+        if (integerOnly && smaller < 1.0) { break; }
+        step = smaller;
     }
     return out;
 }
@@ -551,6 +567,12 @@ QString seriesToCsv(const QVector<FieldSeries> &list, qint64 fromMs, qint64 toMs
 // =============================================================================
 
 namespace {
+
+// "1 point" / "588 points" (the status read "588 point(s) from 588 decoded row(s)").
+QString countOf(int n, const char *one, const char *many)
+{
+    return QStringLiteral("%1 %2").arg(n).arg(QCoreApplication::translate("FieldPlotWindow", n == 1 ? one : many));
+}
 
 const double kValuePad = 0.06;
 const int    kDragThreshold = 6;     // px before a press becomes a drag
@@ -1380,8 +1402,9 @@ FieldPlotWindow::FieldPlotWindow(LogModel *model, const QString &tabKey,
     m_chipHost->hide();
 
     m_canvas = new FieldPlotCanvas;
-    auto *hint = new QLabel(tr("Wheel: zoom time  ·  Shift+wheel: zoom a lane's values  ·  Drag: zoom to the box  ·  "
-                               "Right-drag: pan  ·  Double-click: fit  ·  Click a point: jump to its message"));
+    // One line at 1100 px (it wrapped to two).
+    auto *hint = new QLabel(tr("Wheel: zoom time  ·  Shift+wheel: zoom values  ·  Drag: zoom to a box  ·  "
+                               "Right-drag: pan  ·  Double-click: fit  ·  Click a point: open its message"));
     hint->setStyleSheet(UiColor::mutedStyle());
     hint->setWordWrap(true);
     m_status = new StatusLine;
@@ -1572,8 +1595,9 @@ void FieldPlotWindow::showStatus(const QVector<FieldSeries> &list, bool inView)
     QStringList parts;
     bool nonNumeric = false;
     for (const FieldSeries &s : list) {
-        QString part = tr("%1: %2 point(s) from %3 decoded row(s)")
-                           .arg(s.label()).arg(s.points.size()).arg(s.rowsDecoded);
+        QString part = tr("%1: %2 from %3")
+                           .arg(s.label(), countOf(s.points.size(), "point", "points"),
+                                countOf(s.rowsDecoded, "decoded row", "decoded rows"));
         if (s.rowsNonNumeric > 0) {
             part += tr(", %1 non-numeric NOT plotted").arg(s.rowsNonNumeric);
             nonNumeric = true;

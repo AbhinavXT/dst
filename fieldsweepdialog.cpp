@@ -17,6 +17,7 @@
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QScrollBar>
 #include <QLabel>
 #include <QLineEdit>
 #include <QPushButton>
@@ -303,6 +304,18 @@ void FieldSweepDialog::onPacketChanged()
     if (!pi.unsupported.isEmpty()) {
         m_status->fail(tr("This packet uses grammar the encoder cannot emit: %1")
                               .arg(pi.unsupported.join(QStringLiteral(", "))));
+    }
+    // Wide enough for this packet's names and a 24-bit value beside them
+    // (session 148): with Linux's fonts the names took the column and
+    // clipped the values.
+    {
+        int names = m_baseTable->horizontalHeader()->sectionSizeHint(0);
+        for (int r = 0; r < m_baseTable->rowCount(); ++r)
+            if (const QTableWidgetItem *n = m_baseTable->item(r, 0))
+                names = qMax(names, m_baseTable->fontMetrics().horizontalAdvance(n->text()) + 24);
+        const int value = m_baseTable->fontMetrics().horizontalAdvance(QStringLiteral("16777215")) + 24;
+        m_baseTable->setMinimumWidth(names + value + m_baseTable->verticalScrollBar()->sizeHint().width()
+                                     + 2 * m_baseTable->frameWidth());
     }
     onFieldChanged();
 }
