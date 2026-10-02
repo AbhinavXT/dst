@@ -25,9 +25,13 @@ has the commits. Read the top few CHANGELOG sections before starting.
   `dltests` and `menuaudit`.
 - `serial.pri` — the serial terminal is optional: without Qt Serial Port (or
   with `CONFIG+=no_serial`) everything still builds and runs on Ethernet.
-- **Not yet built on Windows since the library split (patch 88).** The first
-  Windows build is the real check of the MSVC library name, `DESTDIR` and the
-  Winsock/winmm link.
+- **CI builds and tests on Windows (MSVC 2019, Qt 5.15.2) and runs the full
+  gate on Linux** (`.github/workflows/build.yml`, since patch 116). Watch it
+  after a push: `gh run list`, `gh run view <id> --log-failed`. Windows-only
+  traps it has caught: GCC `__attribute__`, `class`/`struct` mismatches
+  (MSVC mangles them differently: now an error on clang/GCC), non-UTF-8
+  source reading (`/utf-8`), file names Windows forbids, greedy `\x` escapes.
+  Windows tests run on the native platform (offscreen draws no text there).
 
 ## The gate — non-negotiable
 

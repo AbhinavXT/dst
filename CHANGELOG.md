@@ -11,6 +11,83 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-116"></a>
+## Session 116 — DLConsole builds and passes on Windows again; CI on Windows and Linux
+
+Item 4 of the review list. Windows is the primary target, and nothing had
+been built there since the library split (patch 88). Now GitHub Actions
+builds and tests on **Windows (MSVC 2019, Qt 5.15.2)** and runs the full
+gate on **Linux** on every push (`.github/workflows/build.yml`).
+
+**Run 10 is green on both:**
+
+- **Windows**: the library, `DLConsole.exe` at `<build>\DLConsole.exe` (as
+  `app.pro`'s `DESTDIR` promises), `dltests` 170 suites / 5234 checks, 0
+  failed, and the menu audit passed.
+- **Linux**: `verify.sh` complete, with the Linux-only serial paths (pty
+  parity refusal, `-lutil`, the low-latency ioctl) passing for the first
+  time.
+
+### What the Windows build found, in the order it found it
+
+1. **`__attribute__((packed))` is GCC-only** (`Structures.h`, three
+   tests). MSVC stopped on the first wire struct. `#pragma pack(push, 1)`
+   already packed them on every compiler, so the attribute is gone, and the
+   `static_assert(sizeof == 7)` proves the header on each compiler.
+2. **`class LogEntry;` for a `struct`** (`dmipanel.h`,
+   `tabpopoutwindow.h`). MSVC mangles the two differently, so
+   `MessageDispatcher::entryAppended` was unresolved at link time.
+   - Fixed.
+   - `-Werror=mismatched-tags` now makes clang and GCC fail on this before
+     Windows sees it.
+3. **Greedy `\x` in a test literal.** `"LOCO_MODE\x1F1_1"` is
+   `LOCO_MODE`, U+01F1, `_1`: **one** part. Clang accepted it, so
+   pinboard's "two-part line from an earlier build loads" never tested a
+   two-part line. Split, and both parts are now checked. A sweep found no
+   other case in code.
+4. **Sources read in the Windows code page.** Without `/utf-8`, MSVC turned
+   every non-ASCII literal into mojibake: the `▸` in menu paths, `—`
+   dashes, the `●`/`✕`/`⚠` status glyphs, `␇`, `“”`. **A real defect on
+   screen**, which 18 failing checks showed. `/utf-8` now applies to the
+   library and every program.
+5. **A file name Windows forbids.** The flasher history test wrote a name
+   containing `"`. On Windows the file did not exist and the image never
+   loaded. Windows now uses `'`, checking that the comma still makes CSV
+   quote the field. Unix keeps the quote-doubling case.
+6. **Offscreen draws no text on Windows.** The pixel-counting suites saw 0
+   inked pixels. Windows CI runs the tests on the native platform (the
+   runner has a desktop), and they pass. The tab-scroll check runs only
+   where the window really gets its 1900 px: the runner's screen held it
+   to 1028, where scroll arrows are right. It says so in the log rather
+   than passing silently.
+7. **Logs cut short.** A piped stdout on Windows lost its tail, and then the
+   summary. Both test programs now run unbuffered.
+8. **The menu audit was a GUI-subsystem program**, so PowerShell got no exit
+   code, and a passing audit ("menu audit passed", 138 ok) read as failed.
+   It is now a console program, like `dltests`; CI prints its exit code,
+   in hex for a crash.
+
+Files: `.github/workflows/build.yml`, `Structures.h`, `dmipanel.h`,
+`tabpopoutwindow.h`, `core/core.pro`, `dlcore_link.pri`,
+`tests/main.cpp`, `tests/menuaudit_main.cpp`, `tests/menuaudit.pro`,
+`tests/test_pinboard.cpp`, `tests/test_flasher.cpp`,
+`tests/test_tabmetrics.cpp`, `tests/test_session90.cpp`,
+`tests/test_pipeline.cpp`, `tests/test_bookmarks.cpp`, `CLAUDE.md` (the
+"not yet built on Windows" note replaced).
+
+Local gate: 11/11 validators, `dltests` 170 suites / 5420 checks, menu
+audit 146, smoke. All green.
+
+Not tested on Windows:
+
+- the headless smoke (the app fed live UDP), which runs on Linux and macOS
+  only;
+- serial on real COM ports: the pty-based serial suites are Unix-only, so
+  Windows runs 5234 checks to Linux's 5420;
+- an installer or deployment (`windeployqt`).
+
+---
+
 <a id="session-115"></a>
 ## Session 115 — Serial settings that survive a COM renumber and a new laptop
 
