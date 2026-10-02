@@ -637,8 +637,15 @@ TEST_SUITE(flasher)
         const QString historyPath = QDir(temp.path()).filePath(QStringLiteral("history.jsonl"));
         Flasher::HistoryLog history(historyPath);
         Flasher::BatchEntry entry = entryFor(Flasher::CardInput);
-        entry.image = Flasher::loadImage(writeFile(temp.path(), QStringLiteral("KAVACH_Input, \"quoted\".appimage"),
-                                                   patternBytes(5000, 2)));
+        // A double quote cannot be in a Windows file name (session 116: the
+        // first Windows run wrote no file here, so the image never loaded).
+        // Windows keeps the comma, which is what makes CSV quote the field.
+#ifdef Q_OS_WIN
+        const QString awkwardName = QStringLiteral("KAVACH_Input, 'quoted'.appimage");
+#else
+        const QString awkwardName = QStringLiteral("KAVACH_Input, \"quoted\".appimage");
+#endif
+        entry.image = Flasher::loadImage(writeFile(temp.path(), awkwardName, patternBytes(5000, 2)));
         entry.outcome = Flasher::CardOutcome::Accepted;
         entry.result = okResult();
         entry.log << QStringLiteral("line one") << QStringLiteral("line two");
@@ -680,8 +687,15 @@ TEST_SUITE(flasher)
               "the period filter drops old records");
 
         const QString csv = Flasher::historyToCsv(all);
+#ifdef Q_OS_WIN
+        // The field is the full path (D:\\...\\KAVACH_Input, ...): quoted means
+        // its closing quote follows the name.
+        CHECK(csv.contains(QStringLiteral("KAVACH_Input, 'quoted'.appimage\"")),
+              "CSV quotes a path with a comma");
+#else
         CHECK(csv.contains(QStringLiteral("\"KAVACH_Input, \"\"quoted\"\".appimage\"")) || csv.contains(QStringLiteral("\"\"quoted\"\"")),
               "CSV quotes a path with a comma and doubles its quotes");
+#endif
         CHECK(csv.startsWith(QStringLiteral("when_utc,")), "CSV has a header row");
 
         // The dialog reads the same file.

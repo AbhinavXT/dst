@@ -49,25 +49,28 @@ jobs:
           cd build
           nmake
 
-      - name: Unit suite (offscreen)
+      # The native platform, not offscreen: Qt's offscreen plugin on Windows
+      # draws no text (no font database), so the suites that count inked
+      # pixels of drawn labels saw 0 (session 116). The runner has a desktop.
+      - name: Unit suite
         shell: pwsh
         run: |
           $exe = Get-ChildItem -Recurse build -Filter dltests.exe | Select-Object -First 1
           if (-not $exe) { throw "dltests.exe was not built" }
           Push-Location tests
-          $env:QT_QPA_PLATFORM = "offscreen"
+          $env:QT_QPA_PLATFORM = "windows"
           & $exe.FullName | Tee-Object -FilePath ..\dltests.log
           $rc = $LASTEXITCODE
           Pop-Location
           if ($rc -ne 0) { throw "dltests: $rc failed check(s)" }
 
-      - name: Menu audit (offscreen)
+      - name: Menu audit
         shell: pwsh
         run: |
           $exe = Get-ChildItem -Recurse build -Filter menuaudit.exe | Select-Object -First 1
           if (-not $exe) { throw "menuaudit.exe was not built" }
           Push-Location tests
-          $env:QT_QPA_PLATFORM = "offscreen"
+          $env:QT_QPA_PLATFORM = "windows"
           & $exe.FullName
           $rc = $LASTEXITCODE
           Pop-Location
