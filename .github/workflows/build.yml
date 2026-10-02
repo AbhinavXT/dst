@@ -6,6 +6,8 @@
 #
 #  Windows: library, app, unit suite and menu audit, the tests run offscreen.
 #  Linux:   ./verify.sh, the same gate as on a developer's machine.
+#  Linux, Qt 6 (session 127): the same gate on Qt 6.4, Ubuntu 24.04's. The
+#           code is meant to build on both and had drifted, unbuilt, from 6.
 # =============================================================================
 name: build
 
@@ -98,6 +100,25 @@ jobs:
 
       - name: The gate
         run: ./verify.sh
+
+      - name: Logs
+        if: always()
+        run: |
+          tail -40 build-verify/dltests.log || true
+          grep '^FAIL' build-verify/menuaudit.log || true
+
+  linux-qt6:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Qt 6 and tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev qt6-base-dev-tools libqt6serialport6-dev libgl1-mesa-dev python3
+
+      - name: The gate
+        run: QMAKE=qmake6 ./verify.sh
 
       - name: Logs
         if: always()

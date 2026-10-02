@@ -12,7 +12,7 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
-#include <QRegExp>
+#include <QRegularExpression>
 #include <QSlider>
 #include <QSpinBox>
 #include <QSet>
@@ -582,7 +582,7 @@ void BrakingPanel::runSearch(bool advance)
         } else {
             bool ok = false;
             QString num = text;
-            num.remove(QRegExp(QStringLiteral("\\s*m$")));
+            num.remove(QRegularExpression(QStringLiteral("\\s*m$")));
             const double want = num.toDouble(&ok);
             if (!ok) {
                 m_searchInfo->setText(tr("⚠ not a location"));

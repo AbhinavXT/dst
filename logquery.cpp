@@ -1249,7 +1249,7 @@ QString LogQuery::describe(const Node &n, int indent) const
     if (n.field == Field::Time) {
         auto at = [&](qint64 v) {
             if (n.clock) {
-                return QTime::fromMSecsSinceStartOfDay(int(qBound<qint64>(0, v, 86399999)))
+                return QTime::fromMSecsSinceStartOfDay(int(qBound(qint64(0), v, qint64(86399999))))
                     .toString(QStringLiteral("HH:mm:ss.zzz"));
             }
             return (m_utc ? QDateTime::fromMSecsSinceEpoch(v, Qt::UTC)

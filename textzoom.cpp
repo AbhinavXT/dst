@@ -170,7 +170,12 @@ void apply()
             continue;
         }
         QFont font = widget->font();
-        if (!(font.resolve() & QFont::SizeResolved) || font.pointSizeF() <= 0) {
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        const auto resolved = font.resolveMask();
+#else
+        const auto resolved = font.resolve();
+#endif
+        if (!(resolved & QFont::SizeResolved) || font.pointSizeF() <= 0) {
             continue;
         }
         const double base = baseFor(widget, kFontBase, font.pointSizeF());

@@ -18,11 +18,12 @@
 #
 #  Build dirs live under build-verify/ (git-ignored) so nothing is written
 #  into the source tree: core/ (the shared static library, built first),
-#  tests/, menuaudit/ and app/, which all link it. Set JOBS to override parallelism, QMAKE to pick a Qt.
+#  tests/, menuaudit/ and app/, which all link it. Set JOBS to override parallelism, QMAKE to pick a Qt,
+#  VERIFY_OUT for another build dir (a second Qt: VERIFY_OUT=build-verify-qt6).
 # =============================================================================
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
-OUT="$HERE/build-verify"
+OUT="${VERIFY_OUT:-$HERE/build-verify}"
 JOBS="${JOBS:-$(nproc 2>/dev/null || echo 4)}"
 QMAKE="${QMAKE:-qmake}"
 PY="${PY:-python3}"
@@ -85,6 +86,9 @@ if [ "$DO_CPP" -eq 1 ] && [ "$core_ok" -eq 1 ]; then
 
   # ---- 3. menu audit -------------------------------------------------------
   echo "== menu audit"
+  # Removed first: on macOS a bundle build once left a bare binary from an
+  # older build here, and the gate ran that for a day (session 127).
+  rm -f "$OUT/menuaudit/menuaudit"
   if build "$OUT/menuaudit" "$HERE/tests/menuaudit.pro"; then
     (cd "$HERE/tests" && QT_QPA_PLATFORM=offscreen "$OUT/menuaudit/menuaudit" >"$OUT/menuaudit.log" 2>&1); rc=$?
     echo "  $(grep -c '^ok' "$OUT/menuaudit.log") ok, $(grep -c '^FAIL' "$OUT/menuaudit.log") failed"
@@ -99,10 +103,14 @@ if [ "$DO_SMOKE" -eq 1 ] && [ "$core_ok" -eq 1 ]; then
   # console's id) for 12 s. Pass = still running when the timeout fires
   # (exit 124). A crash exits with a signal instead.
   echo "== headless smoke"
+  rm -rf "$OUT/DLConsole" "$OUT/DLConsole.app"   # never smoke a stale build
   if build "$OUT/app" "$HERE/app/app.pro"; then
     port=50002
-    # app/app.pro puts the program in the main build folder: $OUT/DLConsole.
-    (cd "$OUT/app" && QT_QPA_PLATFORM=offscreen timeout 14 "$OUT/DLConsole" >"$OUT/smoke.log" 2>&1; echo $? >"$OUT/smoke.rc") &
+    # app/app.pro puts the program in the main build folder: $OUT/DLConsole,
+    # or $OUT/DLConsole.app on macOS, where the GUI app stays a bundle.
+    APPBIN="$OUT/DLConsole"
+    [ -x "$OUT/DLConsole.app/Contents/MacOS/DLConsole" ] && APPBIN="$OUT/DLConsole.app/Contents/MacOS/DLConsole"
+    (cd "$OUT/app" && QT_QPA_PLATFORM=offscreen timeout 14 "$APPBIN" >"$OUT/smoke.log" 2>&1; echo $? >"$OUT/smoke.rc") &
     sleep 3
     "$PY" - "$HERE/replay" "$port" <<'EOF'
 import glob, socket, struct, sys, time

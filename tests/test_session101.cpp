@@ -153,11 +153,13 @@ TEST_SUITE(session101)
                 int errors = 0;
                 QObject::connect(&link, &SerialLink::errorOccurred, [&](const QString &) { ++errors; });
                 if (link.open(cfg)) {
-                    link.onError(QSerialPort::ParityError);
-                    CHECK(link.isOpen() && errors == 1, "one parity error: reported, port stays open");
-                    for (int i = 0; i < 10; ++i) link.onError(QSerialPort::ParityError);
+                    // A recoverable error (not Resource/Read/Write). It was ParityError,
+                    // which Qt 6 removed; UnknownError exists on both.
+                    link.onError(QSerialPort::UnknownError);
+                    CHECK(link.isOpen() && errors == 1, "one recoverable error: reported, port stays open");
+                    for (int i = 0; i < 10; ++i) link.onError(QSerialPort::UnknownError);
                     CHECK(link.isOpen() && errors == 1, "a short burst is not re-reported per error");
-                    for (int i = 0; i < 20; ++i) link.onError(QSerialPort::ParityError);
+                    for (int i = 0; i < 20; ++i) link.onError(QSerialPort::UnknownError);
                     CHECK(!link.isOpen(), "20 in 100 ms is a storm: port closed");
                     CHECK(errors == 2 && link.errorText().contains(QLatin1String("port closed")),
                           "…and the reason says so, once");

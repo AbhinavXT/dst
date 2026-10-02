@@ -11,6 +11,77 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-127"></a>
+## Session 127 — Builds and passes the gate on Qt 6 as well as Qt 5
+
+The code was meant to build on both: there is a `qtcompat` suite, and its
+note says the deployment machine runs Qt 6.9. But nothing built it on Qt 6,
+and it had drifted. It is now built and gated on both, here and in CI.
+
+**Fixed to compile on Qt 6.** Every fix also compiles on Qt 5.15; only the
+font fix needs a version check.
+
+- `logentry.cpp`: `splitRef`/`QStringRef` (gone in Qt 6) → `split`.
+- `brakingpanel.cpp`: `QRegExp` (gone) → `QRegularExpression`.
+- `dlrplayerdialog.cpp`, `logquery.cpp`: `qBound<qint64>(0, …)` is
+  ambiguous on Qt 6; the bounds are now typed instead.
+- `logmodel.cpp`, `settingsbundle.cpp`: `size()` is `qsizetype` on Qt 6;
+  cast where it meets an `int`.
+- `textzoom.cpp`: `QFont::resolve()` is `resolveMask()` on Qt 6.
+- `emptystate.cpp`: Qt 6 refuses `findChild<Overlay *>` because Overlay
+  has no `Q_OBJECT`. It is now looked up as the `QLabel` it is, which is
+  what Qt 5 did anyway.
+- `logentry.h`: `fromMSecsSinceEpoch(ms, Qt::UTC)` → `QTimeZone::utc()`.
+  The old form is deprecated on Qt 6.9+, and this header is in nearly
+  every file, so its warning repeated on every build.
+- Tests `session101`/`session104`: `QSerialPort::ParityError` was removed
+  in Qt 6. They use `UnknownError`, which is just as recoverable to
+  `SerialLink`.
+- Test `windowgeometry`: Qt 6's `restoreGeometry` shrinks a window to fit
+  its screen. A 900-px window came back 798 px on the 800-px offscreen
+  screen. The test window is now 600 × 450, which fits on both Qts.
+
+**A gate hole on macOS, found on the way.** qmake builds `menuaudit` and
+the app as `.app` bundles on macOS, but `verify.sh` ran the bare paths.
+Bare binaries left over from one build on Oct 1 sat there, so every local
+gate since then ran the menu audit and smoke test against that old build.
+The validators and unit suite were fresh, and Linux CI was unaffected.
+Fixes:
+
+- `menuaudit.pro` builds a bare binary everywhere (`CONFIG -= app_bundle`,
+  as `tests.pro` already did).
+- `verify.sh` deletes both binaries before building, so a stale one can
+  never run.
+- The smoke test runs the bundle's binary on macOS.
+
+Re-run on fresh builds, patches 123–126 pass: menu audit 157/157, smoke
+alive.
+
+**Gating Qt 6.**
+
+- `verify.sh` takes `VERIFY_OUT`, so a second Qt builds into its own
+  folder.
+- CI has a new job, `linux-qt6`: the full gate on Ubuntu 24.04's Qt 6.4.
+
+The operator sees nothing new.
+
+Not tested: Qt 6 on Windows (MSVC). CI runs Qt 6 on Linux only, and
+locally on macOS (6.11). The `-Wnon-c-typedef-for-linkage` warnings from
+`Structures.h` come from clang, not from Qt 6, and are left alone.
+
+Files: `logentry.h/.cpp`, `brakingpanel.cpp`, `dlrplayerdialog.cpp`,
+`logquery.cpp`, `logmodel.cpp`, `settingsbundle.cpp`, `textzoom.cpp`,
+`emptystate.cpp`, `verify.sh`, `tests/menuaudit.pro`,
+`.github/workflows/build.yml`, `CLAUDE.md`; tests `test_session101`,
+`test_session104`, `test_windowgeometry`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+176 suites / 5491 checks, menu audit 157/157, headless smoke (alive
+after 500 datagrams): all green.
+
+
+---
+
 <a id="session-126"></a>
 ## Session 126 — `Direction` renamed to `LogDirection`
 

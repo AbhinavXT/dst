@@ -17,12 +17,12 @@
 // packet, and no packet worth decoding is two bytes long.
 static bool looksLikeHexDump(const QString &text)
 {
-    const QVector<QStringRef> tokens =
-        text.splitRef(QRegularExpression(QStringLiteral("\\s+")),
-                      Qt::SkipEmptyParts);
+    const QStringList tokens =
+        text.split(QRegularExpression(QStringLiteral("\\s+")),
+                   Qt::SkipEmptyParts);
     if (tokens.size() < 8) { return false; }
 
-    for (const QStringRef &t : tokens) {
+    for (const QString &t : tokens) {
         if (t.size() != 2) { return false; }
         for (int i = 0; i < 2; ++i) {
             if (!isxdigit(t.at(i).toLatin1())) { return false; }

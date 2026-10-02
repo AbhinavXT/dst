@@ -92,7 +92,7 @@ TEST_SUITE(session104)
     // ---- driver errors are all counted, even inside a burst ----------------
     {
         SerialLink link;
-        for (int i = 0; i < 5; ++i) link.onError(QSerialPort::ParityError);
+        for (int i = 0; i < 5; ++i) link.onError(QSerialPort::UnknownError);
         CHECK(link.errorCount() == 5, "five errors in a burst count five, though reported once");
     }
 

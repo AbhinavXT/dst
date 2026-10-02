@@ -118,17 +118,20 @@ TEST_SUITE(windowgeometry)
     }
 
     // ---- keys are independent --------------------------------------------
+    // Both sizes fit the offscreen screen (800 x 600 on Qt 5, 800 x 800 on
+    // Qt 6): Qt 6's restoreGeometry shrinks a window to its screen, so a
+    // 900-wide winB came back 798 wide there (session 127).
     {
         QWidget a, b;
         a.setGeometry(avail.x() + 5, avail.y() + 5, 400, 300);
-        b.setGeometry(avail.x() + 5, avail.y() + 5, 900, 600);
+        b.setGeometry(avail.x() + 5, avail.y() + 5, 600, 450);
         WindowGeometry::save(&a, "winA");
         WindowGeometry::save(&b, "winB");
         QWidget ra, rb;
         WindowGeometry::restore(&ra, "winA");
         WindowGeometry::restore(&rb, "winB");
         CHECK(ra.size() == QSize(400, 300), "winA restored its own size");
-        CHECK(rb.size() == QSize(900, 600), "winB restored its own size");
+        CHECK(rb.size() == QSize(600, 450), "winB restored its own size");
         CHECK(ra.size() != rb.size(), "the two keys do not collide");
     }
 

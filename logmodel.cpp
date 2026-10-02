@@ -303,7 +303,7 @@ int LogModel::restoreOlder(const QVector<LogEntryPtr> &older)
     // Room left under capacity. Rows that arrived since the clear stay: they
     // are newer than anything restored and the operator may be watching them.
     const int room = std::max(0, m_capacity - static_cast<int>(m_entries.size()));
-    const int keep = std::min(room, older.size());
+    const int keep = std::min(room, static_cast<int>(older.size()));
     if (keep <= 0) {
         return 0;
     }

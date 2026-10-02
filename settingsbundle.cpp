@@ -276,9 +276,9 @@ QString Bundle::summary(Section s) const
     const QJsonObject section = sections.value(id(s)).toObject();
     const QJsonObject ini  = section.value(QStringLiteral("ini")).toObject();
     const QJsonObject file = section.value(QStringLiteral("file")).toObject();
-    auto listSize = [&ini](const char *key) {
+    auto listSize = [&ini](const char *key) -> int {
         const QJsonValue v = ini.value(QLatin1String(key));
-        if (v.isArray()) return v.toArray().size();
+        if (v.isArray()) return static_cast<int>(v.toArray().size());
         return v.toString().isEmpty() ? 0 : 1;
     };
     switch (s) {

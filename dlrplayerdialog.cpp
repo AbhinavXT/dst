@@ -480,7 +480,7 @@ void DlrPlayerDialog::onStarted(qint64 totalRecords, qint64 spanMs)
 void DlrPlayerDialog::onProgress(DlrPlayer::Stats s)
 {
     const qint64 span = qMax<qint64>(1, s.spanMs - qint64(m_startAt->value()) * 1000);
-    m_progress->setValue(int(qBound<qint64>(0, s.playbackMs * 1000 / span, 1000)));
+    m_progress->setValue(int(qBound(qint64(0), s.playbackMs * 1000 / span, qint64(1000))));
 
     QString line = tr("%1 / %2 records  •  %3 / %4  •  %5 KB sent")
                        .arg(s.sent).arg(s.total)

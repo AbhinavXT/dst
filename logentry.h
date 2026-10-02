@@ -26,6 +26,7 @@
 #include <QByteArray>
 #include <QColor>
 #include <QDateTime>
+#include <QTimeZone>
 #include <QVector>
 #include <QMetaType>
 #include <QSharedPointer>
@@ -130,7 +131,7 @@ struct LogEntry
         // passed in rather than read from Settings here because this runs
         // once per message on the ingest path, and a QSettings lookup per
         // message would be absurd.
-        cachedTime = (utc ? QDateTime::fromMSecsSinceEpoch(epochMs, Qt::UTC)
+        cachedTime = (utc ? QDateTime::fromMSecsSinceEpoch(epochMs, QTimeZone::utc())
                           : QDateTime::fromMSecsSinceEpoch(epochMs))
                          .toString(QStringLiteral("HH:mm:ss.zzz"));
     }

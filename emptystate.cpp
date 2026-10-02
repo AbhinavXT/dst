@@ -99,8 +99,11 @@ private:
 Overlay *existing(const QAbstractItemView *view)
 {
     if (!view || !view->viewport()) { return nullptr; }
-    return view->viewport()->findChild<Overlay *>(QLatin1String(kObjectName),
-                                                  Qt::FindDirectChildrenOnly);
+    // Overlay has no Q_OBJECT, so look it up as the QLabel it is (Qt 6
+    // refuses findChild<T> for a T without its own meta-object).
+    return static_cast<Overlay *>(
+        view->viewport()->findChild<QLabel *>(QLatin1String(kObjectName),
+                                               Qt::FindDirectChildrenOnly));
 }
 
 }  // namespace

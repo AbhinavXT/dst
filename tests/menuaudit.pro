@@ -20,6 +20,7 @@ TARGET   = menuaudit
 # exe its exit code was never reported to the CI shell, so a passing audit
 # read as a failure there.
 CONFIG += console
+CONFIG -= app_bundle   # a bare binary on macOS too, where verify.sh runs it
 DEFINES += QT_NO_DEBUG_OUTPUT QT_DEPRECATED_WARNINGS
 TEMPLATE = app
 OBJECTS_DIR = $$OUT_PWD/.obj-$$TARGET

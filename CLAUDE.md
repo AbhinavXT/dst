@@ -4,7 +4,9 @@ Qt 5.15 / C++17 diagnostic console for the Kavach ATP system (RDSO SIF-0533
 v4.22): live UDP (VCC logs) and serial (IOA input/output/analog logs)
 capture, schema-driven decoding (`schema/kavach.xml`), replay, DMI and cab
 views, Packet Maker, Firmware Flasher, Loco Configuration.
-Primary target: **Windows, Qt 5.15**. Also built on Linux (GCC) and Qt 6.4.
+Primary target: **Windows, Qt 5.15**. Also built on Linux (GCC) and on
+**Qt 6** (6.4 in CI, 6.11 on the Mac; 6.9 on the deployment machine): code
+must compile on both — see `tests/test_qtcompat.cpp` for the patterns.
 
 History until patch 96 was developed in claude.ai chats and delivered as
 zips; `CHANGELOG.md` has one section per patch (newest first) and `git log`
@@ -32,6 +34,12 @@ has the commits. Read the top few CHANGELOG sections before starting.
   (MSVC mangles them differently: now an error on clang/GCC), non-UTF-8
   source reading (`/utf-8`), file names Windows forbids, greedy `\x` escapes.
   Windows tests run on the native platform (offscreen draws no text there).
+- **Qt 6 is gated too** (CI job `linux-qt6`, since patch 127). Locally:
+  `QMAKE=/opt/homebrew/opt/qtbase/bin/qmake VERIFY_OUT=$PWD/build-verify-qt6 ./verify.sh`.
+  Traps seen: `QStringRef`/`splitRef`, `QRegExp`, `qBound<T>` with mixed
+  args, `std::min(int, x.size())` (qsizetype), `QFont::resolve()`,
+  `findChild<T>` on a T without `Q_OBJECT`, `QSerialPort::ParityError`,
+  and `restoreGeometry` shrinking a window to its screen.
 
 ## The gate — non-negotiable
 
