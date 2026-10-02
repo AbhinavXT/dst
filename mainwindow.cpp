@@ -654,6 +654,10 @@ MainWindow::MainWindow(QWidget *parent)
     // the first start after a session that had tabs open, which is why it
     // survived testing: a console that had never seen traffic saved an empty
     // workspace and restored nothing.
+    //
+    // Session 118: the frame (top strip, rail, log header) first, so a saved
+    // window layout is restored onto it.
+    buildShell();
     restoreWorkspace();
 
     // Undo, layouts, settings transfer, colour-blind colours, crash-recovery
@@ -675,6 +679,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_statusTimer->setInterval(1000);
     connect(m_statusTimer, &QTimer::timeout,
             this,          &MainWindow::onStatusTick);
+    connect(m_statusTimer, &QTimer::timeout, this, &MainWindow::refreshHeader);   // session 118
     m_statusTimer->start();
 
     m_userLabelTimer = new QTimer(this);

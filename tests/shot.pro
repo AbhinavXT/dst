@@ -18,3 +18,4 @@ include($$PWD/../dlcore_link.pri)
 INCLUDEPATH += $$PWD
 
 SOURCES += $$PWD/screenshot_main.cpp
+DEFINES += DL_SRC_DIR=\\\"$$clean_path($$PWD/..)\\\"

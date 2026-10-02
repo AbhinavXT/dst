@@ -345,8 +345,10 @@ void MainWindow::showClockHistory()
 // -----------------------------------------------------------------------
 void MainWindow::onBindSucceeded(quint16 port)
 {
-    m_lblBindStatus->setText(QString("Listening on UDP/%1 ✓").arg(port));
-    m_lblBindStatus->setStyleSheet(UiColor::okStyle());
+    m_lblBindStatus->setText(QString("\u25CF Listening on UDP/%1").arg(port));
+    // A chip in the top strip (session 118): its tone, not a colour of its
+    // own, so its text keeps the contrast floor in every theme.
+    UiStyle::setTone(m_lblBindStatus, UiStyle::Tone::Ok);
     m_bindOk    = true;
     m_boundPort = port;
     m_bindError.clear();
@@ -355,8 +357,8 @@ void MainWindow::onBindSucceeded(quint16 port)
 
 void MainWindow::onBindFailed(QString reason)
 {
-    m_lblBindStatus->setText(QString("Bind failed: %1").arg(reason));
-    m_lblBindStatus->setStyleSheet(UiColor::errorStyle() + QStringLiteral(" font-weight:bold;"));
+    m_lblBindStatus->setText(QString("\u2715 Bind failed: %1").arg(reason));
+    UiStyle::setTone(m_lblBindStatus, UiStyle::Tone::Fail);
     m_bindOk    = false;
     m_bindError = reason;
     updateEmptyState();
@@ -636,6 +638,7 @@ void MainWindow::rebuildSerialChips()
         row->addWidget(chip);
     }
     m_serialChips->setVisible(!ports.isEmpty());
+    if (m_serialChipsAction) m_serialChipsAction->setVisible(!ports.isEmpty());   // in the top strip
     refreshSerialChips();
 #endif
 }

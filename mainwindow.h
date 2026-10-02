@@ -520,7 +520,14 @@ private:
     // Session 102: the serial ports, running whether or not a terminal
     // window is open; a status-bar chip per open port.
     class SerialManager *m_serial = nullptr;
-    QWidget *m_serialChips = nullptr;   // session 96: owned here, fed by live traffic      // session 96: owned here, shared with pop-outs and loco consoles   // session 95: owned here, handed to the Packet Makers
+    QWidget *m_serialChips = nullptr;
+    QAction *m_serialChipsAction = nullptr;   // its slot in the top strip (session 118)
+    // Session 118: the frame — top strip, rail, log header.
+    class QToolBar *m_strip = nullptr;
+    class QToolBar *m_rail = nullptr;
+    QLabel *m_headerTitle = nullptr;
+    QLabel *m_headerMeta = nullptr;
+    class QToolButton *m_moreBtn = nullptr;   // session 96: owned here, fed by live traffic      // session 96: owned here, shared with pop-outs and loco consoles   // session 95: owned here, handed to the Packet Makers
     quint64 m_lastReportedMalformed = 0;   // session 90: drops by cause
     quint64 m_lastReportedQueueFull = 0;
     int     m_perTabCapacity    = 200'000;
@@ -557,6 +564,8 @@ private:
     };
     MenuRoots buildMenus();            // mainwindow_menus.cpp
     void buildStatusBar();             // mainwindow_status.cpp
+    void buildShell();                 // mainwindow_shell.cpp (session 118)
+    void refreshHeader();              // the log header's source name
     void openSerialTerminal(const QString &port = QString());   // mainwindow_tools.cpp
     void rebuildSerialChips();                                   // mainwindow_status.cpp
     void refreshSerialChips();                                   // tooltips and health, each second

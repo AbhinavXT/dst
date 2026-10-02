@@ -279,11 +279,18 @@ FilterBar::FilterBar(LogModel *source, QWidget *parent)
     layout->addWidget(m_columnBox);
     layout->addWidget(m_queryError);
     layout->addSpacing(8);
-    layout->addWidget(allChip);
-    layout->addWidget(errChip);
-    layout->addWidget(warnChip);
-    layout->addWidget(inChip);
-    layout->addWidget(outChip);
+    // Session 118: one segmented control rather than five loose buttons. The
+    // buttons, their group and their wiring are as before; only their parent
+    // is new, and it is what the stylesheet draws as the group.
+    auto *segment = new QWidget(this);
+    segment->setObjectName(QStringLiteral("filterChips"));
+    segment->setProperty("dlRole", QStringLiteral("segmented"));
+    segment->setAttribute(Qt::WA_StyledBackground, true);
+    auto *segRow = new QHBoxLayout(segment);
+    segRow->setContentsMargins(0, 0, 0, 0);
+    segRow->setSpacing(0);
+    for (QPushButton *b : { allChip, errChip, warnChip, inChip, outChip }) segRow->addWidget(b);
+    layout->addWidget(segment);
     layout->addSpacing(8);
     layout->addWidget(m_countLabel);
 

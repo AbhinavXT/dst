@@ -1,4 +1,7 @@
 #include "logtableview.h"
+#include "uistyle.h"
+
+#include <QFontMetrics>
 
 #include "logmodel.h"
 #include "logtimedelegate.h"
@@ -47,11 +50,29 @@ void applyColumnWidths(QTableView *view)
 void applyDefaultColumnWidths(QTableView *view)
 {
     if (!view) { return; }
-    view->setColumnWidth(LogModel::ColTime,      100);
-    view->setColumnWidth(LogModel::ColSource,     60);
-    view->setColumnWidth(LogModel::ColFriendly,  120);
-    view->setColumnWidth(LogModel::ColDirection,  40);
-    view->setColumnWidth(LogModel::ColSeverity,   66);   // fits "✕ ERR"
+    // Measured, not fixed (session 118). The widths were pixel constants —
+    // Time 100, Source 60 — and "16:32:27.012" plus the cell's padding does
+    // not fit 100 px at a 13 px font: the column read "16:32:27.0…" and its
+    // header "ime (local". A larger text size or a Windows font only made it
+    // worse. Each column is now the wider of a sample value and its header,
+    // in the fonts they are drawn in, plus padding.
+    const QFontMetrics cell(view->font());
+    const QFontMetrics mono(UiStyle::monoFont());           // the Time column's painter
+    QFont hf = view->horizontalHeader()->font();
+    hf.setWeight(QFont::DemiBold);                          // headers are drawn semi-bold
+    const QFontMetrics head(hf);
+    auto headerText = [view](int col) {
+        return view->model() ? view->model()->headerData(col, Qt::Horizontal).toString() : QString();
+    };
+    auto fit = [&](int col, int sample, int pad) {
+        const int h = head.horizontalAdvance(headerText(col)) + 28;   // + the sort arrow
+        view->setColumnWidth(col, qMax(sample + pad, h));
+    };
+    fit(LogModel::ColTime,      mono.horizontalAdvance(QStringLiteral("\u25CF 88:88:88.888")), 16);
+    fit(LogModel::ColSource,    cell.horizontalAdvance(QStringLiteral("888_888")), 16);
+    fit(LogModel::ColFriendly,  cell.horizontalAdvance(QStringLiteral("Fault_L1V1W")), 16);
+    fit(LogModel::ColDirection, cell.horizontalAdvance(QStringLiteral("OUT")), 16);
+    fit(LogModel::ColSeverity,  cell.horizontalAdvance(QStringLiteral("\u25B2 WARN")), 16);
 }
 
 void configure(QTableView *view)

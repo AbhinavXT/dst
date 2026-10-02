@@ -71,6 +71,7 @@ SOURCES += \
     $$PWD/mainwindow_status.cpp \
     $$PWD/mainwindow_tabs.cpp \
     $$PWD/mainwindow_tools.cpp \
+    $$PWD/mainwindow_shell.cpp \
     $$PWD/mainwindowsession.cpp \
     $$PWD/messagedispatcher.cpp \
     $$PWD/undolog.cpp \

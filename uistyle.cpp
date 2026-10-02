@@ -397,13 +397,15 @@ QString sheet()
         "QHeaderView::section {"
         " background:%1; color:%2; border:none;"
         " border-bottom:1px solid %3; border-right:1px solid %1;"
-        " padding:6px 8px; font-weight:600; }"
+        " padding:5px 8px; font-weight:600; }"
         "QHeaderView::section:hover { background:%5; }"
         "QTableView, QTreeView, QListView {"
         " background:%6; alternate-background-color:%7;"
         " border:1px solid %4; border-radius:%8px;"
         " gridline-color:%9; }"
-        "QTableView::item, QTreeView::item, QListView::item { padding:3px 6px; }"
+        // The cell padding stays where it was: column widths elsewhere are
+        // computed for it, and 3px 6px clipped the Time column (session 118).
+        "QTableView::item, QTreeView::item, QListView::item { padding:2px 4px; }"
         "QTableView::item:selected, QTreeView::item:selected,"
         "QListView::item:selected { background:%10; color:%11; }")
         .arg(headerB.name(), mix(text, window, 0.15).name(),

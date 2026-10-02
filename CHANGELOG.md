@@ -11,6 +11,105 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-118"></a>
+## Session 118 — UI revamp, step 2: the main window's frame
+
+The "Control Room" frame, built from session 117's components.
+
+### What the operator sees
+
+- **A status strip across the top**:
+  - the name;
+  - a **search field that opens the command palette** (every menu command
+    by name, Ctrl+P);
+  - **the UDP state as a chip**: `● Listening on UDP/50002` in the ok tone,
+    `✕ Bind failed: …` in fail;
+  - **the serial port chips** (session 102);
+  - **the loco and station clocks with their gap**, in the mono face.
+
+  These all moved up from the status bar, which keeps the notices (and the
+  undo offers), pins, queue, drops and disk.
+- **An icon rail down the left**: all sources chronologically, search all
+  sources, DMI, track diagram, two-loco view, incident report, serial
+  terminal, Packet Maker and, at the foot, settings. Each is drawn in the
+  theme's colours, with its name as tooltip and accessible name. **Every
+  rail button is an existing menu command** (found by its menu text), so the
+  rail and the menus cannot drift apart, and the menus still have
+  everything.
+- **A header over the log, in place of the column of buttons beside it**:
+  - the source's name, large, with what the tab name does not say ("source
+    81 · channel 2", or the friendly name);
+  - the message count as a quiet mono readout;
+  - Follow newest, Show date, Save log, Detach;
+  - a **⋯** menu with Clear this tab, Clear all tabs and Check buffer. It
+    follows "Check buffer" renaming itself to "Back to log".
+
+  The log gets the width the column took.
+- **The filter's All / Errors / Warns / IN / OUT** are drawn as one
+  segmented control.
+- **Log columns measured to the font.** Time, Source, Name, Dir and Sev were
+  fixed pixel widths (Time 100 px), and "16:32:27.012" plus padding does not
+  fit 100 px at a 13 px font: the column read "16:32:27.0…" and its header
+  "ime (local". Each is now the wider of a sample value and its header, in
+  the fonts they are drawn in. This was a pre-existing problem, found in the
+  first screenshot with traffic.
+
+### Nothing removed, only moved
+
+The buttons that stood beside the log keep their objects and their
+auto-connected slots. The everyday ones are in the header. The others are
+hidden, and the ⋯ items click them. So Undo, the shortcuts, and the tests
+that click them by name all work unchanged. The frame is built before the
+saved window layout is restored, so a saved layout applies onto it.
+
+### Two traps met on the way
+
+- `QStatusBar::removeWidget()` **hides** the widget it gives back.
+- A widget placed straight into a `QToolBar` has its visibility run by the
+  toolbar's action.
+
+Together they made the UDP chip invisible in the first screenshots, so it
+sits in a container of its own, as the clocks do. The serial chips, which
+must come and go, are shown and hidden through their toolbar action. And
+the first `currentChanged` arrives before a new tab is registered, so the
+header also refreshes on the status tick.
+
+Files: `mainwindow_shell.cpp` (new, in `dlcore.pri`), `mainwindow.h`,
+`mainwindow.cpp`, `mainwindow_status.cpp`, `filterbar.cpp`,
+`logtableview.cpp`, `mainwindow_tabs.cpp`, `uistyle.cpp`;
+`tests/screenshot_main.cpp` and `tests/shot.pro` (the screenshot harness,
+outside the gate, now feeds real `replay/` lines so shots show the window in
+use).
+
+### Tests
+
+Menu audit (+9, 155 now), on the real MainWindow:
+
+- the fixed strip and rail;
+- the rail carries the everyday tools, **each one a menu command too**, each
+  with an accessible name;
+- the header replaces the button column;
+- More holds three items;
+- the clocks are in the strip;
+- the UDP chip is shown and carries the bind's tone.
+
+Every existing check passes unchanged (clear tab and its undo offer, detach,
+pop-outs, the serial chips).
+
+Gate: 11/11 validators, `dltests` 171 suites / 5440 checks, menu audit
+155, smoke. All green.
+
+Not yet in this step:
+
+- the sources panel as a list with health dots and rates;
+- the decoded inspector's restyle;
+- the lane band over the log;
+- the tool windows.
+
+Those are the next steps, one patch each.
+
+---
+
 <a id="session-117"></a>
 ## Session 117 — UI revamp, step 1: the component foundation
 

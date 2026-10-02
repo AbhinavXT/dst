@@ -31,6 +31,7 @@
 #include <QTableView>
 #include <QTemporaryDir>
 #include <QToolButton>
+#include <QToolBar>
 #include <QElapsedTimer>
 #include "logmodel.h"
 #include "uicolors.h"
@@ -165,6 +166,49 @@ int main(int argc, char **argv) {
         }
 #  endif
 #endif
+    }
+
+    // ---- Session 118: the frame (top strip, rail, log header) ----------------
+    {
+        QToolBar *strip = w.findChild<QToolBar *>(QStringLiteral("statusStrip"));
+        QToolBar *rail = w.findChild<QToolBar *>(QStringLiteral("toolsRail"));
+        CHECK(strip && !strip->isMovable() && strip->isVisible(), "a fixed status strip across the top");
+        CHECK(rail && rail->orientation() == Qt::Vertical && rail->isVisible(), "an icon rail down the left");
+        // Every rail button is a command the menus also have: nothing is
+        // reachable only from an icon.
+        QStringList menuTexts;
+        std::function<void(QMenu *)> collect = [&](QMenu *m) {
+            emit m->aboutToShow();
+            for (QAction *a : m->actions()) { if (a->menu()) collect(a->menu()); else menuTexts << a->text(); }
+        };
+        for (QAction *top : w.menuBar()->actions()) if (top->menu()) collect(top->menu());
+        int railButtons = 0, orphans = 0, unnamed = 0;
+        for (QToolButton *b : rail ? rail->findChildren<QToolButton *>() : QList<QToolButton *>()) {
+            if (!b->objectName().startsWith(QLatin1String("rail_"))) continue;
+            ++railButtons;
+            if (!b->defaultAction() || !menuTexts.contains(b->defaultAction()->text())) ++orphans;
+            if (b->accessibleName().isEmpty()) ++unnamed;
+        }
+        CHECK(railButtons >= 8, "the rail carries the everyday tools");
+        CHECK(orphans == 0, "every rail button is a menu command too");
+        CHECK(unnamed == 0, "every rail button has an accessible name");
+        QWidget *header = w.findChild<QWidget *>(QStringLiteral("logHeader"));
+        QWidget *right = w.findChild<QWidget *>(QStringLiteral("rightFrame"));
+        QWidget *save = w.findChild<QWidget *>(QStringLiteral("pbSaveBtn"));
+        CHECK(header && right && !right->isVisibleTo(&w) && save && save->parentWidget() == header,
+              "the log header replaces the button column beside the log");
+        QToolButton *more = w.findChild<QToolButton *>(QStringLiteral("logMore"));
+        CHECK(more && more->menu() && more->menu()->actions().size() == 3,
+              "clear tab, clear all and check buffer sit behind More");
+        QLabel *bind = w.findChild<QLabel *>(QStringLiteral("frameClockLabel"));
+        CHECK(bind && strip && strip->isAncestorOf(bind), "the clocks are in the top strip");
+        QWidget *bindBox = w.findChild<QWidget *>(QStringLiteral("stripBind"));
+        QLabel *bindChip = bindBox ? bindBox->findChild<QLabel *>() : nullptr;
+        for (int i = 0; i < 50 && bindChip && bindChip->property("dlTone").toString() == QLatin1String("neutral"); ++i)
+            QApplication::processEvents(QEventLoop::AllEvents, 20);
+        CHECK(bindChip && bindChip->isVisibleTo(&w) && bindChip->property("dlRole").toString() == QLatin1String("chip")
+                  && bindChip->property("dlTone").toString() != QLatin1String("neutral"),
+              "the UDP chip is shown and says how the bind went");
     }
 
     QMenuBar *bar = w.menuBar();

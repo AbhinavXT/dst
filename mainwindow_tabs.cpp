@@ -179,11 +179,8 @@ void MainWindow::buildOrShowTab(const QString &tabKey,
 
     QHeaderView *hh = view->horizontalHeader();
     hh->setStretchLastSection(true);
-    view->setColumnWidth(LogModel::ColTime,      100);
-    view->setColumnWidth(LogModel::ColSource,     60);
-    view->setColumnWidth(LogModel::ColFriendly,  120);
-    view->setColumnWidth(LogModel::ColDirection,  40);
-    view->setColumnWidth(LogModel::ColSeverity,   66);   // fits "✕ ERR"
+    // Measured to the font (session 118; one definition, in logtableview).
+    LogTableView::applyDefaultColumnWidths(view);
     applyColumnWidths(view);      // stored widths win over these defaults
     applyColumnVisibility(view);
     connect(view->horizontalHeader(), &QHeaderView::sectionResized,
