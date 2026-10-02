@@ -115,6 +115,7 @@ void SerialConsoleWindow::build()
                                 "Device Manager, and the terminal says so when the port opens."));
     m_open = new QPushButton(tr("Open"), this);
     m_open->setObjectName(QStringLiteral("serialOpen"));
+    UiStyle::makePrimary(m_open);
     m_dtr = new QCheckBox(tr("DTR"), this);
     m_rts = new QCheckBox(tr("RTS"), this);
     m_dtr->setToolTip(tr("Data Terminal Ready line (some adapters reset the card on it)"));
@@ -208,14 +209,14 @@ void SerialConsoleWindow::build()
     // ---- show only / highlight (session 110) -------------------------------------
     m_filterEdit = new QueryLineEdit(this);
     m_filterEdit->setObjectName(QStringLiteral("serialFilter"));
-    m_filterEdit->setPlaceholderText(tr("Show only: @dop2   msg:/FAIL/   field:SIG_OV=1   dir:out"));
+    m_filterEdit->setPlaceholderText(tr("@dop2   msg:/FAIL/   field:SIG_OV=1   dir:out"));
     m_filterEdit->setClearButtonEnabled(true);
     m_filterEdit->setToolTip(tr("Show only the lines that match, in the console's own query language "
                                 "(the same as a tab's filter in Query mode). Changing it re-filters what is "
                                 "already on screen. The log file and the console still get every line."));
     m_highlightEdit = new QueryLineEdit(this);
     m_highlightEdit->setObjectName(QStringLiteral("serialHighlight"));
-    m_highlightEdit->setPlaceholderText(tr("Highlight: /LINK.*FAIL/   dir:out   time:14:02..14:05"));
+    m_highlightEdit->setPlaceholderText(tr("/LINK.*FAIL/   dir:out   time:14:02..14:05"));
     m_highlightEdit->setClearButtonEnabled(true);
     m_highlightEdit->setToolTip(tr("Mark the lines that match: a \u25B6 at the start and a tinted background."));
     m_queryError = new QLabel(this);
@@ -285,7 +286,10 @@ void SerialConsoleWindow::build()
     // ---- status -------------------------------------------------------------------
     m_state = new QLabel(this);
     m_state->setObjectName(QStringLiteral("serialState"));
+    UiStyle::makeChip(m_state, UiStyle::Tone::Neutral);   // session 122: the state is a chip
     m_counts = new QLabel(this);
+    UiStyle::makeMono(m_counts);
+    m_counts->setStyleSheet(UiColor::mutedStyle());
     m_health = new QLabel(this);
     m_health->setObjectName(QStringLiteral("serialHealth"));
     m_health->setToolTip(tr("Line health since the port opened. \u201CDecode\u201D is the share of lines that are "
@@ -295,11 +299,25 @@ void SerialConsoleWindow::build()
     auto *resetCounts = new QToolButton(this);
     resetCounts->setText(tr("Reset"));
     auto *stRow = new QHBoxLayout;
-    stRow->addWidget(m_state, 1); stRow->addWidget(m_health); stRow->addWidget(m_counts); stRow->addWidget(resetCounts);
+    // The state chip hugs its text; health, counters and Reset to the right.
+    stRow->addWidget(m_state);
+    stRow->addStretch(1);
+    stRow->addWidget(m_health);
+    stRow->addWidget(m_counts);
+    stRow->addWidget(resetCounts);
 
     auto *root = new QVBoxLayout(this);
-    root->addLayout(profRow);
-    root->addLayout(cfg);
+    // Session 122: the connection — profile, port and line settings, and the
+    // one primary action, Open — as one strip at the top.
+    auto *conn = new QWidget(this);
+    conn->setObjectName(QStringLiteral("serialConnection"));
+    UiStyle::makePanel(conn);
+    auto *connCol = new QVBoxLayout(conn);
+    connCol->setContentsMargins(UiStyle::space(3), UiStyle::space(2), UiStyle::space(3), UiStyle::space(2));
+    connCol->setSpacing(UiStyle::space(2));
+    connCol->addLayout(profRow);
+    connCol->addLayout(cfg);
+    root->addWidget(conn);
     root->addLayout(rxRow);
     root->addLayout(qRow);
     root->addWidget(m_view, 1);
@@ -428,7 +446,7 @@ void SerialConsoleWindow::build()
     });
     connect(m_autoBaud, &SerialAutoBaud::trying, this, [this](qint32 rate, int index, int count) {
         m_state->setText(tr("Finding the baud rate: trying %1 (%2 of %3)\u2026").arg(rate).arg(index + 1).arg(count));
-        m_state->setStyleSheet(UiColor::mutedStyle());
+        UiStyle::setTone(m_state, UiStyle::Tone::Neutral);
     });
     connect(m_autoBaud, &SerialAutoBaud::finished, this, [this](bool ok, qint32 rate, const QString &message) {
         m_findBaud->setText(tr("Find"));
@@ -437,7 +455,7 @@ void SerialConsoleWindow::build()
         if (!ok) {
             updateState();
             m_state->setText(tr("\u2715 Baud not found: %1").arg(message));
-            m_state->setStyleSheet(UiColor::errorStyle());
+            UiStyle::setTone(m_state, UiStyle::Tone::Fail);
             return;
         }
         m_baud->setEditText(QString::number(rate));
@@ -455,7 +473,7 @@ void SerialConsoleWindow::build()
         appendView(tr("── %1: %2 ──").arg(m_sendingName, message));
         m_state->setText(ok ? tr("Sent %1: %2").arg(m_sendingName, message)
                             : tr("\u2715 %1: %2").arg(m_sendingName, message));
-        m_state->setStyleSheet(ok ? UiColor::okStyle() : UiColor::errorStyle());
+        UiStyle::setTone(m_state, ok ? UiStyle::Tone::Ok : UiStyle::Tone::Fail);
     });
     connect(resetCounts, &QToolButton::clicked, this, [this]() {
         if (!m_link) return;
@@ -518,7 +536,7 @@ void SerialConsoleWindow::attach(SerialLink *link)
         connect(m_link, &SerialLink::closed, this, &SerialConsoleWindow::updateState);
         connect(m_link, &SerialLink::errorOccurred, this, [this](const QString &t) {
             m_state->setText(tr("\u2715 %1").arg(t));
-            m_state->setStyleSheet(UiColor::errorStyle());
+            UiStyle::setTone(m_state, UiStyle::Tone::Fail);
         });
     }
 }
@@ -662,7 +680,14 @@ bool SerialConsoleWindow::openPort()
             && all.at(i).config.portName.compare(c.portName, Qt::CaseInsensitive) == 0;
         m_mgr->setLabel(c.portName, fromProfile ? all.at(i).name : QString());
     }
-    if (!m_mgr->open(c)) { updateState(); m_state->setText(tr("\u2715 %1").arg(m_link->errorText())); return false; }
+    if (!m_mgr->open(c)) {
+        updateState();
+        m_state->setText(tr("\u2715 %1").arg(m_link->errorText()));
+        // After updateState(), which set "Closed" in the neutral tone: the
+        // error was shown uncoloured (session 122).
+        UiStyle::setTone(m_state, UiStyle::Tone::Fail);
+        return false;
+    }
     m_link->setDtr(m_dtr->isChecked());
     m_link->setRts(m_rts->isChecked());
     m_hex.reset();                                 // hex offsets count from the open
@@ -704,18 +729,18 @@ void SerialConsoleWindow::updateState()
         if (!m_ownsMgr) t += tr(" · keeps running when this window closes");
         if (m_hold->isChecked() && m_held) t += m_held == 1 ? tr(" · holding 1 line") : tr(" · holding %1 lines").arg(m_held);
         m_state->setText(t);
-        m_state->setStyleSheet(UiColor::okStyle());
+        UiStyle::setTone(m_state, UiStyle::Tone::Ok);
     } else if (m_link && m_mgr->isReconnecting(m_link->config().portName)) {
         const SerialConfig &c = m_link->config();
         m_open->setText(tr("Stop waiting"));
         setWindowTitle(tr("Serial — %1 (lost)").arg(c.portName));
         m_state->setText(tr("\u25CC %1 lost \u2014 reconnecting when the adapter comes back "
                             "(found by its USB serial number, under any port name)").arg(c.portName));
-        m_state->setStyleSheet(UiColor::warningStyle());
+        UiStyle::setTone(m_state, UiStyle::Tone::Warn);
     } else {
         setWindowTitle(tr("Serial Port Terminal"));
         m_state->setText(tr("Closed"));
-        m_state->setStyleSheet(UiColor::mutedStyle());
+        UiStyle::setTone(m_state, UiStyle::Tone::Neutral);
     }
 }
 
@@ -898,7 +923,7 @@ bool SerialConsoleWindow::sendText(const QString &text)
         if (!ok) {
             // Refuse rather than send something other than what was typed.
             m_state->setText(tr("\u2715 Not hex bytes: %1").arg(text));
-            m_state->setStyleSheet(UiColor::errorStyle());
+            UiStyle::setTone(m_state, UiStyle::Tone::Fail);
             return false;
         }
     } else {
@@ -1130,7 +1155,9 @@ void SerialConsoleWindow::rebuildMacroButtons()
 {
     QLayout *row = m_macroBar->layout();
     while (QLayoutItem *it = row->takeAt(0)) {
-        if (QWidget *w = it->widget()) w->deleteLater();
+        // Hidden first: deleteLater() leaves it drawn, out of any layout,
+        // at its parent's corner until the event loop gets to it.
+        if (QWidget *w = it->widget()) { w->hide(); w->deleteLater(); }
         delete it;
     }
     row->addWidget(new QLabel(currentProfile().isEmpty() ? tr("Macros")
@@ -1140,6 +1167,7 @@ void SerialConsoleWindow::rebuildMacroButtons()
         const SerialMacro &m = m_macros.at(i);
         auto *b = new QToolButton(m_macroBar);
         b->setObjectName(QStringLiteral("serialMacro"));
+        UiStyle::makeChip(b, m.confirm ? UiStyle::Tone::Warn : UiStyle::Tone::Neutral);
         // A confirm macro says so on its face, not only when clicked.
         b->setText(m.confirm ? m.label + QStringLiteral(" \u26A0") : m.label);
         b->setToolTip(tr("Sends %1%2%3").arg(m.hex ? tr("hex ") : QString(), m.text,
@@ -1169,7 +1197,7 @@ bool SerialConsoleWindow::runMacro(int index)
     const QByteArray bytes = m.bytes(&ok);
     if (!ok) {
         m_state->setText(tr("\u2715 Macro %1 is not hex bytes: %2").arg(m.label, m.text));
-        m_state->setStyleSheet(UiColor::errorStyle());
+        UiStyle::setTone(m_state, UiStyle::Tone::Fail);
         return false;
     }
     if (m.confirm && !(m_confirmMacro && m_confirmMacro(m))) {

@@ -11,6 +11,73 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-122"></a>
+## Session 122 — UI revamp, tool windows 1: the serial terminal; a layout audit
+
+The first tool window in the revamp, in order of how much it is used while
+debugging.
+
+### What the operator sees (Tools ▸ Serial Port Terminal)
+
+- **The connection as one panel at the top**: profile row and port/line
+  settings, with **Open as the window's one primary action**, filled in the
+  accent. `UiStyle::makePrimary()` is new; its text is lifted to the
+  contrast floor against the accent in every theme.
+- **The state as a chip**: Closed (neutral), open (ok), lost/reconnecting
+  (warn), errors (fail). It is set by tone in all nine places that set it,
+  not by a colour of its own. The chip hugs its text. Counters are in the
+  mono face.
+- **Macros as chips**: one that asks first (session 109) is in the warn
+  tone.
+- The Show only / Highlight placeholders no longer repeat their labels.
+
+### Three bugs found while doing it
+
+1. **The status row lost three widgets, by my own hand, mid-patch.** A
+   comment added in the middle of a line of `addWidget()` calls commented
+   out the rest of the line. The health label, counters and Reset were
+   never laid out, and Reset was drawn at the window's top-left corner.
+   **Every functional test still passed**, because they read the widgets,
+   not where they are. The screenshot showed it.
+2. **A port that would not open showed its error in the neutral tone.** The
+   failure path called `updateState()` ("Closed", neutral) after the error
+   had been coloured, then wrote the error text uncoloured. It now ends in
+   the fail tone.
+3. **Rebuilt rows left their old widgets drawn**: the macro buttons, and
+   the status-bar serial chips (session 102). `deleteLater()` without
+   `hide()` leaves a widget drawn, outside any layout, at its parent's
+   corner until the event loop deletes it. Both are now hidden first.
+
+### A guard against the whole class
+
+`tests/layoutaudit.h`: **no visible widget may sit outside every layout**.
+A QMainWindow is trusted to place its own direct children; everything inside
+them is checked. It found bugs 1 and 3. It runs on the serial terminal
+(`test_session122`) and **on the real MainWindow** (menu audit), and each
+window the revamp touches from here on is added to it.
+
+Files: `uistyle.h/.cpp` (`makePrimary`), `serialconsolewindow.cpp`,
+`mainwindow_status.cpp`, `tests/layoutaudit.h` (new),
+`tests/screenshot_main.cpp` (`SHOT_WINDOW=serial` draws a tool window).
+
+### Tests
+
+`tests/test_session122.cpp`, 8 checks:
+
+- no orphans, before and after the macro row is rebuilt;
+- the connection is one panel with Open inside it; Open is primary;
+- the state is a chip with no colour of its own: neutral when closed, fail
+  when a port will not open;
+- macros are chips, warn for ask-first ones.
+
+Menu audit (+1, 157): no orphans in the main window. The serial suites
+(85, 101–111) all pass unchanged.
+
+Gate: 11/11 validators, `dltests` 174 suites / 5471 checks, menu audit
+157, smoke. All green.
+
+---
+
 <a id="session-121"></a>
 ## Session 121 — UI revamp, step 5: lanes over the log
 

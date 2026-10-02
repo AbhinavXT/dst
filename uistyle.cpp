@@ -150,6 +150,18 @@ QString componentRules(const QPalette &p, bool isDark, const QColor &window,
         "QAbstractButton[dlRole=\"rail\"]:checked { background:%2; }")
         .arg(hover.name(), railOn.name());
 
+    // The primary action.
+    {
+        const QColor acc = UiColor::accent();
+        const QColor ink = UiColor::withContrast(isDark ? QColor(Qt::black) : QColor(Qt::white), acc, contrastFloor());
+        s += QStringLiteral(
+            "QAbstractButton[dlRole=\"primary\"] { background:%1; color:%2; border:1px solid %1;"
+            " font-weight:600; }"
+            "QAbstractButton[dlRole=\"primary\"]:hover { background:%3; border-color:%3; }"
+            "QAbstractButton[dlRole=\"primary\"]:disabled { background:%4; color:%5; border-color:%4; }")
+            .arg(acc.name(), ink.name(), mix(acc, ink, 0.12).name(), mix(window, acc, 0.25).name(), muted.name());
+    }
+
     // Section captions, surfaces.
     s += QStringLiteral(
         "QLabel[dlRole=\"section\"] { color:%1; font-size:%2pt; font-weight:600;"
@@ -238,6 +250,13 @@ void makeRailButton(QAbstractButton *b, const QString &tip)
     b->setAccessibleName(tip);
     b->setCursor(Qt::PointingHandCursor);
     b->setIconSize(QSize(18, 18));
+    repolish(b);
+}
+
+void makePrimary(QAbstractButton *b)
+{
+    if (!b) return;
+    b->setProperty("dlRole", QStringLiteral("primary"));
     repolish(b);
 }
 

@@ -106,6 +106,10 @@ QWidget *segmented(const QStringList &labels,
 // not a label).
 void makeRailButton(QAbstractButton *b, const QString &tip);
 
+// The one primary action of a window or strip ("Open", "Send"): filled in
+// the accent, its text lifted to the contrast floor against it.
+void makePrimary(QAbstractButton *b);
+
 // A small upper-case caption over a panel's content ("SOURCES · 6").
 void makeSectionLabel(QLabel *l);
 

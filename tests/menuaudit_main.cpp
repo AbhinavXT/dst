@@ -40,6 +40,7 @@
 #include "clockskewalarm.h"
 #include "findbar.h"
 #include "sourcerowdelegate.h"
+#include "layoutaudit.h"
 #include <QCheckBox>
 #include <QLabel>
 #include <QMouseEvent>
@@ -224,6 +225,13 @@ int main(int argc, char **argv) {
             ++rows;
             if (!it->data(0, SourceRowDelegate::MetaRole).toString().isEmpty()
                 && it->data(0, SourceRowDelegate::HealthRole).isValid()) ++described;
+        }
+        // Session 122: nothing visible outside every layout (an orphan is
+        // drawn at its parent's corner, over whatever is there).
+        {
+            const QStringList orphans = LayoutAudit::orphans(&w);
+            for (const QString &o : orphans) printf("      orphan: %s\n", qPrintable(o));
+            CHECK(orphans.isEmpty(), "no visible widget in the main window outside every layout");
         }
         CHECK(srcList && dynamic_cast<SourceRowDelegate *>(srcList->itemDelegate()) != nullptr
                   && rows > 0 && described == rows,

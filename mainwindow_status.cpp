@@ -624,7 +624,9 @@ void MainWindow::rebuildSerialChips()
     if (!m_serialChips || !m_serial) return;
     QLayout *row = m_serialChips->layout();
     while (QLayoutItem *it = row->takeAt(0)) {
-        if (QWidget *w = it->widget()) w->deleteLater();
+        // Hidden first: deleteLater() leaves it drawn, out of any layout,
+        // at its parent's corner until the event loop gets to it.
+        if (QWidget *w = it->widget()) { w->hide(); w->deleteLater(); }
         delete it;
     }
     const QStringList ports = m_serial->openPorts() + m_serial->reconnectingPorts();

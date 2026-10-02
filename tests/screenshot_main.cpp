@@ -13,6 +13,11 @@
 #include <QTimer>
 #include "mainwindow.h"
 #include "messagedispatcher.h"
+#ifdef DL_HAVE_SERIAL
+#include "serialconsolewindow.h"
+#include "serialmanager.h"
+#endif
+#include <QPlainTextEdit>
 #include "theme.h"
 #include "uistyle.h"
 #include "settings.h"
@@ -31,6 +36,36 @@ int main(int argc, char **argv)
             const QString l = QString::fromUtf8(f.readLine()).trimmed();
             if (l.startsWith(QLatin1Char('@'))) lines << l;
         }
+    }
+
+    // SHOT_WINDOW=serial: a tool window instead of the main one.
+    const QString which = qEnvironmentVariable("SHOT_WINDOW");
+    if (!which.isEmpty()) {
+        for (Theme t : ThemeUtil::all()) {
+            if (!only.isEmpty() && !only.contains(ThemeUtil::toString(t))) continue;
+            Settings::setTheme(ThemeUtil::toString(t));
+            ThemeUtil::apply(t);
+            UiStyle::apply();
+            MessageDispatcher disp;
+            QWidget *win = nullptr;
+#ifdef DL_HAVE_SERIAL
+            SerialManager mgr(&disp);
+            if (which == QLatin1String("serial")) {
+                auto *w = new SerialConsoleWindow(&mgr);
+                for (const QString &l : lines.mid(0, 40)) w->findChild<QPlainTextEdit *>(QStringLiteral("serialView"))->appendPlainText(l);
+                win = w;
+            }
+#endif
+            if (!win) return 2;
+            win->resize(1100, 720);
+            win->show();
+            QElapsedTimer settle;
+            settle.start();
+            while (settle.elapsed() < 800) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            win->grab().save(QStringLiteral("%1/shot_%2_%3.png").arg(dir, which, ThemeUtil::toString(t)));
+            delete win;
+        }
+        return 0;
     }
 
     for (Theme t : ThemeUtil::all()) {
