@@ -75,6 +75,8 @@ int fails = 0;
 #define CHECK(c,m) do{ if(!(c)){ printf("FAIL: %s\n",m); ++fails;} else printf("ok  : %s\n",m);}while(0)
 
 int main(int argc, char **argv) {
+    // Offscreen unless told otherwise, as the gate runs it (see tests/main.cpp).
+    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);
     // Seed a workspace so construction takes the restore path. Saved and put
     // back afterwards: this audit borrows the real ini.

@@ -96,6 +96,8 @@ TEST_SUITE(session110)
     v = w.receivedText();
     CHECK(v.contains(QLatin1String("RAD LINK FAIL")) && !v.contains(QLatin1String("@dop")), "NOT works");
 
+    // Text, not hex: the Hex box is remembered in the shared ini.
+    w.findChild<QCheckBox *>(QStringLiteral("serialSendHex"))->setChecked(false);
     CHECK(w.sendText(QStringLiteral("STATUS?")), "send");
     w.setViewFilter(QStringLiteral("dir:out"));
     v = w.receivedText();

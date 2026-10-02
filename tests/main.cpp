@@ -60,8 +60,13 @@ int main(int argc, char **argv)
 {
     // QApplication, not QCoreApplication: the layout suite constructs real
     // QWidgets, and Qt aborts outright if a widget is created without one.
-    // Run headless with QT_QPA_PLATFORM=offscreen on a machine with no
-    // display — the suites never show anything.
+    // Offscreen unless told otherwise (session 113). verify.sh always ran
+    // the suites offscreen, but one suite run by hand — the way CLAUDE.md
+    // says to — used the real display, where the pixel-reading suites
+    // (tabmetrics, flasher, presentationmode) fail regardless. A run by
+    // hand then disagreed with the gate, and was once read as evidence
+    // about it. Set QT_QPA_PLATFORM explicitly to watch on a real screen.
+    if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);
 
     const QString only = (argc > 1) ? QString::fromLocal8Bit(argv[1]) : QString();

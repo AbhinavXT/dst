@@ -163,6 +163,9 @@ TEST_SUITE(session102)
                   "a new terminal attaches to the running port, with its settings");
             CHECK(again.findChild<QPushButton *>(QStringLiteral("serialOpen"))->text() == QLatin1String("Close"),
                   "…and offers Close");
+            // Text, not hex: the Hex box is remembered in the shared ini, and
+            // an earlier suite may have left it ticked.
+            again.findChild<QCheckBox *>(QStringLiteral("serialSendHex"))->setChecked(false);
             CHECK(again.sendText(QStringLiteral("STATUS?")), "…and can send on it");
 
             // Feed console off, from the viewer, stops the feed.

@@ -41,7 +41,17 @@ stage() {                      # stage NAME rc
 }
 build() {                      # build DIR PROFILE
   mkdir -p "$1" && (cd "$1" && "$QMAKE" "$2" >/dev/null && make -j"$JOBS" >build.log 2>&1) \
-    || { echo "build failed: $2 (see $1/build.log)"; tail -20 "$1/build.log"; return 1; }
+    || { echo "build failed: $2 (see $1/build.log)"; tail -20 "$1/build.log"
+         envhint "$1/build.log"; return 1; }
+}
+# Session 113: the OS refusing file access is not a code failure. macOS
+# privacy controls (files under ~/Desktop) briefly did exactly that during
+# one gate run, and it read as three failed stages. Say which it is.
+envhint() {
+  if grep -qs "Operation not permitted" "$@"; then
+    echo "  NOTE: the OS refused file access (\"Operation not permitted\"): an environment"
+    echo "        problem, not the code. Check privacy permissions for this folder and rerun."
+  fi
 }
 
 # ---- 1. Python golden validators ------------------------------------------
@@ -69,6 +79,7 @@ if [ "$DO_CPP" -eq 1 ] && [ "$core_ok" -eq 1 ]; then
   if build "$OUT/tests" "$HERE/tests/tests.pro"; then
     (cd "$HERE/tests" && QT_QPA_PLATFORM=offscreen "$OUT/tests/dltests" >"$OUT/dltests.log" 2>&1); rc=$?
     tail -1 "$OUT/dltests.log"; grep -B3 '  FAIL' "$OUT/dltests.log" | head -30
+    envhint "$OUT/dltests.log"
     stage "dltests" "$rc"
   else stage "dltests (build)" 1; fi
 

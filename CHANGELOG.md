@@ -11,6 +11,57 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-113"></a>
+## Session 113 — Tests: run by hand as the gate runs them; session 85 on macOS; no shared-ini leaks
+
+Items 3 and 5 of the review list. Item 3 turned out to be a **wrong
+diagnosis of mine**, which this session corrects.
+
+### What really happened in session 105's red gate run
+
+Session 105's notes blamed "the display". That was wrong:
+
+- `verify.sh` already runs every stage offscreen.
+- To "reproduce", I re-ran three pixel-reading suites (tabmetrics, flasher,
+  presentationmode) **by hand, without offscreen**, as CLAUDE.md's
+  one-suite command does. On a real macOS display those suites fail
+  regardless, on any build, so comparing against patch 104 showed nothing.
+- What actually failed was the OS refusing file access ("Operation not
+  permitted", macOS privacy on `~/Desktop`), which stopped the menu audit
+  and the smoke app from building.
+
+A correction note now sits in session 105's section.
+
+### Fixes
+
+- **`dltests` and `menuaudit` default to offscreen** when
+  `QT_QPA_PLATFORM` is not set. A suite run by hand now behaves as it does
+  in the gate. Set the variable explicitly to watch on a real screen.
+- **`verify.sh` names an OS file-access refusal.** When a build or the unit
+  log shows "Operation not permitted", it prints that this is an
+  environment problem, not the code (exercised against a sample log).
+- **Session 85's end-to-end serial test runs on macOS** (`openpty` from
+  `<util.h>`), not only on Linux: 48 checks here, up from 25. It had never
+  run on this machine; it passed apart from one Linux-specific assumption.
+  A Linux pty refuses even parity, while a macOS pty accepts it. That check
+  is Linux-only now, and macOS checks that what opened is what was asked.
+- **Tests no longer leak through the shared ini.** Running session 85 here
+  exposed it: its terminal ends in Hex mode and saves that on close, so
+  sessions 102 and 110 then found their text sends refused as "not hex".
+  - Session 85 now puts back every `serial/` key it changed.
+  - Sessions 102 and 110 set the Hex box they depend on rather than
+    assuming it.
+  - The gate was run twice in a row to confirm nothing carries over.
+
+Files: `tests/main.cpp`, `tests/menuaudit_main.cpp`, `verify.sh`,
+`tests/test_session85.cpp`, `tests/test_session102.cpp`,
+`tests/test_session110.cpp`, `CHANGELOG.md` (the session 105 correction).
+
+Gate: 11/11 validators, `dltests` 168 suites / 5387 checks (session 85 now
+counts in full), menu audit, smoke. All green, twice in a row.
+
+---
+
 <a id="session-112"></a>
 ## Session 112 — Dispatcher: a lookup that hid a source's tab; NULs checked
 
@@ -567,6 +618,12 @@ pixel-based GUI suites failed (tabmetrics, flasher, presentationmode). The
 same three failed on the **unchanged, already-pushed patch-104 build**,
 which had passed the gate earlier. A rerun minutes later was fully green
 with no code change: the display, not this patch.
+
+> **Correction (session 113):** not the display. The gate already ran
+> offscreen; the three suites were re-run by hand *without* offscreen, where
+> they always fail, so that comparison showed nothing. The failure was the
+> OS refusing file access ("Operation not permitted"), which stopped two
+> builds. See session 113.
 
 Not tested: auto-open at a real start-up with a real adapter. The menu
 audit's ini has no profiles, so the start-up path runs with an empty list

@@ -16,11 +16,15 @@
 #include <QSignalSpy>
 #include <QTest>
 
-#ifdef Q_OS_LINUX
+#ifdef Q_OS_UNIX
 #include <fcntl.h>
-#include <pty.h>
 #include <termios.h>
 #include <unistd.h>
+#  if defined(Q_OS_MACOS)
+#    include <util.h>      // openpty on macOS (session 113: this ran on Linux only)
+#  else
+#    include <pty.h>
+#  endif
 #endif
 
 // =============================================================================
@@ -144,7 +148,7 @@ TEST_SUITE(session85)
         CHECK(m && m->entryAt(1)->tabKey() == key, "the entry's own tab key agrees");
     }
 
-#ifdef Q_OS_LINUX
+#ifdef Q_OS_UNIX
     // ---- end to end over a pseudo-terminal ------------------------------------------------------
     int master = -1, slave = -1;
     char name[128] = {};
@@ -161,6 +165,14 @@ TEST_SUITE(session85)
         QSettings st(Settings::iniPath(), QSettings::IniFormat);
         const QVariant feedWas = st.value(QStringLiteral("serial/feed"));
         st.setValue(QStringLiteral("serial/feed"), true);
+        // Session 113: the window saves its view and send choices on close
+        // (Hex, line end, ...). Put every serial/ key back afterwards, or the
+        // next suite's terminal inherits them — a later suite once found its
+        // text sends refused as "not hex" because this one ended in Hex.
+        QHash<QString, QVariant> serialWas;
+        st.beginGroup(QStringLiteral("serial"));
+        for (const QString &k : st.allKeys()) serialWas.insert(k, st.value(k));
+        st.endGroup();
 
         MessageDispatcher disp;
         SerialConsoleWindow w(&disp);
@@ -172,10 +184,19 @@ TEST_SUITE(session85)
         w.setConfigToUi(c);
         CHECK(w.configFromUi().portName == c.portName && w.configFromUi().summary() == QLatin1String("9600 8E1"),
               "the UI holds the chosen line settings");
-        // A pseudo-terminal cannot do parity: the driver refuses it, and the
-        // port must not open quietly at some other setting.
+#ifdef Q_OS_LINUX
+        // A Linux pseudo-terminal cannot do parity: the driver refuses it,
+        // and the port must not open quietly at some other setting.
         CHECK(!w.openPort() && !w.link()->isOpen() && w.statusText().contains(QLatin1String("refused 9600 8E1")),
               QByteArray("a setting the driver refuses is not silently replaced: ") + w.statusText().toUtf8());
+#else
+        // A macOS pseudo-terminal accepts parity (session 113 found this the
+        // first time the test ran here), so there is no refusal to check —
+        // only that what opened is what was asked for.
+        CHECK(w.openPort() && w.link()->config().summary() == QLatin1String("9600 8E1"),
+              "macOS: the pty takes 8E1, and that is what opens");
+        w.closePort();
+#endif
         c.parity = QSerialPort::NoParity;
         w.setConfigToUi(c);
         CHECK(w.openPort() && w.link()->isOpen(), QByteArray("opens ") + QByteArray(name) + QByteArray(" at 9600 8N1: ") + w.statusText().toUtf8());
@@ -266,9 +287,15 @@ TEST_SUITE(session85)
         w.setConfigToUi(gone);
         CHECK(!w.openPort() && w.statusText().startsWith(QStringLiteral("\u2715")), "a missing port says why it did not open");
         w.close();
+        st.sync();                      // pick up what the window just saved
 
         if (feedWas.isValid()) st.setValue(QStringLiteral("serial/feed"), feedWas);
         else st.remove(QStringLiteral("serial/feed"));
+        st.beginGroup(QStringLiteral("serial"));
+        for (const QString &k : st.allKeys()) if (!serialWas.contains(k)) st.remove(k);
+        for (auto it = serialWas.constBegin(); it != serialWas.constEnd(); ++it) st.setValue(it.key(), it.value());
+        st.endGroup();
+        st.sync();
         ::close(master);
         ::close(slave);
     }
