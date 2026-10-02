@@ -32,6 +32,7 @@ void LogModel::appendEntry(const LogEntryPtr &entry)
     const int row = static_cast<int>(m_entries.size());
     beginInsertRows(QModelIndex(), row, row);
     m_entries.push_back(entry);
+    m_newestMs = std::max(m_newestMs, entry->epochMs);
     endInsertRows();
 }
 
@@ -78,6 +79,7 @@ void LogModel::appendEntries(const QVector<LogEntryPtr> &batch)
             beginRemoveRows(QModelIndex(), 0,
                             static_cast<int>(m_entries.size()) - 1);
             m_entries.clear();
+            m_newestMs = 0;
             endRemoveRows();
         }
     }
@@ -86,7 +88,9 @@ void LogModel::appendEntries(const QVector<LogEntryPtr> &batch)
     const int last  = first + effective.size() - 1;
     beginInsertRows(QModelIndex(), first, last);
     for (const LogEntryPtr &e : effective) {
-        if (e) m_entries.push_back(e);
+        if (!e) continue;
+        m_entries.push_back(e);
+        m_newestMs = std::max(m_newestMs, e->epochMs);
     }
     endInsertRows();
 }
@@ -272,6 +276,7 @@ void LogModel::clear()
     if (m_entries.empty()) return;
     beginResetModel();
     m_entries.clear();
+    m_newestMs = 0;
     endResetModel();
 }
 
@@ -287,6 +292,7 @@ QVector<LogEntryPtr> LogModel::takeAll()
     }
     beginResetModel();
     m_entries.clear();
+    m_newestMs = 0;
     m_findHits.clear();
     endResetModel();
     return taken;
@@ -307,6 +313,7 @@ int LogModel::restoreOlder(const QVector<LogEntryPtr> &older)
     beginInsertRows(QModelIndex(), 0, keep - 1);
     for (int i = older.size() - 1; i >= from; --i) {
         m_entries.push_front(older.at(i));
+        if (older.at(i)) m_newestMs = std::max(m_newestMs, older.at(i)->epochMs);
     }
     endInsertRows();
     return keep;

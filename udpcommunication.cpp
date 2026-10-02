@@ -29,6 +29,11 @@ UDPCommunication::UDPCommunication(quint16 port, int maxQueueDepth, QObject *par
     , m_recvPort(port)
     , m_maxQueueDepth(maxQueueDepth)
 {
+    // Registered here as well as in main() (session 114): any program that
+    // starts a receiver — a test, the menu audit — needs it, or Qt drops
+    // every queued message the way it dropped archive-search results.
+    static const int registered = qRegisterMetaType<ParsedMessagePtr>("ParsedMessagePtr");
+    Q_UNUSED(registered);
     // Note: do NOT create the QUdpSocket here. We deliberately defer that to
     // run() so the socket's thread affinity is the worker thread. If we
     // created it here it would belong to whichever thread called the

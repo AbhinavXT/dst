@@ -137,20 +137,43 @@ ArchiveSearcher::ArchiveSearcher(const QStringList &files,
                                  const QString &queryText,
                                  const ColorRules &rules,
                                  int maxHits,
-                                 QObject *parent)
+                                 QObject *parent,
+                                 bool utc)
     : QThread(parent)
     , m_files(files)
     , m_queryText(queryText)
     , m_rules(rules)          // copy; see the header
     , m_maxHits(maxHits)
+    , m_utc(utc)
 {
+    static const int registered = qRegisterMetaType<ArchiveScanResult>("ArchiveScanResult");
+    Q_UNUSED(registered);
+}
+
+qint64 ArchiveSearcher::newestRecordMs(const QStringList &files, std::function<bool()> cancelled)
+{
+    qint64 newest = 0;
+    for (const QString &path : files) {
+        if (cancelled && cancelled()) break;
+        SessionReader reader;
+        if (!reader.open(path)) continue;
+        while (reader.next()) newest = std::max(newest, reader.arrivalMs());
+    }
+    return newest;
 }
 
 void ArchiveSearcher::run()
 {
     // Parsed here rather than passed in, so the parse happens on this
     // thread along with everything else it feeds.
+    // Time read as the tab filter reads it (session 114): in the zone the
+    // tables show, and last: counted back from the newest record in THESE
+    // files — not from now, which on last week's archive is nothing.
     LogQuery query;
+    query.setUtc(m_utc);
+    if (query.parse(m_queryText) && query.usesDataEnd()) {
+        query.setDataEnd(newestRecordMs(m_files, [this]() { return m_cancel.load(std::memory_order_relaxed); }));
+    }
     if (!query.parse(m_queryText)) {
         ArchiveScanResult bad;
         bad.warnings << QStringLiteral("query error: %1").arg(query.errorString());

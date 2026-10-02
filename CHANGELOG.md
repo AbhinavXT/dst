@@ -11,6 +11,89 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-114"></a>
+## Session 114 — Time read alike everywhere; two windows that never received their results
+
+Items 6 and 7 of the review list, plus **two real bugs found while doing
+item 7**: archive search and the DLR player's progress readout.
+
+### Archive search never showed a result (a real bug)
+
+`ArchiveSearcher` emits `finished(ArchiveScanResult)` on its worker
+thread. The window receives it by queued signal, which needs the type
+registered with Qt. It was not. Qt dropped every result with a warning on
+stderr ("Cannot queue arguments of type 'ArchiveScanResult'"), so
+**Tools ▸ Archive search ran, finished, and showed nothing.**
+
+The existing tests called `scanArchive()` directly, never through the
+thread, so nothing caught it. Proved with a receiver on the GUI thread
+before the fix, as the window has; fixed with `Q_DECLARE_METATYPE` plus
+registration in the searcher's constructor.
+
+### The DLR player's progress never moved (a real bug, same cause)
+
+A sweep for the same pattern found `DlrPlayer::Stats`: declared as a
+meta-type, never registered. Every `progress()` update from the player's
+thread was dropped, so the readout sat still for the whole playback. Proved
+with a real `.dlr` played to a GUI-thread receiver: 0 updates arrived,
+while `finished(bool)` arrived, since `bool` needs no registration. It is
+now registered in the player's constructor.
+
+The sweep also covered the rest:
+
+- exporter, save, log writer: plain types only;
+- flasher and round-trip: already register theirs;
+- the UDP receiver: registered only in the app's `main()`, so any other
+  program starting one (a test, the menu audit) would have hit the same
+  trap. It now registers in its own constructor too.
+
+### 6. The newest time, kept rather than searched for
+
+The filter bar scanned every row on each keystroke to find the newest time
+for `last:`. `LogModel::newestMs()` is now kept as rows go in (append,
+batch append, restore), and reset by clear and take-all. Trimming drops only
+the oldest rows, so it stays right. It is the newest, not the last appended,
+since a replay can be out of order.
+
+### 7. Archive search reads time as a tab's filter does
+
+- **Clock times are in the zone the tables show**: the worker is given
+  `Settings::showUtc()`.
+- **`last:` counts back from the newest record in the files searched.**
+  Before, it counted from now, which on last week's archive matched nothing.
+  Finding the newest is a full read, so it runs **only when the query uses
+  `last:`** (`LogQuery::usesDataEnd()`); other searches cost nothing extra.
+
+Files: `logmodel.h/.cpp`, `filterbar.cpp`, `logquery.h/.cpp`,
+`archivesearch.h/.cpp`, `archivesearchwindow.cpp`, `dlrplayer.cpp`,
+`udpcommunication.cpp`.
+
+### Tests
+
+`tests/test_session114.cpp`, 17 checks:
+
+- `newestMs`: out-of-order appends, trimming, restore, clear, take-all;
+- an archive of real `@lsrp` lines from 27 June, searched **through the
+  worker thread to a GUI-thread receiver** (as the window does; a
+  `QSignalSpy` connects directly and would hide the bug):
+  - results arrive;
+  - `last:3m` finds the archive's last 4 records (from now: 0);
+  - a local clock window on a past day;
+  - the same window by UTC clock with the tables in UTC;
+  - a query without `last:` is unchanged;
+  - `usesDataEnd()`;
+- the DLR player playing that archive: progress updates reach the GUI
+  thread.
+
+Gate: 11/11 validators, `dltests` 169 suites / 5404 checks, menu audit,
+smoke. All green.
+
+Not tested: the two windows themselves (Archive search, DLR player) with
+their widgets. The signals they connect to are tested as they connect to
+them.
+
+---
+
 <a id="session-113"></a>
 ## Session 113 — Tests: run by hand as the gate runs them; session 85 on macOS; no shared-ini leaks
 

@@ -185,6 +185,9 @@ public:
     // `ms`: the newest timestamp in the data being filtered; last:15m
     // counts back from it. 0 (the default) means "now".
     void setDataEnd(qint64 ms) { m_dataEnd = ms; }
+    // True after a parse that used last: — the caller then knows the data
+    // end matters (archive search finds it with an extra pass only then).
+    bool usesDataEnd() const { return m_usesDataEnd; }
 
     // Evaluate against one entry. `names` supplies the friendly name for
     // name:/bare-term matching and may be null.
@@ -295,6 +298,7 @@ private:
     QString m_source;
     bool    m_utc     = false;
     qint64  m_dataEnd = 0;
+    bool    m_usesDataEnd = false;
 };
 
 #endif // LOGQUERY_H

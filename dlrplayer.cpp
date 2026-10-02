@@ -30,6 +30,13 @@ struct DlrPlayer::Cursor
 DlrPlayer::DlrPlayer(QObject *parent)
     : QThread(parent)
 {
+    // Session 114: progress() is emitted on the player's thread and reaches
+    // the dialog by queued signal, which needs the type registered. It was
+    // declared but never registered, so Qt dropped every update ("Cannot
+    // queue arguments of type 'DlrPlayer::Stats'") and the readout sat
+    // still for the whole playback.
+    static const int registered = qRegisterMetaType<DlrPlayer::Stats>("DlrPlayer::Stats");
+    Q_UNUSED(registered);
 }
 
 DlrPlayer::~DlrPlayer()

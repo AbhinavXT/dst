@@ -215,6 +215,7 @@ bool LogQuery::parse(const QString &text)
     m_error.clear();
     m_errorOffset = -1;
     m_source = text;
+    m_usesDataEnd = false;
 
     const QString trimmed = text.trimmed();
     if (trimmed.isEmpty()) return true;         // empty query: matches all
@@ -909,6 +910,7 @@ LogQuery::NodePtr LogQuery::makeTimeTerm(const QString &field,
     QString why;
 
     if (field == QLatin1String("last")) {
+        m_usesDataEnd = true;
         qint64 d = 0;
         if (!parseDuration(v, &d)) {
             return fail(QStringLiteral("last: expects a duration such as "

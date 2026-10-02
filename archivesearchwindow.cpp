@@ -184,7 +184,7 @@ void ArchiveSearchWindow::startSearch()
     // this window is read from the other thread.
     m_worker = new ArchiveSearcher(files, q,
                                    m_rules ? *m_rules : ColorRules(),
-                                   kMaxHits, this);
+                                   kMaxHits, this, Settings::showUtc());
     connect(m_worker, &ArchiveSearcher::progress,
             this,     &ArchiveSearchWindow::onProgress);
     connect(m_worker, &ArchiveSearcher::finished,

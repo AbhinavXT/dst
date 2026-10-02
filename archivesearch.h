@@ -93,7 +93,13 @@ public:
                     const QString &queryText,
                     const ColorRules &rules,     // copied, deliberately
                     int maxHits,
-                    QObject *parent = nullptr);
+                    QObject *parent = nullptr,
+                    bool utc = false);       // session 114: the zone the tables show
+
+    // The newest record across `files` (0 if none): what last: counts back
+    // from in an archive. A full read, so it runs only when the query uses
+    // last:.
+    static qint64 newestRecordMs(const QStringList &files, std::function<bool()> cancelled = {});
 
     void cancel() { m_cancel.store(true, std::memory_order_relaxed); }
 
@@ -109,7 +115,15 @@ private:
     QString     m_queryText;
     ColorRules  m_rules;                 // owned copy
     int         m_maxHits;
+    bool        m_utc = false;
     std::atomic<bool> m_cancel{false};
 };
+
+// Session 114: the result crosses from the worker thread to the window by
+// queued signal, which needs the type registered. It was not: Qt dropped
+// every result ("Cannot queue arguments of type 'ArchiveScanResult'") and
+// the window never showed a single hit. The unit tests called scanArchive()
+// directly, never through the thread, so nothing caught it.
+Q_DECLARE_METATYPE(ArchiveScanResult)
 
 #endif // ARCHIVESEARCH_H

@@ -110,6 +110,11 @@ public:
 
     // Convenience used by status bar / save.
     int  count() const { return static_cast<int>(m_entries.size()); }
+    // The newest timestamp among the rows added (0 when empty), kept as rows
+    // go in, so a query's last: anchor costs nothing per keystroke (session
+    // 114: the filter bar used to scan every row for it). Trimming drops the
+    // oldest rows, so it stays right.
+    qint64 newestMs() const { return m_newestMs; }
 
     // Snapshot for SaveData. Returns a deep-copied list of shared pointers
     // so the saver thread can iterate without us mutating m_entries under
@@ -165,6 +170,7 @@ private:
     // Active theme; flipped via setTheme(). Default light.
     Theme m_theme = Theme::Light;
     QSet<const LogEntry *> m_findHits;
+    qint64 m_newestMs = 0;
     bool  m_showUtc = false;
 
     // Helpers for data().

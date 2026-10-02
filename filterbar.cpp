@@ -404,12 +404,7 @@ void FilterBar::applyFilter()
         // Clock times are read in the zone the Time column is showing, and
         // last: counts back from the newest row — so a replay from last
         // week filters by what is on screen, not by today's clock.
-        qint64 newest = 0;
-        for (int r = 0; r < m_source->count(); ++r) {
-            const LogEntryPtr e = m_source->entryAt(r);
-            if (e && e->epochMs > newest) newest = e->epochMs;
-        }
-        proxy->setQuery(m_edit->text(), true, m_source->showUtc(), newest);
+        proxy->setQuery(m_edit->text(), true, m_source->showUtc(), m_source->newestMs());
         if (!proxy->queryOk()) {
             // Column, not just a message: with several terms on one line,
             // "unexpected ')'" alone does not say which one.
