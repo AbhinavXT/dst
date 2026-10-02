@@ -8,6 +8,9 @@
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QFileDialog>
+#include <QImage>
+#include <QRegularExpression>
+#include <QTextDocument>
 #include <QHBoxLayout>
 #include <QPalette>
 #include <QPushButton>
@@ -28,7 +31,7 @@ IncidentReportWindow::IncidentReportWindow(LogModel *model, const QString &tabKe
     setAttribute(Qt::WA_DeleteOnClose);
     setWindowTitle(tr("Incident report — %1").arg(tabName.isEmpty() ? tabKey : tabName));
     WindowGeometry::makeResizableWindow(this);
-    resize(900, 800);
+    resize(1000, 720);
 
     m_view = new QTextBrowser(this);
     m_view->setOpenLinks(false);
@@ -77,9 +80,41 @@ void IncidentReportWindow::rebuild()
     m_summary = IncidentReport::build(m_model, m_tabKey, m_tabName, m_atMs, m_options);
     m_html = IncidentReport::toHtml(m_summary, m_options);
     QApplication::restoreOverrideCursor();
-    m_view->setHtml(m_html);
-    m_status->state(m_summary.valid ? tr("%1 raw frame(s) in the window").arg(m_summary.rawFrameTotal)
-                                     : tr("No rows in this window"));
+    m_view->setHtml(forViewer(m_html, m_view->document()));
+    if (!m_summary.valid) {
+        m_status->state(tr("No rows in this window"));
+    } else {
+        auto count = [](int n, const QString &one, const QString &many) {
+            return QStringLiteral("%1 %2").arg(n).arg(n == 1 ? one : many);
+        };
+        m_status->state(count(m_summary.rawFrameTotal, tr("raw frame"), tr("raw frames")) + QStringLiteral(" \u00B7 ")
+                        + count(m_summary.keyMoments.size(), tr("DMI moment"), tr("DMI moments")));
+    }
+}
+
+QString IncidentReportWindow::forViewer(const QString &html, QTextDocument *doc)
+{
+    // The saved file embeds its images as data: URIs, which every browser
+    // shows and QTextBrowser does not (session 133: every DMI panel and the
+    // plot were blank space in this window). For the viewer only, each one
+    // becomes a named resource of the document; the file is left as it is.
+    static const QRegularExpression re(QStringLiteral("src=\"data:image/png;base64,([A-Za-z0-9+/=]+)\""));
+    QString out;
+    out.reserve(html.size());
+    int last = 0, n = 0;
+    QRegularExpressionMatchIterator it = re.globalMatch(html);
+    while (it.hasNext()) {
+        const QRegularExpressionMatch m = it.next();
+        QImage img;
+        img.loadFromData(QByteArray::fromBase64(m.captured(1).toLatin1()), "PNG");
+        const QUrl name(QStringLiteral("dlimg://%1").arg(n++));
+        doc->addResource(QTextDocument::ImageResource, name, img);
+        out += html.mid(last, m.capturedStart() - last);
+        out += QStringLiteral("src=\"%1\"").arg(name.toString());
+        last = m.capturedEnd();
+    }
+    out += html.mid(last);
+    return out;
 }
 
 bool IncidentReportWindow::saveHtml(const QString &path) const

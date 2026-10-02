@@ -28,6 +28,17 @@
 //    4 = EMERGENCY_BRAKE. Tracked as episodes with RunReport::EpisodeTracker,
 //    the same way RunReport tracks overspeed and emergency-status spells.
 //
+//  THE PLOT AND 0 m (session 133)
+//    The plot is speed against LOCATION, and a loco that has not localised
+//    on an RFID tag reports abs_loco_loc = 0. Two minutes around the
+//    rear-end in replay/loco_1_1_27062026_151052.cap hold such frames, and
+//    the plot's axis ran 0..160 km with the incident a sliver at its right
+//    edge. As in the track diagram and the two-loco view (Abhinav,
+//    2026-10-02), the PLOT leaves 0 m frames out (plotTrace), and so the
+//    targets computed from them; a caption says how many. speedTrace stays
+//    whole: the highest speed, the overspeed count and every other section
+//    are unchanged. The Speed/distance window itself is not touched.
+//
 //  EVERYTHING ELSE
 //    Reuses RunReport::summarise() with a window (mode changes, emergencies,
 //    overspeed, tags, clock skew, faults, reject clauses) and
@@ -75,7 +86,9 @@ struct Summary {
     QVector<RunReport::Episode> brakeEpisodes;    // FSB/EB, from @dmi brake_type
 
     SpeedDistance::Trace speedTrace;   // windowed
-    QByteArray           speedPlotPng; // rendered SpeedDistanceCanvas; empty if no trace
+    SpeedDistance::Trace plotTrace;    // speedTrace without its 0 m samples: what is plotted
+    int                  plotLeftOut = 0;   // samples at 0 m (not localised), not plotted
+    QByteArray           speedPlotPng; // rendered SpeedDistanceCanvas; empty if nothing to plot
 
     QVector<KeyMoment> keyMoments;
     bool               keyMomentsCapped = false;

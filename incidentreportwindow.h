@@ -11,6 +11,7 @@
 
 class LogModel;
 class QTextBrowser;
+class QTextDocument;
 class StatusLine;
 
 class IncidentReportWindow : public QWidget
@@ -22,6 +23,10 @@ public:
     const IncidentReport::Summary &summary() const { return m_summary; }
     QString html() const { return m_html; }
     bool saveHtml(const QString &path) const;
+
+    // The report as the in-app viewer can show it: its data: URI images
+    // registered on `doc` as resources. The saved file keeps the data: URIs.
+    static QString forViewer(const QString &html, QTextDocument *doc);
 
 public slots:
     void rebuild();

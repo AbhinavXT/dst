@@ -11,6 +11,76 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-133"></a>
+## Session 133 — UI revamp, tool windows 9: the Incident report
+
+**The window showed no pictures.** The report embeds every DMI panel
+and the speed plot as `data:` URIs. Browsers show these, so the saved
+file was always complete, but the in-app viewer (QTextBrowser) does not
+load them. Every image in the window was blank space under its heading.
+For the viewer only, `IncidentReportWindow::forViewer()` now registers
+each image as a document resource. The saved file is byte-for-byte the
+same kind of file as before.
+
+**The speed plot leaves 0 m out** (Abhinav, as for the track diagram and
+the two-loco view). The plot is speed against location, and the two
+minutes around the rear-end in `replay/loco_1_1_27062026_151052.cap`
+include 56 frames at 0 m (not localised). Its axis ran from 0 to 160 km,
+with the incident a sliver at the right edge.
+
+- The plot now spans 160.57–160.66 km.
+- Targets computed from a 0 m frame are dropped, since they were placed
+  relative to 0 m.
+- A caption under the plot says "56 of 81 frames report 0 m (not
+  localised on an RFID tag) and are left out of the plot".
+- A window that is all 0 m says there is no location to plot against.
+- Only the plot changes: `Summary::speedTrace` stays whole. The highest
+  speed, the overspeed count, the DMI moments, mode changes, brakes and
+  raw frames are as before, and the Speed/distance window is untouched.
+
+**Layout.**
+
+- **The DMI moments sit two to a row**, tops aligned. Eight moments one
+  under another made a page-long column to scroll past.
+- **Each image carries a `width`** (440 for a panel, 760 for the plot)
+  as well as the CSS `max-width`: the viewer honours only the attribute.
+  Each image is in its own paragraph; inline after a heading, the viewer
+  laid the heading out at the image's height.
+- **The status line** reads "918 raw frames · 3 DMI moments" (was "raw
+  frame(s)").
+- **The dialog's OK button** reads "Build report".
+- The window opens at 1000 × 720.
+
+**Screenshot harness:** `SHOT_WINDOW=incident` and `incidentdlg`
+(`SHOT_CAP`, `SHOT_AT` pick the run and the moment).
+
+Tests: `test_session133`, 22 checks, on the real run around 15:13:10:
+
+- 81 samples kept, 56 at 0 m left out of the plot;
+- the plot spans the incident's stretch, and no target is placed from a
+  0 m frame;
+- the caption is there, and the highest speed is unchanged;
+- the file embeds 4 images, each with a width;
+- the moments are two to a row;
+- the viewer gets no `data:` URI, its resources are the same pixels as
+  the panels rendered, and Save HTML still embeds them;
+- the status text;
+- the dialog's button;
+- fits 1366 × 768;
+- layout audit.
+
+`test_session97` passes unchanged.
+
+Files: `incidentreport.h/.cpp`, `incidentreportwindow.h/.cpp`,
+`incidentreportdialog.cpp`, `tests/screenshot_main.cpp`,
+`tests/test_session133.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+182 suites / 5634 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-132"></a>
 ## Session 132 — UI revamp, tool windows 8: the Two-loco view
 

@@ -62,6 +62,28 @@ QByteArray renderSpeedPlot(const SpeedDistance::Trace &trace)
     return toPng(&canvas);
 }
 
+// The trace without its 0 m samples (SpeedDistance::locationKnown), its
+// span recomputed, and without the targets placed relative to a 0 m sample.
+SpeedDistance::Trace knownOnly(const SpeedDistance::Trace &t, int *leftOut)
+{
+    SpeedDistance::Trace out = t;
+    out.samples.clear();
+    out.targets.clear();
+    QSet<int> unknownRows;
+    *leftOut = 0;
+    bool first = true;
+    for (const SpeedDistance::Sample &s : t.samples) {
+        if (!SpeedDistance::locationKnown(s)) { unknownRows.insert(s.row); ++*leftOut; continue; }
+        out.samples << s;
+        if (first) { out.minLocM = out.maxLocM = s.locM; first = false; }
+        out.minLocM = qMin(out.minLocM, s.locM);
+        out.maxLocM = qMax(out.maxLocM, s.locM);
+    }
+    for (const SpeedDistance::Target &tg : t.targets)
+        if (!unknownRows.contains(tg.row)) out.targets << tg;
+    return out;
+}
+
 // The tab's own latest @dmi at or before `ms`, or an empty KeyMoment if the
 // tab has none that early. Single-tab scope: only `model` is searched, so a
 // moment names at most one loco.
@@ -129,7 +151,8 @@ Summary build(LogModel *tabModel, const QString &tabKey, const QString &tabName,
 
     // ---- the speed/permitted/target plot, windowed ----------------------------------------
     s.speedTrace = SpeedDistance::extract(tabModel, 200000, s.fromMs, s.toMs);
-    if (!s.speedTrace.isEmpty()) s.speedPlotPng = renderSpeedPlot(s.speedTrace);
+    s.plotTrace = knownOnly(s.speedTrace, &s.plotLeftOut);
+    if (!s.plotTrace.isEmpty()) s.speedPlotPng = renderSpeedPlot(s.plotTrace);
 
     // ---- key moments: window start/end, mode changes, EB/FSB onsets -------------------------
     QVector<KeyMoment> moments;
@@ -171,7 +194,8 @@ QString toHtml(const Summary &s, const Options &options)
                         "h3{font-size:10.5pt;margin-top:12px;margin-bottom:4px}"
                         "table{border-collapse:collapse}td,th{padding:2px 10px 2px 0;text-align:left;vertical-align:top}"
                         "th{border-bottom:1px solid #bbb}.muted{color:#666}.num{text-align:right}"
-                        "img.panel{max-width:480px;border:1px solid #ccc}img.plot{max-width:900px;border:1px solid #ccc}"
+                        "table.moments td{padding:0 16px 12px 0}"
+                        "img.panel{max-width:440px;border:1px solid #ccc}img.plot{max-width:760px;border:1px solid #ccc}"
                         "pre{font-size:8.5pt;white-space:pre-wrap;word-break:break-all;background:#f6f6f6;padding:8px;border:1px solid #ddd}"
                         "</style></head><body>")
              .arg(esc(s.tabName.isEmpty() ? s.tabKey : s.tabName));
@@ -193,27 +217,46 @@ QString toHtml(const Summary &s, const Options &options)
         return total > cap ? QStringLiteral("<p class=\"muted\">… and %1 more (%2 in all).</p>").arg(total - cap).arg(total)
                            : QString();
     };
+    // A width attribute as well as the CSS: the in-app viewer (QTextBrowser)
+    // honours the attribute and ignores max-width.
     auto embed = [](const QByteArray &png, const char *cls) {
+        const int w = qstrcmp(cls, "panel") == 0 ? 440 : 760;
         return png.isEmpty() ? QString()
-             : QStringLiteral("<img class=\"%1\" src=\"data:image/png;base64,%2\">")
-                   .arg(QString::fromLatin1(cls), QString::fromLatin1(png.toBase64()));
+             : QStringLiteral("<p><img class=\"%1\" width=\"%2\" src=\"data:image/png;base64,%3\"></p>")
+                   .arg(QString::fromLatin1(cls)).arg(w).arg(QString::fromLatin1(png.toBase64()));
     };
 
     // ---- key moments: the DMI as it stood -----------------------------------------------------
     h += QStringLiteral("<h2>DMI at key moments: %1</h2>").arg(s.keyMoments.size());
     if (s.keyMomentsCapped) h += QStringLiteral("<p class=\"muted\">Capped at %1 moments.</p>").arg(options.maxDmiMoments);
-    for (const KeyMoment &km : s.keyMoments) {
-        h += QStringLiteral("<h3>%1 — %2</h3>").arg(esc(km.label), timeText(km.ms));
+    // Two to a row (session 133): eight moments one under another made a
+    // page-long column of panels to scroll past before anything else.
+    h += QStringLiteral("<table class=\"moments\">");
+    for (int i = 0; i < s.keyMoments.size(); ++i) {
+        const KeyMoment &km = s.keyMoments.at(i);
+        if (i % 2 == 0) h += QStringLiteral("<tr>");
+        h += QStringLiteral("<td valign=\"top\"><h3>%1 — %2</h3>").arg(esc(km.label), timeText(km.ms));
         if (km.hasDmi) h += embed(km.dmiPng, "panel");
         else h += QStringLiteral("<p class=\"muted\">No @dmi for this tab at or before this time.</p>");
+        h += QStringLiteral("</td>");
+        if (i % 2 == 1 || i == s.keyMoments.size() - 1) h += QStringLiteral("</tr>");
     }
+    h += QStringLiteral("</table>");
 
     // ---- speed / permitted / target -------------------------------------------------------------
     h += QStringLiteral("<h2>Speed / permitted / target</h2>");
     if (s.speedTrace.isEmpty()) {
         h += QStringLiteral("<p class=\"muted\">No speed in this window (no @dmi or @lsrp).</p>");
     } else {
-        h += embed(s.speedPlotPng, "plot");
+        if (s.plotTrace.isEmpty())
+            h += QStringLiteral("<p class=\"muted\">No location to plot against: every frame in the window "
+                                "reports 0 m (the loco had not localised on an RFID tag).</p>");
+        else
+            h += embed(s.speedPlotPng, "plot");
+        if (s.plotLeftOut > 0 && !s.plotTrace.isEmpty())
+            h += QStringLiteral("<p class=\"muted\">%1 of %2 frames report 0 m (not localised on an RFID tag) "
+                                "and are left out of the plot.</p>")
+                     .arg(s.plotLeftOut).arg(s.speedTrace.samples.size());
         h += QStringLiteral("<p>Highest: %1 km/h (from @%2). %3 sample(s) above the permitted speed.</p>")
                  .arg(s.run.maxSpeedKmh, 0, 'f', 0).arg(s.run.speedSource).arg(s.run.overspeed.size());
     }

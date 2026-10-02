@@ -30,6 +30,8 @@
 #include "mergedwindow.h"
 #include "trackdiagramwindow.h"
 #include "twolocowindow.h"
+#include "incidentreportwindow.h"
+#include "incidentreportdialog.h"
 #include <QDateTime>
 #include "namemap.h"
 #include "theme.h"
@@ -156,6 +158,37 @@ int main(int argc, char **argv)
                 auto *w = new TwoLocoWindow(&disp);
                 w->setAttribute(Qt::WA_DeleteOnClose, false);
                 win = w;
+            }
+            if (which == QLatin1String("incident") || which == QLatin1String("incidentdlg")) {
+                // One real run, around its rear-end moment (15:13:10).
+                const QString cap = qEnvironmentVariableIsEmpty("SHOT_CAP") ? QStringLiteral("27062026_151052")
+                                                                            : qEnvironmentVariable("SHOT_CAP");
+                QFile run(QStringLiteral(DL_SRC_DIR "/replay/loco_1_1_%1.cap").arg(cap));
+                qint64 lo = 0, hi = 0;
+                if (run.open(QIODevice::ReadOnly)) {
+                    while (!run.atEnd()) {
+                        const QByteArray l = run.readLine().trimmed();
+                        if (!l.startsWith('@')) continue;
+                        const QList<QByteArray> tok = l.split(' ');
+                        if (tok.size() < 3) continue;
+                        const qint64 ms = QDateTime::fromString(QString::fromLatin1(tok.at(1)), Qt::ISODate).toMSecsSinceEpoch();
+                        if (!lo) lo = ms;
+                        hi = ms;
+                        disp.ingestLocal(21, 1, l, ms, QString());
+                    }
+                }
+                disp.drainNow();
+                const qint64 at = qEnvironmentVariableIsEmpty("SHOT_AT")
+                    ? QDateTime::fromString(QStringLiteral("2026-06-27T15:13:10"), Qt::ISODate).toMSecsSinceEpoch()
+                    : QDateTime::fromString(qEnvironmentVariable("SHOT_AT"), Qt::ISODate).toMSecsSinceEpoch();
+                if (which == QLatin1String("incidentdlg")) {
+                    win = new IncidentReportDialog(at, lo, hi);
+                } else {
+                    auto *w = new IncidentReportWindow(disp.modelForKey(QStringLiteral("21_1")), QStringLiteral("21_1"),
+                                                       QStringLiteral("L1_V1"), at, IncidentReport::Options());
+                    w->setAttribute(Qt::WA_DeleteOnClose, false);
+                    win = w;
+                }
             }
             if (!win) return 2;
             win->resize(1100, 720);
