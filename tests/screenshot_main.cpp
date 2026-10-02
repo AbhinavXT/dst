@@ -26,6 +26,7 @@
 #include <QSplitter>
 #include <cstdio>
 #include "packetmakerdialog.h"
+#include "comparewindow.h"
 #include "theme.h"
 #include "uistyle.h"
 #include "settings.h"
@@ -87,6 +88,14 @@ int main(int argc, char **argv)
                 disp.drainNow();
             }
             if (which == QLatin1String("packet")) win = new PacketMakerDialog(nullptr);
+            if (which == QLatin1String("compare")) {
+                // Two locos' worth of real traffic, so both panes have a tab.
+                qint64 ms = 1782558147000LL;
+                for (int i = 0; i < lines.size(); ++i)
+                    disp.ingestLocal(i % 2 ? 21 : 81, 1, lines.at(i).toUtf8(), ms + i * 137, QString());
+                disp.drainNow();
+                win = new CompareWindow(&disp, nullptr);
+            }
             if (!win) return 2;
             win->resize(1100, 720);
             win->show();

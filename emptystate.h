@@ -40,6 +40,12 @@ void attach(QAbstractItemView *view, const QString &message);
 // each time the view becomes empty.
 void attach(QAbstractItemView *view, std::function<QString()> provider);
 
+// Re-check after the view is given a different model. The overlay follows
+// its model's row signals, but QAbstractItemView::setModel() emits none, so
+// a view rebound to a model that already has rows kept saying "Pick a
+// source" over them (Compare window, session 129). No-op without an overlay.
+void refresh(QAbstractItemView *view);
+
 // The message currently shown, or empty if the view has no overlay.
 // Exists for the tests: the whole point is WHICH sentence appears, and a
 // test that could only check "something is there" would not catch a view

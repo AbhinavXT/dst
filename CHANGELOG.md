@@ -11,6 +11,57 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-129"></a>
+## Session 129 — UI revamp, tool windows 5: the Compare window
+
+- **"Pick a source for this pane." sat over full tables.** The overlay
+  follows its model's row signals, but `setModel()` emits none, so a pane
+  bound to a source that already had rows kept the overlay on top of them.
+  This is what the operator saw every time the window opened. The new
+  `EmptyState::refresh(view)` is called wherever Compare changes a pane's
+  model. The log tabs set the model before attaching the overlay, so they
+  never had this bug.
+- **The panes get the height.** The panes and the selected row's details
+  share one vertical splitter, 3 : 2 in favour of the panes. Before, the
+  details had a fixed 280-px cap and a 252-px floor, and at 720 px the
+  panes got 264. Now they get 376, and the split can be dragged.
+- **No box round boxes.** The raw-bytes panel draws its own "Header" and
+  "Raw bytes" boxes, which sat inside a "Raw bytes for selection" box. Both
+  details now have section labels: "Raw bytes of the selected row",
+  "Decoded fields of the selected row".
+
+Left as it is, on purpose: the panes' columns. Each pane shows one
+source, so the Source and Name columns repeat one value on every row. In a
+half-width pane they squeeze Message. But "hidden columns are the
+setting's business, not the pane's" is a deliberate earlier decision,
+pinned by `test_comparetools`. Hiding them is a change for Abhinav to
+decide, not part of a layout pass. View's column settings can already hide
+them everywhere.
+
+**Layout audit:** a dialog's menu bar, placed by `QLayout::setMenuBar()`,
+is no longer reported as loose.
+
+**Screenshot harness:** `SHOT_WINDOW=compare` (real traffic as two
+sources).
+
+Tests: `test_session129`, 14 checks:
+
+- `EmptyState::refresh` on a rebound, an unbound and a bare view;
+- the window fed 200 real frames as two sources: no overlay over rows,
+  Message shown, panes taller than the details;
+- no outer box;
+- fits 1366 × 768;
+- layout audit.
+
+Files: `emptystate.h/.cpp`, `comparewindow.cpp`, `tests/layoutaudit.h`,
+`tests/screenshot_main.cpp`; `tests/test_session129.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+178 suites / 5537 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-128"></a>
 ## Session 128 — UI revamp, tool windows 4: Packet Maker (finished)
 

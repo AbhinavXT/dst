@@ -131,6 +131,11 @@ void attach(QAbstractItemView *view, std::function<QString()> provider)
     o->refresh();
 }
 
+void refresh(QAbstractItemView *view)
+{
+    if (Overlay *o = existing(view)) { o->refresh(); }
+}
+
 QString message(const QAbstractItemView *view)
 {
     const Overlay *o = existing(view);

@@ -7,6 +7,7 @@
 #include "gototimestampdialog.h"
 #include "findbar.h"
 #include "uicolors.h"
+#include "uistyle.h"
 #include "windowgeometry.h"
 
 #include "logmodel.h"
@@ -109,8 +110,14 @@ CompareWindow::CompareWindow(MessageDispatcher *dispatcher,
     }
 
     // ---- Splitter (panes go here) ------------------------------------
+    // Panes above, the selected frame's bytes and fields below, in one
+    // vertical splitter (session 129): the details had a fixed 280-px cap
+    // yet a 252-px floor, and the panes got what was left (264 px at 720).
+    auto *vsplit = new QSplitter(Qt::Vertical);
+    vsplit->setChildrenCollapsible(false);
     m_splitter = new QSplitter(Qt::Horizontal);
-    root->addWidget(m_splitter, 1);
+    vsplit->addWidget(m_splitter);
+    root->addWidget(vsplit, 1);
 
     // ---- Raw bytes and decoded fields under the splitter -------------
     //
@@ -121,19 +128,26 @@ CompareWindow::CompareWindow(MessageDispatcher *dispatcher,
     {
         auto *bottom = new QSplitter(Qt::Horizontal);
 
-        auto *rawGrp = new QGroupBox(tr("Raw bytes for selection"));
-        auto *rawLayout = new QVBoxLayout(rawGrp);
+        // Section labels, not boxes: the raw-bytes panel draws its own
+        // Header and Raw bytes boxes, and a box round them was a box of
+        // boxes (session 129).
+        auto section = [](const QString &title, QWidget *body) {
+            auto *w = new QWidget;
+            auto *l = new QVBoxLayout(w);
+            l->setContentsMargins(0, UiStyle::space(2), 0, 0);
+            auto *label = new QLabel(title);
+            UiStyle::makeSectionLabel(label);
+            l->addWidget(label);
+            l->addWidget(body, 1);
+            return w;
+        };
         m_rawPanel = new RawBytesPanel;
         m_rawPanel->setNameMap(m_names);
-        rawLayout->addWidget(m_rawPanel);
-        bottom->addWidget(rawGrp);
+        bottom->addWidget(section(tr("Raw bytes of the selected row"), m_rawPanel));
 
-        auto *fldGrp = new QGroupBox(tr("Decoded fields for selection"));
-        auto *fldLayout = new QVBoxLayout(fldGrp);
         m_fieldPanel = new FieldInspector;
         m_fieldPanel->setDecoder(&kavachSchema());
-        fldLayout->addWidget(m_fieldPanel);
-        bottom->addWidget(fldGrp);
+        bottom->addWidget(section(tr("Decoded fields of the selected row"), m_fieldPanel));
 
         // The inspector's byte highlight writes into the hex dump beside it,
         // exactly as in the main window.
@@ -160,8 +174,10 @@ CompareWindow::CompareWindow(MessageDispatcher *dispatcher,
                         field, i >= 0 ? m_panes.at(i).currentKey : QString());
                 });
 
-        bottom->setMaximumHeight(280);
-        root->addWidget(bottom);
+        vsplit->addWidget(bottom);
+        vsplit->setStretchFactor(0, 3);
+        vsplit->setStretchFactor(1, 2);
+        vsplit->setSizes({ 600, 400 });
     }
 
     // ---- Initial state: 2 panes (matches old default) ----------------
@@ -816,6 +832,7 @@ void CompareWindow::onPaneSourceChanged(int paneIndex, int comboIndex)
     if (comboIndex < 0) {
         p.currentKey.clear();
         p.view->setModel(nullptr);
+        EmptyState::refresh(p.view);
         return;
     }
     p.currentKey = p.sourceBox->itemData(comboIndex).toString();
@@ -832,6 +849,7 @@ void CompareWindow::rebindPane(int paneIndex)
     if (!m) return;
 
     p.view->setModel(m);
+    EmptyState::refresh(p.view);   // setModel() emits no row signal to hide it
 
     // Re-connect scroll-bar and selection signals. setModel() invalidates
     // the previous selectionModel(), so connections to it are gone — we

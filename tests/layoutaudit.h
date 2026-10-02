@@ -17,6 +17,9 @@ namespace LayoutAudit {
 inline void collect(QLayout *l, QSet<QWidget *> *managed)
 {
     if (!l) return;
+    // A dialog's menu bar is placed by QLayout::setMenuBar(), outside the
+    // layout's items (session 129: the Compare window).
+    if (QWidget *bar = l->menuBar()) managed->insert(bar);
     for (int i = 0; i < l->count(); ++i) {
         QLayoutItem *it = l->itemAt(i);
         if (QWidget *w = it->widget()) managed->insert(w);
