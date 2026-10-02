@@ -11,6 +11,48 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-140"></a>
+## Session 140 — UI revamp, tool windows 17: Search recorded sessions
+
+- **Query and Search share one row; the dates and filters sit compact on
+  the next.** In one grid, the From box shared the query's stretching
+  column and ran across half the window.
+- **Cancel appears in Search's place while a search runs.** The rest of
+  the time it was a disabled, full-width bar under the form. The
+  progress bar still shows only while searching.
+- **The columns are measured to what they hold.** At 160 px the Time
+  column read "2026-10-02 …", and the "Source" header was cut. Headers
+  align left.
+- **The status reads as English:** "15 hits from 400 records across 1
+  file", "Searching 3 files…", "Cancelled after … — 2 hits so far" (was
+  "hit(s)", "record(s)", "file(s)").
+
+Tests: `test_session140`, 17 checks. They run a real search over a
+fixture archive: a .dlr dated today whose records are 200 real capture
+lines, under a temporary disk-log root, with the app stylesheet applied.
+
+- idle, Cancel takes no room;
+- the date boxes are a date's width;
+- the result text;
+- back to Search when done;
+- the whole time and every header fit, and headers align left;
+- fits;
+- layout audit.
+
+`archivesearch` passes unchanged.
+
+**Screenshot harness:** `SHOT_WINDOW=archive` (writes the same fixture
+and searches for @lsrp).
+
+Files: `archivesearchwindow.cpp`, `tests/screenshot_main.cpp`,
+`tests/test_session140.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+189 suites / 5755 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-139"></a>
 ## Session 139 — UI revamp, tool windows 16: the Sub-packet window
 

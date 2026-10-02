@@ -42,6 +42,11 @@
 #include "decodeworkbench.h"
 #include "framediffwindow.h"
 #include "subpacketwindow.h"
+#include "archivesearchwindow.h"
+#include "colorrules.h"
+#include "sessionfile.h"
+#include "querylineedit.h"
+#include <QPushButton>
 #include "packetbuilder.h"
 #include <QDir>
 #include <QTemporaryDir>
@@ -285,6 +290,44 @@ int main(int argc, char **argv)
                 subs.push_back(e);
                 auto *w = new SubPacketWindow(nullptr);
                 w->setTarget(&subBuilder.encoder(), QStringLiteral("slrp"), &subs, 0);
+                win = w;
+            }
+            static ColorRules archiveRules;
+            if (which == QLatin1String("archive")) {
+                // Real capture lines as the records of a .dlr dated today,
+                // under a temporary disk-log root; then a search for @lsrp.
+                const QString day = QDir(flashDir.path()).filePath(QDate::currentDate().toString(QStringLiteral("yyyy-MM-dd")));
+                QDir().mkpath(day);
+                QFile dlr(QDir(day).filePath(QStringLiteral("21_1.dlr")));
+                if (dlr.open(QIODevice::WriteOnly)) {
+                    const qint64 start = QDateTime(QDate::currentDate(), QTime(14, 2, 26)).toMSecsSinceEpoch();
+                    SessionFile::FileHeader h;
+                    h.createdMs = start; h.sourceId = 21; h.kvchId = 1;
+                    dlr.write(SessionFile::encodeHeader(h));
+                    for (int i = 0; i < lines.size(); ++i) {
+                        const QByteArray body = lines.at(i).toUtf8();
+                        QByteArray wire;
+                        wire.append(char(21)); wire.append(char(101)); wire.append(char(7));
+                        wire.append(char(body.size() & 0xFF)); wire.append(char(body.size() >> 8));
+                        wire.append(char(1)); wire.append(char(0));
+                        wire.append(body);
+                        dlr.write(SessionFile::encodeRecord(start + i * 137, wire));
+                    }
+                    dlr.close();
+                }
+                const QString savedRoot = Settings::diskLogRoot();
+                Settings::setDiskLogRoot(flashDir.path());
+                auto *w = new ArchiveSearchWindow(&archiveRules, &names, nullptr);
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
+                w->resize(1100, 720);
+                w->show();
+                if (auto *q = w->findChild<QueryLineEdit *>()) q->setText(QStringLiteral("@lsrp"));
+                for (QPushButton *b : w->findChildren<QPushButton *>())
+                    if (b->text() == QLatin1String("Search")) b->click();
+                QElapsedTimer t;
+                t.start();
+                while (t.elapsed() < 3000) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+                Settings::setDiskLogRoot(savedRoot);
                 win = w;
             }
             if (!win) return 2;

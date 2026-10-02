@@ -12,6 +12,7 @@
 #include <QCloseEvent>
 #include <QCheckBox>
 #include <QDateEdit>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QFileInfo>
 #include <QGridLayout>
@@ -24,6 +25,15 @@
 #include <QPushButton>
 #include <QTableWidget>
 #include <QVBoxLayout>
+
+namespace {
+// "1 file" / "3 files" (session 140: the status read "15 hit(s) from 400
+// record(s) across 1 file(s)").
+QString countOf(int n, const char *one, const char *many)
+{
+    return QStringLiteral("%1 %2").arg(n).arg(QCoreApplication::translate("ArchiveSearchWindow", n == 1 ? one : many));
+}
+}  // namespace
 
 ArchiveSearchWindow::ArchiveSearchWindow(const ColorRules *rules,
                                          const NameMap    *names,
@@ -75,17 +85,28 @@ ArchiveSearchWindow::ArchiveSearchWindow(const ColorRules *rules,
     m_cancel = new QPushButton(tr("Cancel"));
     m_cancel->setEnabled(false);
 
-    auto *grid = new QGridLayout;
-    grid->addWidget(new QLabel(tr("Query:")), 0, 0);
-    grid->addWidget(m_query, 0, 1, 1, 5);
-    grid->addWidget(new QLabel(tr("From:")), 1, 0);
-    grid->addWidget(m_from, 1, 1);
-    grid->addWidget(new QLabel(tr("To:")), 1, 2);
-    grid->addWidget(m_to, 1, 3);
-    grid->addWidget(m_allDates, 1, 4);
-    grid->addWidget(m_capOnly, 2, 1, 1, 3);
-    grid->addWidget(m_go, 1, 5);
-    grid->setColumnStretch(1, 1);
+    // Query and Search on one row, the dates and filters compact on the
+    // next (session 140). In one grid the From box shared the query's
+    // stretching column and ran across half the window.
+    auto *queryRow = new QHBoxLayout;
+    queryRow->addWidget(new QLabel(tr("Query:")));
+    queryRow->addWidget(m_query, 1);
+    queryRow->addWidget(m_go);
+    queryRow->addWidget(m_cancel);
+    auto *dateRow = new QHBoxLayout;
+    dateRow->setSpacing(8);
+    dateRow->addWidget(new QLabel(tr("From:")));
+    dateRow->addWidget(m_from);
+    dateRow->addWidget(new QLabel(tr("To:")));
+    dateRow->addWidget(m_to);
+    dateRow->addSpacing(8);
+    dateRow->addWidget(m_allDates);
+    dateRow->addSpacing(8);
+    dateRow->addWidget(m_capOnly);
+    dateRow->addStretch(1);
+    // Cancel replaces Search while a search runs, rather than a disabled
+    // full-width bar under the form the rest of the time.
+    m_cancel->setVisible(false);
 
     m_progress = new QProgressBar;
     m_progress->setVisible(false);
@@ -99,22 +120,33 @@ ArchiveSearchWindow::ArchiveSearchWindow(const ColorRules *rules,
     m_results->setAlternatingRowColors(true);
     m_results->verticalHeader()->setVisible(false);
     m_results->horizontalHeader()->setStretchLastSection(false);
-    m_results->setColumnWidth(0, 160);
-    m_results->setColumnWidth(1,  70);
-    m_results->setColumnWidth(2,  50);
-    m_results->setColumnWidth(3, 460);
+    // Measured to what they hold (session 140): at 160 px the time read
+    // "2026-10-02 …" and the header "Source" was cut.
+    {
+        m_results->setObjectName(QStringLiteral("archiveResults"));
+        m_results->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        const QFontMetrics fm(m_results->font());
+        QFont hf = m_results->horizontalHeader()->font();
+        hf.setWeight(QFont::DemiBold);
+        const QFontMetrics hm(hf);
+        auto fit = [&](int col, const QString &sample) {
+            const QString head = m_results->horizontalHeaderItem(col)->text();
+            m_results->setColumnWidth(col, qMax(fm.horizontalAdvance(sample) + 20, hm.horizontalAdvance(head) + 28));
+        };
+        fit(0, QStringLiteral("8888-88-88 88:88:88.888"));
+        fit(1, QStringLiteral("888_888"));
+        fit(2, QStringLiteral("\u25B2 WARN"));
+        fit(4, QStringLiteral("888_8888.dlr"));
+    }
     m_results->horizontalHeader()->setSectionResizeMode(3, QHeaderView::Stretch);
 
     m_status = new StatusLine;
     m_status->state(tr("Enter a query and press Search."));
 
-    auto *buttons = new QHBoxLayout;
-    buttons->addWidget(m_progress, 1);
-    buttons->addWidget(m_cancel);
-
     auto *root = new QVBoxLayout(this);
-    root->addLayout(grid);
-    root->addLayout(buttons);
+    root->addLayout(queryRow);
+    root->addLayout(dateRow);
+    root->addWidget(m_progress);   // shown only while searching
     root->addWidget(m_results, 1);
     root->addWidget(m_status);
 
@@ -142,6 +174,8 @@ void ArchiveSearchWindow::setBusy(bool busy)
 {
     m_go->setEnabled(!busy);
     m_cancel->setEnabled(busy);
+    m_go->setVisible(!busy);
+    m_cancel->setVisible(busy);
     m_query->setEnabled(!busy);
     m_progress->setVisible(busy);
 }
@@ -177,7 +211,7 @@ void ArchiveSearchWindow::startSearch()
     m_hits.clear();
     m_progress->setRange(0, files.size());
     m_progress->setValue(0);
-    m_status->say(tr("Searching %1 file(s)…").arg(files.size()));
+    m_status->say(tr("Searching %1…").arg(countOf(files.size(), "file", "files")));
     setBusy(true);
 
     // The rules are COPIED into the worker by its constructor; nothing in
@@ -240,27 +274,30 @@ void ArchiveSearchWindow::onFinished(ArchiveScanResult result)
 
     QString msg;
     if (result.cancelled) {
-        msg = tr("Cancelled after %1 record(s) in %2 file(s) — %3 hit(s) so far.")
-                  .arg(result.recordsScanned).arg(result.filesScanned)
-                  .arg(m_hits.size());
+        msg = tr("Cancelled after %1 in %2 — %3 so far.")
+                  .arg(countOf(result.recordsScanned, "record", "records"),
+                       countOf(result.filesScanned, "file", "files"),
+                       countOf(m_hits.size(), "hit", "hits"));
     } else if (m_hits.isEmpty()) {
         msg = result.recordsScanned == 0
                   ? tr("The selected sessions contain no records. Raw capture "
                        "must be enabled for .dlr files to hold anything.")
-                  : tr("No matches among %1 record(s) in %2 file(s). Widen the "
+                  : tr("No matches among %1 in %2. Widen the "
                        "date range, or check the query.")
-                        .arg(result.recordsScanned).arg(result.filesScanned);
+                        .arg(countOf(result.recordsScanned, "record", "records"),
+                             countOf(result.filesScanned, "file", "files"));
     } else {
-        msg = tr("%1 hit(s) from %2 record(s) across %3 file(s).")
-                  .arg(m_hits.size()).arg(result.recordsScanned)
-                  .arg(result.filesScanned);
+        msg = tr("%1 from %2 across %3.")
+                  .arg(countOf(m_hits.size(), "hit", "hits"),
+                       countOf(result.recordsScanned, "record", "records"),
+                       countOf(result.filesScanned, "file", "files"));
     }
     if (result.hitCap) {
         msg += tr("  Stopped at the %1-result cap — narrow the query or the "
                   "date range.").arg(kMaxHits);
     }
     if (result.filesUnreadable > 0) {
-        msg += tr("  %1 file(s) could not be read.").arg(result.filesUnreadable);
+        msg += tr("  %1 could not be read.").arg(countOf(result.filesUnreadable, "file", "files"));
     }
     if (!m_hits.isEmpty()) {
         msg += tr("  Double-click a row to open its session.");
