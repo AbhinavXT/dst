@@ -161,8 +161,8 @@ TEST_SUITE(comparerowmenu)
 
     // Two sources, created BEFORE the window: a pane binds nothing until a
     // source exists to pick, which is also the real order.
-    LogModel *m21 = dispatcher.modelForKey(QStringLiteral("21_1"));
-    LogModel *m22 = dispatcher.modelForKey(QStringLiteral("22_1"));
+    LogModel *m21 = dispatcher.ensureModel(QStringLiteral("21_1"));
+    LogModel *m22 = dispatcher.ensureModel(QStringLiteral("22_1"));
     CHECK(m21 && m22, "two sources exist to compare");
     m21->appendEntries({ mk(1000), mk(2000) });
     m22->appendEntries({ mk(1500), mk(2500) });
@@ -341,7 +341,7 @@ TEST_SUITE(comparerowmenu)
     // ---- a store that was never supplied disables rather than misleads -----
     {
         MessageDispatcher d2;
-        LogModel *m = d2.modelForKey(QStringLiteral("21_1"));
+        LogModel *m = d2.ensureModel(QStringLiteral("21_1"));
         m->appendEntries({ mk(1000) });
         CompareWindow bare(&d2, &names);   // no setBookmarks
         auto *bm2 = bare.paneView(0)

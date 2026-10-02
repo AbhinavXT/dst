@@ -42,7 +42,12 @@ void MessageDispatcher::attachReceiver(UDPCommunication *receiver)
             Qt::QueuedConnection);
 }
 
-LogModel *MessageDispatcher::modelForKey(const QString &tabKey, bool *createdOut)
+LogModel *MessageDispatcher::modelForKey(const QString &tabKey) const
+{
+    return m_models.value(tabKey, nullptr);
+}
+
+LogModel *MessageDispatcher::ensureModel(const QString &tabKey, bool *createdOut)
 {
     auto it = m_models.constFind(tabKey);
     if (it != m_models.constEnd()) {
@@ -325,7 +330,7 @@ void MessageDispatcher::drainBatch()
             // creates the model on first sight overall, and returns null if
             // we're at the tab ceiling — in which case drop the entry.
             bool created = false;
-            if (!modelForKey(key, &created)) continue;
+            if (!ensureModel(key, &created)) continue;
             if (created) newTabs.append(key);
             bucket = byKey.insert(key, QVector<LogEntryPtr>());
         }

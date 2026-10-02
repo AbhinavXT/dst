@@ -194,8 +194,8 @@ TEST_SUITE(session98)
     // ---- The window: picks sources via the dispatcher, builds, saves -------------------
     {
         MessageDispatcher dispatcher;
-        LogModel *ma = dispatcher.modelForKey(QStringLiteral("1_1"));
-        LogModel *mb = dispatcher.modelForKey(QStringLiteral("2_1"));
+        LogModel *ma = dispatcher.ensureModel(QStringLiteral("1_1"));
+        LogModel *mb = dispatcher.ensureModel(QStringLiteral("2_1"));
         QVector<LogEntryPtr> va, vb;
         for (int i = 0; i < 10; ++i) {
             const qint64 ms = t0 + i * 1000;

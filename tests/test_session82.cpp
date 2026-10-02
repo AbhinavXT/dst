@@ -404,8 +404,8 @@ TEST_SUITE(session82)
         CHECK(FindBar::toLogQuery(M::Extended, QStringLiteral("a\\tb")) == QStringLiteral("\"a\tb\""), "extended is unescaped first");
 
         MessageDispatcher dispatcher;
-        LogModel *a = dispatcher.modelForKey(QStringLiteral("21_1"));
-        LogModel *b = dispatcher.modelForKey(QStringLiteral("81_1"));
+        LogModel *a = dispatcher.ensureModel(QStringLiteral("21_1"));
+        LogModel *b = dispatcher.ensureModel(QStringLiteral("81_1"));
         a->appendEntries({ entry(QStringLiteral("needle one"), 1000), entry(QStringLiteral("hay"), 2000),
                            entry(QStringLiteral("needle three"), 5000) });
         b->appendEntries({ entry(QStringLiteral("needle two"), 3000) });

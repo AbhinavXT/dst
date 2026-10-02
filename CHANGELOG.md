@@ -11,6 +11,62 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-112"></a>
+## Session 112 — Dispatcher: a lookup that hid a source's tab; NULs checked
+
+Items 1 and 2 of the review list that followed the serial work.
+
+### A lookup that created models, and so hid tabs (a real bug)
+
+`MessageDispatcher::modelForKey()` created a model on a miss. A model made
+by a lookup is one that ingest later finds already there, so `created`
+comes back false and `tabRequested` never fires. MainWindow, with no tab
+for that key, returns early. **That source's traffic was written to disk
+but never shown.**
+
+It took very little to trigger. Bookmarks persist across sessions, and
+removing one (Bookmarks ▸ Remove) for a source not yet heard from today
+did a lookup on its key. When that source's traffic arrived, its tab never
+appeared.
+
+**Fix:** `modelForKey()` is now a pure, const lookup that returns null for
+an unseen source. `ensureModel()` creates. It is used by ingest, by
+`onTabRequested` (restoring a tab at start-up, before its traffic; that is
+the tab UI itself, so nothing waits on an announcement), and by test
+fixtures. Every other production caller was read: each acts on a tab or
+source that already exists.
+
+The menu audit caught the one legitimate creator on the first gate run:
+restoring saved tabs.
+
+### NULs on the way into a tab (checked, not a bug)
+
+After patch 107 found Qt 5's `fromUtf8(QByteArray)` stopping at a NUL in
+the terminal, the console path was checked as well. `buildEntry` converts
+with an explicit length, so an embedded NUL does not cut a line short.
+Only trailing NUL padding is stripped, as designed, and the raw bytes keep
+everything. A test now holds that in place.
+
+Files: `messagedispatcher.h/.cpp`, `mainwindow_tabs.cpp`; test fixtures in
+`test_comparetools`, `test_comparefind`, `test_session82`, `test_session98`
+now call `ensureModel`.
+
+### Tests
+
+`tests/test_session112.cpp`, 11 checks, with the real `@lsrp` line from
+`replay/`:
+
+- a lookup finds nothing and makes nothing;
+- the source's first line then **announces its tab** (before: swallowed);
+- the same model on every lookup; `ensureModel` finds or makes;
+- an embedded NUL keeps the full length and the tail; trailing padding is
+  stripped; raw bytes are intact.
+
+Gate: 11/11 validators, `dltests` 168 suites / 5364 checks, menu audit,
+smoke. All green.
+
+---
+
 <a id="session-111"></a>
 ## Session 111 — Serial: find the baud rate
 

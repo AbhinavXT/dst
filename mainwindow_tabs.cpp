@@ -127,7 +127,10 @@ void MainWindow::buildOrShowTab(const QString &tabKey,
         }
         return;
     }
-    LogModel *model = m_dispatcher->modelForKey(tabKey);
+    // Creates when needed (session 112): a tab restored at start-up comes
+    // before its source's traffic. Fine here, unlike in a mere lookup —
+    // this IS the tab UI, so nothing waits on an announcement.
+    LogModel *model = m_dispatcher->ensureModel(tabKey);
     if (!model) return;
 
     // Per-tab filter bar — owns its proxy model.

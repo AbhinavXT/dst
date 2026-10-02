@@ -102,14 +102,22 @@ public:
     void setTheme(Theme t);
     Theme theme() const { return m_theme; }
 
-    // Look up (or create) the model for a given (source, kvch) pair. The
-    // dispatcher returns the same pointer for the same key on every call.
-    // If `createdOut` is non-null, it's set to true when this call created
-    // a new model, false when an existing one was returned.
+    // The model for a (source, kvch) pair, or NULLPTR when that source has
+    // not been seen. A LOOKUP: it never creates one (session 112).
     //
-    // Returns NULLPTR when the key is new AND the tab ceiling has been hit.
-    // All existing call sites already null-check.
-    LogModel *modelForKey(const QString &tabKey, bool *createdOut = nullptr);
+    // It used to create on a miss. A model made by a lookup is a model
+    // ingest then finds already there, so it never announced the tab
+    // (tabRequested fires only for a model ingest itself creates) and
+    // MainWindow, with no tab for the key, showed none of that source's
+    // traffic — still written to disk, never on screen. Removing a
+    // bookmark from an earlier session, for a source not yet heard from
+    // today, was enough.
+    LogModel *modelForKey(const QString &tabKey) const;
+
+    // Look up, or create. Ingest uses it, and tests building fixtures.
+    // `createdOut` (optional) says whether this call made it. NULLPTR when
+    // the key is new AND the tab ceiling has been hit.
+    LogModel *ensureModel(const QString &tabKey, bool *createdOut = nullptr);
 
     // Friendly name for the given key (or the raw key if no mapping).
     QString friendlyNameFor(const QString &tabKey) const;

@@ -57,8 +57,8 @@ TEST_SUITE(comparefind)
     // created before the window: this reproduces the real order, where the
     // find bar is built against a view that has NO model yet and is given one
     // afterwards.
-    LogModel *m21 = dispatcher.modelForKey(QStringLiteral("21_1"));
-    LogModel *m33 = dispatcher.modelForKey(QStringLiteral("33_1"));
+    LogModel *m21 = dispatcher.ensureModel(QStringLiteral("21_1"));
+    LogModel *m33 = dispatcher.ensureModel(QStringLiteral("33_1"));
     CHECK(m21 && m33, "two sources exist to compare");
     m21->appendEntries({ mk(QStringLiteral("STN_ID 4 upcoming"), 1000),
                          mk(QStringLiteral("quiet"),             2000),
