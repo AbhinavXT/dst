@@ -16,6 +16,10 @@
 #  compiling the application sources again.
 # =============================================================================
 TARGET   = menuaudit
+# A console program, as dltests is (session 116). As a Windows GUI-subsystem
+# exe its exit code was never reported to the CI shell, so a passing audit
+# read as a failure there.
+CONFIG += console
 DEFINES += QT_NO_DEBUG_OUTPUT QT_DEPRECATED_WARNINGS
 TEMPLATE = app
 OBJECTS_DIR = $$OUT_PWD/.obj-$$TARGET
