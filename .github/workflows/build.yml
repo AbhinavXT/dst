@@ -74,6 +74,8 @@ jobs:
           & $exe.FullName
           $rc = $LASTEXITCODE
           Pop-Location
+          # As hex too: a crash shows as an NTSTATUS (0xC0000005 = access violation).
+          Write-Host ("menuaudit exit code: {0} (0x{1:X8})" -f $rc, $rc)
           if ($rc -ne 0) { throw "menuaudit failed" }
 
       - name: The program is where the docs say
