@@ -125,6 +125,12 @@ void makeMono(QWidget *w);
 // Spacing scale, in px: step 1 = 4, 2 = 8, 3 = 12, 4 = 16, 6 = 24.
 int space(int step);
 
+// A duration as people read one, bounded in width (session 124): "850 ms",
+// "4.2 s", "12m 05s", "14h 03m", "96d 04h". Raw seconds ("8369761 s") was
+// how three windows said "96 days", and the widest of them set a window's
+// minimum width. Negative: "--".
+QString durationText(qint64 ms);
+
 }  // namespace UiStyle
 
 // Icons drawn from paths in the active theme's colours (no image files, no

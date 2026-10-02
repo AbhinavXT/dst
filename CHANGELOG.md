@@ -11,6 +11,52 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-124"></a>
+## Session 124 — UI revamp, tool windows 3: the Live Loco Console
+
+### What the operator sees (Tools ▸ Monitor ▸ Live Loco Console)
+
+- **Durations as people read them**: "96d 20h", not "8369761 s"; also
+  "12m 05s", "4.2 s", "850 ms". This applies to the heartbeat lights, the
+  Link table's *Last seen* and the window title's "offline …". The format is
+  now one shared function, `UiStyle::durationText()`, rather than one per
+  window.
+- **Heartbeat lights wrap** onto as many lines as they need. They used to
+  run off the right edge ("dlsys silent" was cut in half).
+- **The window fits a laptop.** One row carried the readouts and every
+  action, and its minimum width came to **1,781 px**, wider than a 1366-px
+  laptop screen. The readouts and the actions are now two rows, and the
+  console opens at the size asked for.
+- **CRC and seq are chips.** "CRC 195/204 ok" was painted red: the colour
+  said fail while the sentence said ok. It now reads "✕ CRC 9 failed of
+  204" in the fail tone, or "✓ CRC 204/204" in ok, so words and tone agree.
+  Seq turns warn when there are gaps. RTC and rate are in the mono face.
+
+The DMI panel itself (its own window, and inside the cab view) is **not**
+restyled, deliberately: it imitates the real LP-OCIP display, what the loco
+pilot saw, and must stay faithful to it.
+
+Files: `uistyle.h/.cpp` (`durationText`), `lococonsolewindow.cpp`,
+`cabpanel.h/.cpp` (`LinkLights` wraps: height-for-width layout);
+`tests/screenshot_main.cpp` (`SHOT_WINDOW=loco|dmi`, traffic fed after the
+window exists, as it would arrive).
+
+### Tests
+
+`tests/test_session124.cpp`, 13 checks:
+
+- each duration format, including the "96d 20h" that "8369761 s" meant;
+- the lights wrap when narrow and never set a window's minimum width;
+- on 400 real lines from `replay/`: the console's minimum width fits
+  1366 px; no orphans; CRC is a chip whose words and tone agree.
+
+Existing Loco Console and live-fields suites pass unchanged.
+
+Gate: 11/11 validators, `dltests` 176 suites / 5491 checks, menu audit
+157, smoke. All green.
+
+---
+
 <a id="session-123"></a>
 ## Session 123 — UI revamp, tool windows 2: Search all sources
 

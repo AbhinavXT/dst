@@ -294,6 +294,17 @@ void makeMono(QWidget *w)
 
 int space(int step) { return 4 * qMax(0, step); }
 
+QString durationText(qint64 ms)
+{
+    if (ms < 0) return QStringLiteral("--");
+    if (ms < 1000) return QStringLiteral("%1 ms").arg(ms);
+    const qint64 s = ms / 1000;
+    if (s < 60) return QStringLiteral("%1 s").arg(ms / 1000.0, 0, 'f', 1);
+    if (s < 3600) return QStringLiteral("%1m %2s").arg(s / 60).arg(s % 60, 2, 10, QLatin1Char('0'));
+    if (s < 86400) return QStringLiteral("%1h %2m").arg(s / 3600).arg((s % 3600) / 60, 2, 10, QLatin1Char('0'));
+    return QStringLiteral("%1d %2h").arg(s / 86400).arg((s % 86400) / 3600, 2, 10, QLatin1Char('0'));
+}
+
 QString sheet()
 {
     const QPalette p = qApp->palette();

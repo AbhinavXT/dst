@@ -177,6 +177,11 @@ void LocoConsoleWindow::buildUi()
     m_lblRate = new QLabel(tr("-- pkt/s"), central);
     m_lblCrc  = new QLabel(tr("CRC --"), central);
     m_lblSeq  = new QLabel(tr("seq --"), central);
+    // Session 124: the readouts in the mono face, CRC and seq as chips.
+    UiStyle::makeMono(m_lblRtc);
+    UiStyle::makeMono(m_lblRate);
+    UiStyle::makeChip(m_lblCrc, UiStyle::Tone::Neutral);
+    UiStyle::makeChip(m_lblSeq, UiStyle::Tone::Neutral);
     top->addWidget(m_lblRtc);
     top->addStretch(1);
     top->addWidget(m_lblRate);
@@ -185,7 +190,13 @@ void LocoConsoleWindow::buildUi()
     top->addSpacing(12);
     top->addWidget(m_lblSeq);
 
-    top->addSpacing(16);
+    // Session 124: the actions on a row of their own. One row of readouts
+    // AND every action set the window's minimum width past 1,700 px, off a
+    // laptop screen. `top` is the readouts row from here on; `actions` is
+    // added under it.
+    QHBoxLayout *readouts = top;
+    top = new QHBoxLayout();
+    top->addStretch(1);
     m_btnRecord = new QPushButton(tr("\u25CF Record"), central);
     m_btnRecord->setToolTip(tr("Record one or more live sources, each to its own .cap file for replay"));
     top->addWidget(m_btnRecord);
@@ -213,6 +224,7 @@ void LocoConsoleWindow::buildUi()
         highlightChanges(QDateTime::currentMSecsSinceEpoch());
     });
 
+    root->addLayout(readouts);
     root->addLayout(top);
     connect(m_selector, qOverload<int>(&QComboBox::currentIndexChanged),
             this,       &LocoConsoleWindow::onSelectionChanged);
@@ -830,9 +842,7 @@ QTableWidget *LocoConsoleWindow::tableForLabel(const QString &label) const
 
 QString LocoConsoleWindow::ageText(qint64 ageMs)
 {
-    if (ageMs < 0)    { return QStringLiteral("--"); }
-    if (ageMs < 1000) { return QStringLiteral("%1 ms").arg(ageMs); }
-    return QStringLiteral("%1 s").arg(ageMs / 1000.0, 0, 'f', 1);
+    return UiStyle::durationText(ageMs);      // one format for durations everywhere (session 124)
 }
 
 void LocoConsoleWindow::refreshHeader(const LocoState &st, qint64 nowMs)
@@ -853,11 +863,16 @@ void LocoConsoleWindow::refreshHeader(const LocoState &st, qint64 nowMs)
     m_lblRate->setText(tr("%1 pkt/s").arg(totalRate, 0, 'f', 0));
 
     const quint64 crcTot = crcOk + crcFail;
-    m_lblCrc->setText(crcTot ? tr("CRC %1/%2 ok").arg(crcOk).arg(crcTot) : tr("CRC --"));
-    m_lblCrc->setStyleSheet(crcFail ? UiColor::errorStyle() : UiColor::okStyle());
+    // Chips by tone (session 124): "CRC 195/204 ok" was painted red, which
+    // said "fail" in a sentence that said "ok". Now the count of failures
+    // is in the words and the tone.
+    m_lblCrc->setText(!crcTot ? tr("CRC --")
+                      : crcFail ? tr("\u2715 CRC %1 failed of %2").arg(crcFail).arg(crcTot)
+                                : tr("\u2713 CRC %1/%2").arg(crcOk).arg(crcTot));
+    UiStyle::setTone(m_lblCrc, !crcTot ? UiStyle::Tone::Neutral : crcFail ? UiStyle::Tone::Fail : UiStyle::Tone::Ok);
 
-    m_lblSeq->setText(tr("seq %1  gaps %2").arg(st.lastSeq).arg(st.seqGaps));
-    m_lblSeq->setStyleSheet(st.seqGaps ? UiColor::warningStyle() : QString());
+    m_lblSeq->setText(tr("seq %1 \u00B7 gaps %2").arg(st.lastSeq).arg(st.seqGaps));
+    UiStyle::setTone(m_lblSeq, st.seqGaps ? UiStyle::Tone::Warn : UiStyle::Tone::Neutral);
 
     const qint64 age = (newestSeen > 0) ? (nowMs - newestSeen) : -1;
     const QString live = (age < 0) ? tr("offline")

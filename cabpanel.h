@@ -105,10 +105,19 @@ public:
     void setBeats(const QVector<Heartbeat> &beats);
     const QVector<Heartbeat> &beats() const { return m_beats; }
     QSize sizeHint() const override;
+    // Session 124: the lights WRAP onto more lines rather than running off
+    // the right edge ("dlsys silent" was cut in half).
+    bool hasHeightForWidth() const override { return true; }
+    int heightForWidth(int w) const override;
+    QSize minimumSizeHint() const override { return QSize(120, lineHeight()); }
 protected:
     void paintEvent(QPaintEvent *) override;
     bool event(QEvent *e) override;   // tooltips per light
 private:
+    int lineHeight() const { return fontMetrics().height() + 10; }
+    QString labelFor(const Heartbeat &b) const;
+    // Where each light goes at width `w`; rows counted into *rows.
+    QVector<QRect> layoutFor(int w, int *rows) const;
     QVector<Heartbeat> m_beats;
     QVector<QRect>     m_rects;
 };

@@ -1,6 +1,7 @@
 #include "cabpanel.h"
 
 #include "uicolors.h"
+#include "uistyle.h"
 
 #include <QHelpEvent>
 #include <QPainter>
@@ -419,7 +420,9 @@ void CabDisplay::paintExtras(QPainter &p)
 
 LinkLights::LinkLights(QWidget *parent) : QWidget(parent)
 {
-    setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    QSizePolicy sp(QSizePolicy::Expanding, QSizePolicy::Preferred);
+    sp.setHeightForWidth(true);                 // wraps: height follows width
+    setSizePolicy(sp);
     UiColor::onThemeChange(this, [this]() { update(); });
 }
 
@@ -430,25 +433,56 @@ void LinkLights::setBeats(const QVector<Heartbeat> &beats)
     update();
 }
 
-QSize LinkLights::sizeHint() const { return QSize(400, fontMetrics().height() + 10); }
+QSize LinkLights::sizeHint() const
+{
+    int rows = 1;
+    layoutFor(qMax(400, width()), &rows);
+    return QSize(400, rows * lineHeight());
+}
+
+QString LinkLights::labelFor(const Heartbeat &b) const
+{
+    return b.state == Heartbeat::State::Silent
+        ? tr("%1 silent %2").arg(b.name, UiStyle::durationText(b.ageMs))
+        : tr("%1 %2/s").arg(b.name).arg(b.rate, 0, 'f', b.rate < 10 ? 1 : 0);
+}
+
+QVector<QRect> LinkLights::layoutFor(int width, int *rows) const
+{
+    QVector<QRect> out;
+    const int lh = lineHeight();
+    int x = 2, y = 0, n = 1;
+    for (const Heartbeat &b : m_beats) {
+        const int w = fontMetrics().horizontalAdvance(labelFor(b)) + 24;
+        if (x > 2 && x + w > width) { x = 2; y += lh; ++n; }   // next line
+        out << QRect(x, y, w, lh);
+        x += w + 6;
+    }
+    if (rows) *rows = n;
+    return out;
+}
+
+int LinkLights::heightForWidth(int w) const
+{
+    int rows = 1;
+    layoutFor(w, &rows);
+    return rows * lineHeight();
+}
 
 void LinkLights::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
-    m_rects.clear();
-    int x = 2;
-    const int h = height();
-    for (const Heartbeat &b : m_beats) {
+    int rows = 1;
+    m_rects = layoutFor(width(), &rows);
+    for (int i = 0; i < m_beats.size() && i < m_rects.size(); ++i) {
+        const Heartbeat &b = m_beats.at(i);
+        const QRect r = m_rects.at(i);
+        const int x = r.x(), w = r.width(), h = r.height();
         const QColor col = b.state == Heartbeat::State::Live ? UiColor::ok()
                          : b.state == Heartbeat::State::Late ? UiColor::warning() : UiColor::muted();
-        const QString label = b.state == Heartbeat::State::Silent
-            ? tr("%1 silent %2 s").arg(b.name).arg(b.ageMs / 1000)
-            : tr("%1 %2/s").arg(b.name).arg(b.rate, 0, 'f', b.rate < 10 ? 1 : 0);
-        const int w = fontMetrics().horizontalAdvance(label) + 24;
-        const QRect r(x, 0, w, h);
-        m_rects << r;
-        const QPointF dot(x + 8, h / 2.0);
+        const QString label = labelFor(b);
+        const QPointF dot(x + 8, r.y() + h / 2.0);
         if (b.pulse) {
             QColor halo = col;
             halo.setAlpha(90);
@@ -460,8 +494,7 @@ void LinkLights::paintEvent(QPaintEvent *)
         p.setBrush(col);
         p.drawEllipse(dot, 4.5, 4.5);
         p.setPen(b.state == Heartbeat::State::Silent ? UiColor::muted() : palette().color(QPalette::Text));
-        p.drawText(QRect(x + 16, 0, w - 16, h), Qt::AlignLeft | Qt::AlignVCenter, label);
-        x += w + 6;
+        p.drawText(QRect(x + 16, r.y(), w - 16, h), Qt::AlignLeft | Qt::AlignVCenter, label);
     }
 }
 

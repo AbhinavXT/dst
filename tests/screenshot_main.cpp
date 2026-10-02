@@ -19,6 +19,8 @@
 #endif
 #include <QPlainTextEdit>
 #include "searchwindow.h"
+#include "lococonsolewindow.h"
+#include "dmipanel.h"
 #include "theme.h"
 #include "uistyle.h"
 #include "settings.h"
@@ -65,6 +67,19 @@ int main(int argc, char **argv)
                 auto *w = new SearchWindow(&disp, nullptr);
                 w->setQueryText(QStringLiteral("@lsrp OR @dmi"), true);
                 win = w;
+            }
+            if (which == QLatin1String("loco") || which == QLatin1String("dmi")) {
+                // Window first: these pick up locos from traffic as it arrives.
+                if (which == QLatin1String("loco")) win = new LocoConsoleWindow(&disp, nullptr);
+                else win = new DmiWindow(&disp, nullptr);
+                win->resize(1100, 720);
+                win->show();
+                qint64 ms = 1782558147000LL;
+                for (int i = 0; i < lines.size(); ++i) {
+                    disp.ingestLocal(21, 1, lines.at(i).toUtf8(), ms + i * 137, QString());
+                    if (i % 50 == 49) { disp.drainNow(); QCoreApplication::processEvents(); }
+                }
+                disp.drainNow();
             }
             if (!win) return 2;
             win->resize(1100, 720);
