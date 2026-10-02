@@ -63,28 +63,16 @@ SOURCES += \
     test_session98.cpp \
     test_session99.cpp \
     test_session100.cpp \
-    test_session101.cpp \
-    test_session102.cpp \
-    test_session103.cpp \
-    test_session104.cpp \
-    test_session105.cpp \
-    test_session106.cpp \
-    test_session107.cpp \
-    test_session108.cpp \
-    test_session109.cpp \
-    test_session110.cpp \
-    test_session111.cpp \
     test_session112.cpp \
     test_session114.cpp \
-    test_session115.cpp \
     test_session117.cpp \
     test_session120.cpp \
     test_session121.cpp \
-    test_session122.cpp \
     test_session123.cpp \
     test_session124.cpp \
     test_session128.cpp \
     test_session129.cpp \
+    test_session130.cpp \
     test_undolog.cpp \
     test_workspacesnapshot.cpp \
     test_settingsbundle.cpp \
@@ -161,7 +149,24 @@ SOURCES += \
     test_tabtags.cpp \
     test_livedata.cpp
 
+# The serial terminal's suites, built only where Qt Serial Port is: a Qt
+# without the module builds the app without the terminal, and these then
+# could not compile (session 130: Qt 6.12 from the online installer, with
+# the module not ticked). 101-111, 115 and 122 had been added outside.
 dl_serial {
-    SOURCES += test_session85.cpp
+    SOURCES += test_session85.cpp \
+               test_session101.cpp \
+               test_session102.cpp \
+               test_session103.cpp \
+               test_session104.cpp \
+               test_session105.cpp \
+               test_session106.cpp \
+               test_session107.cpp \
+               test_session108.cpp \
+               test_session109.cpp \
+               test_session110.cpp \
+               test_session111.cpp \
+               test_session115.cpp \
+               test_session122.cpp
     linux: LIBS += -lutil   # openpty() for the serial end-to-end test
 }

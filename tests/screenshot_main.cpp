@@ -27,6 +27,8 @@
 #include <cstdio>
 #include "packetmakerdialog.h"
 #include "comparewindow.h"
+#include "mergedwindow.h"
+#include "namemap.h"
 #include "theme.h"
 #include "uistyle.h"
 #include "settings.h"
@@ -95,6 +97,17 @@ int main(int argc, char **argv)
                     disp.ingestLocal(i % 2 ? 21 : 81, 1, lines.at(i).toUtf8(), ms + i * 137, QString());
                 disp.drainNow();
                 win = new CompareWindow(&disp, nullptr);
+            }
+            NameMap names;
+            if (which == QLatin1String("merged")) {
+                // Three sources, interleaved: what the window exists for.
+                qint64 ms = 1782558147000LL;
+                for (int i = 0; i < lines.size(); ++i)
+                    disp.ingestLocal(i % 3 == 0 ? 81 : (i % 3 == 1 ? 21 : 22), 1, lines.at(i).toUtf8(), ms + i * 137, QString());
+                disp.drainNow();
+                auto *w = new MergedWindow(&disp, &names, t, 5000, nullptr);
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
+                win = w;
             }
             if (!win) return 2;
             win->resize(1100, 720);

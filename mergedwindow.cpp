@@ -1,11 +1,13 @@
 #include "mergedwindow.h"
 #include "windowgeometry.h"
 
+#include "emptystate.h"
 #include "filterbar.h"
+#include "logtableview.h"
 #include "logmodel.h"
 #include "messagedispatcher.h"
 #include "namemap.h"
-#include "settings.h"
+#include "uicolors.h"
 
 #include <QCloseEvent>
 #include <QCheckBox>
@@ -42,32 +44,23 @@ MergedWindow::MergedWindow(MessageDispatcher *dispatcher,
     m_filterBar->setNameMap(m_names);
 
     m_view = new QTableView;
+    m_view->setObjectName(QStringLiteral("mergedView"));
     m_view->setModel(m_filterBar->proxyModel());
-    m_view->setAlternatingRowColors(true);
-    m_view->setSelectionBehavior(QAbstractItemView::SelectRows);
-    // ExtendedSelection: shift-click a span, ctrl-click to add. Copying a
-    // block of rows into an incident report is the single most common
-    // thing anyone does with this table, and single-selection made it a
-    // row-at-a-time job.
-    //
-    // The raw-bytes and field panels follow the CURRENT row rather than the
-    // selection, so they stay meaningful during a multi-row selection —
-    // "the bytes of these fifty rows" is not a thing they could show.
-    m_view->setSelectionMode(QAbstractItemView::ExtendedSelection);
-    m_view->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
     m_view->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_view->setTextElideMode(Qt::ElideRight);
-    m_view->setWordWrap(Settings::wordWrapFor(Settings::rowDensity()));
-    m_view->verticalHeader()->setVisible(false);
-    m_view->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
-    m_view->verticalHeader()->setDefaultSectionSize(
-        Settings::rowHeightFor(Settings::rowDensity()));
-    m_view->horizontalHeader()->setStretchLastSection(true);
-    m_view->setColumnWidth(LogModel::ColTime,      130);
-    m_view->setColumnWidth(LogModel::ColSource,     70);
-    m_view->setColumnWidth(LogModel::ColFriendly,  140);
-    m_view->setColumnWidth(LogModel::ColDirection,  45);
-    m_view->setColumnWidth(LogModel::ColSeverity,   66);   // fits "✕ ERR"
+    // Session 130: set up like every other log table (logtableview). Until
+    // now this table had its own pixel widths and its own density reading,
+    // so it ignored the operator's hidden columns and stored widths, drew
+    // the Time column in a proportional font, and cut "Time (local)".
+    LogTableView::configure(m_view);
+
+    // An empty table is "nothing has arrived yet" or "the filter hides it
+    // all"; the source model tells them apart, as in the log tabs.
+    LogModel *model = m_model;
+    EmptyState::attach(m_view, [model]() -> QString {
+        if (model->count() == 0)
+            return QObject::tr("Waiting for traffic.\nEvery source's messages appear here, in time order.");
+        return QObject::tr("No rows match the filter.\n%1 message(s) are hidden by it.").arg(model->count());
+    });
 
     m_follow = new QCheckBox(tr("Follow new messages"));
     m_follow->setChecked(true);
@@ -83,7 +76,15 @@ MergedWindow::MergedWindow(MessageDispatcher *dispatcher,
     setCentralWidget(central);
 
     m_count = new QLabel;
+    m_count->setObjectName(QStringLiteral("mergedCount"));
     statusBar()->addWidget(m_count);
+    // How to get from here to the source's own tab, said once, quietly; a
+    // tooltip on the table would cover the rows' own tooltips.
+    auto *hint = new QLabel(tr("Double-click a row to open it in its source's tab"));
+    hint->setObjectName(QStringLiteral("mergedHint"));
+    hint->setStyleSheet(UiColor::mutedStyle());
+    hint->setContentsMargins(12, 0, 0, 0);
+    statusBar()->addWidget(hint, 1);
     statusBar()->addPermanentWidget(m_follow);
 
     if (m_dispatcher) {
@@ -141,9 +142,11 @@ void MergedWindow::onAllEntries(QVector<LogEntryPtr> entries)
         }
     }
 
-    m_count->setText(tr("%1 messages from %2 source(s)")
+    const int sources = m_dispatcher ? m_dispatcher->knownKeys().size() : 0;
+    m_count->setText(tr("%1 messages from %2 %3")
                          .arg(m_model->count())
-                         .arg(m_dispatcher ? m_dispatcher->knownKeys().size() : 0));
+                         .arg(sources)
+                         .arg(sources == 1 ? tr("source") : tr("sources")));
 }
 
 void MergedWindow::onRowActivated()

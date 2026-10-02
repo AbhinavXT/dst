@@ -11,6 +11,65 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-130"></a>
+## Session 130 — UI revamp, tool windows 6: the Merged window
+
+"All sources — chronological" (View ▸ All sources, chronological…, Ctrl+M)
+is one log table, so the pass was about making it behave like the other
+log tables.
+
+- **It follows the log-table settings now.** The table had its own
+  pixel column widths and read only the row density. It ignored the
+  operator's hidden columns and stored widths, drew the Time column in
+  a proportional font, and cut the "Time (local)" header. It is now set
+  up by `LogTableView::configure`, like the log tabs and the Compare
+  panes. That gives the same columns, widths measured to the font, and
+  the mono Time column with the shared prefix muted. As with Compare,
+  the settings are read when the window opens. A window already open
+  does not follow a later View ▸ Columns change.
+- **An empty table says why.** Before traffic arrives it says "Waiting
+  for traffic." If a filter hides every row, it says how many rows the
+  filter hides. Before, both cases showed a bare grid.
+- **The status bar.** "300 messages from 3 sources" (was "source(s)"),
+  then a muted hint: "Double-click a row to open it in its source's
+  tab". Before, nothing in the window mentioned that.
+
+Unchanged: the filter bar, follow mode, priming from the open tabs, and
+double-click to jump.
+
+**Build:** `tests/tests.pro` builds the serial terminal's suites (101–111,
+115, 122) only where Qt Serial Port exists, like suite 85. A Qt without
+the module (Qt 6.12 from the online installer, with the module left
+unticked) could not build the tests before. That Qt was not gated here.
+
+**Screenshot harness:** `SHOT_WINDOW=merged` (real traffic as three
+sources).
+
+Tests: `test_session130`, 21 checks:
+
+- empty, it says it is waiting;
+- 300 real frames from three sources: all in one table, in time order,
+  no overlay over them;
+- a hidden column stays hidden, Message is never hidden;
+- the row height follows the density setting;
+- the Time column has the mono painter, and its header fits;
+- a filter that hides everything says so, and clearing it brings the
+  rows back;
+- the count text and the hint;
+- double-click asks for the row's own tab;
+- a live row arrives;
+- fits 1366 × 768;
+- layout audit.
+
+Files: `mergedwindow.cpp`, `tests/screenshot_main.cpp`,
+`tests/test_session130.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+179 suites / 5558 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-129"></a>
 ## Session 129 — UI revamp, tool windows 5: the Compare window
 
@@ -44,7 +103,7 @@ is no longer reported as loose.
 **Screenshot harness:** `SHOT_WINDOW=compare` (real traffic as two
 sources).
 
-Tests: `test_session129`, 14 checks:
+Tests: `test_session129`, 15 checks:
 
 - `EmptyState::refresh` on a rebound, an unbound and a bare view;
 - the window fed 200 real frames as two sources: no overlay over rows,
