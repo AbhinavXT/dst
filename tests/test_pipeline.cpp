@@ -48,7 +48,7 @@ TEST_SUITE(pipeline)
     QTimer::singleShot(600,[&](){
         CHECK(bound,"UDP socket bound");
         QUdpSocket s;
-        #pragma pack(push, 1)   // portable packing; __attribute__((packed)) is GCC-only (session 115)
+        #pragma pack(push, 1)   // portable packing; __attribute__((packed)) is GCC-only (session 116)
         struct { quint8 src,dst,mid; quint16 len,kv; } h;
         #pragma pack(pop)
         const char* texts[]={"RAD IN Link 1 Error","CAN OUT No Error","RAD OUT ack"};

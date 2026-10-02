@@ -56,7 +56,7 @@
 #include "dmitimetravel.h"
 
 struct FieldRow;
-class LogEntry;
+struct LogEntry;   // a struct: MSVC mangles class and struct differently (session 116)
 class MessageDispatcher;
 class QCheckBox;
 class QPushButton;

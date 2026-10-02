@@ -20,7 +20,7 @@ namespace {
 
 QByteArray frame90(quint8 dst, quint16 len, const QByteArray &body)
 {
-    #pragma pack(push, 1)   // portable packing; __attribute__((packed)) is GCC-only (session 115)
+    #pragma pack(push, 1)   // portable packing; __attribute__((packed)) is GCC-only (session 116)
     struct { quint8 src, dst, mid; quint16 len, kv; } h{ 33, dst, 7, len, 1 };
     #pragma pack(pop)
     return QByteArray(reinterpret_cast<const char *>(&h), 7) + body;

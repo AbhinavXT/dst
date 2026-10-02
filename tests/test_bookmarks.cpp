@@ -96,7 +96,7 @@ TEST_SUITE(bookmarks)
 
     QTimer::singleShot(600,[&](){
         QUdpSocket s;
-        #pragma pack(push, 1)   // portable packing; __attribute__((packed)) is GCC-only (session 115)
+        #pragma pack(push, 1)   // portable packing; __attribute__((packed)) is GCC-only (session 116)
         struct { quint8 a,b,c; quint16 l,k; } h;
         #pragma pack(pop)
         // deliberately alternate sources so a per-key grouping would be visible

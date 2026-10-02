@@ -17,7 +17,7 @@
 // an actual alignment fault on ARM targets. Only the wire structs need it.
 #pragma pack(push, 1)
 // The pragma alone packs these, on GCC, Clang and MSVC alike. They also
-// carried __attribute__((packed)) until session 115 — GCC-only syntax that
+// carried __attribute__((packed)) until session 116 — GCC-only syntax that
 // MSVC rejects outright, which is what the first Windows build since the
 // library split (patch 88) stopped on. The static_assert below proves the
 // 7-byte header on every compiler.

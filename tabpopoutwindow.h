@@ -26,7 +26,7 @@ class MessageDispatcher;
 class QCheckBox;
 class QLabel;
 class QTableView;
-class LogEntry;
+struct LogEntry;   // a struct: MSVC mangles class and struct differently (session 116)
 
 class TabPopoutWindow : public QMainWindow
 {
