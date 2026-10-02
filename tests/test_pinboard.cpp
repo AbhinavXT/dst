@@ -319,8 +319,15 @@ TEST_SUITE(pinboard)
         CHECK(rt.pins().at(0).captype == QStringLiteral("slrp"), "captype survives");
 
         PinBoard old;
-        old.fromStrings({ QStringLiteral("LOCO_MODE\x1F1_1") });
+        // Split literal (session 116): "\x1F1_1" is ONE character, U+01F1 —
+        // \x takes every hex digit after it. Clang took it in a 16-bit
+        // literal, so this "two-part line" was one part and the check below
+        // passed without testing anything; MSVC refused it.
+        old.fromStrings({ QStringLiteral("LOCO_MODE\x1F" "1_1") });
         CHECK(old.count() == 1, "a two-part line from an earlier build loads");
+        CHECK(old.pins().at(0).field == QLatin1String("LOCO_MODE")
+                  && old.pins().at(0).sourceKey == QLatin1String("1_1"),
+              "both parts read: the field and its source");
         CHECK(old.pins().at(0).captype.isEmpty(), "as any packet");
 
         // A hand-edited ini must not produce half a pin.
