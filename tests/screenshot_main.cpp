@@ -55,7 +55,19 @@ int main(int argc, char **argv)
         QElapsedTimer settle;
         settle.start();
         while (settle.elapsed() < 2500) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
-        if (auto *view = w.findChild<QTableView *>()) view->selectRow(3);
+        // The visible log table's row 8 (an @lsrp line in this capture): the
+        // inspector follows the current row.
+        for (QTableView *view : w.findChildren<QTableView *>()) {
+            if (!view->isVisible() || !view->model() || view->model()->rowCount() < 10) continue;
+            for (int r = 0; r < view->model()->rowCount(); ++r) {
+                if (view->model()->index(r, 5).data().toString().startsWith(QLatin1String("@lsrp"))) {
+                    view->setCurrentIndex(view->model()->index(r, 0));
+                    view->selectRow(r);
+                    break;
+                }
+            }
+            break;
+        }
         for (int i = 0; i < 20; ++i) { QCoreApplication::processEvents(); }
         w.grab().save(QStringLiteral("%1/shot_%2.png").arg(dir, ThemeUtil::toString(t)));
     }

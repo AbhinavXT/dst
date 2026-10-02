@@ -74,6 +74,16 @@ public:
     // same field name lives in other packets.
     QString currentCaptype() const;
 
+    // Session 120: the summary card over the table — what the frame is
+    // ("LSRP · 39 bytes"), its CRC, and up to three key values as tiles
+    // ("Loco mode=Trip", "Speed=0 km/h", ...). Readable for tests.
+    QString summaryTitle() const;
+    QStringList summaryTiles() const;
+    // The key values the card looks for, in order: the first three present
+    // in a frame are shown. Matched case-insensitively (the DMI's fields are
+    // lower case).
+    static QStringList keyFields();
+
 public slots:
     void showEntry(const LogEntryPtr &entry);
     void clear();
@@ -115,6 +125,18 @@ private:
     QVector<FieldRow>      m_rows;
 
     StatusLine       *m_status = nullptr;
+    // Session 120: the summary card.
+    QWidget          *m_summary = nullptr;
+    QLabel           *m_summaryTitle = nullptr;
+    QLabel           *m_crcChip = nullptr;
+    QLabel           *m_rejectChip = nullptr;
+    QVector<QLabel *> m_tileValues, m_tileCaptions;
+    void fillSummary(const struct CaptureLine &cap);
+    void fitTiles();
+    int m_tileCount = 0;
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override;
+private:
     QTableWidget *m_table  = nullptr;
     const SessionKeyStore *m_keys = nullptr;   // not owned
 };

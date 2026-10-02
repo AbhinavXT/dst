@@ -46,9 +46,13 @@ QFont monoFont()
     // columns without anything saying so. Fall back by family.
     if (!QFontInfo(font).fixedPitch()) {
         const qreal pt = font.pointSizeF();
+        // Only families that are installed: asking for a missing one makes
+        // Qt build its whole alias table (measured: 136 ms).
+        static const QStringList installed = QFontDatabase().families();
         for (const char *family : { "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Consolas",
                                     "Menlo", "SF Mono", "DejaVu Sans Mono", "Liberation Mono",
                                     "Courier New" }) {
+            if (!installed.contains(QString::fromLatin1(family))) continue;
             QFont candidate(QString::fromLatin1(family));
             if (pt > 0) candidate.setPointSizeF(pt);
             if (QFontInfo(candidate).fixedPitch()) { font = candidate; break; }

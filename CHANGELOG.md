@@ -11,6 +11,73 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-120"></a>
+## Session 120 — UI revamp, step 4: the decoded inspector's summary card
+
+### What the operator sees
+
+Selecting a frame now shows **what it is before what its fields are**. A
+card over the field table gives:
+
+- the packet and its size (`LSRP · 39 B`);
+- **the CRC as a chip**: `✓ CRC pass` in the ok tone, `✕ CRC fail` in
+  the fail tone;
+- when the reject rules match, `▲ would not be processed (2)`, with the
+  reasons on its tooltip. That is the same wording as the status line, and
+  a statement of what a receiver would do, not a verdict;
+- **the key values as large tiles**: loco mode by its name ("Trip", not "7
+  (Trip)"), speed, location, frame number, last RFID tag. The first three
+  present are taken, matched case-insensitively, so the DMI's lower-case
+  fields are found too ("On_Sight · 0 km/h · 153.749 km").
+
+The table below is unchanged (right-click to pin, plot, copy, locate; click
+a field to light its bytes), except that **values are in the mono face**,
+digit under digit, and failed rows use the theme's error colour. They used a
+literal `#cc3300` that bypassed the contrast-audited palette.
+
+### Width, carefully
+
+The first version raised the inspector's minimum width: three large tiles
+side by side made the right dock grow and squeezed the Sources panel until
+its counters clipped. Fixed so that:
+
+- **the card never decides the dock's width**;
+- **tiles show only when they fit whole**: the first always, the others
+  as room allows, recomputed on resize. A cut "16382" is worse than no tile.
+  The full value is on the tooltip.
+
+Each attempt was checked on a screenshot of the real window with traffic.
+The second attempt let the tiles share the width equally, and showed every
+one of them cut.
+
+### Also
+
+`UiStyle::monoFont()` (session 117) only looks for **installed** fallback
+families. Asking Qt for a missing one made it build its whole font alias
+table (Qt measured and reported 136 ms).
+
+Files: `fieldinspector.h/.cpp`, `uistyle.cpp`;
+`tests/screenshot_main.cpp` (selects an `@lsrp` row in the visible table so
+the inspector shows).
+
+### Tests
+
+`tests/test_session120.cpp`, 11 checks, on real frames from `replay/`:
+
+- the LSRP card: `LSRP · 39 B`, then Loco mode=Trip, Speed=0 km/h,
+  Location=163821 m, in that order;
+- the CRC chip in the ok tone;
+- every value mono;
+- a DMI frame's lower-case fields are found;
+- a text row has no card, and clear hides it;
+- **the real LSRP with its last byte changed shows `CRC fail` in the fail
+  tone**.
+
+Gate: 11/11 validators, `dltests` 172 suites / 5451 checks, menu audit
+156, smoke. All green.
+
+---
+
 <a id="session-119"></a>
 ## Session 119 — UI revamp, step 3: the Sources panel
 
