@@ -11,6 +11,45 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-143"></a>
+## Session 143 — UI revamp, tool windows 20: the Run report
+
+- **The span and the per-packet counts sit side by side.** One under the
+  other, fourteen packet rows ran down a narrow column, and the page's
+  right side stayed empty.
+- **Headings count in plain English**, in the run report and the
+  incident report alike: "Loco mode (LSRP): 1 change", "3 episodes",
+  "8 reads, 6 distinct", "0 matches over 213 frames", "1 sample above
+  the permitted speed", "1 comparison". They read "change(s)",
+  "episode(s)", "read(s)", "match(es)", "frame(s)", "sample(s)" and
+  "comparison(s)".
+
+The window itself (a paper-white report view with Rebuild / Copy / Save
+HTML) was already sound. Unlike the incident report, the run report
+embeds no images, so session 133's blank-image problem did not apply.
+
+Tests: `test_session143`, 7 checks, on the whole of
+`replay/loco_1_1_26062026_162418.cap`:
+
+- neither report has a "(s)" or "(es)" count left;
+- "1 change" is singular;
+- the side-by-side table;
+- the window fits;
+- layout audit.
+
+`session81`, `session97` and `session133` pass unchanged.
+
+**Screenshot harness:** `SHOT_WINDOW=runreport`.
+
+Files: `runreport.cpp`, `incidentreport.cpp`, `tests/screenshot_main.cpp`,
+`tests/test_session143.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+192 suites / 5781 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-142"></a>
 ## Session 142 — UI revamp, tool windows 19: the Round-trip validator
 

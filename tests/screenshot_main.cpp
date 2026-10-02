@@ -46,6 +46,7 @@
 #include "archivesearchwindow.h"
 #include "faultpanelwindow.h"
 #include "roundtripwindow.h"
+#include "runreportwindow.h"
 #include "colorrules.h"
 #include "sessionfile.h"
 #include "querylineedit.h"
@@ -375,6 +376,24 @@ int main(int argc, char **argv)
                 while (t.elapsed() < 8000 && !(tbl && tbl->rowCount() > 0))
                     QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
                 if (tbl && tbl->rowCount() > 0) tbl->selectRow(0);
+                win = w;
+            }
+            if (which == QLatin1String("runreport")) {
+                const QString cap = qEnvironmentVariableIsEmpty("SHOT_CAP") ? QStringLiteral("26062026_162418")
+                                                                            : qEnvironmentVariable("SHOT_CAP");
+                QFile run(QStringLiteral(DL_SRC_DIR "/replay/loco_1_1_%1.cap").arg(cap));
+                if (run.open(QIODevice::ReadOnly)) {
+                    while (!run.atEnd()) {
+                        const QByteArray l = run.readLine().trimmed();
+                        if (!l.startsWith('@')) continue;
+                        const QList<QByteArray> tok = l.split(' ');
+                        if (tok.size() < 3) continue;
+                        disp.ingestLocal(21, 1, l, QDateTime::fromString(QString::fromLatin1(tok.at(1)), Qt::ISODate).toMSecsSinceEpoch(), QString());
+                    }
+                }
+                disp.drainNow();
+                auto *w = new RunReportWindow(disp.modelForKey(QStringLiteral("21_1")), QStringLiteral("21_1"), QStringLiteral("L1_V1"));
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
                 win = w;
             }
             if (!win) return 2;

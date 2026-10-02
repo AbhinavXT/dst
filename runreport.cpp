@@ -15,6 +15,14 @@
 namespace RunReport {
 namespace {
 
+// "1 episode" / "3 episodes" (session 143; the headings read "episode(s)").
+QString countOf(int n, const char *one, const char *many)
+{
+    return QStringLiteral("%1 %2").arg(n).arg(QLatin1String(n == 1 ? one : many));
+}
+
+
+
 QString timeText(qint64 ms)
 {
     return QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss.zzz"));
@@ -197,9 +205,13 @@ QString toHtml(const Summary &s, const Options &options)
     };
 
     // ---- span ------------------------------------------------------------------------
-    h += QStringLiteral("<h2>Span and traffic</h2><table>");
+    // The span and the per-packet counts side by side (session 143): one
+    // under the other, fourteen packet rows ran down a narrow column with
+    // the page's right side empty.
+    h += QStringLiteral("<h2>Span and traffic</h2><table class=\"side\"><tr><td valign=\"top\"><table>");
     h += QStringLiteral("<tr><td>From</td><td>%1</td></tr><tr><td>To</td><td>%2</td></tr>"
-                        "<tr><td>Duration</td><td>%3</td></tr><tr><td>Rows</td><td>%4</td></tr></table>")
+                        "<tr><td>Duration</td><td>%3</td></tr><tr><td>Rows</td><td>%4</td></tr></table></td>"
+                        "<td valign=\"top\" style=\"padding-left:48px\">")
              .arg(QDateTime::fromMSecsSinceEpoch(s.firstMs).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")),
                   QDateTime::fromMSecsSinceEpoch(s.lastMs).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")),
                   durationText(s.lastMs - s.firstMs))
@@ -208,7 +220,7 @@ QString toHtml(const Summary &s, const Options &options)
     for (auto it = s.packetCounts.constBegin(); it != s.packetCounts.constEnd(); ++it) {
         h += QStringLiteral("<tr><td>%1</td><td class=\"num\">%2</td></tr>").arg(esc(it.key())).arg(it.value());
     }
-    h += QStringLiteral("</table>");
+    h += QStringLiteral("</table></td></tr></table>");
 
     // ---- gaps --------------------------------------------------------------------------
     h += QStringLiteral("<h2>Silences over %1 s: %2</h2>").arg(options.gapThresholdMs / 1000).arg(s.gaps.size());
@@ -223,7 +235,7 @@ QString toHtml(const Summary &s, const Options &options)
     }
 
     // ---- modes ---------------------------------------------------------------------------
-    h += QStringLiteral("<h2>Loco mode (LSRP): %1 change(s)</h2>").arg(s.modeChanges.size());
+    h += QStringLiteral("<h2>Loco mode (LSRP): %1</h2>").arg(countOf(s.modeChanges.size(), "change", "changes"));
     if (s.firstMode.isEmpty()) {
         h += QStringLiteral("<p class=\"muted\">No LSRP frames in this tab.</p>");
     } else {
@@ -239,7 +251,7 @@ QString toHtml(const Summary &s, const Options &options)
     }
 
     // ---- emergency -------------------------------------------------------------------------
-    h += QStringLiteral("<h2>Emergency status other than 0 (LSRP): %1 episode(s)</h2>").arg(s.emergencies.size());
+    h += QStringLiteral("<h2>Emergency status other than 0 (LSRP): %1</h2>").arg(countOf(s.emergencies.size(), "episode", "episodes"));
     if (!s.emergencies.isEmpty()) {
         h += QStringLiteral("<table><tr><th>From</th><th>To</th><th>Status</th></tr>");
         for (int i = 0; i < s.emergencies.size() && i < cap; ++i) {
@@ -257,7 +269,7 @@ QString toHtml(const Summary &s, const Options &options)
         h += QStringLiteral("<p>Highest: %1 km/h at %2 (from @%3).</p>")
                  .arg(s.maxSpeedKmh, 0, 'f', 0).arg(timeText(s.maxSpeedMs), s.speedSource);
         if (s.speedSource == QLatin1String("dmi")) {
-            h += QStringLiteral("<p>Above the permitted speed the DMI showed: %1 episode(s).</p>").arg(s.overspeed.size());
+            h += QStringLiteral("<p>Above the permitted speed the DMI showed: %1.</p>").arg(countOf(s.overspeed.size(), "episode", "episodes"));
             if (!s.overspeed.isEmpty()) {
                 h += QStringLiteral("<table><tr><th>From</th><th>To</th><th>Most above</th><th>At</th></tr>");
                 for (int i = 0; i < s.overspeed.size() && i < cap; ++i) {
@@ -273,8 +285,8 @@ QString toHtml(const Summary &s, const Options &options)
     }
 
     // ---- tags ----------------------------------------------------------------------------------
-    h += QStringLiteral("<h2>RFID tags (LSRP LAST_RFID_TAG): %1 read(s), %2 distinct</h2>")
-             .arg(s.tagReads.size()).arg(s.distinctTags);
+    h += QStringLiteral("<h2>RFID tags (LSRP LAST_RFID_TAG): %1, %2 distinct</h2>")
+             .arg(countOf(s.tagReads.size(), "read", "reads")).arg(s.distinctTags);
     if (!s.tagReads.isEmpty()) {
         h += QStringLiteral("<table><tr><th>Time</th><th>Tag</th></tr>");
         for (int i = 0; i < s.tagReads.size() && i < cap; ++i) {
@@ -284,10 +296,10 @@ QString toHtml(const Summary &s, const Options &options)
     }
 
     // ---- clock skew --------------------------------------------------------------------------------
-    h += QStringLiteral("<h2>Loco and station clocks outside the accept window: %1 episode(s)</h2>").arg(s.clockSkew.size());
+    h += QStringLiteral("<h2>Loco and station clocks outside the accept window: %1</h2>").arg(countOf(s.clockSkew.size(), "episode", "episodes"));
     h += QStringLiteral("<p class=\"muted\">Each SLRP FRAME_NUM against the loco's own (LSRP/ARP) heard within 10 s "
-                        "before it: %1 comparison(s). Window: more than 4 s old, or 2 s or more ahead, is discarded.</p>")
-             .arg(s.skewComparisons);
+                        "before it: %1. Window: more than 4 s old, or 2 s or more ahead, is discarded.</p>")
+             .arg(countOf(s.skewComparisons, "comparison", "comparisons"));
     if (!s.clockSkew.isEmpty()) {
         h += QStringLiteral("<table><tr><th>From</th><th>To</th><th>Worst gap (loco − station)</th></tr>");
         for (int i = 0; i < s.clockSkew.size() && i < cap; ++i) {
@@ -316,8 +328,8 @@ QString toHtml(const Summary &s, const Options &options)
     // ---- reject conditions ---------------------------------------------------------------------------------
     int rejected = 0;
     for (int v : s.rejectClauses) rejected += v;
-    h += QStringLiteral("<h2>SLRP frames matching a reject condition: %1 match(es) over %2 frame(s)</h2>")
-             .arg(rejected).arg(s.slrpFrames);
+    h += QStringLiteral("<h2>SLRP frames matching a reject condition: %1 over %2</h2>")
+             .arg(countOf(rejected, "match", "matches"), countOf(s.slrpFrames, "frame", "frames"));
     if (!s.rejectClauses.isEmpty()) {
         h += QStringLiteral("<table><tr><th>Clause · field</th><th class=\"num\">Frames</th></tr>");
         for (auto it = s.rejectClauses.constBegin(); it != s.rejectClauses.constEnd(); ++it) {

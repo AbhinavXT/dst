@@ -16,6 +16,14 @@
 namespace IncidentReport {
 namespace {
 
+// "1 episode" / "3 episodes" (session 143; the headings read "episode(s)").
+QString countOf(int n, const char *one, const char *many)
+{
+    return QStringLiteral("%1 %2").arg(n).arg(QLatin1String(n == 1 ? one : many));
+}
+
+
+
 QString timeText(qint64 ms)
 {
     return QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss.zzz"));
@@ -257,12 +265,13 @@ QString toHtml(const Summary &s, const Options &options)
             h += QStringLiteral("<p class=\"muted\">%1 of %2 frames report 0 m (not localised on an RFID tag) "
                                 "and are left out of the plot.</p>")
                      .arg(s.plotLeftOut).arg(s.speedTrace.samples.size());
-        h += QStringLiteral("<p>Highest: %1 km/h (from @%2). %3 sample(s) above the permitted speed.</p>")
-                 .arg(s.run.maxSpeedKmh, 0, 'f', 0).arg(s.run.speedSource).arg(s.run.overspeed.size());
+        h += QStringLiteral("<p>Highest: %1 km/h (from @%2). %3 above the permitted speed.</p>")
+                 .arg(s.run.maxSpeedKmh, 0, 'f', 0).arg(s.run.speedSource)
+                 .arg(countOf(s.run.overspeed.size(), "sample", "samples"));
     }
 
     // ---- mode changes -----------------------------------------------------------------------------
-    h += QStringLiteral("<h2>Loco mode (LSRP): %1 change(s)</h2>").arg(s.run.modeChanges.size());
+    h += QStringLiteral("<h2>Loco mode (LSRP): %1</h2>").arg(countOf(s.run.modeChanges.size(), "change", "changes"));
     if (!s.run.firstMode.isEmpty()) h += QStringLiteral("<p>At window start: %1</p>").arg(esc(s.run.firstMode));
     if (!s.run.modeChanges.isEmpty()) {
         h += QStringLiteral("<table><tr><th>Time</th><th>From</th><th>To</th></tr>");
@@ -274,7 +283,7 @@ QString toHtml(const Summary &s, const Options &options)
     }
 
     // ---- EB/FSB applications ------------------------------------------------------------------------
-    h += QStringLiteral("<h2>EB/FSB applications (@dmi brake_type): %1 episode(s)</h2>").arg(s.brakeEpisodes.size());
+    h += QStringLiteral("<h2>EB/FSB applications (@dmi brake_type): %1</h2>").arg(countOf(s.brakeEpisodes.size(), "episode", "episodes"));
     if (!s.brakeEpisodes.isEmpty()) {
         h += QStringLiteral("<table><tr><th>From</th><th>To</th><th>Type</th></tr>");
         for (int i = 0; i < s.brakeEpisodes.size() && i < cap; ++i) {
@@ -287,8 +296,8 @@ QString toHtml(const Summary &s, const Options &options)
     // ---- reject findings --------------------------------------------------------------------------------
     int rejected = 0;
     for (int v : s.run.rejectClauses) rejected += v;
-    h += QStringLiteral("<h2>SLRP frames matching a reject condition: %1 match(es) over %2 frame(s)</h2>")
-             .arg(rejected).arg(s.run.slrpFrames);
+    h += QStringLiteral("<h2>SLRP frames matching a reject condition: %1 over %2</h2>")
+             .arg(countOf(rejected, "match", "matches"), countOf(s.run.slrpFrames, "frame", "frames"));
     if (!s.run.rejectClauses.isEmpty()) {
         h += QStringLiteral("<table><tr><th>Clause · field</th><th class=\"num\">Frames</th></tr>");
         for (auto it = s.run.rejectClauses.constBegin(); it != s.run.rejectClauses.constEnd(); ++it) {
