@@ -11,6 +11,89 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-117"></a>
+## Session 117 — UI revamp, step 1: the component foundation
+
+Asked for: a full revamp of the UI, keeping every function, because "right
+now the app looks like any other Qt desktop app". Direction chosen (asked to
+choose, for a tool meant to be the primary way of debugging all loco data):
+**"Control Room"**. It is a dense, dark-by-default operator console with an
+icon rail, a strip of live status chips, sources with health dots, a log
+with an activity ribbon, and an always-open decoded inspector. The
+timeline-first idea comes in later as a lane band over the log. The three
+mock-ups the choice was made from are on a design canvas.
+
+Scope agreed:
+
+- the main window first, then every tool window step by step, one patch
+  each;
+- the menu bar kept, slimmer;
+- all 11 themes kept and mapped onto the new design.
+
+This step builds the parts. The main window is rebuilt from them next.
+
+### Components, chosen by role
+
+`UiStyle` gains components that any window opts into with one call. The
+stylesheet selects on a `dlRole` property, so every theme restyles them,
+and, as everywhere in `uistyle.cpp`, no colour is chosen in code:
+
+- **chip** (`makeChip`, `setTone`): a pill for live status
+  (`● UDP 50002 · 312/s`), in five tones: neutral, accent, ok, warn,
+  fail. **Its text is lifted to the contrast floor against its own tinted
+  fill** (`UiColor::withContrast`: 4.5:1, or 7:1 in High Contrast), so a
+  chip cannot ship unreadable in any theme.
+- **segmented control** (`segmented`): exclusive buttons drawn as one
+  group (All | Errors | Warnings | In | Out).
+- **rail button** (`makeRailButton`): square and icon-only. Its tooltip is
+  also its accessible name, since an icon is not a label.
+- **section caption**, **panel** and **strip** surfaces; **`makeMono`**;
+  a **spacing scale** (`space()`).
+- **`UiIcons`**: twelve icons drawn from paths in the theme's colours
+  (log, dmi, track, serial, send, report, settings, search, twoloco, more,
+  pin, filter). No image files, and no Qt SVG module added to the build.
+
+### The base, refreshed for every window
+
+- Rounder corners (radius 6).
+- Buttons: the border goes quiet, the fill carries the shape, a little more
+  room, medium weight.
+- Inputs: a touch taller.
+- Table headers: a quiet caption with a hairline under it, no separators
+  between columns; views sit in a hairline frame.
+
+The tab rules are untouched: they carry the clipping fixes the tab-metric
+suite guards.
+
+### A robustness fix found on the way
+
+`UiStyle::monoFont()` trusted the platform's "fixed font", and the
+offscreen plugin (and some Linux setups) answers with the **proportional** UI
+face. Timestamps, hex and values would then lose their columns silently. It
+now checks the face really is fixed-pitch and falls back through known
+monospace families.
+
+Files: `uistyle.h`, `uistyle.cpp`.
+
+### Tests
+
+`tests/test_session117.cpp`, 20 checks:
+
+- every chip tone meets the contrast floor **in all 11 themes**; High
+  Contrast asks 7:1, the rest 4.5:1; tones differ by fill;
+- roles reach the stylesheet, and tone changes in place;
+- segmented is exclusive;
+- a rail button's accessible name; captions are upper case; panels paint
+  their surface; `makeMono` is fixed-pitch;
+- the spacing scale;
+- every icon draws something and differs from every other; an unknown
+  name draws a visible box; icons take the colour asked for.
+
+Gate: 11/11 validators, `dltests` 171 suites / 5440 checks (the contrast
+audit and tab metrics included), menu audit, smoke. All green.
+
+---
+
 <a id="session-116"></a>
 ## Session 116 — DLConsole builds and passes on Windows again; CI on Windows and Linux
 

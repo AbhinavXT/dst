@@ -7,9 +7,18 @@
 #include "uicolors.h"
 
 
+#include <QAbstractButton>
 #include <QApplication>
+#include <QButtonGroup>
 #include <QFontDatabase>
+#include <QFontInfo>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QPainter>
+#include <QPainterPath>
 #include <QPalette>
+#include <QPushButton>
+#include <QStyle>
 
 namespace UiStyle {
 namespace {
@@ -31,6 +40,22 @@ QFont monoFont()
     // At the chosen text size (TextZoom), so a window opened after zooming
     // comes out the same size as one rescaled in place.
     QFont font = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    // Session 117: check it IS fixed-pitch. Some platforms (the offscreen
+    // plugin, some Linux setups) answer the "fixed" request with the
+    // proportional UI face, and timestamps, hex and values then lose their
+    // columns without anything saying so. Fall back by family.
+    if (!QFontInfo(font).fixedPitch()) {
+        const qreal pt = font.pointSizeF();
+        for (const char *family : { "JetBrains Mono", "IBM Plex Mono", "Cascadia Mono", "Consolas",
+                                    "Menlo", "SF Mono", "DejaVu Sans Mono", "Liberation Mono",
+                                    "Courier New" }) {
+            QFont candidate(QString::fromLatin1(family));
+            if (pt > 0) candidate.setPointSizeF(pt);
+            if (QFontInfo(candidate).fixedPitch()) { font = candidate; break; }
+        }
+        font.setStyleHint(QFont::Monospace);
+        font.setFixedPitch(true);
+    }
     if (font.pointSizeF() > 0) {
         font.setPointSizeF(font.pointSizeF() * TextZoom::factor());
     }
@@ -38,8 +63,213 @@ QFont monoFont()
 }
 
 int gap()    { return 6; }
-int margin() { return 10; }
-int radius() { return 4; }
+int margin() { return 12; }
+int radius() { return 6; }     // session 117: rounder, as the revamp's components are
+
+namespace {
+
+QString toneName(Tone t)
+{
+    switch (t) {
+    case Tone::Accent: return QStringLiteral("accent");
+    case Tone::Ok:     return QStringLiteral("ok");
+    case Tone::Warn:   return QStringLiteral("warn");
+    case Tone::Fail:   return QStringLiteral("fail");
+    default:           return QStringLiteral("neutral");
+    }
+}
+
+QColor toneInk(Tone t)
+{
+    switch (t) {
+    case Tone::Accent: return UiColor::accent();
+    case Tone::Ok:     return UiColor::ok();
+    case Tone::Warn:   return UiColor::warning();
+    case Tone::Fail:   return UiColor::error();
+    default:           return qApp->palette().color(QPalette::WindowText);
+    }
+}
+
+void repolish(QWidget *w)
+{
+    if (!w) return;
+    w->style()->unpolish(w);
+    w->style()->polish(w);
+    w->update();
+}
+
+// The rules for the roles (components) of session 117. Every colour from
+// the palette and UiColor, as everywhere in this file.
+QString componentRules(const QPalette &p, bool isDark, const QColor &window,
+                       const QColor &base, const QColor &text, const QColor &border,
+                       const QColor &subtle, const QColor &hover)
+{
+    const QColor hi       = p.color(QPalette::Highlight);
+    const QColor muted    = UiColor::muted();
+    const QColor sunk     = mix(window, isDark ? QColor(Qt::black) : text, isDark ? 0.25 : 0.05);
+    const QColor raised   = mix(window, base, 0.6).lighter(isDark ? 135 : 100);
+    const QColor panelBg  = mix(window, base, isDark ? 0.35 : 0.65);
+    const QColor railOn   = mix(window, hi, isDark ? 0.24 : 0.16);
+    const qreal basePt    = qApp->font().pointSizeF() > 0 ? qApp->font().pointSizeF() : 9.0;
+    const qreal smallPt   = qMax(7.5, basePt - 1.5);
+
+    QString s;
+
+    // Chips: one rule for the shape, one per tone for the colours.
+    s += QStringLiteral(
+        "*[dlRole=\"chip\"] { border:none; border-radius:11px; padding:3px 10px;"
+        " font-weight:600; min-height:16px; }");
+    for (Tone t : { Tone::Neutral, Tone::Accent, Tone::Ok, Tone::Warn, Tone::Fail }) {
+        const QColor fill = chipFill(t);
+        const QColor ink  = chipText(t);
+        s += QStringLiteral("*[dlRole=\"chip\"][dlTone=\"%1\"] { background:%2; color:%3; }"
+                            "QAbstractButton[dlRole=\"chip\"][dlTone=\"%1\"]:hover { background:%4; }")
+                 .arg(toneName(t), fill.name(), ink.name(), mix(fill, ink, 0.12).name());
+    }
+
+    // Segmented control: a sunken track, the checked segment raised.
+    s += QStringLiteral(
+        "QWidget[dlRole=\"segmented\"] { background:%1; border:1px solid %2; border-radius:8px; }"
+        "QWidget[dlRole=\"segmented\"] QPushButton { background:transparent; border:none;"
+        " border-radius:6px; padding:4px 12px; color:%3; margin:2px; }"
+        "QWidget[dlRole=\"segmented\"] QPushButton:hover { color:%4; background:%5; }"
+        "QWidget[dlRole=\"segmented\"] QPushButton:checked { background:%6; color:%4;"
+        " border:1px solid %2; }")
+        .arg(sunk.name(), border.name(), muted.name(), text.name(), hover.name(), raised.name());
+
+    // The icon rail.
+    s += QStringLiteral(
+        "QAbstractButton[dlRole=\"rail\"] { background:transparent; border:none;"
+        " border-radius:10px; min-width:40px; max-width:40px; min-height:40px; max-height:40px;"
+        " padding:0px; }"
+        "QAbstractButton[dlRole=\"rail\"]:hover { background:%1; }"
+        "QAbstractButton[dlRole=\"rail\"]:checked { background:%2; }")
+        .arg(hover.name(), railOn.name());
+
+    // Section captions, surfaces.
+    s += QStringLiteral(
+        "QLabel[dlRole=\"section\"] { color:%1; font-size:%2pt; font-weight:600;"
+        " letter-spacing:1px; padding:2px 0px; }"
+        "QWidget[dlRole=\"panel\"] { background:%3; border:1px solid %4; border-radius:10px; }"
+        "QWidget[dlRole=\"strip\"] { background:%5; border:none; border-bottom:1px solid %4; }")
+        .arg(muted.name()).arg(smallPt)
+        .arg(panelBg.name(), border.name(), mix(window, base, isDark ? 0.2 : 0.8).name());
+    Q_UNUSED(subtle);
+    return s;
+}
+
+}  // namespace
+
+// ---- components (session 117) ---------------------------------------------------
+
+double contrastFloor() { return UiColor::activeTheme() == 6 ? 7.0 : 4.5; }
+
+QColor chipFill(Tone tone)
+{
+    const QPalette p = qApp->palette();
+    const QColor window = p.color(QPalette::Window);
+    const bool isDark = window.lightness() < 128;
+    if (tone == Tone::Neutral)
+        return mix(window, p.color(QPalette::WindowText), isDark ? 0.12 : 0.08);
+    return mix(window, toneInk(tone), isDark ? 0.20 : 0.13);
+}
+
+QColor chipText(Tone tone)
+{
+    return UiColor::withContrast(toneInk(tone), chipFill(tone), contrastFloor());
+}
+
+void makeChip(QWidget *w, Tone tone)
+{
+    if (!w) return;
+    w->setProperty("dlRole", QStringLiteral("chip"));
+    w->setAttribute(Qt::WA_StyledBackground, true);
+    setTone(w, tone);
+}
+
+void setTone(QWidget *w, Tone tone)
+{
+    if (!w) return;
+    w->setProperty("dlTone", toneName(tone));
+    repolish(w);
+}
+
+Tone toneOf(const QWidget *w)
+{
+    const QString t = w ? w->property("dlTone").toString() : QString();
+    if (t == QLatin1String("accent")) return Tone::Accent;
+    if (t == QLatin1String("ok"))     return Tone::Ok;
+    if (t == QLatin1String("warn"))   return Tone::Warn;
+    if (t == QLatin1String("fail"))   return Tone::Fail;
+    return Tone::Neutral;
+}
+
+QWidget *segmented(const QStringList &labels, QButtonGroup **group, QWidget *parent)
+{
+    auto *box = new QWidget(parent);
+    box->setProperty("dlRole", QStringLiteral("segmented"));
+    box->setAttribute(Qt::WA_StyledBackground, true);
+    auto *row = new QHBoxLayout(box);
+    row->setContentsMargins(0, 0, 0, 0);
+    row->setSpacing(0);
+    auto *g = new QButtonGroup(box);
+    g->setExclusive(true);
+    for (int i = 0; i < labels.size(); ++i) {
+        auto *b = new QPushButton(labels.at(i), box);
+        b->setCheckable(true);
+        b->setChecked(i == 0);
+        b->setCursor(Qt::PointingHandCursor);
+        g->addButton(b, i);
+        row->addWidget(b);
+    }
+    if (group) *group = g;
+    return box;
+}
+
+void makeRailButton(QAbstractButton *b, const QString &tip)
+{
+    if (!b) return;
+    b->setProperty("dlRole", QStringLiteral("rail"));
+    b->setToolTip(tip);
+    b->setAccessibleName(tip);
+    b->setCursor(Qt::PointingHandCursor);
+    b->setIconSize(QSize(18, 18));
+    repolish(b);
+}
+
+void makeSectionLabel(QLabel *l)
+{
+    if (!l) return;
+    l->setProperty("dlRole", QStringLiteral("section"));
+    l->setText(l->text().toUpper());
+    repolish(l);
+}
+
+void makePanel(QWidget *w)
+{
+    if (!w) return;
+    w->setProperty("dlRole", QStringLiteral("panel"));
+    w->setAttribute(Qt::WA_StyledBackground, true);
+    repolish(w);
+}
+
+void makeStrip(QWidget *w)
+{
+    if (!w) return;
+    w->setProperty("dlRole", QStringLiteral("strip"));
+    w->setAttribute(Qt::WA_StyledBackground, true);
+    repolish(w);
+}
+
+void makeMono(QWidget *w)
+{
+    if (!w) return;
+    QFont f = monoFont();
+    if (w->font().pointSizeF() > 0) f.setPointSizeF(w->font().pointSizeF());
+    w->setFont(f);
+}
+
+int space(int step) { return 4 * qMax(0, step); }
 
 QString sheet()
 {
@@ -70,15 +300,18 @@ QString sheet()
     // Buttons: room to breathe, and a hover that says the control is live
     // without the border thickening and shifting the layout by a pixel.
     s += QStringLiteral(
+        // Session 117: a quieter border (the fill carries the shape), a
+        // little more room, and medium weight so a button reads as a control
+        // next to a label of the same size.
         "QPushButton, QToolButton {"
         " background:%1; color:%2; border:1px solid %3; border-radius:%4px;"
-        " padding:5px 12px; }"
+        " padding:6px 14px; font-weight:500; }"
         "QPushButton:hover, QToolButton:hover { background:%5; }"
         "QPushButton:pressed, QToolButton:pressed { background:%6; }"
         "QPushButton:default { border:1px solid %7; }"
         "QPushButton:disabled, QToolButton:disabled {"
         " background:%1; color:%8; border-color:%9; }")
-        .arg(button.name(), p.color(QPalette::ButtonText).name(), border.name())
+        .arg(button.name(), p.color(QPalette::ButtonText).name(), subtle.name())
         .arg(r)
         .arg(hover.name(), pressed.name(), hi.name(),
              p.color(QPalette::Disabled, QPalette::ButtonText).name(), subtle.name());
@@ -132,7 +365,7 @@ QString sheet()
     s += QStringLiteral(
         "QLineEdit, QPlainTextEdit, QTextEdit, QSpinBox, QDoubleSpinBox, QComboBox {"
         " background:%1; color:%2; border:1px solid %3; border-radius:%4px;"
-        " padding:3px 6px; selection-background-color:%5;"
+        " padding:5px 8px; selection-background-color:%5;"
         " selection-color:%6; }"
         "QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QSpinBox:focus,"
         "QDoubleSpinBox:focus, QComboBox:focus { border:1px solid %5; }"
@@ -158,16 +391,19 @@ QString sheet()
     // Tables and lists. The header is a surface, not a button; the grid is a
     // hint rather than a cage.
     s += QStringLiteral(
+        // Session 117: the header is a quiet caption (muted, a hairline under
+        // it, no separators between columns), and a view sits on its panel
+        // with a hairline frame rather than a box.
         "QHeaderView::section {"
         " background:%1; color:%2; border:none;"
-        " border-bottom:1px solid %3; border-right:1px solid %4;"
-        " padding:5px 8px; font-weight:600; }"
+        " border-bottom:1px solid %3; border-right:1px solid %1;"
+        " padding:6px 8px; font-weight:600; }"
         "QHeaderView::section:hover { background:%5; }"
         "QTableView, QTreeView, QListView {"
         " background:%6; alternate-background-color:%7;"
-        " border:1px solid %3; border-radius:%8px;"
+        " border:1px solid %4; border-radius:%8px;"
         " gridline-color:%9; }"
-        "QTableView::item, QTreeView::item, QListView::item { padding:2px 4px; }"
+        "QTableView::item, QTreeView::item, QListView::item { padding:3px 6px; }"
         "QTableView::item:selected, QTreeView::item:selected,"
         "QListView::item:selected { background:%10; color:%11; }")
         .arg(headerB.name(), mix(text, window, 0.15).name(),
@@ -308,6 +544,7 @@ QString sheet()
         .arg(r)
         .arg(base.name(), hi.name());
 
+    s += componentRules(p, isDark, window, base, text, border, subtle, hover);
     return s;
 }
 
@@ -394,3 +631,93 @@ void useTabTooltips(QTabWidget *tabs)
 }
 
 }  // namespace UiStyle
+
+// ---- icons (session 117) ----------------------------------------------------------
+
+namespace UiIcons {
+
+QStringList names()
+{
+    return { "log", "dmi", "track", "serial", "send", "report", "settings",
+             "search", "twoloco", "more", "pin", "filter" };
+}
+
+QIcon icon(const QString &name, const QColor &color, int px)
+{
+    // Drawn at 2x and 1x so it is crisp on either kind of screen.
+    QIcon out;
+    for (int scale : { 1, 2 }) {
+        const int s = px * scale;
+        QPixmap pm(s, s);
+        pm.fill(Qt::transparent);
+        QPainter g(&pm);
+        g.setRenderHint(QPainter::Antialiasing, true);
+        QPen pen(color, 1.8 * scale * px / 18.0, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+        g.setPen(pen);
+        g.setBrush(Qt::NoBrush);
+        const qreal u = s / 24.0;           // paths in a 24-unit box
+        auto P = [u](qreal x, qreal y) { return QPointF(x * u, y * u); };
+        QPainterPath path;
+        if (name == QLatin1String("log")) {
+            path.moveTo(P(4, 6));  path.lineTo(P(20, 6));
+            path.moveTo(P(4, 12)); path.lineTo(P(20, 12));
+            path.moveTo(P(4, 18)); path.lineTo(P(14, 18));
+        } else if (name == QLatin1String("dmi")) {
+            path.addEllipse(P(12, 12), 8 * u, 8 * u);
+            path.moveTo(P(12, 12)); path.lineTo(P(16, 9));
+        } else if (name == QLatin1String("track")) {
+            path.moveTo(P(3, 16)); path.lineTo(P(21, 16));
+            path.moveTo(P(6, 16)); path.lineTo(P(6, 13));
+            path.moveTo(P(11, 16)); path.lineTo(P(11, 9));
+            path.moveTo(P(16, 16)); path.lineTo(P(16, 11));
+        } else if (name == QLatin1String("serial")) {
+            path.addRoundedRect(QRectF(P(4, 8), P(20, 16)), 2 * u, 2 * u);
+            for (qreal x : { 8.0, 12.0, 16.0 }) { path.moveTo(P(x, 12)); path.lineTo(P(x + 0.01, 12)); }
+        } else if (name == QLatin1String("send")) {
+            path.moveTo(P(5, 12)); path.lineTo(P(19, 12));
+            path.moveTo(P(12, 5)); path.lineTo(P(19, 12)); path.lineTo(P(12, 19));
+        } else if (name == QLatin1String("report")) {
+            path.moveTo(P(7, 3)); path.lineTo(P(14, 3)); path.lineTo(P(19, 8));
+            path.lineTo(P(19, 21)); path.lineTo(P(7, 21)); path.closeSubpath();
+            path.moveTo(P(14, 3)); path.lineTo(P(14, 8)); path.lineTo(P(19, 8));
+        } else if (name == QLatin1String("settings")) {
+            path.addEllipse(P(12, 12), 3 * u, 3 * u);
+            path.moveTo(P(12, 3)); path.lineTo(P(12, 6));
+            path.moveTo(P(12, 18)); path.lineTo(P(12, 21));
+            path.moveTo(P(3, 12)); path.lineTo(P(6, 12));
+            path.moveTo(P(18, 12)); path.lineTo(P(21, 12));
+        } else if (name == QLatin1String("search")) {
+            path.addEllipse(P(11, 11), 7 * u, 7 * u);
+            path.moveTo(P(20, 20)); path.lineTo(P(16.5, 16.5));
+        } else if (name == QLatin1String("twoloco")) {
+            path.moveTo(P(2, 17)); path.lineTo(P(22, 17));
+            path.addRoundedRect(QRectF(P(3, 10), P(9, 15)), u, u);
+            path.addRoundedRect(QRectF(P(14, 10), P(20, 15)), u, u);
+        } else if (name == QLatin1String("more")) {
+            for (qreal x : { 6.0, 12.0, 18.0 }) { path.moveTo(P(x, 12)); path.lineTo(P(x + 0.01, 12)); }
+            pen.setWidthF(pen.widthF() * 1.6);
+            g.setPen(pen);
+        } else if (name == QLatin1String("pin")) {
+            path.moveTo(P(9, 4)); path.lineTo(P(15, 4)); path.lineTo(P(14, 10));
+            path.lineTo(P(17, 13)); path.lineTo(P(7, 13)); path.lineTo(P(10, 10)); path.closeSubpath();
+            path.moveTo(P(12, 13)); path.lineTo(P(12, 20));
+        } else if (name == QLatin1String("filter")) {
+            path.moveTo(P(4, 5)); path.lineTo(P(20, 5)); path.lineTo(P(14, 12));
+            path.lineTo(P(14, 19)); path.lineTo(P(10, 17)); path.lineTo(P(10, 12)); path.closeSubpath();
+        } else {
+            path.addRect(QRectF(P(5, 5), P(19, 19)));     // unknown name: a visible box, not nothing
+        }
+        g.drawPath(path);
+        g.end();
+        pm.setDevicePixelRatio(scale);
+        out.addPixmap(pm);
+    }
+    return out;
+}
+
+QIcon icon(const QString &name)
+{
+    return icon(name, qApp ? qApp->palette().color(QPalette::WindowText) : QColor(Qt::black));
+}
+
+}  // namespace UiIcons

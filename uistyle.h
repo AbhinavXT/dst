@@ -22,10 +22,17 @@
 //  Call apply() after ThemeUtil::apply(), both at startup and on every
 //  toggle: the sheet is rebuilt from the new palette.
 // =====================================================================
+#include <QColor>
 #include <QFont>
+#include <QIcon>
 #include <QString>
+#include <QStringList>
 
+class QAbstractButton;
+class QButtonGroup;
+class QLabel;
 class QTabWidget;
+class QWidget;
 
 namespace UiStyle {
 
@@ -61,6 +68,68 @@ QString sheet();
 // Set the application font and the stylesheet. Safe to call repeatedly.
 void apply();
 
+// =====================================================================
+//  Components (session 117: the start of the UI revamp)
+//  ---------------------------------------------------------------------
+//  The look of a widget is chosen by ROLE, a dynamic property the sheet
+//  selects on ([dlRole="chip"]), so any window opts in with one call and
+//  every theme restyles it — the same rule as above: no colour is chosen
+//  here, all of it comes from the palette and UiColor. A chip's text is
+//  pushed to 4.5:1 against its tinted fill (7:1 in High Contrast) by
+//  UiColor::withContrast, so a role cannot ship an unreadable label.
+// =====================================================================
+
+enum class Tone { Neutral, Accent, Ok, Warn, Fail };
+
+// A pill-shaped status chip: "● UDP 50002 · 312/s". On a QLabel or a
+// button (clickable chip). setTone() changes its meaning in place.
+void makeChip(QWidget *w, Tone tone = Tone::Neutral);
+void setTone(QWidget *w, Tone tone);
+Tone toneOf(const QWidget *w);
+
+// The colours a chip of `tone` is drawn with in the active theme: fill and
+// text (text already lifted to the contrast floor). For custom-painted
+// widgets that want to match, and for the tests.
+QColor chipFill(Tone tone);
+QColor chipText(Tone tone);
+double contrastFloor();   // 4.5, or 7.0 in High Contrast
+
+// A segmented control: a row of exclusive, checkable buttons drawn as one
+// rounded group ("All | Errors | Warnings | In | Out"). The group is
+// returned through `group`, ids 0..n-1 in label order; the first is checked.
+QWidget *segmented(const QStringList &labels,
+                           QButtonGroup **group,
+                           QWidget *parent = nullptr);
+
+// The left icon rail's buttons: square, icon-only, a filled background when
+// checked. `tip` is the tooltip AND the accessible name (an icon alone is
+// not a label).
+void makeRailButton(QAbstractButton *b, const QString &tip);
+
+// A small upper-case caption over a panel's content ("SOURCES · 6").
+void makeSectionLabel(QLabel *l);
+
+// Surfaces: a panel (raised a step from the window), and a toolbar strip
+// (the band a panel's header controls sit in).
+void makePanel(QWidget *w);
+void makeStrip(QWidget *w);
+
+// The fixed-pitch face for a widget's TEXT (timestamps, values, counters):
+// monoFont() at the widget's own size.
+void makeMono(QWidget *w);
+
+// Spacing scale, in px: step 1 = 4, 2 = 8, 3 = 12, 4 = 16, 6 = 24.
+int space(int step);
+
 }  // namespace UiStyle
+
+// Icons drawn from paths in the active theme's colours (no image files, no
+// Qt SVG module). Names: "log", "dmi", "track", "serial", "send", "report",
+// "settings", "search", "twoloco", "more", "pin", "filter".
+namespace UiIcons {
+QIcon icon(const QString &name, const QColor &color, int px = 18);
+QIcon icon(const QString &name);            // in the palette's text colour
+QStringList names();
+}
 
 #endif  // UISTYLE_H
