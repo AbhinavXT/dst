@@ -11,6 +11,67 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-144"></a>
+## Session 144 — UI revamp, tool windows 21: the recorded-session window
+
+- **The table is set up the way the live log's is**
+  (`LogTableView::configure`, as Compare and Merged use it). Its own pixel
+  widths (Time 100, Source 60) clipped "16:32:27.1..." and "ime (local",
+  and the Time column now has the live log's painter, with fixed-pitch
+  digits and the unchanged part muted. Stored column widths and hidden
+  columns apply here too, as they do in Compare and Merged.
+- **The side panels follow the cursor, focus or not.** They only updated
+  when the table had keyboard focus, so Go to timestamp, Next problem and
+  the find bar moved the cursor while Raw bytes / Decoded fields kept
+  showing the previous frame. They now follow the table whose cursor
+  moved.
+- **Decoded fields in front**, as in the live window; Raw bytes is one tab
+  away.
+- **Dock tabs are not elided** ("Raw b...", "Decoded fi..."). Every tab kept
+  24 px on its right for a close cross, and dock tabs never have one.
+  `QMainWindow > QTabBar::tab` now has 10 px, app-wide, so the live
+  window's dock tabs are a little narrower too. Document tabs are
+  unchanged.
+- **Opens at 1200 x 700, not 1100.** The filter bar (846 px) and the side
+  panel with a frame's header in it (290) need 1146, so at 1100 the window
+  grew under the operator's hand on the first row clicked. A remembered
+  size still wins.
+- **The status counts in English**: "400 records from 2 files",
+  "1 warning" (was "file(s)", "record(s)", "warning(s)").
+
+Not changed: the filter bar itself. Its text field is squeezed to a stub
+at these widths, but the live window's is too. It is the shared widget,
+so it gets its own pass if wanted.
+
+Tests: `test_session144`, 19 checks, on 400 real lines of
+`replay/loco_1_1_27062026_140226.cap`, written to two `.dlr` files the way
+Save writes them and loaded back, with the app stylesheet applied:
+
+- the Time and Source columns fit;
+- the Time painter;
+- still read-only and multi-select;
+- the panels follow a cursor moved without focus;
+- Decoded fields in front;
+- dock tabs not elided;
+- the status text;
+- a minimum width within the 1200 default with a frame showing;
+- fits a laptop;
+- layout audit.
+
+`sessiontools` and `sessionfind` pass unchanged.
+
+**Screenshot harness:** `SHOT_WINDOW=session`, two `.dlr` files from real
+traffic.
+
+Files: `sessionwindow.cpp`, `uistyle.cpp`, `tests/screenshot_main.cpp`,
+`tests/test_session144.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+193 suites / 5800 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-143"></a>
 ## Session 143 — UI revamp, tool windows 20: the Run report
 

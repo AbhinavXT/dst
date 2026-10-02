@@ -47,6 +47,8 @@
 #include "faultpanelwindow.h"
 #include "roundtripwindow.h"
 #include "runreportwindow.h"
+#include "sessionwindow.h"
+#include "logmodel.h"
 #include "colorrules.h"
 #include "sessionfile.h"
 #include "querylineedit.h"
@@ -396,12 +398,62 @@ int main(int argc, char **argv)
                 w->setAttribute(Qt::WA_DeleteOnClose, false);
                 win = w;
             }
+            if (which == QLatin1String("session")) {
+                // Two loco tabs of real traffic, written to .dlr the way
+                // Save does and read back: what an operator opens.
+                qint64 ms = 1782558147000LL;
+                for (int i = 0; i < lines.size(); ++i)
+                    disp.ingestLocal(i % 2 ? 21 : 81, 1, lines.at(i).toUtf8(), ms + i * 137, QString());
+                disp.drainNow();
+                static QTemporaryDir tmp;
+                QStringList paths;
+                for (const QString &key : {QStringLiteral("21_1"), QStringLiteral("81_1")}) {
+                    LogModel *m = disp.modelForKey(key);
+                    if (!m) continue;
+                    const QString path = tmp.path() + QLatin1Char('/') + key + QStringLiteral(".dlr");
+                    QFile f(path);
+                    if (!f.open(QIODevice::WriteOnly)) continue;
+                    SessionFile::FileHeader h;
+                    h.createdMs = ms;
+                    h.sourceId = quint8(key.section(QLatin1Char('_'), 0, 0).toInt());
+                    h.kvchId = 1;
+                    f.write(SessionFile::encodeHeader(h));
+                    for (int r = 0; r < m->rowCount(); ++r) {
+                        const LogEntryPtr e = m->entryAt(r);
+                        if (e && !e->rawBytes.isEmpty()) f.write(SessionFile::encodeRecord(e->epochMs, e->rawBytes));
+                    }
+                    paths << path;
+                }
+                static ColorRules rules;
+                auto *w = new SessionWindow(&rules, &names, t, nullptr);
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
+                w->loadFiles(paths);
+                win = w;
+            }
             if (!win) return 2;
-            win->resize(1100, 720);
+            if (which == QLatin1String("session")) win->resize(1200, 700);   // its own default
+            else win->resize(1100, 720);
             win->show();
             QElapsedTimer settle;
             settle.start();
             while (settle.elapsed() < 800) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (which == QLatin1String("session")) {
+                // A row selected, so the side panel has a frame to show.
+                for (QTableView *tv : win->findChildren<QTableView *>())
+                    if (tv->isVisible() && tv->model() && tv->model()->rowCount() > 100) { tv->selectRow(5); break; }
+                for (QWidget *fw : win->findChildren<QWidget *>())
+                    if (QString::fromLatin1(fw->metaObject()->className()) == QLatin1String("FilterBar") && fw->isVisible() && qEnvironmentVariableIsSet("SHOT_DUMP")) {
+                        printf("filterbar w=%d minHint=%d hint=%d\n", fw->width(), fw->minimumSizeHint().width(), fw->sizeHint().width());
+                        for (QWidget *c : fw->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly))
+                            if (c->isVisible()) printf("   %s '%s' w=%d min=%d hint=%d\n", c->metaObject()->className(), qPrintable(c->property("text").toString()), c->width(), c->minimumSizeHint().width(), c->sizeHint().width());
+                    }
+                settle.restart();
+                while (settle.elapsed() < 300) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+                if (qEnvironmentVariableIsSet("SHOT_DUMP"))
+                    for (QWidget *c : win->findChildren<QWidget *>())
+                        if (c->isVisible() && c->minimumSizeHint().width() > 150 && c->minimumSizeHint().width() < 400)
+                            printf("  wide: %s %s min=%d w=%d\n", c->metaObject()->className(), qPrintable(c->objectName()), c->minimumSizeHint().width(), c->width());
+            }
             win->grab().save(QStringLiteral("%1/shot_%2_%3.png").arg(dir, which, ThemeUtil::toString(t)));
             // SHOT_DUMP=1: every visible group box, tab widget and splitter
             // with its geometry and minimum hint, to see where height goes.

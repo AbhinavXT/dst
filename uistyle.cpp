@@ -549,7 +549,10 @@ QString sheet()
         " border:none; border-bottom:2px solid transparent; }"
         "QTabBar::tab:hover { background:%4; color:%5; }"
         "QTabBar::tab:selected {"
-        " background:%6; color:%5; border-bottom:2px solid %7; }")
+        " background:%6; color:%5; border-bottom:2px solid %7; }"
+        // Tabbed docks (Raw bytes / Decoded fields) never have a close
+        // cross, so the 24 px kept for one only elided their titles.
+        "QMainWindow > QTabBar::tab { padding-right:10px; }")
         .arg(UiColor::frame().name(QColor::HexRgb)).arg(r)
         .arg(UiColor::muted().name(), subtle.name(), text.name(),
              selectedTabBg.name(), UiColor::accent().name())

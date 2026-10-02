@@ -11,6 +11,7 @@
 #include "colorrules.h"
 #include "filterbar.h"
 #include "logmodel.h"
+#include "logtableview.h"
 #include "messagedispatcher.h"
 #include "namemap.h"
 #include "capturedecoder.h"
@@ -38,6 +39,14 @@
 #include <QVBoxLayout>
 #include <QVector>
 
+namespace {
+// "1 file" / "3 files" (the status read "400 records from 2 file(s)").
+QString countOf(qint64 n, const char *one, const char *many)
+{
+    return QStringLiteral("%1 %2").arg(n).arg(QCoreApplication::translate("SessionWindow", n == 1 ? one : many));
+}
+}  // namespace
+
 SessionWindow::SessionWindow(const ColorRules *rules,
                              const NameMap    *names,
                              Theme             theme,
@@ -54,7 +63,10 @@ SessionWindow::SessionWindow(const ColorRules *rules,
     setAttribute(Qt::WA_DeleteOnClose);
     setWindowTitle(tr("Recorded session"));
     WindowGeometry::makeResizableWindow(this);
-    resize(1100, 700);
+    // 1200, not 1100: the filter bar (846 px) and the side panel with a
+    // frame's header in it (290) need 1146, and at 1100 the window grew
+    // under the operator's hand on the first row clicked.
+    resize(1200, 700);
     // Default above; a remembered size/position wins over it.
     WindowGeometry::restore(this, QStringLiteral("sessionWindow"));
 
@@ -94,7 +106,9 @@ SessionWindow::SessionWindow(const ColorRules *rules,
     fieldDock->setAllowedAreas(Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
     addDockWidget(Qt::RightDockWidgetArea, fieldDock);
     tabifyDockWidget(dock, fieldDock);
-    dock->raise();
+    // Decoded fields in front, as in the live window: what the frame says
+    // first, its bytes one tab away.
+    fieldDock->raise();
 
     connect(m_fieldPanel, &FieldInspector::byteRangeSelected,
             this, [this](int from, int to) {
@@ -132,33 +146,13 @@ void SessionWindow::buildTab(const QString &tabKey, LogModel *model)
 
     auto *view = new QTableView;
     view->setModel(filterBar->proxyModel());
-    view->setAlternatingRowColors(true);
-    view->setSelectionBehavior(QAbstractItemView::SelectRows);
-    // ExtendedSelection: shift-click a span, ctrl-click to add. Copying a
-    // block of rows into an incident report is the single most common
-    // thing anyone does with this table, and single-selection made it a
-    // row-at-a-time job.
-    //
-    // The raw-bytes and field panels follow the CURRENT row rather than the
-    // selection, so they stay meaningful during a multi-row selection —
-    // "the bytes of these fifty rows" is not a thing they could show.
-    view->setSelectionMode(QAbstractItemView::ExtendedSelection);
-    view->setVerticalScrollMode(QAbstractItemView::ScrollPerPixel);
-    view->setTextElideMode(Qt::ElideRight);
-    view->setWordWrap(Settings::wordWrapFor(Settings::rowDensity()));
+    // The live log's table setup (selection, density, the Time column's
+    // painter, widths measured to the font, the operator's stored widths
+    // and hidden columns), as Compare and Merged use it. The pixel widths
+    // this window had (Time 100, Source 60) clipped "16:32:27.1..." and
+    // "ime (local".
+    LogTableView::configure(view);
     view->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    view->verticalHeader()->setSectionResizeMode(QHeaderView::Fixed);
-    view->verticalHeader()->setDefaultSectionSize(
-        Settings::rowHeightFor(Settings::rowDensity()));
-    view->verticalHeader()->setVisible(false);
-
-    QHeaderView *hh = view->horizontalHeader();
-    hh->setStretchLastSection(true);
-    view->setColumnWidth(LogModel::ColTime,      100);
-    view->setColumnWidth(LogModel::ColSource,     60);
-    view->setColumnWidth(LogModel::ColFriendly,  120);
-    view->setColumnWidth(LogModel::ColDirection,  40);
-    view->setColumnWidth(LogModel::ColSeverity,   66);   // fits "✕ ERR"
 
     connect(view->selectionModel(),
             &QItemSelectionModel::currentRowChanged,
@@ -292,13 +286,14 @@ qint64 SessionWindow::loadFiles(const QStringList &paths)
 
     QApplication::restoreOverrideCursor();
 
-    QString summary = tr("%1 records from %2 file(s)")
-                          .arg(grandTotal).arg(paths.size());
+    QString summary = tr("%1 from %2")
+                          .arg(countOf(grandTotal, "record", "records"),
+                               countOf(paths.size(), "file", "files"));
     if (skipped > 0) {
-        summary += tr("  ·  %1 undersized record(s) skipped").arg(skipped);
+        summary += tr("  ·  %1 skipped").arg(countOf(skipped, "undersized record", "undersized records"));
     }
     if (!m_warnings.isEmpty()) {
-        summary += tr("  ·  %1 warning(s)").arg(m_warnings.size());
+        summary += tr("  ·  %1").arg(countOf(m_warnings.size(), "warning", "warnings"));
         m_lblSummary->setToolTip(m_warnings.join('\n'));
         m_lblSummary->setStyleSheet(UiColor::warningStyle());
     } else {
@@ -701,7 +696,10 @@ void SessionWindow::onSelectionChanged()
 
     for (auto it = m_tabUi.constBegin(); it != m_tabUi.constEnd(); ++it) {
         const TabUi &t = it.value();
-        if (!t.view || !t.view->hasFocus()) continue;
+        // The view whose cursor moved, not the one with focus: Go to
+        // timestamp, Next problem and the find bar move the cursor while
+        // focus is elsewhere, and the panels kept the previous frame.
+        if (!t.view || t.view->selectionModel() != sender()) continue;
 
         const QModelIndex cur = t.view->currentIndex();
         if (!cur.isValid()) { m_rawPanel->clear(); m_fieldPanel->clear(); return; }
