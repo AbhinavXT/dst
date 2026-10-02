@@ -126,6 +126,10 @@ int main(int argc, char **argv)
                     if (i % 50 == 49) { disp.drainNow(); QCoreApplication::processEvents(); }
                 }
                 disp.drainNow();
+                // SHOT_BIG=1: the Loco Console's Big numbers panel shown.
+                if (qEnvironmentVariableIsSet("SHOT_BIG"))
+                    for (QPushButton *b : win->findChildren<QPushButton *>())
+                        if (b->text() == QLatin1String("Big numbers") && !b->isChecked()) b->click();
             }
             if (which == QLatin1String("packet")) win = new PacketMakerDialog(nullptr);
             if (which == QLatin1String("compare")) {

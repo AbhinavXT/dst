@@ -380,6 +380,24 @@ QString sheet()
         .arg(hover.name(), pressed.name(), hi.name(),
              p.color(QPalette::Disabled, QPalette::ButtonText).name(), subtle.name());
 
+    // A toggle that is on (session 150): it looked exactly like one that was
+    // off, so "Big numbers", "Cab view", "Record" never said their state. An
+    // accent fill with an accent border, as strong as the button text's
+    // contrast floor allows. The segmented control and the rail override it.
+    {
+        // Towards the accent (the tab underline, the ticked box), not the
+        // palette's Highlight, which on the dark themes is itself dark.
+        const QColor accent = UiColor::accent();
+        const QColor ink = p.color(QPalette::ButtonText);
+        QColor on = pressed;
+        for (double f : { 0.40, 0.34, 0.28, 0.22, 0.16 }) {
+            on = mix(button, accent, f);
+            if (UiColor::contrastRatio(ink, on) >= contrastFloor()) break;
+        }
+        s += QStringLiteral("QPushButton:checked, QToolButton:checked { background:%1; border:1px solid %2; }")
+                 .arg(on.name(), accent.name());
+    }
+
     // The tab bar's scroll arrows.
     //
     // They are QToolButtons living inside the tab bar, so the generic

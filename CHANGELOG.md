@@ -11,6 +11,55 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-150"></a>
+## Session 150 — UI revamp, tool windows 27: Big numbers, and every toggle
+
+The Big numbers panel (in the Live Loco Console) was sound:
+- large values;
+- muted when stale;
+- the source and its age under each value;
+- the time spent in a state.
+
+Its button was not.
+
+- **A toggle that is on now looks on, app-wide.** A checked push or tool
+  button looked exactly like an unchecked one. The Loco Console's "Big
+  numbers", "Cab view" and "Record", the DMI panel's "Fields ▸", and
+  every other toggle never showed whether it was on. Now an accent fill
+  with an accent border.
+  - It tints towards the accent (the tab underline, the ticked box), not
+    the palette's Highlight, which on the dark themes is itself dark: the
+    first try was all but invisible there.
+  - The fill is as strong as the button text's contrast floor allows on
+    each theme: 4.5:1, or 7:1 in High Contrast.
+  - The segmented control and the side rail keep their own checked look.
+  - The DMI display itself is drawn, not styled: unchanged.
+
+Tests: `test_session150`, 10 checks:
+
+- on every one of the 11 themes, a checked button is styled, differs
+  visibly from an unchecked one, and its text meets the contrast floor;
+- the Loco Console with real traffic
+  (`replay/loco_1_1_27062026_140226.cap`) and Big numbers on: the panel
+  shows, its button is checked, the default tiles, the mode tile reads
+  "Trip", fits a laptop, layout audit.
+
+`contrastaudit` (407 checks) passes unchanged.
+
+**Screenshot harness:** `SHOT_WINDOW=loco SHOT_BIG=1`.
+
+Files: `uistyle.cpp`, `tests/test_session150.cpp`,
+`tests/screenshot_main.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+199 suites / 5891 checks, menu audit 157/157, headless smoke: all green.
+
+CI note: patch 148's run was green on all three jobs (Windows, Linux,
+Linux Qt 6), the first since patch 133.
+
+
+---
+
 <a id="session-149"></a>
 ## Session 149 — UI revamp, tool windows 26: the Braking panel
 
