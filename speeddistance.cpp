@@ -1,4 +1,5 @@
 #include "speeddistance.h"
+#include <QCoreApplication>
 
 #include "brakingcurves.h"
 #include "fieldplot.h"
@@ -53,6 +54,41 @@ double targetLocation(double locM, double targetDistM, int direction)
     return direction < 0 ? locM - targetDistM : locM + targetDistM;
 }
 
+namespace {
+
+// Direction, location span, top speed, overspeed count and distinct
+// targets, from t.samples.
+void summarise(Trace &t)
+{
+    t.direction = 0;
+    t.overspeedSamples = 0;
+    t.maxSpeedKmh = 0.0;
+    t.minLocM = t.maxLocM = 0.0;
+    t.targets.clear();
+    t.direction = travelDirection(t.samples);
+    QSet<QPair<qint64, qint64>> seenTargets;
+    bool first = true;
+    for (const Sample &s : t.samples) {
+        if (first) { t.minLocM = t.maxLocM = s.locM; first = false; }
+        t.minLocM = qMin(t.minLocM, s.locM);
+        t.maxLocM = qMax(t.maxLocM, s.locM);
+        t.maxSpeedKmh = qMax(t.maxSpeedKmh, s.speedKmh);
+        if (s.overspeed()) ++t.overspeedSamples;
+        if (s.hasTarget) {
+            const double at = targetLocation(s.locM, s.targetDistM, t.direction);
+            // Distinct to 10 m and 1 km/h: the target does not move, the
+            // train's estimate of the distance to it does, a little.
+            const QPair<qint64, qint64> key(qint64(std::llround(at / 10.0)), qint64(std::llround(s.targetSpeedKmh)));
+            if (!seenTargets.contains(key)) {
+                seenTargets.insert(key);
+                t.targets << Target{ at, s.targetSpeedKmh, s.epochMs, s.row };
+            }
+        }
+    }
+}
+
+}  // namespace
+
 Trace extract(const LogModel *model, int maxRows, qint64 fromMs, qint64 toMs)
 {
     Trace t;
@@ -105,26 +141,21 @@ Trace extract(const LogModel *model, int maxRows, qint64 fromMs, qint64 toMs)
         }
         t.samples << s;
     }
-    t.direction = travelDirection(t.samples);
-    QSet<QPair<qint64, qint64>> seenTargets;
-    bool first = true;
-    for (const Sample &s : t.samples) {
-        if (first) { t.minLocM = t.maxLocM = s.locM; first = false; }
-        t.minLocM = qMin(t.minLocM, s.locM);
-        t.maxLocM = qMax(t.maxLocM, s.locM);
-        t.maxSpeedKmh = qMax(t.maxSpeedKmh, s.speedKmh);
-        if (s.overspeed()) ++t.overspeedSamples;
-        if (s.hasTarget) {
-            const double at = targetLocation(s.locM, s.targetDistM, t.direction);
-            // Distinct to 10 m and 1 km/h: the target does not move, the
-            // train's estimate of the distance to it does, a little.
-            const QPair<qint64, qint64> key(qint64(std::llround(at / 10.0)), qint64(std::llround(s.targetSpeedKmh)));
-            if (!seenTargets.contains(key)) {
-                seenTargets.insert(key);
-                t.targets << Target{ at, s.targetSpeedKmh, s.epochMs, s.row };
-            }
-        }
+    summarise(t);
+    return t;
+}
+
+Trace knownOnly(const Trace &trace, int *unknown)
+{
+    Trace t = trace;
+    t.samples.clear();
+    int dropped = 0;
+    for (const Sample &s : trace.samples) {
+        if (locationKnown(s)) t.samples << s;
+        else ++dropped;
     }
+    if (unknown) *unknown = dropped;
+    summarise(t);
     return t;
 }
 
@@ -166,6 +197,12 @@ const double kMinSpanM = 20.0;
 // A braking curve is drawn only if it lies within this distance of the
 // stretch of track the train reported.
 const double kCurveNearM = 5000.0;
+
+// "1 sample" / "826 samples".
+QString countOf(int n, const char *one, const char *many)
+{
+    return QStringLiteral("%1 %2").arg(n).arg(QCoreApplication::translate("SpeedDistanceWindow", n == 1 ? one : many));
+}
 }  // namespace
 
 SpeedDistanceCanvas::SpeedDistanceCanvas(QWidget *parent)
@@ -708,7 +745,7 @@ SpeedDistanceWindow::SpeedDistanceWindow(LogModel *model, const QString &tabKey,
     top->addWidget(exportButton);
 
     auto *hint = new QLabel(tr("Wheel: zoom distance  ·  Shift+wheel: zoom speed  ·  Drag: zoom to a stretch  ·  "
-                               "Right-drag: pan  ·  Double-click: fit  ·  Click a point: jump to its message"));
+                               "Right-drag: pan  ·  Double-click: fit  ·  Click: open the message"));
     hint->setStyleSheet(UiColor::mutedStyle());
     hint->setWordWrap(true);
 
@@ -753,7 +790,11 @@ SpeedDistanceWindow::SpeedDistanceWindow(LogModel *model, const QString &tabKey,
 void SpeedDistanceWindow::reload()
 {
     QApplication::setOverrideCursor(Qt::WaitCursor);
-    const Trace trace = extract(m_model);
+    // 0 m is "location not known" here too (session 148, as the track
+    // diagram, the two-loco view and the incident report read it): plotted
+    // as a place, it stretched the axis from 0 km and squeezed the run
+    // against its far end.
+    const Trace trace = knownOnly(extract(m_model), &m_unknownLocation);
     bool capped = false;
     const QVector<Braking::Snapshot> snaps = Braking::collect(m_model, 200000, &capped);
     QApplication::restoreOverrideCursor();
@@ -774,13 +815,15 @@ void SpeedDistanceWindow::describeTrace()
         return;
     }
     QStringList parts;
-    parts << tr("%1 samples from @%2").arg(t.samples.size()).arg(t.source);
+    parts << tr("%1 from @%2").arg(countOf(t.samples.size(), "sample", "samples"), t.source);
     parts << tr("%1–%2 km").arg(t.minLocM / 1000.0, 0, 'f', 3).arg(t.maxLocM / 1000.0, 0, 'f', 3);
     parts << tr("max %1 km/h").arg(t.maxSpeedKmh, 0, 'f', 0);
     if (t.source == QLatin1String("lsrp")) parts << tr("no permitted speed or targets (no @dmi in this tab)");
-    if (t.overspeedSamples > 0) parts << tr("%1 samples above permitted").arg(t.overspeedSamples);
+    if (t.overspeedSamples > 0) parts << tr("%1 above permitted").arg(countOf(t.overspeedSamples, "sample", "samples"));
     if (t.direction == 0) parts << tr("direction of travel unclear (the train barely moved)");
-    if (t.rowsSkipped > 0) parts << tr("%1 rows skipped (speed unidentified or no location)").arg(t.rowsSkipped);
+    if (m_unknownLocation > 0)
+        parts << tr("%1 at 0 m (location not known) left off").arg(countOf(m_unknownLocation, "sample", "samples"));
+    if (t.rowsSkipped > 0) parts << tr("%1 skipped (speed unidentified or no location)").arg(countOf(t.rowsSkipped, "row", "rows"));
     if (t.hitCap) parts << tr("sampled (very long tab)");
     if (!m_canvas->brakingNote().isEmpty()) parts << m_canvas->brakingNote();
     if (t.overspeedSamples > 0) m_status->warn(parts.join(QStringLiteral("  ·  ")));

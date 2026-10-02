@@ -70,28 +70,6 @@ QByteArray renderSpeedPlot(const SpeedDistance::Trace &trace)
     return toPng(&canvas);
 }
 
-// The trace without its 0 m samples (SpeedDistance::locationKnown), its
-// span recomputed, and without the targets placed relative to a 0 m sample.
-SpeedDistance::Trace knownOnly(const SpeedDistance::Trace &t, int *leftOut)
-{
-    SpeedDistance::Trace out = t;
-    out.samples.clear();
-    out.targets.clear();
-    QSet<int> unknownRows;
-    *leftOut = 0;
-    bool first = true;
-    for (const SpeedDistance::Sample &s : t.samples) {
-        if (!SpeedDistance::locationKnown(s)) { unknownRows.insert(s.row); ++*leftOut; continue; }
-        out.samples << s;
-        if (first) { out.minLocM = out.maxLocM = s.locM; first = false; }
-        out.minLocM = qMin(out.minLocM, s.locM);
-        out.maxLocM = qMax(out.maxLocM, s.locM);
-    }
-    for (const SpeedDistance::Target &tg : t.targets)
-        if (!unknownRows.contains(tg.row)) out.targets << tg;
-    return out;
-}
-
 // The tab's own latest @dmi at or before `ms`, or an empty KeyMoment if the
 // tab has none that early. Single-tab scope: only `model` is searched, so a
 // moment names at most one loco.
@@ -159,7 +137,7 @@ Summary build(LogModel *tabModel, const QString &tabKey, const QString &tabName,
 
     // ---- the speed/permitted/target plot, windowed ----------------------------------------
     s.speedTrace = SpeedDistance::extract(tabModel, 200000, s.fromMs, s.toMs);
-    s.plotTrace = knownOnly(s.speedTrace, &s.plotLeftOut);
+    s.plotTrace = SpeedDistance::knownOnly(s.speedTrace, &s.plotLeftOut);
     if (!s.plotTrace.isEmpty()) s.speedPlotPng = renderSpeedPlot(s.plotTrace);
 
     // ---- key moments: window start/end, mode changes, EB/FSB onsets -------------------------

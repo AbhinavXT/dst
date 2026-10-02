@@ -50,6 +50,7 @@
 #include "sessionwindow.h"
 #include "fieldsweepdialog.h"
 #include "fieldplot.h"
+#include "speeddistance.h"
 #include <QComboBox>
 #include <QLineEdit>
 #include <QSpinBox>
@@ -453,6 +454,25 @@ int main(int argc, char **argv)
                 QElapsedTimer t;
                 t.start();
                 while (t.elapsed() < 3000) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+                win = w;
+            }
+            if (which == QLatin1String("speeddist")) {
+                // A whole real run: speed over absolute location.
+                const QString cap = qEnvironmentVariableIsEmpty("SHOT_CAP") ? QStringLiteral("26062026_162418")
+                                                                            : qEnvironmentVariable("SHOT_CAP");
+                QFile run(QStringLiteral(DL_SRC_DIR "/replay/loco_1_1_%1.cap").arg(cap));
+                if (run.open(QIODevice::ReadOnly)) {
+                    while (!run.atEnd()) {
+                        const QByteArray l = run.readLine().trimmed();
+                        if (!l.startsWith('@')) continue;
+                        const QList<QByteArray> tok = l.split(' ');
+                        if (tok.size() < 3) continue;
+                        disp.ingestLocal(21, 1, l, QDateTime::fromString(QString::fromLatin1(tok.at(1)), Qt::ISODate).toMSecsSinceEpoch(), QString());
+                    }
+                }
+                disp.drainNow();
+                auto *w = new SpeedDistanceWindow(disp.modelForKey(QStringLiteral("21_1")), QStringLiteral("21_1"));
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
                 win = w;
             }
             if (which == QLatin1String("fieldplot")) {

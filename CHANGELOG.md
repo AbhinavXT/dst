@@ -11,6 +11,62 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-148"></a>
+## Session 148 — UI revamp, tool windows 24: Speed/distance
+
+- **0 m is "location not known" here too**, as in the track diagram
+  (131), the two-loco view (132) and the incident report (133). Asked
+  again for this window and confirmed, 2026-10-03. On the real run, 352
+  of 826 samples were at 0 m. Plotted as a place, they stretched the axis
+  from 0 km and squeezed the run (153–161 km) against its far end. They
+  are left off now, and the status says so: "352 samples at 0 m
+  (location not known) left off". The axis, the view, Fit and the CSV
+  export cover only the known locations.
+- **One `SpeedDistance::knownOnly()` for this window and the incident
+  report.** The incident report had its own copy (133). The shared one
+  recomputes the span, the direction, the top speed, the overspeed count
+  and the distinct targets from the known samples. A target first seen
+  at a 0 m sample but also seen later is now kept; the copy dropped it.
+  `extract()` is unchanged: the track diagram and the two-loco view
+  count the 0 m samples themselves.
+- **Counts in English:** "474 samples from @dmi", "1 sample above
+  permitted", "3 rows skipped" (were "%1 samples" / "%1 rows" whatever
+  the number).
+- **The mouse hint fits one line at 1100 px** with the Mac's and Windows'
+  fonts. It ends "Click: open the message". With Linux's wider fonts it
+  wraps, and is shown whole.
+
+Also: `session147`'s hint check failed on Linux CI. It wraps there, and
+that is allowed. It and this patch's check now test that the hint is
+shown whole, not that it is one line.
+
+Tests: `test_session148`, 14 checks, on the whole of
+`replay/loco_1_1_26062026_162418.cap`:
+
+- `extract()` keeps the 0 m samples;
+- `knownOnly()` drops exactly those and counts them;
+- the span is 150–162 km, not from 0;
+- no target placed relative to 0 m, and the real ones kept;
+- the window's axis and view start at the run;
+- the status text;
+- the hint is shown whole, wrapped or not;
+- fits a laptop with room for wider fonts;
+- layout audit.
+
+`session81`, `session97`, `session98` and `session133` pass unchanged.
+
+**Screenshot harness:** `SHOT_WINDOW=speeddist` (`SHOT_CAP` picks the run).
+
+Files: `speeddistance.h/.cpp`, `incidentreport.cpp`,
+`tests/test_session148.cpp`, `tests/screenshot_main.cpp`,
+`tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+197 suites / 5866 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-147"></a>
 ## Session 147 — UI revamp, tool windows 23: Field plot; two more Linux fits
 

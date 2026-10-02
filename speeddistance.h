@@ -70,8 +70,9 @@ struct Sample {
 };
 
 // abs_loco_loc 0: the loco has not localised on an RFID tag (session 131,
-// Abhinav's decision). Only the track diagram and the two-loco view read it
-// so; this module's own extract() and plot still take 0 m at face value.
+// Abhinav's decision). extract() keeps those samples (its callers count
+// them); knownOnly() drops them, and the speed/distance plot uses it
+// (session 148).
 inline bool locationKnown(const Sample &s) { return s.locM > 0.0; }
 
 struct Target {
@@ -105,6 +106,10 @@ int travelDirection(const QVector<Sample> &samples);
 
 // A target this far ahead of this location, for this direction.
 double targetLocation(double locM, double targetDistM, int direction);
+
+// The trace without its 0 m samples, its span, direction and targets
+// recomputed from the rest. `unknown`, if given, gets how many were dropped.
+Trace knownOnly(const Trace &trace, int *unknown = nullptr);
 
 // CSV of the samples between two locations (inclusive, either order).
 QString toCsv(const Trace &trace, double fromLocM, double toLocM);
@@ -206,6 +211,7 @@ private:
     SpeedDistanceCanvas *m_canvas = nullptr;
     StatusLine *m_status = nullptr;
     QCheckBox *m_permitted = nullptr, *m_targets = nullptr, *m_braking = nullptr;
+    int m_unknownLocation = 0;   // samples at 0 m, left off the plot
 };
 
 #endif // SPEEDDISTANCE_H
