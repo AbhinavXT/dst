@@ -84,6 +84,12 @@ public:
     static int  offlineErrSeconds()          { QSettings s(iniPath(), QSettings::IniFormat); return s.value("ui/offline_err_seconds", 30).toInt(); }
     static void setOfflineErrSeconds(int n)  { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("ui/offline_err_seconds", n); }
 
+    // Two-loco view (session 132): warn that the locos may not be on the same
+    // section when their known location ranges are further apart than this.
+    // 0 = whenever they do not overlap at all (the rule before session 132).
+    static double twoLocoWarnApartKm()         { QSettings s(iniPath(), QSettings::IniFormat); return s.value("ui/two_loco_warn_apart_km", 10.0).toDouble(); }
+    static void   setTwoLocoWarnApartKm(double k) { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("ui/two_loco_warn_apart_km", k); }
+
     // ---- Theme (2i) --------------------------------------------------
     // Master switch for continuous disk logging. When off, no .log and no
     // .dlr are written at all — the console is live-view only, and the

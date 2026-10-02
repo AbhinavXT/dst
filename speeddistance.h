@@ -69,6 +69,11 @@ struct Sample {
     bool overspeed() const { return hasPermitted && speedKmh > permittedKmh; }
 };
 
+// abs_loco_loc 0: the loco has not localised on an RFID tag (session 131,
+// Abhinav's decision). Only the track diagram and the two-loco view read it
+// so; this module's own extract() and plot still take 0 m at face value.
+inline bool locationKnown(const Sample &s) { return s.locM > 0.0; }
+
 struct Target {
     double  locM = 0.0;
     double  speedKmh = 0.0;

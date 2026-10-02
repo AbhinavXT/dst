@@ -25,6 +25,20 @@ int sampleAtOrBefore(const QVector<SpeedDistance::Sample> &v, qint64 ms)
     return lo - 1;
 }
 
+// Lowest and highest KNOWN location in a trace; false if none is known.
+bool knownSpan(const SpeedDistance::Trace &t, double *lo, double *hi, int *unknown)
+{
+    bool any = false;
+    *unknown = 0;
+    for (const SpeedDistance::Sample &s : t.samples) {
+        if (!SpeedDistance::locationKnown(s)) { ++*unknown; continue; }
+        if (!any) { *lo = *hi = s.locM; any = true; continue; }
+        *lo = qMin(*lo, s.locM);
+        *hi = qMax(*hi, s.locM);
+    }
+    return any;
+}
+
 }  // namespace
 
 Events extractEvents(const LogModel *model, qint64 fromMs, qint64 toMs)
@@ -62,7 +76,7 @@ Events extractEvents(const LogModel *model, qint64 fromMs, qint64 toMs)
 
 Pair build(const LogModel *modelA, const QString &keyA,
           const LogModel *modelB, const QString &keyB,
-          qint64 fromMs, qint64 toMs, qint64 toleranceMs)
+          qint64 fromMs, qint64 toMs, qint64 toleranceMs, double warnApartM)
 {
     Pair p;
     p.keyA = keyA;
@@ -73,19 +87,39 @@ Pair build(const LogModel *modelA, const QString &keyA,
     p.eventsB = extractEvents(modelB, fromMs, toMs);
 
     for (const SpeedDistance::Sample &sa : p.a.samples) {
+        if (!SpeedDistance::locationKnown(sa)) continue;
         const int idx = sampleAtOrBefore(p.b.samples, sa.epochMs);
         if (idx < 0) continue;
         const SpeedDistance::Sample &sb = p.b.samples.at(idx);
         if (sa.epochMs - sb.epochMs > toleranceMs) continue;
-        p.gap << GapSample{ sa.epochMs, sb.locM - sa.locM };
+        if (!SpeedDistance::locationKnown(sb)) continue;
+        p.gap << GapSample{ sa.epochMs, sb.locM - sa.locM, sa.locM, sb.locM };
     }
 
-    if (!p.a.isEmpty() && !p.b.isEmpty()
-        && !rangesOverlap(p.a.minLocM, p.a.maxLocM, p.b.minLocM, p.b.maxLocM)) {
+    double aLo = 0, aHi = 0, bLo = 0, bHi = 0;
+    p.hasLocA = knownSpan(p.a, &aLo, &aHi, &p.unknownA);
+    p.hasLocB = knownSpan(p.b, &bLo, &bHi, &p.unknownB);
+    if (p.hasLocA && p.hasLocB) { p.minLocM = qMin(aLo, bLo); p.maxLocM = qMax(aHi, bHi); }
+    else if (p.hasLocA)         { p.minLocM = aLo; p.maxLocM = aHi; }
+    else if (p.hasLocB)         { p.minLocM = bLo; p.maxLocM = bHi; }
+
+    if (p.hasLocA && p.hasLocB && !rangesOverlap(aLo, aHi, bLo, bHi))
+        p.apartM = qMax(bLo - aHi, aLo - bHi);
+    if (p.hasLocA && p.hasLocB && !rangesOverlap(aLo, aHi, bLo, bHi) && p.apartM > warnApartM) {
         p.plausible = false;
-        p.warning = QStringLiteral(
-            "%1's and %2's reported locations do not overlap at all — check these are on the "
-            "same section of track before trusting the gap below.").arg(keyA, keyB);
+        p.warning = warnApartM > 0.0
+            ? QStringLiteral("%1's and %2's reported locations are %3 km apart at their nearest — check "
+                             "these are on the same section of track before trusting the gap.")
+                  .arg(keyA, keyB).arg(p.apartM / 1000.0, 0, 'f', 1)
+            : QStringLiteral("%1's and %2's reported locations do not overlap at all — check these are on the "
+                             "same section of track before trusting the gap below.").arg(keyA, keyB);
+    } else if (!p.a.isEmpty() && !p.b.isEmpty() && (!p.hasLocA || !p.hasLocB)) {
+        p.plausible = false;
+        p.warning = (!p.hasLocA && !p.hasLocB)
+            ? QStringLiteral("%1 and %2 both report 0 m throughout (never localised on an RFID tag): "
+                             "there is no gap to show.").arg(keyA, keyB)
+            : QStringLiteral("%1 reports 0 m throughout (never localised on an RFID tag): "
+                             "there is no gap to show.").arg(p.hasLocA ? keyB : keyA);
     }
     return p;
 }

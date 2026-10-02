@@ -11,6 +11,108 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-132"></a>
+## Session 132 — UI revamp, tool windows 8: the Two-loco view
+
+**0 m means "location not known" here too** (Abhinav, as for the track
+diagram in session 131). Take the real pair
+`replay/loco_1_1_27062026_151052.cap` / `loco_2_1_` of the same run:
+loco A reports 0 m in 132 of 157 frames, and loco B in 45. Every instant
+where one loco was at 0 m and the other at 161 km became a "gap" of
+161 km, both on screen and in Save gap CSV. The location lane's scale
+also ran from 0 to 161 305 m. Now:
+
+- **The gap:** a gap sample needs both locos' locations known. This run
+  has 25 real gaps, where 157 were reported before.
+- **The location line breaks** where the location is not known, instead
+  of diving to 0 and back.
+- **The scale:** both the location scale and the overlap check use known
+  samples only.
+- **A loco that never localises** is named: "21_1 reports 0 m
+  throughout … there is no gap to show."
+- **Speed** is drawn as before.
+
+**The same-section warning is now a distance you set.** With the 0 m
+frames gone, the old rule (warn when the two location ranges do not
+overlap) fired on exactly the case the view is for. In this run, A sits
+at 160.57–160.65 km and B runs 160.8–161.3 km about 200 m ahead of it,
+and the rule said "check these are on the same section". Before this
+patch the rule never fired on real logs, because both ranges included
+0 m. Abhinav asked for the limit to be configurable:
+
+- A "Warn if apart by more than [10.0 km]" box in the window, saved in
+  `ui/two_loco_warn_apart_km` (default 10 km).
+- The view warns when the ranges' nearest points are further apart
+  than that, and says by how much.
+- 0 shows as "any gap" and keeps the old any-non-overlap rule.
+- `TwoLocoView::build()` takes the distance as a new last parameter.
+  Its default, 0, keeps direct callers on the old rule.
+
+**The canvas.**
+
+- **A header row** with the legend (A and B, by line colour). When you
+  point at the plot it reads both locos at that moment: location (or
+  "not localised (0 m)"), speed, and the gap (or "no gap"). It used to
+  be a status-line readout of the gap only, which made the status line
+  flicker.
+- **Lane titles** LOCATION and SPEED.
+- **Location on round km ticks** (160.6 / 160.8 / 161.0 km). Before,
+  the axis showed two raw metre values.
+- **Speed on round km/h ticks** (0 / 40 / 80 / 120). The top label
+  used to be clipped ("I00 km/h").
+- **A time axis** with round clock ticks. Before, only the two ends
+  were labelled. A label slid in from the right edge is dropped if it
+  would land on its neighbour.
+- **The cursor** puts a dot on each trace where it crosses.
+- **SoS/collision event ticks** have tooltips naming each episode.
+- **The not-same-section banner** is in the warning colour, not the
+  error colour.
+
+**The status line** reads "25 gap samples · A: 132 of 157 frames not
+localised (0 m) · B: …" (was "gap sample(s)"). It stays one line: a
+warning shows a short line, and its tooltip has the full sentence plus
+why the 0 m frames are left out. The window opens at 1100 × 680.
+
+Not changed, and worth knowing: no capture in `replay/` has @lsos
+frames, so the event ticks are covered only by session 98's synthetic
+frames. The rear-end collision that loco 1's DMI reports in this run
+(EMERGENCY_STATUS) is not one of this view's events, which come from
+@lsos only, and is not drawn.
+
+**Screenshot harness:** `SHOT_WINDOW=twoloco` (both locos of a run;
+`SHOT_CAP` picks the run).
+
+Tests: `test_session132`, 27 checks, on the real pair:
+
+- the 0 m frames are counted;
+- 25 gaps, all between known locations, none of 161 km;
+- the scale is the run's;
+- the CSV holds only the real gaps;
+- the ranges are a few hundred metres apart: no warning at 10 km. The
+  old rule still holds at 0, and a tighter limit warns with the
+  distance;
+- a loco that never localises is named, and there is no gap;
+- the header readout with both locations known and with A at 0 m;
+- pointing at the plot sets the cursor;
+- the limit box shows and saves the setting;
+- the status text, its tooltip, one line;
+- fits 1366 × 768;
+- layout audit.
+
+`test_session98` passes unchanged.
+
+Files: `speeddistance.h` (`locationKnown` moved here, so the track
+diagram and this view share it; SpeedDistance's own extraction and plot
+are unchanged), `trackdiagram.h`, `twolocoview.h/.cpp`,
+`twolocowindow.h/.cpp`, `settings.h`, `tests/screenshot_main.cpp`,
+`tests/test_session132.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+181 suites / 5612 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-131"></a>
 ## Session 131 — UI revamp, tool windows 7: the Track diagram
 

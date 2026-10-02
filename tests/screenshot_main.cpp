@@ -29,6 +29,7 @@
 #include "comparewindow.h"
 #include "mergedwindow.h"
 #include "trackdiagramwindow.h"
+#include "twolocowindow.h"
 #include <QDateTime>
 #include "namemap.h"
 #include "theme.h"
@@ -131,6 +132,28 @@ int main(int argc, char **argv)
                 disp.drainNow();
                 const QString key = disp.knownKeys().value(0);
                 auto *w = new TrackDiagramWindow(disp.modelForKey(key), key, QStringLiteral("L1_V1"));
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
+                win = w;
+            }
+            if (which == QLatin1String("twoloco")) {
+                // Two real locos recorded at the same time (SHOT_CAP picks
+                // the date_time; 27062026_151052 has a rear-end episode).
+                const QString cap = qEnvironmentVariableIsEmpty("SHOT_CAP") ? QStringLiteral("27062026_151052")
+                                                                            : qEnvironmentVariable("SHOT_CAP");
+                for (int loco = 1; loco <= 2; ++loco) {
+                    QFile run(QStringLiteral(DL_SRC_DIR "/replay/loco_%1_1_%2.cap").arg(loco).arg(cap));
+                    if (!run.open(QIODevice::ReadOnly)) continue;
+                    while (!run.atEnd()) {
+                        const QByteArray l = run.readLine().trimmed();
+                        if (!l.startsWith('@')) continue;
+                        const QList<QByteArray> tok = l.split(' ');
+                        if (tok.size() < 3) continue;
+                        const qint64 ms = QDateTime::fromString(QString::fromLatin1(tok.at(1)), Qt::ISODate).toMSecsSinceEpoch();
+                        disp.ingestLocal(loco == 1 ? 21 : 22, 1, l, ms, QString());
+                    }
+                }
+                disp.drainNow();
+                auto *w = new TwoLocoWindow(&disp);
                 w->setAttribute(Qt::WA_DeleteOnClose, false);
                 win = w;
             }

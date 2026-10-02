@@ -14,6 +14,7 @@
 class MessageDispatcher;
 class StatusLine;
 class QComboBox;
+class QDoubleSpinBox;
 
 class TwoLocoCanvas : public QWidget
 {
@@ -23,10 +24,14 @@ public:
     void setPair(const TwoLocoView::Pair &pair);
     const TwoLocoView::Pair &pair() const { return m_pair; }
     QSize sizeHint() const override { return QSize(960, 560); }
+    QSize minimumSizeHint() const override { return QSize(560, 360); }
 
     // The instant last hovered/clicked, or -1. For the tests and the
     // window's readout.
     qint64 cursorMs() const { return m_cursorMs; }
+    // The header's text at an instant: both locos' location and speed, and
+    // the gap (session 132; it was a status-line readout of the gap only).
+    QString readoutAt(qint64 ms) const;
 
 signals:
     void cursorChanged(qint64 ms);   // -1 when the cursor leaves the canvas
@@ -35,6 +40,7 @@ protected:
     void paintEvent(QPaintEvent *) override;
     void mouseMoveEvent(QMouseEvent *) override;
     void leaveEvent(QEvent *) override;
+    bool event(QEvent *e) override;   // tooltips: the events under the pointer
 
 private:
     QRect  locationLane() const;
@@ -44,6 +50,10 @@ private:
     double yOfLoc(const QRect &r, double locM) const;
     double yOfSpeed(const QRect &r, double kmh) const;
     void   setCursor(qint64 ms);
+    int    leftMargin() const;
+    int    headerHeight() const;
+    QFont  smallFont() const;
+    QColor base() const;
 
     TwoLocoView::Pair m_pair;
     qint64 m_minMs = 0, m_maxMs = 1;
@@ -73,6 +83,7 @@ private:
 
     MessageDispatcher *m_dispatcher = nullptr;
     QComboBox *m_boxA = nullptr, *m_boxB = nullptr;
+    QDoubleSpinBox *m_warnApart = nullptr;
     TwoLocoCanvas *m_canvas = nullptr;
     StatusLine *m_status = nullptr;
     TwoLocoView::Pair m_pair;

@@ -125,7 +125,7 @@ struct Diagram {
 };
 
 // abs_loco_loc 0 = the loco has not localised (see above).
-inline bool locationKnown(const SpeedDistance::Sample &s) { return s.locM > 0.0; }
+using SpeedDistance::locationKnown;
 
 Diagram build(const LogModel *model, const QString &tabKey, const QString &tabName, int maxRows = 200000);
 

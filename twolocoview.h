@@ -58,7 +58,11 @@ struct Events {
 // @lsos in `model`, windowed if fromMs/toMs > 0 (both, like collectRowFields).
 Events extractEvents(const LogModel *model, qint64 fromMs = 0, qint64 toMs = 0);
 
-struct GapSample { qint64 ms = 0; double gapM = 0.0; };
+struct GapSample {
+    qint64 ms = 0;
+    double gapM = 0.0;
+    double aLocM = 0.0, bLocM = 0.0;   // the two locations it is the difference of
+};
 
 // Both locos' traces, events, and the gap between them, time-matched within
 // `toleranceMs` (a gap sample needs a B sample no more than this long before
@@ -71,11 +75,18 @@ struct Pair {
     QVector<GapSample> gap;
     bool    plausible = true;
     QString warning;
+
+    // Known locations only (SpeedDistance::locationKnown).
+    bool   hasLocA = false, hasLocB = false;
+    double minLocM = 0.0, maxLocM = 1.0;   // over both locos
+    double apartM = 0.0;                   // nearest points of the two known ranges; 0 if they overlap
+    int    unknownA = 0, unknownB = 0;     // samples at 0 m
 };
 
 Pair build(const LogModel *modelA, const QString &keyA,
           const LogModel *modelB, const QString &keyB,
-          qint64 fromMs = 0, qint64 toMs = 0, qint64 toleranceMs = 2000);
+          qint64 fromMs = 0, qint64 toMs = 0, qint64 toleranceMs = 2000,
+          double warnApartM = 0.0);
 
 // CSV of the gap samples (time, gap_m), for export.
 QString gapToCsv(const Pair &pair);
