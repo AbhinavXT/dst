@@ -1,4 +1,5 @@
 #include "testutil.h"
+#include <cstdio>
 
 #include "uistyle.h"
 
@@ -274,7 +275,15 @@ TEST_SUITE(tabmetrics)
         for (int i = 0; i < bar->count(); ++i) { sum += bar->tabRect(i).width(); }
         CHECK(sum <= 1900,
               "eleven tabs — a full workspace reopened — fit a laptop screen");
-        CHECK(visibleScrollers(bar) == 0, "with nothing to scroll");
+        // Only meaningful when the window really is 1900 px wide. On a
+        // smaller screen a native window is held to the screen (a Windows CI
+        // runner is 1024 px: session 116), and scroll arrows are then right.
+        if (w.width() >= 1900) {
+            CHECK(visibleScrollers(bar) == 0, "with nothing to scroll");
+        } else {
+            std::printf("  note [tabmetrics] scroll check not run: the screen held the window to %d px\n",
+                        w.width());
+        }
 
         // No tab is narrower than its own label, which is the state that
         // produces characters falling off both ends.
