@@ -16,9 +16,14 @@
 // them gives you misaligned pointer members, which is undefined behaviour and
 // an actual alignment fault on ARM targets. Only the wire structs need it.
 #pragma pack(push, 1)
+// The pragma alone packs these, on GCC, Clang and MSVC alike. They also
+// carried __attribute__((packed)) until session 115 — GCC-only syntax that
+// MSVC rejects outright, which is what the first Windows build since the
+// library split (patch 88) stopped on. The static_assert below proves the
+// 7-byte header on every compiler.
 
 
-typedef struct __attribute__ ((packed))
+typedef struct
 {
     UINT_8 source_id=0;
     UINT_8 destination_id=0;
@@ -30,13 +35,13 @@ typedef struct __attribute__ ((packed))
 }STRUCT_MESSAGE_HEADER;
 
 
-typedef struct __attribute__ ((packed))
+typedef struct
 {
     char stringData[1501];
 
 }STRUCT_DLC_PAYLOAD;
 
-typedef struct  __attribute__ ((packed))
+typedef struct
 {
     STRUCT_MESSAGE_HEADER msg_header;
     STRUCT_DLC_PAYLOAD payload;
@@ -54,7 +59,7 @@ typedef struct  __attribute__ ((packed))
 
 //}STRUCT_MESSAGE_HEADER;
 
-typedef struct __attribute__ ((packed))
+typedef struct
 {
     STRUCT_MESSAGE_HEADER   msg_header;
     char                    my_buf[MAX_MSG_SIZE];
