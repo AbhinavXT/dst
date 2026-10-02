@@ -20,6 +20,8 @@
 #include <QSpinBox>
 #include <QListWidget>
 #include <QTableWidget>
+#include <QTabWidget>
+#include <QTabBar>
 #include <QHeaderView>
 #include <QFormLayout>
 #include <QCheckBox>
@@ -286,9 +288,9 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     root->addWidget(destBox);
 
     auto *keyRow = new QHBoxLayout;
-    keyRow->addWidget(new QLabel(tr("Session key (32 hex, optional):"), this));
+    keyRow->addWidget(new QLabel(tr("Session key:"), this));
     m_keyEdit = new QLineEdit(this);
-    m_keyEdit->setPlaceholderText(tr("leave blank for a zero MAC placeholder"));
+    m_keyEdit->setPlaceholderText(tr("32 hex digits, optional; blank = zero MAC placeholder"));
     m_keyEdit->setMaxLength(32);
     keyRow->addWidget(m_keyEdit, 1);
 
@@ -476,11 +478,14 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
 
     mid->addWidget(subBox);
 
-    // give the sub-packet side the larger share (its repeat tables are wide)
+    // The header form gets the larger share (session 128). The sub-packet
+    // side here is only a list: its fields and repeat tables are edited in
+    // their own window (Edit fields...). At 400 px the form squeezed
+    // FRAME_NUM's editor to two digits behind a sideways scrollbar.
     m_mid = mid;
-    mid->setStretchFactor(0, 3);
-    mid->setStretchFactor(1, 5);
-    mid->setSizes({ 400, 660 });
+    mid->setStretchFactor(0, 5);
+    mid->setStretchFactor(1, 3);
+    mid->setSizes({ 600, 460 });
 
     // The middle and the preview share the remaining height through a
     // splitter rather than the preview taking a fixed slice. On a packet
@@ -492,39 +497,71 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     root->addWidget(vsplit, 1);
     m_vsplit = vsplit;
 
-    // preview + status
-    m_preview = new QPlainTextEdit(this);
+    // Output and Vary per send share the pane under the field editors as
+    // tabs (session 128). Vary per send was a box of its own below the
+    // status line, permanently costing ~150 px of the editors' height for a
+    // table that matters only in interval mode; the tab title still says
+    // how many rules there are, so none run unseen.
+    m_lowerTabs = new QTabWidget(this);
+    m_lowerTabs->setDocumentMode(true);
+    m_preview = new QPlainTextEdit(m_lowerTabs);
     m_preview->setReadOnly(true);
     m_preview->setFont(UiStyle::monoFont());
-    m_preview->setMinimumHeight(90);
-    vsplit->addWidget(m_preview);
-    vsplit->setStretchFactor(0, 4);
-    vsplit->setStretchFactor(1, 1);
-    m_status = new StatusLine(this);
-    m_status->say(tr("Not built yet."));
-    m_status->setWordWrap(true);
-    root->addWidget(m_status);
+    m_preview->setMinimumHeight(3 * m_preview->fontMetrics().lineSpacing());
+    m_lowerTabs->addTab(m_preview, tr("Output"));
 
     // Vary per send. Interval sending rebuilds the frame every tick and
     // applies these rules, so a repeated send is a stream rather than the
     // same bytes with a new sequence number on the envelope.
-    auto *varyBox = new QGroupBox(tr("Vary per send (interval mode)"), this);
-    auto *varyLay = new QVBoxLayout(varyBox);
-    m_varyTable = new QTableWidget(0, 5, varyBox);
+    auto *varyPage = new QWidget(m_lowerTabs);
+    auto *varyLay = new QVBoxLayout(varyPage);
+    varyLay->setContentsMargins(0, 4, 0, 0);
+    m_varyTable = new QTableWidget(0, 5, varyPage);
     m_varyTable->setHorizontalHeaderLabels(
-        { tr("Field"), tr("Mode"), tr("Start / min"), tr("Step"), tr("Max (0 = field width)") });
-    m_varyTable->horizontalHeader()->setStretchLastSection(true);
+        { tr("Field"), tr("Mode"), tr("Start / min"), tr("Step"), tr("Max") });
+    m_varyTable->horizontalHeaderItem(4)->setToolTip(tr("0 = the field's full width"));
+    // The field name takes the spare width; the mode fits its longest
+    // choice; the numbers get a fixed, readable width. Before, "Max" took
+    // half the table and the combos were cut to "from liv".
+    QHeaderView *vh = m_varyTable->horizontalHeader();
+    vh->setStretchLastSection(false);
+    vh->setSectionResizeMode(0, QHeaderView::Stretch);
+    vh->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    for (int c = 2; c <= 4; ++c) {
+        vh->setSectionResizeMode(c, QHeaderView::Interactive);
+        m_varyTable->setColumnWidth(c, fontMetrics().horizontalAdvance(QStringLiteral("0000000000000")));
+    }
     m_varyTable->verticalHeader()->setVisible(false);
-    m_varyTable->setMaximumHeight(120);
-    varyLay->addWidget(m_varyTable);
+    varyLay->addWidget(m_varyTable, 1);
     auto *varyBtns = new QHBoxLayout;
-    m_varyAddBtn = new QPushButton(tr("Add rule"), varyBox);
-    m_varyDelBtn = new QPushButton(tr("Remove rule"), varyBox);
+    m_varyAddBtn = new QPushButton(tr("Add rule"), varyPage);
+    m_varyDelBtn = new QPushButton(tr("Remove rule"), varyPage);
     varyBtns->addWidget(m_varyAddBtn);
     varyBtns->addWidget(m_varyDelBtn);
-    varyBtns->addStretch(1);
+    varyBtns->addWidget(new QLabel(tr("Applied on every interval send."), varyPage), 1);
     varyLay->addLayout(varyBtns);
-    root->addWidget(varyBox);
+    m_lowerTabs->addTab(varyPage, QString());
+    QAbstractItemModel *vm = m_varyTable->model();
+    connect(vm, &QAbstractItemModel::rowsInserted, this, &PacketMakerDialog::updateVaryTabTitle);
+    connect(vm, &QAbstractItemModel::rowsRemoved,  this, &PacketMakerDialog::updateVaryTabTitle);
+    connect(vm, &QAbstractItemModel::modelReset,   this, &PacketMakerDialog::updateVaryTabTitle);
+    updateVaryTabTitle();
+
+    // A tab widget's floor is its largest page's (the Vary table and its
+    // buttons, 150 px), which capped the field editors above it. Four lines
+    // under the tab bar is enough to read the result; drag for more.
+    m_lowerTabs->setMinimumHeight(m_lowerTabs->tabBar()->sizeHint().height()
+                                  + 4 * m_preview->fontMetrics().lineSpacing());
+    vsplit->addWidget(m_lowerTabs);
+    vsplit->setStretchFactor(0, 4);
+    vsplit->setStretchFactor(1, 1);
+    // Stretch factors only share out a resize; the first layout follows
+    // the size hints, which gave the field editors two rows (session 128).
+    vsplit->setSizes({ 400, 100 });
+    m_status = new StatusLine(this);
+    m_status->say(tr("Not built yet."));
+    m_status->setWordWrap(true);
+    root->addWidget(m_status);
 
     // bottom buttons
     auto *btns = new QHBoxLayout;
@@ -632,7 +669,7 @@ void PacketMakerDialog::rebuildHeaderForm()
     if (m_subBox) {
         m_subBox->setVisible(pi.hasSub);
         if (m_mid) {
-            m_mid->setSizes(pi.hasSub ? QList<int>{ 400, 660 }
+            m_mid->setSizes(pi.hasSub ? QList<int>{ 600, 460 }
                                       : QList<int>{ qMax(400, width()), 0 });
         }
     }
@@ -750,7 +787,14 @@ void PacketMakerDialog::rebuildHeaderForm()
 
 // ---- subpackets ------------------------------------------------------------
 
-PacketMakerDialog::~PacketMakerDialog() = default;
+PacketMakerDialog::~PacketMakerDialog()
+{
+    // A QTableWidget emits modelReset while it is being destroyed, which is
+    // after this destructor: the tab-title slot would then run on a
+    // half-destroyed dialog and write to a dying tab widget. That corrupted
+    // the heap and crashed the next restyle (session 128). Cut it first.
+    if (m_varyTable) { m_varyTable->model()->disconnect(this); }
+}
 
 // The three field-editor entry points are thin forwarders to the existing
 // private statics, so SubPacketWindow builds exactly the same widgets from
@@ -1030,6 +1074,15 @@ void PacketMakerDialog::onVaryAdd()
     m_varyTable->setItem(row, 2, new QTableWidgetItem(QStringLiteral("0")));
     m_varyTable->setItem(row, 3, new QTableWidgetItem(QStringLiteral("1")));
     m_varyTable->setItem(row, 4, new QTableWidgetItem(QStringLiteral("0")));
+}
+
+void PacketMakerDialog::updateVaryTabTitle()
+{
+    if (!m_lowerTabs || !m_varyTable) { return; }
+    const int n = m_varyTable->rowCount();
+    m_lowerTabs->setTabText(1, n == 0 ? tr("Vary per send")
+                             : n == 1 ? tr("Vary per send (1 rule)")
+                                      : tr("Vary per send (%1 rules)").arg(n));
 }
 
 void PacketMakerDialog::onVaryRemove()

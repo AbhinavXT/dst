@@ -158,6 +158,7 @@ private slots:
     void onClearBuffer();
     void onVaryAdd();
     void onVaryRemove();
+    void updateVaryTabTitle();          // "Vary per send (N rules)"
     void onFieldFilterChanged();
     void onShowDiff();
     void onSavePreset();
@@ -311,6 +312,7 @@ private:
     // "Vary per send": header fields that advance from one interval datagram
     // to the next, so a repeated send is a stream and not the same bytes.
     QTableWidget *m_varyTable   = nullptr;
+    class QTabWidget *m_lowerTabs = nullptr;  // Output | Vary per send
     QPushButton  *m_varyAddBtn  = nullptr;
     QPushButton  *m_varyDelBtn  = nullptr;
 

@@ -11,6 +11,76 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-128"></a>
+## Session 128 — UI revamp, tool windows 4: Packet Maker (finished)
+
+Finishes session 125's first pass. The field editors are the reason the
+window is open; they now get the space, and the window fits a laptop.
+
+- **Output and Vary per send are tabs** in the pane under the field
+  editors. Vary per send used to be a box of its own under the status line,
+  costing ~150 px all the time for a table that matters only in interval
+  mode. Its tab shows the rule count ("Vary per send (1 rule)"), so a rule
+  never runs unseen.
+- **The Vary table's columns fit.** The field name takes the spare width
+  and the mode column fits "from live". The three number columns are a
+  fixed, readable width. "Max (0 = field width)" became "Max", with the
+  note as a tooltip. Before, Max took half the table and the combos read
+  "from liv".
+- **Folded sections are one short line.** "Also send to", "Extra header
+  fields" and "Fill from buffer" each cost 36 px folded; now 28.
+  `UiStyle::makeFoldable` drops the box's layout margins while folded,
+  restores them on unfolding, and caps a folded box at its switch's height.
+- **The header form is the wider side** (600 : 460, was 400 : 660). Sub-
+  packets are edited in their own window, so here that side is only a
+  list. At 400 px the form squeezed FRAME_NUM's editor to two digits behind
+  a sideways scrollbar.
+- **The editors get the height.** The vertical split starts at 4 : 1; the
+  first layout had followed the size hints, giving the editors two rows.
+  The lower pane's floor is the tab bar plus four lines; its largest page
+  had set it to 150 px.
+- **"Session key:"** replaces "Session key (32 hex, optional):"; the hint
+  moved into the box's placeholder.
+
+The minimum size went from 1127 × 789 to 1127 × 617, which fits
+1366 × 768.
+
+**A crash, found by the gate.** A `QTableWidget` emits `modelReset` while
+being destroyed, after `~PacketMakerDialog` has run. The new tab-title slot
+then ran on a half-destroyed dialog and wrote to a dying tab widget. That
+corrupted the heap, and the next app-wide restyle crashed, in a later
+suite (`tabmetrics`) on both Qts. The destructor now disconnects the
+table's model first. Checked both ways: without the fix the full suite
+crashes every time; with it, it passes.
+
+**Screenshot harness:** `SHOT_DUMP=1` prints each visible group box, tab
+widget and splitter with its height and minimum. That is how the 36-px
+folds and the 150-px tab floor were found.
+
+Tests: `test_session128`, 31 checks, which also cover session 125:
+
+- the size limits (≤ 700 px tall, ≤ 1366 px wide) and the layout audit;
+- the tabs and the rule count;
+- the column widths;
+- each folded box: fold, unfold, fold back;
+- the split shares;
+- Build & Verify is the primary action;
+- no "&&" in the status;
+- closing the dialog, then restyling the app.
+
+Not tested: on a real 1366 × 768 Windows laptop. The offscreen platform
+has no title bar, so the ≤ 700 px limit leaves room for one and for the
+task bar.
+
+Files: `packetmakerdialog.h/.cpp`, `uistyle.cpp`,
+`tests/screenshot_main.cpp`; `tests/test_session128.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+177 suites / 5522 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-127"></a>
 ## Session 127 — Builds and passes the gate on Qt 6 as well as Qt 5
 

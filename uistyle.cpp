@@ -270,8 +270,19 @@ void makePrimary(QAbstractButton *b)
 void makeFoldable(QGroupBox *box, QWidget *body)
 {
     if (!box) return;
-    auto apply = [box, body](bool on) {
+    // Folded, the box's own layout margins were the rest of the cost: ~30 px
+    // of empty space under each switched-off title (session 128). They are
+    // put back when it unfolds.
+    const QMargins open = box->layout() ? box->layout()->contentsMargins() : QMargins();
+    auto apply = [box, body, open](bool on) {
         if (body) body->setVisible(on);
+        if (QLayout *l = box->layout()) l->setContentsMargins(on ? open : QMargins());
+        // The stylesheet's group-box metrics still gave a folded box 36 px
+        // for an 18 px switch; cap it at the switch and its title.
+        const int folded = qMax(box->fontMetrics().height(),
+                                box->style()->pixelMetric(QStyle::PM_IndicatorHeight, nullptr, box))
+                         + UiStyle::space(2);
+        box->setMaximumHeight(on ? QWIDGETSIZE_MAX : folded);
         box->setFlat(!on);
         repolish(box);
     };

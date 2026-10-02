@@ -21,6 +21,10 @@
 #include "searchwindow.h"
 #include "lococonsolewindow.h"
 #include "dmipanel.h"
+#include <QGroupBox>
+#include <QTabWidget>
+#include <QSplitter>
+#include <cstdio>
 #include "packetmakerdialog.h"
 #include "theme.h"
 #include "uistyle.h"
@@ -90,6 +94,22 @@ int main(int argc, char **argv)
             settle.start();
             while (settle.elapsed() < 800) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
             win->grab().save(QStringLiteral("%1/shot_%2_%3.png").arg(dir, which, ThemeUtil::toString(t)));
+            // SHOT_DUMP=1: every visible group box, tab widget and splitter
+            // with its geometry and minimum hint, to see where height goes.
+            if (qEnvironmentVariableIsSet("SHOT_DUMP")) {
+                printf("window %dx%d  minHint %dx%d\n", win->width(), win->height(),
+                       win->minimumSizeHint().width(), win->minimumSizeHint().height());
+                for (QWidget *c : win->findChildren<QWidget *>()) {
+                    if (!c->isVisible()) continue;
+                    const char *k = c->metaObject()->className();
+                    if (!qobject_cast<QGroupBox *>(c) && !qobject_cast<QTabWidget *>(c)
+                        && !qobject_cast<QSplitter *>(c)) continue;
+                    const QRect g(c->mapTo(win, QPoint(0, 0)), c->size());
+                    const QString title = qobject_cast<QGroupBox *>(c) ? qobject_cast<QGroupBox *>(c)->title() : QString();
+                    printf("  %-12s y=%4d h=%4d minH=%4d  %s\n", k, g.y(), g.height(),
+                           c->minimumSizeHint().height(), qPrintable(title.left(30)));
+                }
+            }
             delete win;
         }
         return 0;
