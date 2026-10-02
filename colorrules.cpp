@@ -89,7 +89,7 @@ void ColorRules::loadDefaults()
     auto add = [&](const QString &pat, bool caseSensitive,
                    const QString &fgL, const QString &bgL,
                    const QString &fgD, const QString &bgD,
-                   const Severity *sev, const Direction *dir) {
+                   const Severity *sev, const LogDirection *dir) {
         Rule r;
         r.pattern = QRegularExpression(
             pat, caseSensitive ? QRegularExpression::NoPatternOption
@@ -107,8 +107,8 @@ void ColorRules::loadDefaults()
     static const Severity  kInfo  = Severity::Info;
     static const Severity  kWarn  = Severity::Warn;
     static const Severity  kError = Severity::Error;
-    static const Direction kIn    = Direction::In;
-    static const Direction kOut   = Direction::Out;
+    static const LogDirection kIn    = LogDirection::In;
+    static const LogDirection kOut   = LogDirection::Out;
 
     // Order = priority for COLORS. Most specific first so RAD+IN gets the
     // RAD palette rather than the generic IN palette. These two rules are
@@ -191,9 +191,9 @@ QString ColorRules::explainClassification(const QString &text) const
              : s == Severity::Warn  ? QStringLiteral("warn")
                                     : QStringLiteral("info");
     };
-    auto dirName = [](Direction d) {
-        return d == Direction::In  ? QStringLiteral("in")
-             : d == Direction::Out ? QStringLiteral("out")
+    auto dirName = [](LogDirection d) {
+        return d == LogDirection::In  ? QStringLiteral("in")
+             : d == LogDirection::Out ? QStringLiteral("out")
                                    : QStringLiteral("none");
     };
     auto attribution = [this](int idx) {
@@ -246,11 +246,11 @@ Severity ColorRules::parseSeverity(const QString &s, bool *has)
     return Severity::Info;
 }
 
-Direction ColorRules::parseDirection(const QString &s, bool *has)
+LogDirection ColorRules::parseDirection(const QString &s, bool *has)
 {
     const QString t = s.trimmed().toLower();
     if (has) *has = !t.isEmpty();
-    if (t == "in")  return Direction::In;
-    if (t == "out") return Direction::Out;
-    return Direction::None;
+    if (t == "in")  return LogDirection::In;
+    if (t == "out") return LogDirection::Out;
+    return LogDirection::None;
 }

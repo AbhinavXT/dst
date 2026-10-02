@@ -572,9 +572,9 @@ LogQuery::NodePtr LogQuery::makeTerm(const QString &raw, int pos)
     }
     case Field::Direction: {
         const QString v = node->literal;
-        if      (v == "in")   node->dir = Direction::In;
-        else if (v == "out")  node->dir = Direction::Out;
-        else if (v == "none") node->dir = Direction::None;
+        if      (v == "in")   node->dir = LogDirection::In;
+        else if (v == "out")  node->dir = LogDirection::Out;
+        else if (v == "none") node->dir = LogDirection::None;
         else {
             m_error = QStringLiteral("dir: expects in, out or none");
             m_errorOffset = pos;

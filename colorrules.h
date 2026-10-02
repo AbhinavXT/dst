@@ -38,7 +38,7 @@
 //  This matters. With whole-rule first-match, a decorative rule like
 //      { "pattern": "\\bRAD\\b.*\\b(IN|OUT)\\b", "fg": "darkblue" }
 //  sitting above the \bIN\b / \bOUT\b rules would swallow every RAD frame
-//  and return Direction::None for it — so the Dir column and the direction
+//  and return LogDirection::None for it — so the Dir column and the direction
 //  field in every saved log line came out blank for exactly the traffic
 //  where direction matters most. Per-attribute resolution means a rule that
 //  only wants to set colors no longer silently clears the tags.
@@ -58,7 +58,7 @@
 #include <QString>
 #include <QVector>
 
-#include "logentry.h"     // for Severity, Direction enums
+#include "logentry.h"     // for Severity, LogDirection enums
 
 class ColorRules
 {
@@ -73,7 +73,7 @@ public:
         QColor    fgDark;
         QColor    bgDark;
         Severity  severity  = Severity::Info;
-        Direction direction = Direction::None;
+        LogDirection direction = LogDirection::None;
 
         // Which rule supplied each attribute, as an index into the rule
         // list. -1 means "nothing matched; this is the default".
@@ -119,7 +119,7 @@ private:
         QColor             fgDark;
         QColor             bgDark;
         Severity           severity     = Severity::Info;
-        Direction          direction    = Direction::None;
+        LogDirection       direction    = LogDirection::None;
         // Tri-state: distinguishes "this rule says Info/None" from "this
         // rule says nothing about it". Without this the two are the same
         // value and every rule looks like it declares both.
@@ -131,7 +131,7 @@ private:
     // Each returns false via the `has` out-param when the attribute was
     // absent or empty, i.e. the rule declines to declare it.
     static Severity  parseSeverity (const QString &s, bool *has);
-    static Direction parseDirection(const QString &s, bool *has);
+    static LogDirection parseDirection(const QString &s, bool *has);
 
     QVector<Rule> m_rules;
 };

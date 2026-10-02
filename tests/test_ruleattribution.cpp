@@ -26,7 +26,7 @@ TEST_SUITE(ruleattribution)
         const ColorRules::RuleMatch m = r.classify("RAD IN Link 1 Error");
         CHECK(m.matched, "row matched something");
         CHECK(m.severity == Severity::Error,  "severity is error");
-        CHECK(m.direction == Direction::In,   "direction is in");
+        CHECK(m.direction == LogDirection::In,   "direction is in");
         CHECK(m.colorRule >= 0,     "a rule supplied colours");
         CHECK(m.severityRule >= 0,  "a rule supplied severity");
         CHECK(m.directionRule >= 0, "a rule supplied direction");

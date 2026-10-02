@@ -235,7 +235,7 @@ private:
         Cmp                cmp      = Cmp::Eq;
         qint64             number   = 0;   // len:, and epoch ms for time
         Severity           sev      = Severity::Info;
-        Direction          dir      = Direction::None;
+        LogDirection       dir      = LogDirection::None;
         QByteArray         hexBytes;
 
         // Time terms: inclusive bounds, epoch ms, or ms since midnight in

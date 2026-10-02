@@ -24,12 +24,12 @@ QString severityTag(Severity s)
     return QStringLiteral("    ");
 }
 
-QString directionTag(Direction d)
+QString directionTag(LogDirection d)
 {
     switch (d) {
-    case Direction::In:  return QStringLiteral("IN ");
-    case Direction::Out: return QStringLiteral("OUT");
-    case Direction::None: return QStringLiteral("   ");
+    case LogDirection::In:  return QStringLiteral("IN ");
+    case LogDirection::Out: return QStringLiteral("OUT");
+    case LogDirection::None: return QStringLiteral("   ");
     }
     return QStringLiteral("   ");
 }

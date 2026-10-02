@@ -6,7 +6,7 @@
 #include <cstdio>
 
 static LogEntry mk(const QString &text, quint8 src, quint16 kv,
-                   Severity sv, Direction d, qint64 ms,
+                   Severity sv, LogDirection d, qint64 ms,
                    const QByteArray &raw=QByteArray(), quint16 len=0) {
     LogEntry e;
     e.text = text; e.severity = sv; e.direction = d; e.epochMs = ms;
@@ -23,9 +23,9 @@ TEST_SUITE(logquery)
 {
 
     const qint64 T = QDateTime(QDate(2026,8,8),QTime(14,5,0)).toMSecsSinceEpoch();
-    LogEntry err = mk("RAD IN Link 1 Error",33,1,Severity::Error,Direction::In,T,
+    LogEntry err = mk("RAD IN Link 1 Error",33,1,Severity::Error,LogDirection::In,T,
                       QByteArray::fromHex("21650a0007000a1b"),10);
-    LogEntry ok  = mk("CAN OUT No Error",21,2,Severity::Info,Direction::Out,T,
+    LogEntry ok  = mk("CAN OUT No Error",21,2,Severity::Info,LogDirection::Out,T,
                       QByteArray::fromHex("15650a000700ffff"),4);
 
     // --- plain text, backwards compatible with the old filter box ---
@@ -101,7 +101,7 @@ TEST_SUITE(logquery)
     CHECK(m("before:2026-08-08T15:00:00",err),"before ISO");
     CHECK(m("after:2026-08-08T14:00 before:2026-08-08T14:10",err),"time window");
     CHECK(!m("after:2026-08-08T14:06 before:2026-08-08T14:10",err),"window excludes");
-    { LogEntry recent = mk("x",1,1,Severity::Info,Direction::None,
+    { LogEntry recent = mk("x",1,1,Severity::Info,LogDirection::None,
                            QDateTime::currentMSecsSinceEpoch()-60*1000);
       CHECK(m("after:-5m",recent),"relative -5m includes 1min ago");
       CHECK(!m("after:-30s",recent),"relative -30s excludes 1min ago"); }
@@ -134,10 +134,10 @@ TEST_SUITE(logquery)
         "invalid query matches everything rather than hiding rows"); }
 
     // --- a colon that isn't a field must stay literal ---
-    { LogEntry t=mk("time 14:02 reached",5,1,Severity::Info,Direction::None,T);
+    { LogEntry t=mk("time 14:02 reached",5,1,Severity::Info,LogDirection::None,T);
       CHECK(m("14:02",t),"non-field colon stays a literal"); }
     // a hyphen inside a word is not negation
-    { LogEntry t=mk("sub-system down",5,1,Severity::Info,Direction::None,T);
+    { LogEntry t=mk("sub-system down",5,1,Severity::Info,LogDirection::None,T);
       CHECK(m("sub-system",t),"hyphen inside word is literal");
 }
 }

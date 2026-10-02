@@ -397,12 +397,12 @@ QString LogModel::formatTime(qint64 epochMs) const
                .toString("HH:mm:ss.zzz");
 }
 
-QString LogModel::directionString(Direction d) const
+QString LogModel::directionString(LogDirection d) const
 {
     switch (d) {
-    case Direction::In:  return QStringLiteral("IN");
-    case Direction::Out: return QStringLiteral("OUT");
-    case Direction::None: return QString();
+    case LogDirection::In:  return QStringLiteral("IN");
+    case LogDirection::Out: return QStringLiteral("OUT");
+    case LogDirection::None: return QString();
     }
     return QString();
 }

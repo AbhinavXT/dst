@@ -288,8 +288,8 @@ void SearchWindow::runSearch()
 
         const QString friendly = m_names ? m_names->lookupByKey(h.tabKey)
                                          : h.tabKey;
-        const QString dir = e->direction == Direction::In  ? QStringLiteral("IN")
-                          : e->direction == Direction::Out ? QStringLiteral("OUT")
+        const QString dir = e->direction == LogDirection::In  ? QStringLiteral("IN")
+                          : e->direction == LogDirection::Out ? QStringLiteral("OUT")
                                                            : QString();
         // Same glyphs as the log table: severity must not be encoded by
         // colour alone anywhere it is shown.

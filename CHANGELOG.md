@@ -11,6 +11,41 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-126"></a>
+## Session 126 — `Direction` renamed to `LogDirection`
+
+The log rows' direction tag (`IN` / `OUT` / none), `enum class Direction`
+in `logentry.h`, is now `LogDirection`. A bare `Direction` at global scope
+is too generic a name for a type every log file includes, and it is the
+first step of building on Qt 6 as well as Qt 5 (session 127).
+
+The rename had been started by hand in six files and left half done, so
+the tree did not compile. It is now finished everywhere: 22 files,
+including five test suites. Kept as they were:
+
+- `LogQuery::Field::Direction` (a query field, scoped);
+- `LogModel::ColDirection`;
+- the user-visible "Direction" labels.
+
+Also in the hand edits, kept: `schemadecoder.cpp` casts `rows.size()` to
+`int` where it initialises an `int` member. On Qt 6 `size()` is
+`qsizetype`, and the brace initialiser rejects the narrowing.
+
+No behaviour change; the operator sees nothing.
+
+Files: `logentry.h/.cpp`, `colorrules.h/.cpp`, `logmodel.h/.cpp`,
+`logquery.h/.cpp`, `logwriter.cpp`, `savedata.cpp`, `exporter.cpp`,
+`filterbar.cpp`, `searchwindow.cpp`, `messagedispatcher.cpp`,
+`serialconsolewindow.h/.cpp`, `schema/schemadecoder.cpp`; tests
+`test_clipboard`, `test_logquery`, `test_pipeline`, `test_ruleattribution`,
+`test_session100`.
+
+Gate: 11/11 validators, `dltests` 176 suites / 5491 checks, menu audit,
+headless smoke: all green.
+
+
+---
+
 <a id="session-125"></a>
 ## Session 125 — UI revamp, tool windows 4: Packet Maker (first pass)
 

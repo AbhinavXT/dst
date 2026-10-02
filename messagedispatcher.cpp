@@ -194,7 +194,7 @@ void MessageDispatcher::injectBannerToAllTabs(const QString &message)
         banner->epochMs        = now;
         banner->text           = message;
         banner->severity       = Severity::Error;
-        banner->direction      = Direction::None;
+        banner->direction      = LogDirection::None;
         // Reconstruct a header with the tab's source/kvch so tabKey() works.
         // We parse the key back out — it was built from those fields.
         const int us = key.indexOf('_');

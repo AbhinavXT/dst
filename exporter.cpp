@@ -28,11 +28,11 @@ const char *severityKey(Severity s) {
     }
     return "info";
 }
-const char *directionKey(Direction d) {
+const char *directionKey(LogDirection d) {
     switch (d) {
-    case Direction::None: return "";
-    case Direction::In:   return "in";
-    case Direction::Out:  return "out";
+    case LogDirection::None: return "";
+    case LogDirection::In:   return "in";
+    case LogDirection::Out:  return "out";
     }
     return "";
 }

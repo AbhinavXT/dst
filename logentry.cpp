@@ -66,9 +66,9 @@ QString formatEntriesForClipboard(const QVector<LogEntryPtr> &entries,
              : s == Severity::Warn  ? QStringLiteral("WARN")
                                     : QStringLiteral("INFO");
     };
-    auto dirWord = [](Direction d) {
-        return d == Direction::In  ? QStringLiteral("IN")
-             : d == Direction::Out ? QStringLiteral("OUT")
+    auto dirWord = [](LogDirection d) {
+        return d == LogDirection::In  ? QStringLiteral("IN")
+             : d == LogDirection::Out ? QStringLiteral("OUT")
                                    : QString();
     };
 

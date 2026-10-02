@@ -826,7 +826,7 @@ void Decoder::walkFlat(QDomElement node, Cursor &c, Ctx &ctx,
                 }
             }
         }
-    } stamper{ c, rows, c.pos, rows.size() };
+    } stamper{ c, rows, c.pos, static_cast<int>(rows.size()) };
 
     const QString tag = node.tagName();
     if (tag == "pad") { c.take(node.attribute("bits").toInt()); return; }

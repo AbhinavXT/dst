@@ -76,7 +76,7 @@ TEST_SUITE(pipeline)
         if(m33 && m33->count()){
             LogEntryPtr e=m33->entryAt(0);
             CHECK(e && e->severity==Severity::Error,"severity classified");
-            CHECK(e && e->direction==Direction::In,"DIRECTION classified (the tier-1 fix)");
+            CHECK(e && e->direction==LogDirection::In,"DIRECTION classified (the tier-1 fix)");
             CHECK(e && e->epochMs>0,"arrival timestamp set");
             CHECK(e && e->rawBytes.size()==7+19,"rawBytes = header+payload");
         }
@@ -84,7 +84,7 @@ TEST_SUITE(pipeline)
         if(m21&&m21->count()){
             LogEntryPtr e=m21->entryAt(0);
             CHECK(e->severity==Severity::Info,"'No Error' -> Info not Error");
-            CHECK(e->direction==Direction::Out,"CAN OUT -> Out");
+            CHECK(e->direction==LogDirection::Out,"CAN OUT -> Out");
         }
 
         // --- files on disk ---
@@ -110,7 +110,7 @@ TEST_SUITE(pipeline)
                       "record rebuilds into the tab it was written from");
                 if(e && key=="33_1" && e->text=="RAD IN Link 1 Error"){
                     matched=true;
-                    CHECK(e->direction==Direction::In,"replayed entry re-classified with direction");
+                    CHECK(e->direction==LogDirection::In,"replayed entry re-classified with direction");
                 }
             }
             CHECK(r.status()==SessionReader::Ok,"clean EOF, no corruption");

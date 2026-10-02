@@ -175,7 +175,7 @@ private:
 
     // Helpers for data().
     QString formatTime    (qint64 epochMs)  const;
-    QString directionString(Direction d)    const;
+    QString directionString(LogDirection d) const;
 };
 
 #endif // LOGMODEL_H

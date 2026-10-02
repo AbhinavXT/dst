@@ -101,8 +101,8 @@ protected:
                 switch (m_chip) {
                 case ChipErrors: if (e->severity  != Severity::Error) return false; break;
                 case ChipWarns:  if (e->severity  != Severity::Warn)  return false; break;
-                case ChipIn:     if (e->direction != Direction::In)   return false; break;
-                case ChipOut:    if (e->direction != Direction::Out)  return false; break;
+                case ChipIn:     if (e->direction != LogDirection::In)   return false; break;
+                case ChipOut:    if (e->direction != LogDirection::Out)  return false; break;
                 default: break;
                 }
             } else {

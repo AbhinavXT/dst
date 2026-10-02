@@ -5,7 +5,7 @@
 #include <QSharedPointer>
 
 static LogEntryPtr mk(qint64 ms, quint8 src, quint16 kv,
-                      Severity sev, Direction dir, const QString &text) {
+                      Severity sev, LogDirection dir, const QString &text) {
     auto e = QSharedPointer<LogEntry>::create();
     e->epochMs = ms; e->header.source_id = src; e->header.kvchId = kv;
     e->severity = sev; e->direction = dir; e->text = text;
@@ -34,7 +34,7 @@ TEST_SUITE(clipboard)
     // ---- a single row -----------------------------------------------------
     {
         QVector<LogEntryPtr> v{ mk(ms, 33, 1, Severity::Error,
-                                   Direction::In, "RAD IN Link 1 Error") };
+                                   LogDirection::In, "RAD IN Link 1 Error") };
         const QString out = formatEntriesForClipboard(v, false, true);
         const QStringList f = out.split('\t');
         CHECK(f.size() == 5,            "five fields");
@@ -50,7 +50,7 @@ TEST_SUITE(clipboard)
     // ---- zone follows the display ----------------------------------------
     {
         QVector<LogEntryPtr> v{ mk(ms, 1, 1, Severity::Info,
-                                   Direction::None, "x") };
+                                   LogDirection::None, "x") };
         const QString u = formatEntriesForClipboard(v, false, true);
         const QString l = formatEntriesForClipboard(v, false, false);
         CHECK(u.contains("14:05:30.250"), "utc=true renders UTC");
@@ -62,14 +62,14 @@ TEST_SUITE(clipboard)
     // ---- direction/severity words ----------------------------------------
     {
         QVector<LogEntryPtr> v{
-            mk(ms, 1, 1, Severity::Info,  Direction::None, "a"),
-            mk(ms, 1, 1, Severity::Warn,  Direction::Out,  "b"),
+            mk(ms, 1, 1, Severity::Info,  LogDirection::None, "a"),
+            mk(ms, 1, 1, Severity::Warn,  LogDirection::Out,  "b"),
         };
         const QString out = formatEntriesForClipboard(v, false, true);
         const QStringList lines = out.split('\n');
         CHECK(lines.size() == 2, "two rows, two lines");
         CHECK(lines.at(0).split('\t').at(2).isEmpty(),
-              "Direction::None is an empty field, not the word 'none'");
+              "LogDirection::None is an empty field, not the word 'none'");
         CHECK(lines.at(0).split('\t').at(3) == "INFO", "info word");
         CHECK(lines.at(1).split('\t').at(2) == "OUT",  "out word");
         CHECK(lines.at(1).split('\t').at(3) == "WARN", "warn word");
@@ -81,7 +81,7 @@ TEST_SUITE(clipboard)
     // that contains one.
     {
         QVector<LogEntryPtr> v{
-            mk(ms, 1, 1, Severity::Info, Direction::None,
+            mk(ms, 1, 1, Severity::Info, LogDirection::None,
                "has\ta tab and\na newline\r and a CR")
         };
         const QString out = formatEntriesForClipboard(v, false, true);
@@ -95,8 +95,8 @@ TEST_SUITE(clipboard)
     // ---- ordering and header ---------------------------------------------
     {
         QVector<LogEntryPtr> v{
-            mk(ms,      1, 1, Severity::Info, Direction::None, "first"),
-            mk(ms+1000, 1, 1, Severity::Info, Direction::None, "second"),
+            mk(ms,      1, 1, Severity::Info, LogDirection::None, "first"),
+            mk(ms+1000, 1, 1, Severity::Info, LogDirection::None, "second"),
         };
         const QString out = formatEntriesForClipboard(v, true, true);
         const QStringList lines = out.split('\n');
@@ -109,7 +109,7 @@ TEST_SUITE(clipboard)
     // ---- null entries are skipped, not crashed on ------------------------
     {
         QVector<LogEntryPtr> v{ LogEntryPtr(),
-                                mk(ms, 1, 1, Severity::Info, Direction::None, "ok"),
+                                mk(ms, 1, 1, Severity::Info, LogDirection::None, "ok"),
                                 LogEntryPtr() };
         const QString out = formatEntriesForClipboard(v, false, true);
         CHECK(out.split('\n').size() == 1, "nulls skipped, one row emitted");
@@ -124,8 +124,8 @@ TEST_SUITE(clipboard)
     // be stripped off by hand every time.
     {
         QVector<LogEntryPtr> v{
-            mk(ms, 21, 1, Severity::Error, Direction::In,  "@lsrp_21_1 AA BB"),
-            mk(ms, 33, 1, Severity::Info,  Direction::Out, "second"),
+            mk(ms, 21, 1, Severity::Error, LogDirection::In,  "@lsrp_21_1 AA BB"),
+            mk(ms, 33, 1, Severity::Info,  LogDirection::Out, "second"),
         };
         const QString out = formatMessagesForClipboard(v);
         const QStringList lines = out.split('\n');
@@ -144,7 +144,7 @@ TEST_SUITE(clipboard)
     // ---- a multi-line message is still one row ---------------------------
     {
         QVector<LogEntryPtr> v{
-            mk(ms, 21, 1, Severity::Info, Direction::None, "one\ttwo\nthree"),
+            mk(ms, 21, 1, Severity::Info, LogDirection::None, "one\ttwo\nthree"),
         };
         const QString out = formatMessagesForClipboard(v);
         CHECK(out.split('\n').size() == 1,
@@ -157,7 +157,7 @@ TEST_SUITE(clipboard)
     {
         CHECK(formatMessagesForClipboard({}).isEmpty(), "nothing copies as nothing");
         QVector<LogEntryPtr> v{ LogEntryPtr(),
-                                mk(ms, 1, 1, Severity::Info, Direction::None, "ok"),
+                                mk(ms, 1, 1, Severity::Info, LogDirection::None, "ok"),
                                 LogEntryPtr() };
         CHECK(formatMessagesForClipboard(v) == QStringLiteral("ok"),
               "nulls skipped, the real entry survived");

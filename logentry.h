@@ -43,7 +43,7 @@ enum class Severity : quint8 {
 
 // Direction tags (likewise computed once). The original code reasoned about
 // IN/OUT via QString::contains — now it's a typed field on the row.
-enum class Direction : quint8 {
+enum class LogDirection : quint8 {
     None = 0,
     In   = 1,
     Out  = 2
@@ -71,7 +71,7 @@ struct LogEntry
 
     // Derived tags. Computed once at insert time by ColorRules::classify().
     Severity  severity  = Severity::Info;
-    Direction direction = Direction::None;
+    LogDirection direction = LogDirection::None;
 
     // Colors from the matched ColorRule, copied verbatim. Patch C: each
     // entry now stores BOTH light-theme and dark-theme variants. The

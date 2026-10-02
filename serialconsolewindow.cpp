@@ -751,7 +751,7 @@ QString SerialConsoleWindow::stamp(qint64 ms) const
     return QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss.zzz"));
 }
 
-void SerialConsoleWindow::appendView(const QString &text, const QByteArray &raw, qint64 ms, Direction dir)
+void SerialConsoleWindow::appendView(const QString &text, const QByteArray &raw, qint64 ms, LogDirection dir)
 {
     // The log file gets everything, whatever the view is showing.
     if (m_log && m_log->isOpen()) { m_log->write(text.toUtf8()); m_log->write("\n"); m_log->flush(); }
@@ -877,7 +877,7 @@ void SerialConsoleWindow::onLine(const QByteArray &line, qint64 ms)
     // console and the decoder got the line as it came.
     const QString text = serialDisplayText(line);
     appendView(m_timestamps->isChecked() ? stamp(ms) + QStringLiteral("  ") + text : text,
-               line, ms, Direction::In);
+               line, ms, LogDirection::In);
     if (m_hold->isChecked()) updateState();
 }
 
@@ -908,7 +908,7 @@ void SerialConsoleWindow::onWritten(const QByteArray &bytes, qint64 ms)
     QString shown = m_hexView->isChecked() ? serialToHex(bytes) : serialDisplayText(body);
     shown = QStringLiteral("TX> ") + shown;
     appendView(m_timestamps->isChecked() ? stamp(ms) + QStringLiteral("  ") + shown : shown,
-               m_hexView->isChecked() ? QByteArray() : body, ms, Direction::Out);
+               m_hexView->isChecked() ? QByteArray() : body, ms, LogDirection::Out);
 }
 
 // ---- send ---------------------------------------------------------------------------

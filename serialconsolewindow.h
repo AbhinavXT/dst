@@ -127,8 +127,8 @@ private:
     // ("── opened … ──", a hex row): always shown. Otherwise it is a line
     // the card sent (In) or we sent (Out), subject to Show only / Highlight.
     void appendView(const QString &text, const QByteArray &raw = QByteArray(),
-                    qint64 ms = 0, Direction dir = Direction::None);
-    struct ViewLine { QString text; QByteArray raw; qint64 ms = 0; Direction dir = Direction::None; };
+                    qint64 ms = 0, LogDirection dir = LogDirection::None);
+    struct ViewLine { QString text; QByteArray raw; qint64 ms = 0; LogDirection dir = LogDirection::None; };
     bool passesFilter(const ViewLine &l) const;
     void showLine(const ViewLine &l);
     void applyViewQueries();                   // parse both boxes, rebuild the view
