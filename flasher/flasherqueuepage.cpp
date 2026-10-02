@@ -223,7 +223,7 @@ FlasherQueuePage::FlasherQueuePage(QWidget *parent)
     m_model = new FlasherQueueModel(this);
 
     auto *pageLayout = new QHBoxLayout(this);
-    pageLayout->setContentsMargins(16, 16, 16, 16);
+    pageLayout->setContentsMargins(16, 12, 16, 12);   // 12 top and bottom (session 146): height for Linux fonts
     pageLayout->setSpacing(16);
     // The left column scrolls rather than squeezing its cards when the
     // window is short: squeezed, the route diagram overlapped itself and
@@ -378,12 +378,14 @@ QWidget *FlasherQueuePage::buildQueueColumn()
     auto *column = new QWidget(this);
     auto *columnLayout = new QVBoxLayout(column);
     columnLayout->setContentsMargins(0, 0, 0, 0);
-    columnLayout->setSpacing(16);
+    // 10, not 16 (session 146): with Linux's fonts the window was 709 px
+    // tall at its minimum, over the 700 a 768-px laptop leaves.
+    columnLayout->setSpacing(10);
 
     QFrame *queueCard = makeCard(column, QStringLiteral("flasherQueueCard"), &m_cards);
     auto *queueLayout = new QVBoxLayout(queueCard);
-    queueLayout->setContentsMargins(0, 16, 0, 0);
-    queueLayout->setSpacing(10);
+    queueLayout->setContentsMargins(0, 12, 0, 0);
+    queueLayout->setSpacing(6);
 
     // ---- title row ---------------------------------------------------------------
     auto *titleRow = new QHBoxLayout();
@@ -520,6 +522,13 @@ QWidget *FlasherQueuePage::buildQueueColumn()
         detailLayout->addWidget(m_detailSha, 4, 0, 1, 2);
     }
     m_detailSha->setWordWrap(false);
+    // A size smaller (session 146): in Linux's wider mono the 64 digits made
+    // the window 1144 px wide at its minimum.
+    {
+        QFont shaFont = UiStyle::monoFont();
+        shaFont.setPointSizeF(shaFont.pointSizeF() * 0.88);
+        m_detailSha->setFont(shaFont);
+    }
     m_detailModified->setFont(font());
     detailLayout->setColumnStretch(1, 1);
     queueLayout->addWidget(m_detailStrip);
@@ -533,7 +542,7 @@ QWidget *FlasherQueuePage::buildQueueColumn()
     // ---- action bar ------------------------------------------------------------
     QFrame *actionBar = makeCard(column, QStringLiteral("flasherActionBar"), &m_cards);
     auto *actionLayout = new QHBoxLayout(actionBar);
-    actionLayout->setContentsMargins(20, 10, 20, 10);
+    actionLayout->setContentsMargins(20, 8, 20, 8);
     actionLayout->setSpacing(16);
 
     // The procedure, stated where the button is. The updater listens for

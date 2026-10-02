@@ -201,7 +201,10 @@ QWidget *FlasherWindow::buildAppBar()
     m_profileLabel = new QLabel(tr("Profile"), m_appBar);
     barLayout->addWidget(m_profileLabel);
     m_profileCombo = new QComboBox(m_appBar);
-    m_profileCombo->setMinimumWidth(170);
+    // 120, not 170 (session 146): while flashing, the bar also carries the
+    // caution and the target, and with Linux's fonts it set the window's
+    // minimum over 1100 px. "Bench 2" needs about 90.
+    m_profileCombo->setMinimumWidth(120);
     m_profileCombo->setMinimumHeight(34);
     connect(m_profileCombo, QOverload<int>::of(&QComboBox::activated), this, &FlasherWindow::onProfileChosen);
     barLayout->addWidget(m_profileCombo);
@@ -234,7 +237,13 @@ QWidget *FlasherWindow::buildAppBar()
     // Shown only while flashing: the caution, and where it is going.
     m_flashingBadge = new QLabel(tr("Flashing — keep the chassis powered"), m_appBar);
     m_flashingBadge->setFont(FlasherStyle::scaledFont(m_flashingBadge->font(), 1.0, true));
-    barLayout->addWidget(m_flashingBadge);
+    // Two lines only when the bar is short of room (session 146): on one,
+    // beside a real target ("192.168.100.200:50000") it held the window
+    // over 1100 px. The bar's 56 px holds two. Its stretch takes the spare
+    // width, so it stays on one line whenever it fits.
+    m_flashingBadge->setWordWrap(true);
+    m_flashingBadge->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
+    barLayout->addWidget(m_flashingBadge, 8);
     m_targetLabel = new QLabel(m_appBar);
     m_targetLabel->setFont(UiStyle::monoFont());
     barLayout->addWidget(m_targetLabel);

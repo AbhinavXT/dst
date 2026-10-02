@@ -11,6 +11,81 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-146"></a>
+## Session 146 — the Linux CI gate, red since patch 134
+
+CI's `linux` job (Qt 5 on Ubuntu) had failed on every push since patch
+134. Windows and Qt 6 stayed green, and the local gate runs on the Mac, so
+nobody saw it. Two size checks failed:
+
+- **The Flasher's minimum with Linux's fonts was 1144 x 709**, over the
+  1100 x 700 that session 134 pins.
+  - **Width** came from the Flashing page, hidden behind the queue. Its
+    legend ("Acknowledged / Resent this round / Still missing (hatched)")
+    and its block-map caption sat on lines that could not shrink. The
+    app bar mid-run added the caution beside the target, a 170-px
+    profile box, and a real target such as `192.168.100.200:50000`,
+    107 px wider than the test's `127.0.0.1:9`, which would have pushed
+    it over on any platform.
+  - **Height** came from spacing.
+- **The recorded-session window's minimum grew on the first row
+  clicked** (session 144's own check, on Linux). The raw panel's header
+  label widened from "(no row selected)" to a frame's header.
+
+What changed:
+
+- **Flashing page.**
+  - The legend entries and the caption stay whole at any normal width
+    but are no longer the card's floor.
+  - The main card is 10 px between rows, not 14, with 14-px margins
+    top and bottom, not 18.
+- **App bar.**
+  - The caution ("Flashing — keep the chassis powered") wraps to two
+    lines only when the bar is short of room. Its stretch keeps it on
+    one line whenever it fits.
+  - The profile box's floor is 120 px, not 170.
+- **Queue.**
+  - The SHA-256 line is a size smaller (0.88).
+  - Column spacing is 10, not 16, and the card's is 6, not 10.
+  - Both pages have 12-px margins top and bottom.
+- **Raw bytes panel** (live window and recorded session alike): the
+  header label is as wide from the start as with a frame in it.
+
+On the Mac the Flasher's minimum went from 1090 x 691 to 983 x 671 in
+all three states (queue, flashing, summary). The screenshots look as
+before.
+
+**Not tested:** Linux itself, which is not on this machine (Docker was
+not running); CI is the check. The margins are sized to what Linux
+added before: +54 px wide, +15 px tall.
+
+Tests: `test_session146`, 14 checks, on the session-134 bench fixture:
+
+- the hash is a size smaller;
+- the legend and the caption are not the card's floor;
+- the caution is on one line at 1100 px;
+- with a real target, the bar's minimum is at most 1000 and the
+  window's at most 1100.
+
+`session144`'s width check is now "showing a frame does not widen the
+window", which holds on any font.
+
+**Screenshot harness:** `SHOT_WIDE=<px>` and `SHOT_TALL=<px>` print
+every widget whose minimum is over that width or height
+(`SHOT_HIDDEN=1` includes hidden ones: the Flashing page behind the
+queue was the one setting the width).
+
+Files: `flasher/flasherqueuepage.cpp`, `flasher/flasherflashingpage.cpp`,
+`flasher/flasherwindow.cpp`, `rawbytespanel.cpp`, `sessionwindow.cpp`,
+`tests/test_session144.cpp`, `tests/test_session146.cpp`,
+`tests/screenshot_main.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+195 suites / 5836 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-145"></a>
 ## Session 145 — UI revamp, tool windows 22: Field Sweep
 

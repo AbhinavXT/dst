@@ -303,7 +303,7 @@ FlasherFlashingPage::FlasherFlashingPage(QWidget *parent)
     : QWidget(parent)
 {
     auto *pageLayout = new QHBoxLayout(this);
-    pageLayout->setContentsMargins(16, 16, 16, 16);
+    pageLayout->setContentsMargins(16, 12, 16, 12);   // 12 top and bottom (session 146): height for Linux fonts
     pageLayout->setSpacing(16);
     pageLayout->addWidget(buildBatchColumn());
     pageLayout->addWidget(buildCentre(), 1);
@@ -402,7 +402,10 @@ QWidget *FlasherFlashingPage::buildCentre()
     auto *centre = new QWidget(this);
     auto *centreLayout = new QVBoxLayout(centre);
     centreLayout->setContentsMargins(0, 0, 0, 0);
-    centreLayout->setSpacing(16);
+    // 12 here and 10 / 14 in the card below, not 16 and 14 / 18 (session
+    // 146): with Linux's fonts the window was 709 px tall while flashing,
+    // over the 700 a 768-px laptop leaves.
+    centreLayout->setSpacing(12);
 
     auto *upper = new QHBoxLayout();
     upper->setSpacing(16);
@@ -412,8 +415,8 @@ QWidget *FlasherFlashingPage::buildCentre()
     mainCard->setObjectName(QStringLiteral("flasherMainCard"));
     m_cards.append(mainCard);
     auto *mainLayout = new QVBoxLayout(mainCard);
-    mainLayout->setContentsMargins(22, 18, 22, 18);
-    mainLayout->setSpacing(14);
+    mainLayout->setContentsMargins(22, 14, 22, 14);
+    mainLayout->setSpacing(10);
 
     auto *headerRow = new QHBoxLayout();
     auto *headerText = new QVBoxLayout();
@@ -464,6 +467,9 @@ QWidget *FlasherFlashingPage::buildCentre()
     auto *mapCaption = new QLabel(tr("%1 B per block · hover a cell for its offset").arg(kflash::kBlockSize), mainCard);
     mapCaption->setToolTip(tr("From the board's STATUS bitmap"));
     mapCaption->setStyleSheet(UiColor::mutedStyle());
+    // Whole at any normal width, but not the card's floor (session 146):
+    // with Linux's fonts this page held the window over 1100 px.
+    mapCaption->setMinimumWidth(40);
     mapTitleRow->addWidget(mapCaption, 1, Qt::AlignRight);
     mainLayout->addLayout(mapTitleRow);
 
@@ -480,9 +486,13 @@ QWidget *FlasherFlashingPage::buildCentre()
 
     // Legend, with swatches in the same colours the map paints.
     auto *legend = new QHBoxLayout();
-    legend->setSpacing(18);
+    legend->setSpacing(12);
     auto makeLegend = [mainCard, legend](const QString &text) -> QLabel * {
         auto *entry = new QLabel(text, mainCard);
+        // Whole at any normal width, but not the card's floor (session 146):
+        // the three side by side held it at 556 px, and the window over
+        // 1100 px on Linux.
+        entry->setMinimumWidth(40);
         legend->addWidget(entry);
         return entry;
     };

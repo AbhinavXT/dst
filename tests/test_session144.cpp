@@ -113,6 +113,7 @@ TEST_SUITE(session144)
     for (QLabel *l : w.findChildren<QLabel *>())
         if (l->text() == QLatin1String("(no row selected)")) rawHeader = l;
     CHECK(rawHeader != nullptr, "the raw panel starts with no row");
+    const int minBefore = w.minimumSizeHint().width();
     view->clearFocus();
     w.setFocus();
     view->setCurrentIndex(view->model()->index(5, LogModel::ColMessage));
@@ -148,8 +149,9 @@ TEST_SUITE(session144)
     }
 
     // ---- fits, and does not grow on the first click -----------------------
-    CHECK(w.minimumSizeHint().width() <= 1200,
-          "with a frame showing it needs no more than its 1200 px default (at 1100 it grew on the first click)");
+    CHECK(w.minimumSizeHint().width() == minBefore,
+          QByteArray("showing a frame does not widen the window (") + QByteArray::number(minBefore) + " -> "
+              + QByteArray::number(w.minimumSizeHint().width()) + "; it grew on the first click)");
     CHECK(w.minimumSizeHint().height() <= 700 && w.minimumSizeHint().width() <= 1366, "fits a laptop");
     const QStringList loose = LayoutAudit::orphans(&w);
     CHECK(loose.isEmpty(), QByteArray("no visible widget outside every layout (") + loose.join(QLatin1String(", ")).toUtf8() + ")");

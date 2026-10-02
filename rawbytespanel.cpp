@@ -1,4 +1,5 @@
 #include "rawbytespanel.h"
+#include <QFontMetrics>
 #include "uistyle.h"
 #include "namemap.h"
 
@@ -25,6 +26,11 @@ RawBytesPanel::RawBytesPanel(QWidget *parent)
     m_headerLabel = new QLabel;
     m_headerLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_headerLabel->setFont(UiStyle::monoFont());
+    // As wide from the start as with a frame in it (session 146): it grew
+    // from "(no row selected)" to the header on the first row clicked, and
+    // the window it sat in grew with it, under the operator's hand.
+    m_headerLabel->setMinimumWidth(
+        QFontMetrics(m_headerLabel->font()).horizontalAdvance(QStringLiteral("received  : 88:88:88.888")));
     headerLayout->addWidget(m_headerLabel);
     root->addWidget(headerGroup);
 

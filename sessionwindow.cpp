@@ -63,9 +63,9 @@ SessionWindow::SessionWindow(const ColorRules *rules,
     setAttribute(Qt::WA_DeleteOnClose);
     setWindowTitle(tr("Recorded session"));
     WindowGeometry::makeResizableWindow(this);
-    // 1200, not 1100: the filter bar (846 px) and the side panel with a
-    // frame's header in it (290) need 1146, and at 1100 the window grew
-    // under the operator's hand on the first row clicked.
+    // 1200, not 1100: the filter bar (846 px) and the side panel (290) need
+    // 1146 on the Mac, and more with Linux's fonts; a larger minimum wins
+    // over this anyway.
     resize(1200, 700);
     // Default above; a remembered size/position wins over it.
     WindowGeometry::restore(this, QStringLiteral("sessionWindow"));
