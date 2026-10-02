@@ -18,6 +18,7 @@
 #include "serialmanager.h"
 #endif
 #include <QPlainTextEdit>
+#include "searchwindow.h"
 #include "theme.h"
 #include "uistyle.h"
 #include "settings.h"
@@ -56,6 +57,15 @@ int main(int argc, char **argv)
                 win = w;
             }
 #endif
+            if (which == QLatin1String("search")) {
+                qint64 ms = 1782558147000LL;
+                for (int i = 0; i < lines.size(); ++i)
+                    disp.ingestLocal(i % 3 ? 21 : 81, 1, lines.at(i).toUtf8(), ms + i * 137, QString());
+                disp.drainNow();
+                auto *w = new SearchWindow(&disp, nullptr);
+                w->setQueryText(QStringLiteral("@lsrp OR @dmi"), true);
+                win = w;
+            }
             if (!win) return 2;
             win->resize(1100, 720);
             win->show();

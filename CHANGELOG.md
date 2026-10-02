@@ -11,6 +11,49 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-123"></a>
+## Session 123 — UI revamp, tool windows 2: Search all sources
+
+### What the operator sees (Edit ▸ Search all sources)
+
+- **The query is one panel**: a search icon, the field, its two switches
+  (errors and warnings only, group by tab) and **Search as the window's
+  primary action**.
+- **The parse tree is in the real mono face.** It asked for
+  `font-family: monospace`, a name that does not resolve on Windows, where
+  it fell back to whatever the system chose.
+- **Timestamps fit and line up.** The columns were fixed pixel widths, and
+  "2026-06-27 14:02:27.512" in 150 px clipped, as the main log did before
+  session 118. They are now measured to the fonts they are drawn in, with
+  timestamps in mono.
+
+### On this machine
+
+Qt 5 had been uninstalled from this Mac between sessions: no `qt@5` and no
+`qmake`, and the built binaries could not load their frameworks. It was
+reinstalled (`brew install qt@5`, 5.15.19 as before, keg-only). The gate
+now runs as `QMAKE=/opt/homebrew/opt/qt@5/bin/qmake ./verify.sh`. Before
+this patch's change was gated, the gate was rerun on the reinstalled Qt and
+was green.
+
+Files: `searchwindow.cpp`; `tests/screenshot_main.cpp`
+(`SHOT_WINDOW=search`).
+
+### Tests
+
+`tests/test_session123.cpp`, 7 checks, on real `replay/` lines:
+
+- no orphans;
+- the query is one panel with Search as primary inside it;
+- the search finds real rows;
+- **every timestamp fits its column, in the mono face**;
+- the parse tree is fixed-pitch.
+
+Gate: 11/11 validators, `dltests` 175 suites / 5478 checks, menu audit
+157, smoke. All green.
+
+---
+
 <a id="session-122"></a>
 ## Session 122 — UI revamp, tool windows 1: the serial terminal; a layout audit
 

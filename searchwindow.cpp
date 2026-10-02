@@ -4,6 +4,7 @@
 #include "statusline.h"
 #include "emptystate.h"
 #include "uicolors.h"
+#include "uistyle.h"
 #include "windowgeometry.h"
 
 #include "logmodel.h"
@@ -16,6 +17,7 @@
 #include <QCheckBox>
 #include <QDateTime>
 #include <QHBoxLayout>
+#include <QFontMetrics>
 #include <QHeaderView>
 #include <QLabel>
 #include "querylineedit.h"
@@ -50,13 +52,24 @@ SearchWindow::SearchWindow(MessageDispatcher *dispatcher,
 
     m_runBtn = new QPushButton(tr("Search"));
     m_runBtn->setDefault(true);
+    UiStyle::makePrimary(m_runBtn);           // session 123: the one primary action
 
     m_capOnly = new QCheckBox(tr("Errors and warnings only"));
     m_capOnly->setToolTip(
         tr("Shorthand for ANDing sev:error OR sev:warn onto the query."));
 
-    auto *top = new QHBoxLayout;
-    top->addWidget(new QLabel(tr("Query:")));
+    // Session 123: the query as one panel — icon, field, its two switches,
+    // and Search — rather than a bare row of controls.
+    auto *queryPanel = new QWidget;
+    queryPanel->setObjectName(QStringLiteral("searchQueryPanel"));
+    UiStyle::makePanel(queryPanel);
+    auto *top = new QHBoxLayout(queryPanel);
+    top->setContentsMargins(UiStyle::space(3), UiStyle::space(2), UiStyle::space(2), UiStyle::space(2));
+    top->setSpacing(UiStyle::space(2));
+    auto *icon = new QLabel;
+    icon->setPixmap(UiIcons::icon(QStringLiteral("search"), UiColor::muted(), 16).pixmap(16, 16));
+    icon->setAccessibleName(tr("Query"));
+    top->addWidget(icon);
     top->addWidget(m_edit, 1);
     top->addWidget(m_capOnly);
     // Session 82: the hits source by source, each under a heading with its
@@ -74,7 +87,10 @@ SearchWindow::SearchWindow(MessageDispatcher *dispatcher,
     // something other than what was intended, and this makes that visible
     // instead of leaving people to guess.
     m_explain = new QLabel;
-    m_explain->setStyleSheet(UiColor::mutedStyle() + QStringLiteral(" font-family: monospace;"));
+    // The real mono face: "monospace" as a family name does not resolve on
+    // Windows (session 123).
+    m_explain->setStyleSheet(UiColor::mutedStyle());
+    UiStyle::makeMono(m_explain);
     m_explain->setTextInteractionFlags(Qt::TextSelectableByMouse);
     m_explain->hide();
 
@@ -94,14 +110,25 @@ SearchWindow::SearchWindow(MessageDispatcher *dispatcher,
     m_results->setAlternatingRowColors(true);
     m_results->verticalHeader()->setVisible(false);
     m_results->horizontalHeader()->setStretchLastSection(true);
-    m_results->setColumnWidth(0, 150);
-    m_results->setColumnWidth(1,  70);
-    m_results->setColumnWidth(2, 140);
-    m_results->setColumnWidth(3,  45);
-    m_results->setColumnWidth(4,  50);
+    // Measured to the fonts they are drawn in (session 123; fixed pixel
+    // widths clipped "2026-06-27 14:02:27.512" as they did in the main log).
+    {
+        QFont hf = m_results->horizontalHeader()->font();
+        hf.setWeight(QFont::DemiBold);
+        const QFontMetrics head(hf), cell(m_results->font()), mono(UiStyle::monoFont());
+        auto fit = [&](int col, int sample) {
+            const QString h = m_results->horizontalHeaderItem(col)->text();
+            m_results->setColumnWidth(col, qMax(sample + 18, head.horizontalAdvance(h) + 28));
+        };
+        fit(0, mono.horizontalAdvance(QStringLiteral("8888-88-88 88:88:88.888")));
+        fit(1, cell.horizontalAdvance(QStringLiteral("888_888")));
+        fit(2, cell.horizontalAdvance(QStringLiteral("Fault_L1V1W")));
+        fit(3, cell.horizontalAdvance(QStringLiteral("OUT")));
+        fit(4, cell.horizontalAdvance(QStringLiteral("\u25B2 WARN")));
+    }
 
     auto *root = new QVBoxLayout(this);
-    root->addLayout(top);
+    root->addWidget(queryPanel);
     root->addWidget(m_explain);
     root->addWidget(m_results, 1);
     root->addWidget(m_status);
@@ -277,6 +304,7 @@ void SearchWindow::runSearch()
         };
         for (int c = 0; c < cells.size(); ++c) {
             auto *item = new QTableWidgetItem(cells.at(c));
+            if (c == 0) item->setFont(UiStyle::monoFont());   // digit under digit
             if (e->severity == Severity::Error) {
                 item->setForeground(UiColor::error());
             } else if (e->severity == Severity::Warn) {
