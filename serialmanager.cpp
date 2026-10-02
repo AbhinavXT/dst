@@ -83,27 +83,38 @@ bool SerialManager::open(const SerialConfig &config)
     return l->open(config);
 }
 
+QString SerialManager::resolveProfilePort(const SerialProfile &profile) const
+{
+    if (profile.usbSerial.isEmpty()) return profile.config.portName;
+    const QString now = m_finder ? m_finder(profile.usbSerial, profile.config.portName) : QString();
+    return now.isEmpty() ? profile.config.portName : now;
+}
+
 bool SerialManager::openProfile(const SerialProfile &profile)
 {
-    setFeed(profile.config.portName, profile.feed);
-    setLabel(profile.config.portName, profile.name);
-    return open(profile.config);
+    SerialProfile p = profile;
+    p.config.portName = resolveProfilePort(profile);
+    setFeed(p.config.portName, p.feed);
+    setLabel(p.config.portName, p.name);
+    if (const EntryPtr e = entry(p.config.portName))
+        if (e->usbSerial.isEmpty()) e->usbSerial = p.usbSerial;
+    return open(p.config);
 }
 
 QStringList SerialManager::openProfiles(const QVector<SerialProfile> &profiles)
 {
     QStringList failed;
     for (const SerialProfile &p : profiles) {
-        SerialLink *l = link(p.config.portName);
+        const QString port = resolveProfilePort(p);
+        SerialLink *l = link(port);
         if (l && l->isOpen()) {
             // Already running: a second "Open all" must not reopen (and so
             // briefly drop) a port that is capturing.
-            setLabel(p.config.portName, p.name);
+            setLabel(port, p.name);
             continue;
         }
         if (!openProfile(p)) {
-            failed << tr("%1 (%2): %3").arg(p.name, p.config.portName,
-                                            linkFor(p.config.portName)->errorText());
+            failed << tr("%1 (%2): %3").arg(p.name, port, linkFor(port)->errorText());
         }
     }
     return failed;
@@ -370,22 +381,50 @@ QString SerialManager::settingsGroup(const QString &portName)
     return QStringLiteral("serial/ports/") + n;
 }
 
+QString SerialManager::adapterGroup(const QString &usbSerial)
+{
+    QString n = usbSerial.trimmed();
+    n.replace(QLatin1Char('/'), QLatin1Char('_')).replace(QLatin1Char('\\'), QLatin1Char('_'));
+    return QStringLiteral("serial/adapters/") + n;
+}
+
 void SerialManager::savePortSettings(QSettings &s, const SerialConfig &config, bool feed)
 {
+    savePortSettings(s, config, feed, usbSerialFor(config.portName));
+}
+
+void SerialManager::savePortSettings(QSettings &s, const SerialConfig &config, bool feed,
+                                     const QString &usbSerial)
+{
     if (config.portName.trimmed().isEmpty()) return;
-    const QString g = settingsGroup(config.portName);
-    config.save(s, g);
-    s.setValue(g + QStringLiteral("/feed"), feed);
+    QStringList groups{ settingsGroup(config.portName) };
+    if (!usbSerial.trimmed().isEmpty()) groups << adapterGroup(usbSerial);
+    for (const QString &g : groups) {
+        config.save(s, g);
+        s.setValue(g + QStringLiteral("/feed"), feed);
+    }
     s.setValue(QStringLiteral("serial/lastPort"), config.portName);
 }
 
 bool SerialManager::loadPortSettings(QSettings &s, const QString &portName,
                                      SerialConfig *config, bool *feed)
 {
-    const QString g = settingsGroup(portName);
-    if (!s.contains(g + QStringLiteral("/feed"))) return false;
+    return loadPortSettings(s, portName, config, feed, usbSerialFor(portName));
+}
+
+bool SerialManager::loadPortSettings(QSettings &s, const QString &portName,
+                                     SerialConfig *config, bool *feed, const QString &usbSerial)
+{
+    // The adapter first: it is the same card under whatever name it has today.
+    QString g;
+    if (!usbSerial.trimmed().isEmpty() && s.contains(adapterGroup(usbSerial) + QStringLiteral("/feed")))
+        g = adapterGroup(usbSerial);
+    else if (s.contains(settingsGroup(portName) + QStringLiteral("/feed")))
+        g = settingsGroup(portName);
+    else
+        return false;
     *config = SerialConfig::load(s, g);
-    config->portName = portName;
+    config->portName = portName;           // where it is now, not where it was saved
     *feed = s.value(g + QStringLiteral("/feed"), true).toBool();
     return true;
 }
@@ -436,6 +475,7 @@ QVector<SerialProfile> SerialProfile::loadAll(QSettings &s)
         p.feed = s.value(QStringLiteral("feed"), true).toBool();
         p.autoOpen = s.value(QStringLiteral("autoOpen"), false).toBool();
         p.macros = SerialMacro::loadList(s, QStringLiteral("macros"));
+        p.usbSerial = s.value(QStringLiteral("usbSerial")).toString();
         if (!p.name.isEmpty() && !p.config.portName.isEmpty()) out << p;
     }
     s.endArray();
@@ -454,6 +494,7 @@ void SerialProfile::saveAll(QSettings &s, const QVector<SerialProfile> &profiles
         s.setValue(QStringLiteral("feed"), p.feed);
         s.setValue(QStringLiteral("autoOpen"), p.autoOpen);
         SerialMacro::saveList(s, QStringLiteral("macros"), p.macros);
+        s.setValue(QStringLiteral("usbSerial"), p.usbSerial);
     }
     s.endArray();
 }

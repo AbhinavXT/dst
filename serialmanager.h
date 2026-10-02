@@ -106,6 +106,9 @@ struct SerialProfile {
     bool         feed = true;
     bool         autoOpen = false;
     QVector<SerialMacro> macros;     // session 109: its own macro row
+    // Session 115: the adapter, so the profile finds it again under a new
+    // COM number. Empty for ports with none (virtual, built-in UARTs).
+    QString      usbSerial;
 
     static QVector<SerialProfile> loadAll(QSettings &s);
     static void saveAll(QSettings &s, const QVector<SerialProfile> &profiles);
@@ -153,8 +156,12 @@ public:
     static QString findPortBySerial(const QString &usbSerial, const QString &lastName);
 
     // Opens a profile's port with its settings and feed, labelled with the
-    // profile's name. False with the reason in the link's errorText().
+    // profile's name. A profile that knows its adapter opens it wherever it
+    // now is (session 115). False with the reason in the link's errorText().
     bool openProfile(const SerialProfile &profile);
+    // Where a profile's port is now: its adapter's current name when that
+    // can be found, else the name it was saved with.
+    QString resolveProfilePort(const SerialProfile &profile) const;
     // Opens each; returns "name: why" for each that failed (empty = all open).
     QStringList openProfiles(const QVector<SerialProfile> &profiles);
 
@@ -187,10 +194,20 @@ public:
 
     // Per-port remembered settings: the line configuration and Feed console.
     static QString settingsGroup(const QString &portName);
+    // Session 115: settings are ALSO kept under the adapter's USB serial
+    // number when it has one, and that copy wins when loading — Windows
+    // renumbers COM ports, and settings keyed only by "COM5" were lost
+    // when the same adapter came back as COM7. `usbSerial` defaults to the
+    // adapter now on that port; tests pass one.
+    static QString adapterGroup(const QString &usbSerial);
     static void savePortSettings(QSettings &s, const SerialConfig &config, bool feed);
-    // False when nothing was saved for that port yet.
+    static void savePortSettings(QSettings &s, const SerialConfig &config, bool feed,
+                                 const QString &usbSerial);
+    // False when nothing was saved for that port (or adapter) yet.
     static bool loadPortSettings(QSettings &s, const QString &portName,
                                  SerialConfig *config, bool *feed);
+    static bool loadPortSettings(QSettings &s, const QString &portName,
+                                 SerialConfig *config, bool *feed, const QString &usbSerial);
 
 signals:
     void portsChanged();                     // a port opened, closed, was lost or came back

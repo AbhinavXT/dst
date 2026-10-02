@@ -11,6 +11,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QSaveFile>
+#include <QSet>
 #include <QSettings>
 #include <QTemporaryDir>
 
@@ -47,23 +48,35 @@ QStringList iniKeys(Section s)
     }
 }
 
-QString iniPrefix(Section s)
+// Group prefixes a section owns: one per tab for Tags; for Serial, the
+// arrays and per-port groups (session 115).
+QStringList iniPrefixes(Section s)
 {
-    return s == Section::Tags ? QStringLiteral("ui/tabTags/") : QString();
+    if (s == Section::Tags) return { QStringLiteral("ui/tabTags/") };
+    if (s == Section::Serial)
+        return { QStringLiteral("serial/profiles/"), QStringLiteral("serial/macros/"),
+                 QStringLiteral("serial/ports/"), QStringLiteral("serial/adapters/") };
+    return {};
+}
+
+bool ownsByPrefix(Section s, const QString &key)
+{
+    for (const QString &p : iniPrefixes(s))
+        if (key.startsWith(p)) return true;
+    return false;
 }
 
 bool isIniSection(Section s)
 {
-    return s == Section::Appearance || s == Section::Tags || s == Section::Pins;
+    return s == Section::Appearance || s == Section::Tags || s == Section::Pins || s == Section::Serial;
 }
 
 QStringList keysOf(Section s, QSettings &settings)
 {
     QStringList keys = iniKeys(s);
-    const QString prefix = iniPrefix(s);
-    if (!prefix.isEmpty()) {
+    if (!iniPrefixes(s).isEmpty()) {
         for (const QString &k : settings.allKeys()) {
-            if (k.startsWith(prefix)) keys << k;
+            if (ownsByPrefix(s, k)) keys << k;
         }
     }
     return keys;
@@ -197,7 +210,7 @@ QString countAndNames(int n, const QString &one, const QString &many, const QStr
 QList<Section> allSections()
 {
     return { Section::Appearance, Section::Tags, Section::Pins,
-             Section::Layouts, Section::FlasherProfiles, Section::LocoConfigs };
+             Section::Layouts, Section::FlasherProfiles, Section::LocoConfigs, Section::Serial };
 }
 
 QString id(Section s)
@@ -209,6 +222,7 @@ QString id(Section s)
     case Section::Layouts:         return QStringLiteral("layouts");
     case Section::FlasherProfiles: return QStringLiteral("flasher_profiles");
     case Section::LocoConfigs:     return QStringLiteral("loco_configs");
+    case Section::Serial:          return QStringLiteral("serial");
     }
     return QString();
 }
@@ -222,6 +236,7 @@ QString label(Section s)
     case Section::Layouts:         return QObject::tr("Window layouts");
     case Section::FlasherProfiles: return QObject::tr("Firmware Flasher profiles");
     case Section::LocoConfigs:     return QObject::tr("Loco configurations");
+    case Section::Serial:          return QObject::tr("Serial profiles, macros and port settings");
     }
     return QString();
 }
@@ -299,6 +314,16 @@ QString Bundle::summary(Section s) const
     case Section::LocoConfigs: {
         const QJsonArray a = file.value(QStringLiteral("configs")).toArray();
         return countAndNames(a.size(), QObject::tr("1 configuration"), QObject::tr("%1 configurations"), namesIn(a, "name"));
+    }
+    case Section::Serial: {
+        const int profiles = ini.value(QStringLiteral("serial/profiles/size")).toVariant().toInt();
+        const int macros = ini.value(QStringLiteral("serial/macros/size")).toVariant().toInt();
+        QSet<QString> ports;
+        for (auto it = ini.constBegin(); it != ini.constEnd(); ++it)
+            if (it.key().startsWith(QLatin1String("serial/ports/"))) ports << it.key().section(QLatin1Char('/'), 2, 2);
+        return QObject::tr("%1, %2 default macros, settings for %3 ports")
+            .arg(profiles == 1 ? QObject::tr("1 profile") : QObject::tr("%1 profiles").arg(profiles))
+            .arg(macros).arg(ports.size());
     }
     }
     return QString();
@@ -422,12 +447,10 @@ bool apply(const Bundle &bundle, const QList<Section> &wanted,
             }
             const QJsonObject ini = section.value(QStringLiteral("ini")).toObject();
             const QStringList owned = iniKeys(s);
-            const QString prefix = iniPrefix(s);
             for (auto it = ini.constBegin(); it != ini.constEnd(); ++it) {
                 // Only keys this section owns: a hand-edited file cannot use
-                // "tags" to set the UDP port.
-                const bool mine = owned.contains(it.key())
-                               || (!prefix.isEmpty() && it.key().startsWith(prefix));
+                // "tags" (or "serial") to set the UDP port.
+                const bool mine = owned.contains(it.key()) || ownsByPrefix(s, it.key());
                 if (mine) {
                     settings.setValue(it.key(), fromJsonValue(it.value()));
                 }

@@ -1003,6 +1003,7 @@ bool SerialConsoleWindow::saveProfile(const QString &name)
     p.feed = m_feed->isChecked();
     p.autoOpen = m_autoOpen->isChecked();
     p.macros = m_macros;              // the row on screen goes with it
+    p.usbSerial = SerialManager::usbSerialFor(p.config.portName);   // finds it after a renumber
     if (p.name.isEmpty() || p.config.portName.isEmpty()) {
         m_state->setText(tr("A profile needs a name and a port."));
         return false;

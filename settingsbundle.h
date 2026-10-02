@@ -15,6 +15,9 @@
 //    layouts           named window layouts (window_layouts.json)
 //    flasher_profiles  Firmware Flasher profiles (flasher_profiles.json)
 //    loco_configs      Loco Configuration configurations (loco_configs.json)
+//    serial            serial port profiles with their macros, the default
+//                      macro row, and each port's / adapter's settings
+//                      (session 115)
 //
 //  Deliberately NOT carried: network port, disk-log paths and quotas,
 //  window positions outside layouts, session keys, history logs. Those
@@ -41,7 +44,7 @@
 
 namespace SettingsBundle {
 
-enum class Section { Appearance, Tags, Pins, Layouts, FlasherProfiles, LocoConfigs };
+enum class Section { Appearance, Tags, Pins, Layouts, FlasherProfiles, LocoConfigs, Serial };
 
 QList<Section> allSections();
 QString id(Section s);            // the key in the file: "appearance", ...

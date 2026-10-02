@@ -11,6 +11,68 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-115"></a>
+## Session 115 — Serial settings that survive a COM renumber and a new laptop
+
+Items 8 and 9 of the review list.
+
+### 8. Settings follow the adapter, not the COM number
+
+Per-port settings (session 102) were keyed by the port's name. Windows
+renumbers COM ports, and when the same adapter came back as COM7 its
+settings from COM5 were not found. Profiles (session 105) likewise pointed
+at a name.
+
+- **Port settings are also saved under the adapter's USB serial number**
+  (`serial/adapters/<serial>`) when it has one, and that copy wins when
+  loading: the same card under whatever name it has today. A different
+  adapter on the same COM number does not inherit them. Ports with no
+  serial number (virtual, built-in UARTs) work by name as before.
+- **A profile remembers its adapter** (saved from the terminal). **Open
+  all** and opening a profile look it up by serial number, using the same
+  enumerator as auto-reconnect (session 106). So "IOA Input", saved on COM5,
+  opens on COM7, with its name and settings. A profile without an adapter
+  keeps its port name.
+
+### 9. Serial settings in File ▸ Export / Import settings
+
+A new **Serial profiles, macros and port settings** section carries the
+profiles with their macros, the default macro row, and each port's and
+adapter's settings. The summary line reads e.g. "3 profiles, 2 default
+macros, settings for 4 ports".
+
+As with tags, import replaces the section whole and accepts only keys under
+its own prefixes, so a hand-edited file cannot use it to set, say, the UDP
+port. The bundle's single per-section INI prefix became a list to allow
+this.
+
+Files: `serialmanager.h/.cpp`, `serialconsolewindow.cpp`,
+`settingsbundle.h/.cpp`.
+
+### Tests
+
+`tests/test_session115.cpp`, 15 checks:
+
+- an adapter's settings saved as COM5 load as COM7, under the new name;
+  another adapter on COM7 gets nothing; no serial number means by name; the
+  adapter's copy wins;
+- a profile keeps its adapter, resolves to where the adapter is now, and
+  **Open all opens it there over a real pty** with its name; a profile
+  without an adapter keeps its name;
+- Serial in Export settings: a profile with a confirm macro ending in CR
+  alone, the default macros and an adapter's settings go from one ini to a
+  fresh one intact; `udp/port` does not travel.
+
+The existing settings-bundle suite (27 checks) passes unchanged.
+
+Gate: 11/11 validators, `dltests` 170 suites / 5419 checks, menu audit,
+smoke. All green.
+
+Not tested: a real adapter renumbered by Windows. The serial number is
+stood in for by the injectable enumerator.
+
+---
+
 <a id="session-114"></a>
 ## Session 114 — Time read alike everywhere; two windows that never received their results
 
