@@ -1,4 +1,5 @@
 #include "brakingpanel.h"
+#include <QCoreApplication>
 
 #include "brakingcurveplot.h"
 #include "capturedecoder.h"
@@ -90,6 +91,12 @@ QString mps(double v)
         .arg(v * Braking::kMpsToKmph, 0, 'f', 1);
 }
 
+// "1 frame" / "20 frames" (the status read "1 frames/s", "up to 1 targets").
+QString countOf(int n, const char *one, const char *many)
+{
+    return QStringLiteral("%1 %2").arg(n).arg(QCoreApplication::translate("BrakingPanel", n == 1 ? one : many));
+}
+
 QTableWidget *makeTable(const QStringList &headers)
 {
     auto *t = new QTableWidget;
@@ -130,7 +137,7 @@ BrakingPanel::BrakingPanel(MessageDispatcher *dispatcher, QWidget *parent)
         auto *row = new QHBoxLayout;
         row->addWidget(new QLabel(tr("Tab:")));
         m_tabCombo = new QComboBox;
-        m_tabCombo->setMinimumWidth(180);
+        m_tabCombo->setMinimumWidth(120);   // 120, not 180 (session 149): the row held the window over 1100 px
         row->addWidget(m_tabCombo);
 
         auto *reload = new QToolButton;
@@ -139,14 +146,14 @@ BrakingPanel::BrakingPanel(MessageDispatcher *dispatcher, QWidget *parent)
         connect(reload, &QToolButton::clicked, this, &BrakingPanel::onReload);
         row->addWidget(reload);
 
-        row->addSpacing(16);
+        row->addSpacing(8);
         row->addWidget(new QLabel(tr("Curve:")));
         m_curveCombo = new QComboBox;
         m_curveCombo->setMinimumWidth(110);
         m_curveCombo->setToolTip(tr("Which of curves_for_target[] to draw"));
         row->addWidget(m_curveCombo);
 
-        row->addSpacing(16);
+        row->addSpacing(8);
 
         m_lock = new QCheckBox(tr("Lock axes"));
         m_lock->setChecked(true);
@@ -199,18 +206,25 @@ BrakingPanel::BrakingPanel(MessageDispatcher *dispatcher, QWidget *parent)
 
     m_summary = makeTable(QStringList() << tr("Field") << tr("Value"));
     m_summary->setMaximumWidth(420);
-    tl->addWidget(m_summary, 0);
+    // Room for both columns (session 149): at its 256-px hint it cut
+    // "Value" and scrolled sideways.
+    m_summary->setMinimumWidth(340);
+    m_summary->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+    tl->addWidget(m_summary, 2);   // a share of the width, up to its 420-px cap
 
     m_segments = makeTable(QStringList()
                            << tr("target") << tr("curve") << tr("#")
                            << tr("start (m)") << tr("end (m)")
                            << tr("from") << tr("to")
                            << tr("decel (m/s²)") << tr("A") << tr("C"));
-    tl->addWidget(m_segments, 1);
+    tl->addWidget(m_segments, 3);
 
     split->addWidget(tables);
-    split->setStretchFactor(0, 3);
-    split->setStretchFactor(1, 2);
+    // Even (session 149): at 3 : 2 the tables showed 3 of the summary's
+    // 10 rows under a plot with room to spare.
+    split->setStretchFactor(0, 1);
+    split->setStretchFactor(1, 1);
+    split->setSizes({ 1000, 1000 });   // even from the start, not from the hints
     outer->addWidget(split, 1);
 
     // ---- search -----------------------------------------------------------
@@ -291,6 +305,11 @@ BrakingPanel::BrakingPanel(MessageDispatcher *dispatcher, QWidget *parent)
                                     "curve is the same"));
         connect(m_nextChange, &QToolButton::clicked, this, &BrakingPanel::onNextChange);
         row->addWidget(m_nextChange);
+        outer->addLayout(row);
+
+        // Where the scrubber is, and how it moves, on a line of their own
+        // (session 149): beside the slider they held the window at 1112 px.
+        row = new QHBoxLayout;
 
         m_changesOnly = new QCheckBox(tr("Changes only"));
         m_changesOnly->setToolTip(tr("Make the scrubber address only the frames "
@@ -300,8 +319,9 @@ BrakingPanel::BrakingPanel(MessageDispatcher *dispatcher, QWidget *parent)
 
         m_timeLabel = new QLabel;
         m_timeLabel->setMinimumWidth(240);
-        m_timeLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
-        row->addWidget(m_timeLabel);
+        m_timeLabel->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        row->insertWidget(0, m_timeLabel);
+        row->insertStretch(1, 1);
 
         m_follow = new QCheckBox(tr("Follow live"));
         m_follow->setChecked(true);
@@ -311,6 +331,9 @@ BrakingPanel::BrakingPanel(MessageDispatcher *dispatcher, QWidget *parent)
     }
 
     m_status = new QLabel;
+    // Wraps (session 149): on one line the summary set the window's minimum
+    // width, 2042 px, wider than any laptop.
+    m_status->setWordWrap(true);
     m_status->setStyleSheet(QStringLiteral("color: %1;").arg(UiColor::muted().name()));
     outer->addWidget(m_status);
 
@@ -873,12 +896,12 @@ void BrakingPanel::updateStatus()
     } else if (m_snaps.isEmpty()) {
         bits << tr("no @uba frames in this tab yet");
     } else {
-        bits << tr("%1 frames").arg(m_snaps.size());
+        bits << countOf(m_snaps.size(), "frame", "frames");
         if (!m_cycles.isEmpty()) {
             int maxT = 0;
             for (const Braking::Cycle &c : m_cycles) { maxT = qMax(maxT, c.targetCount()); }
-            bits << tr("%1 cycles, up to %2 targets each")
-                        .arg(m_cycles.size()).arg(maxT);
+            bits << tr("%1, up to %2 each")
+                        .arg(countOf(m_cycles.size(), "cycle", "cycles"), countOf(maxT, "target", "targets"));
         }
 
         // The headline number for navigation. When a whole session collapses
@@ -888,8 +911,8 @@ void BrakingPanel::updateStatus()
             bits << tr("the curve NEVER CHANGES in this capture "
                        "(%1 identical frames)").arg(m_snaps.size());
         } else {
-            bits << tr("%1 changes").arg(m_changeIdx.size());
-            bits << tr("%1 distinct frames").arg(m_distinctFrames);
+            bits << countOf(m_changeIdx.size(), "change", "changes");
+            bits << countOf(m_distinctFrames, "distinct frame", "distinct frames");
         }
 
         // Rate and gaps. The loco builds targets every 10 ms, so a stream that
@@ -906,8 +929,9 @@ void BrakingPanel::updateStatus()
             if (d > worstGapMs) { worstGapMs = d; worstAt = m_snaps.at(i - 1).epochMs; }
         }
         if (coveredMs > 0) {
-            bits << tr("%1 frames/s while streaming")
-                        .arg(m_snaps.size() * 1000.0 / coveredMs, 0, 'f', 0);
+            const QString rate = QString::number(m_snaps.size() * 1000.0 / coveredMs, 'f', 0);
+            bits << (rate == QLatin1String("1") ? tr("1 frame/s while streaming")
+                                                : tr("%1 frames/s while streaming").arg(rate));
         }
         if (worstGapMs >= 1000) {
             bits << tr("⚠ longest gap %1 s at %2")

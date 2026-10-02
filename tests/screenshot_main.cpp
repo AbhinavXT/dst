@@ -13,6 +13,8 @@
 #include <QTableWidget>
 #include <QScrollBar>
 #include <QTimer>
+#include <QMainWindow>
+#include <QLayout>
 #include "mainwindow.h"
 #include "messagedispatcher.h"
 #ifdef DL_HAVE_SERIAL
@@ -51,6 +53,7 @@
 #include "fieldsweepdialog.h"
 #include "fieldplot.h"
 #include "speeddistance.h"
+#include "brakingpanel.h"
 #include <QComboBox>
 #include <QLineEdit>
 #include <QSpinBox>
@@ -456,6 +459,24 @@ int main(int argc, char **argv)
                 while (t.elapsed() < 3000) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
                 win = w;
             }
+            if (which == QLatin1String("braking")) {
+                // SYNTHETIC @uba (schema/fixtures): no real capture in replay/
+                // carries braking curves. Layout only, not firmware evidence.
+                QFile uba(QStringLiteral(DL_SRC_DIR "/schema/fixtures/uba_synthetic.log"));
+                if (uba.open(QIODevice::ReadOnly)) {
+                    while (!uba.atEnd()) {
+                        const QByteArray l = uba.readLine().trimmed();
+                        if (!l.startsWith('@')) continue;
+                        const QList<QByteArray> tok = l.split(' ');
+                        if (tok.size() < 3) continue;
+                        disp.ingestLocal(21, 1, l, QDateTime::fromString(QString::fromLatin1(tok.at(1)), Qt::ISODate).toMSecsSinceEpoch(), QString());
+                    }
+                }
+                disp.drainNow();
+                auto *w = new BrakingPanel(&disp, nullptr);
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
+                win = w;
+            }
             if (which == QLatin1String("speeddist")) {
                 // A whole real run: speed over absolute location.
                 const QString cap = qEnvironmentVariableIsEmpty("SHOT_CAP") ? QStringLiteral("26062026_162418")
@@ -506,6 +527,19 @@ int main(int argc, char **argv)
                     if ((c->isVisible() || qEnvironmentVariableIsSet("SHOT_HIDDEN")) && c->minimumSizeHint().width() > qEnvironmentVariable("SHOT_WIDE").toInt())
                         printf("  wide: %s %s min=%d w=%d '%s'\n", c->metaObject()->className(), qPrintable(c->objectName()),
                                c->minimumSizeHint().width(), c->width(), qPrintable(c->property("text").toString().left(30)));
+            if (qEnvironmentVariableIsSet("SHOT_ROWS"))
+                if (auto *mw = qobject_cast<QMainWindow *>(win))
+                    if (QLayout *cl = mw->centralWidget() ? mw->centralWidget()->layout() : nullptr)
+                        for (int i = 0; i < cl->count(); ++i)
+                        {
+                            printf("  row %d: min %d x %d\n", i, cl->itemAt(i)->minimumSize().width(), cl->itemAt(i)->minimumSize().height());
+                            if (QLayout *sub = cl->itemAt(i)->layout())
+                                for (int j = 0; j < sub->count(); ++j) {
+                                    QWidget *sw = sub->itemAt(j)->widget();
+                                    printf("     %d: %s '%s' min %d\n", j, sw ? sw->metaObject()->className() : "spacer",
+                                           sw ? qPrintable(sw->property("text").toString().left(20)) : "", sub->itemAt(j)->minimumSize().width());
+                                }
+                        }
             if (qEnvironmentVariableIsSet("SHOT_TALL"))
                 for (QWidget *c : win->findChildren<QWidget *>())
                     if (c->isVisible() && c->minimumSizeHint().height() > qEnvironmentVariable("SHOT_TALL").toInt())

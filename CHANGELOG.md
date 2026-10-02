@@ -11,6 +11,57 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-149"></a>
+## Session 149 — UI revamp, tool windows 26: the Braking panel
+
+- **Fits a laptop.** Its minimum was **2042 px** wide: the one-line
+  summary under the scrubber ("20 frames · 20 cycles · … · spanning
+  19.0 s") set it, so the window could not be narrower than two screens.
+  Now 1036 x 491 on the Mac:
+  - the summary wraps;
+  - the frame/time readout ("frame 20 of 20 host … rtc … seq …"),
+    Changes only and Follow live moved to a line under the slider, which
+    now has the width;
+  - the top row's tab box has a 120-px floor (was 180), and its two
+    spacers are 8 px (were 16).
+- **The tables get half the height.** At 3 : 2 they showed 3 of the
+  summary's 10 rows under a plot with room to spare. Now even, and 7 in
+  view.
+- **The Field / Value table gets a share of the width**, up to its
+  420-px cap. At 256 px it cut "Value" and scrolled sideways; the values
+  now have 228 px.
+- **Counts in English:** "up to 1 target each", "1 frame/s", "1
+  change" (were "1 targets", "1 frames/s").
+
+Tests: `test_session149`, 15 checks, on the **synthetic** @uba fixture
+(`schema/fixtures/uba_synthetic.log`, 20 frames):
+
+- fits;
+- the summary wraps and is shown whole;
+- "up to 1 target each" and "1 frame/s";
+- the readout sits under the slider, which has the width;
+- at least six summary rows in view;
+- no sideways scroll;
+- the values have room;
+- layout audit.
+
+**Not tested:** real braking curves. No capture in `replay/` carries
+@uba, so the layout was checked on synthetic frames only. No other suite
+covers this panel.
+
+**Screenshot harness:** `SHOT_WINDOW=braking` (synthetic @uba), and
+`SHOT_ROWS=1`, which prints each row of a main window's central layout
+with its minimum width and its items (it found the top row at 1096 px).
+
+Files: `brakingpanel.cpp`, `tests/test_session149.cpp`,
+`tests/screenshot_main.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+198 suites / 5881 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-148"></a>
 ## Session 148 — UI revamp, tool windows 24: Speed/distance
 
