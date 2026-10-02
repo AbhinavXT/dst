@@ -19,6 +19,12 @@ DEFINES += QT_NO_DEBUG_OUTPUT QT_DEPRECATED_WARNINGS
 # build catches it before Windows does.
 clang|*-g++*|*g++: QMAKE_CXXFLAGS += -Werror=mismatched-tags
 
+# Session 116: the sources are UTF-8 (\u25B8 menu paths, \u2014 dashes,
+# \u25CF status glyphs, \u26A0 and \u2715 in labels). Without /utf-8, MSVC reads
+# them in the Windows code page and every such literal comes out as
+# mojibake — on screen, not only in the tests that caught it.
+msvc: QMAKE_CXXFLAGS += /utf-8
+
 include(../dlcore.pri)
 
 # Resources live in the programs, not here: a .qrc inside a static library

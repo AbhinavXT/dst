@@ -15,6 +15,8 @@ isEmpty(DLCORE_DIR): DLCORE_DIR = $$clean_path($$OUT_PWD/../core)
 INCLUDEPATH += $$PWD $$PWD/schema $$PWD/flasher $$PWD/lococonfig
 DEPENDPATH  += $$PWD $$PWD/schema $$PWD/flasher $$PWD/lococonfig
 QT      += core gui network xml widgets
+# The programs' own sources are UTF-8 too (see core/core.pro, session 116).
+msvc: QMAKE_CXXFLAGS += /utf-8
 CONFIG  += c++17
 
 CONFIG += dl_link_only

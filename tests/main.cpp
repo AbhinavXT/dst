@@ -2,6 +2,7 @@
 
 #include <QApplication>
 #include <QElapsedTimer>
+#include <cstdio>
 
 namespace TestHarness {
 
@@ -72,6 +73,9 @@ int main(int argc, char **argv)
     const QString only = (argc > 1) ? QString::fromLocal8Bit(argv[1]) : QString();
     const int failures = TestHarness::runAll(only);
 
+    // Flushed before exit: on Windows a piped stdout was cut off mid-line,
+    // losing the summary and the last FAIL lines from the CI log.
+    std::fflush(stdout);
     // Exit code is the failure count, so CI needs no output parsing.
     return failures > 255 ? 255 : failures;
 }
