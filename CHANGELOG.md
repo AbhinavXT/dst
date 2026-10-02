@@ -11,6 +11,98 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-131"></a>
+## Session 131 — UI revamp, tool windows 7: the Track diagram
+
+**0 m now means "location not known".** A loco that has not localised
+on an RFID tag reports `abs_loco_loc` = 0. In
+`replay/loco_1_1_26062026_162418.cap`, 352 of the 842 @dmi frames do:
+every frame before the first tag read, and again after the drop to
+Stand_By until the next read. The diagram used to treat 0 m as a
+place, with three results:
+
+- the span became 0 to 161 253 m;
+- every real tag and event (152.7 to 161.3 km) was squeezed into the
+  last 5 % of the rail, with their ids printed over each other;
+- with the cursor on the last frame, the loco was drawn at 0 m.
+
+The schema gives 0 no meaning, so I asked Abhinav, who decided that
+in the track diagram 0 m is "not known". Such samples:
+
+- stay in the trace, so the time cursor still steps through them;
+- do not set the span;
+- do not place a signal (a signal is placed relative to the loco);
+- do not pin an event;
+- do not draw the loco while the cursor is on one. The readout says
+  "location not known (0 m: not localised)" instead.
+
+An event raised while the location is not known is no longer pinned at
+the last known location: that location may be from before a Stand_By,
+somewhere the loco no longer was. Such events are counted instead. In
+this capture, 22 NMS faults raised at power-up and around Stand_By are
+counted this way; before, all 22 were drawn at 0 m. This applies to
+the track diagram only. Speed/distance, Two-loco and the incident
+report read the trace as before.
+
+**The canvas.**
+
+- **Lanes.** From the top: events, tag ids, tags, the rail, signals
+  with their MA ends, signal names, then a km scale and a legend. The
+  block is centred in the canvas. Before, everything sat in a 100-px
+  band and the rest of the height was empty.
+- **Labels never overlap.** Tag ids stack into up to three rows and
+  signal names into two. A label that still has no room is left out;
+  the mark's tooltip still has it. Labels near an end are slid back
+  inside the canvas: "DN MAIN IB-Stop" ran off the right edge.
+- **A km scale** with 1/2/5 steps ("155.5 km"). Before, only the two
+  ends were labelled, in metres.
+- **A legend** for the loco, RFID tag, signal (aspect colour),
+  movement authority end, and the three event colours.
+- **A readout of the loco at the cursor**: time, location, speed and
+  mode. Before, it showed only the time.
+- **Tooltips on every mark**: tag id, location and read time; signal,
+  location and its MA end; each event's label, location and time; the
+  loco. Events had no text anywhere before.
+- **The loco's nose** is an arrowhead in the direction of travel, and
+  the MA flag points the same way.
+
+**The status line** reads "6 RFID tags · 0 signals · 1 event · not
+localised (0 m): 352 of 826 frames, 22 events" (was "tag(s)"). It fits
+one line. Its tooltip explains why the 0 m frames are left off the
+rail. The window opens at 1100 × 560.
+
+**Screenshot harness:** `SHOT_WINDOW=track`; `SHOT_CAP=<date_time>`
+picks the capture.
+
+Tests: `test_session131`, 27 checks, on two whole real captures:
+
+- the 352 frames at 0 m are counted, and the span is 152.7 to
+  161.3 km;
+- the 0 m samples stay in the trace;
+- no event is pinned at 0 m, and the 22 unpinned events are counted;
+- the loco is drawn on a known frame and not on a 0 m frame;
+- every tag has a tooltip;
+- all six tag ids are drawn, and no labels overlap or leave the canvas
+  (also with three signals, one at the right edge);
+- signals and MA ends have tooltips;
+- a log that is all 0 m says there is no location;
+- the status text, its tooltip, one line;
+- the slider spans every sample;
+- fits 1366 × 768;
+- layout audit.
+
+`test_session99` passes unchanged.
+
+Files: `trackdiagram.h/.cpp`, `trackdiagramwindow.h/.cpp`,
+`tests/screenshot_main.cpp`, `tests/test_session131.cpp`,
+`tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+180 suites / 5585 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-130"></a>
 ## Session 130 — UI revamp, tool windows 6: the Merged window
 

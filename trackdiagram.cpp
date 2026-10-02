@@ -43,19 +43,21 @@ int sampleAtOrBeforeMs(const QVector<SpeedDistance::Sample> &v, qint64 ms)
 }
 
 void pinByRow(const SpeedDistance::Trace &trace, qint64 ms, int row,
-             const QString &kind, const QString &label, QVector<EventMark> *out)
+             const QString &kind, const QString &label, Diagram *d)
 {
     const int idx = sampleAtOrBeforeRow(trace.samples, row);
     if (idx < 0) return;
-    out->append(EventMark{ ms, trace.samples.at(idx).locM, kind, label, row });
+    if (!locationKnown(trace.samples.at(idx))) { ++d->unpinnedEvents; return; }
+    d->events.append(EventMark{ ms, trace.samples.at(idx).locM, kind, label, row });
 }
 
 void pinByMs(const SpeedDistance::Trace &trace, qint64 ms,
-            const QString &kind, const QString &label, QVector<EventMark> *out)
+            const QString &kind, const QString &label, Diagram *d)
 {
     const int idx = sampleAtOrBeforeMs(trace.samples, ms);
     if (idx < 0) return;
-    out->append(EventMark{ ms, trace.samples.at(idx).locM, kind, label, trace.samples.at(idx).row });
+    if (!locationKnown(trace.samples.at(idx))) { ++d->unpinnedEvents; return; }
+    d->events.append(EventMark{ ms, trace.samples.at(idx).locM, kind, label, trace.samples.at(idx).row });
 }
 
 }  // namespace
@@ -69,9 +71,18 @@ Diagram build(const LogModel *model, const QString &tabKey, const QString &tabNa
 
     d.trace = SpeedDistance::extract(model, maxRows);
     if (d.trace.isEmpty()) return d;
-    d.minLocM = d.trace.minLocM;
-    d.maxLocM = d.trace.maxLocM;
-    auto widen = [&d](double v) { d.minLocM = qMin(d.minLocM, v); d.maxLocM = qMax(d.maxLocM, v); };
+    // The span from the samples whose location is known; the trace's own
+    // min/max would count the 0 m ones.
+    bool haveSpan = false;
+    auto widen = [&d, &haveSpan](double v) {
+        if (!haveSpan) { d.minLocM = d.maxLocM = v; haveSpan = true; return; }
+        d.minLocM = qMin(d.minLocM, v);
+        d.maxLocM = qMax(d.maxLocM, v);
+    };
+    for (const SpeedDistance::Sample &s : d.trace.samples) {
+        if (locationKnown(s)) widen(s.locM);
+        else ++d.unknownSamples;
+    }
 
     const int n = model->count();
 
@@ -105,7 +116,7 @@ Diagram build(const LogModel *model, const QString &tabKey, const QString &tabNa
             if (!s.valid || s.signalName.isEmpty() || s.signalDistance <= 0) continue;
 
             const int idx = sampleAtOrBeforeRow(d.trace.samples, i);
-            if (idx < 0) continue;
+            if (idx < 0 || !locationKnown(d.trace.samples.at(idx))) continue;
             const double locoLoc = d.trace.samples.at(idx).locM;
             const double signalLoc = SpeedDistance::targetLocation(locoLoc, s.signalDistance, d.trace.direction);
 
@@ -139,33 +150,35 @@ Diagram build(const LogModel *model, const QString &tabKey, const QString &tabNa
         const RunReport::Summary run = RunReport::summarise(model, tabKey, tabName);
         for (const RunReport::Change &c : run.modeChanges) {
             pinByRow(d.trace, c.ms, c.row, QStringLiteral("mode"),
-                    QStringLiteral("Mode: %1 → %2").arg(c.from, c.to), &d.events);
+                    QStringLiteral("Mode: %1 → %2").arg(c.from, c.to), &d);
         }
         for (const RunReport::Episode &ep : run.overspeed) {
-            pinByRow(d.trace, ep.fromMs, ep.row, QStringLiteral("overspeed"), ep.what, &d.events);
+            pinByRow(d.trace, ep.fromMs, ep.row, QStringLiteral("overspeed"), ep.what, &d);
         }
         for (const RunReport::Episode &ep : run.emergencies) {
-            pinByRow(d.trace, ep.fromMs, ep.row, QStringLiteral("emergency"), ep.what, &d.events);
+            pinByRow(d.trace, ep.fromMs, ep.row, QStringLiteral("emergency"), ep.what, &d);
         }
         for (const RunReport::FaultEvent &f : run.faults) {
             if (!f.raised) continue;   // the pin is where it was RAISED
-            pinByMs(d.trace, f.ms, QStringLiteral("fault"), f.text, &d.events);
+            pinByMs(d.trace, f.ms, QStringLiteral("fault"), f.text, &d);
         }
 
         const TwoLocoView::Events ev = TwoLocoView::extractEvents(model);
         for (const RunReport::Episode &ep : ev.sos) {
-            pinByRow(d.trace, ep.fromMs, ep.row, QStringLiteral("sos"), ep.what, &d.events);
+            pinByRow(d.trace, ep.fromMs, ep.row, QStringLiteral("sos"), ep.what, &d);
         }
         for (const RunReport::Episode &ep : ev.headOn) {
-            pinByRow(d.trace, ep.fromMs, ep.row, QStringLiteral("head-on"), ep.what, &d.events);
+            pinByRow(d.trace, ep.fromMs, ep.row, QStringLiteral("head-on"), ep.what, &d);
         }
         for (const RunReport::Episode &ep : ev.rearEnd) {
-            pinByRow(d.trace, ep.fromMs, ep.row, QStringLiteral("rear-end"), ep.what, &d.events);
+            pinByRow(d.trace, ep.fromMs, ep.row, QStringLiteral("rear-end"), ep.what, &d);
         }
         std::sort(d.events.begin(), d.events.end(),
                  [](const EventMark &a, const EventMark &b) { return a.epochMs < b.epochMs; });
     }
 
+    if (!haveSpan) { d.minLocM = 0.0; d.maxLocM = 1.0; }
+    else if (d.maxLocM - d.minLocM < 1.0) { d.minLocM -= 50.0; d.maxLocM += 50.0; }   // one point: give it room
     return d;
 }
 

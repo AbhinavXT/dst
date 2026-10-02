@@ -51,6 +51,24 @@
 //    this": the same at-or-before rule DMI time travel (dmitimetravel.h)
 //    uses for a frame, applied to a location instead.
 //
+//    An event at a moment the location is NOT KNOWN (below) is not pinned:
+//    the last known location may be minutes old, from before a Stand_By,
+//    and would put the event somewhere the loco no longer was. It is
+//    counted in unpinnedEvents instead.
+//
+//  0 m: LOCATION NOT KNOWN (session 130)
+//    A loco that has not yet localised on an RFID tag reports abs_loco_loc
+//    = 0. In replay/loco_1_1_26062026_162418.cap, 352 of 842 @dmi frames do:
+//    every one before the first tag read, and again after a drop to
+//    Stand_By until the next. Read as a position, they stretched the span
+//    to 0..161253 m, crammed every tag into the last 5 % of the rail and
+//    drew the loco at 0 m. The schema gives 0 no meaning; Abhinav decided
+//    (2026-10-02) that the diagram treats it as "not known": such samples
+//    stay in the trace (the time cursor still steps through them) but do
+//    not set the span, place a signal or pin an event, and the loco is not
+//    drawn while the cursor is on one. This module only: SpeedDistance and
+//    its other users read the trace as before.
+//
 //    Reject-rule findings are NOT pinned: RunReport::Summary keeps only
 //    per-clause COUNTS (rejectClauses), not the row of each match, so there
 //    is nothing to look a location up against without changing RunReport's
@@ -98,9 +116,16 @@ struct Diagram {
     QVector<RfidMark>   tags;
     QVector<SignalMark> signalMarks;
     QVector<EventMark>  events;
-    double minLocM = 0.0, maxLocM = 1.0;   // the trace's own span, widened by tags/signals/MA
+    double minLocM = 0.0, maxLocM = 1.0;   // the known samples' span, widened by tags/signals/MA
+    int  unknownSamples = 0;               // samples at 0 m (location not known)
+    int  unpinnedEvents = 0;               // events at a moment the location was not known
     bool isEmpty() const { return trace.isEmpty(); }
+    // Any sample with a known location, or a tag: something to place.
+    bool hasLocation() const { return trace.samples.size() > unknownSamples || !tags.isEmpty(); }
 };
+
+// abs_loco_loc 0 = the loco has not localised (see above).
+inline bool locationKnown(const SpeedDistance::Sample &s) { return s.locM > 0.0; }
 
 Diagram build(const LogModel *model, const QString &tabKey, const QString &tabName, int maxRows = 200000);
 

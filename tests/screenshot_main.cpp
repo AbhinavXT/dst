@@ -28,6 +28,8 @@
 #include "packetmakerdialog.h"
 #include "comparewindow.h"
 #include "mergedwindow.h"
+#include "trackdiagramwindow.h"
+#include <QDateTime>
 #include "namemap.h"
 #include "theme.h"
 #include "uistyle.h"
@@ -106,6 +108,29 @@ int main(int argc, char **argv)
                     disp.ingestLocal(i % 3 == 0 ? 81 : (i % 3 == 1 ? 21 : 22), 1, lines.at(i).toUtf8(), ms + i * 137, QString());
                 disp.drainNow();
                 auto *w = new MergedWindow(&disp, &names, t, 5000, nullptr);
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
+                win = w;
+            }
+            if (which == QLatin1String("track")) {
+                // A run with RFID tags, signals and location: the whole of
+                // one real capture, at its own timestamps.
+                // SHOT_CAP=29062026_134509 picks another replay/loco_1_1_ capture.
+                const QString cap = qEnvironmentVariableIsEmpty("SHOT_CAP") ? QStringLiteral("26062026_162418")
+                                                                            : qEnvironmentVariable("SHOT_CAP");
+                QFile run(QStringLiteral(DL_SRC_DIR "/replay/loco_1_1_%1.cap").arg(cap));
+                if (run.open(QIODevice::ReadOnly)) {
+                    while (!run.atEnd()) {
+                        const QByteArray l = run.readLine().trimmed();
+                        if (!l.startsWith('@')) continue;
+                        const QList<QByteArray> tok = l.split(' ');
+                        if (tok.size() < 3) continue;
+                        const qint64 ms = QDateTime::fromString(QString::fromLatin1(tok.at(1)), Qt::ISODate).toMSecsSinceEpoch();
+                        disp.ingestLocal(21, 1, l, ms, QString());
+                    }
+                }
+                disp.drainNow();
+                const QString key = disp.knownKeys().value(0);
+                auto *w = new TrackDiagramWindow(disp.modelForKey(key), key, QStringLiteral("L1_V1"));
                 w->setAttribute(Qt::WA_DeleteOnClose, false);
                 win = w;
             }

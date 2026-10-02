@@ -27,17 +27,25 @@ public:
     explicit TrackDiagramCanvas(QWidget *parent = nullptr);
     void setDiagram(const TrackDiagram::Diagram &diagram);
     const TrackDiagram::Diagram &diagram() const { return m_d; }
-    QSize sizeHint() const override { return QSize(1000, 360); }
+    QSize sizeHint() const override { return QSize(1000, 380); }
+    QSize minimumSizeHint() const override { return QSize(480, 330); }
 
     // Index into diagram().trace.samples; -1 = before the first sample.
     void setCursorIndex(int index);
     int  cursorIndex() const { return m_cursorIndex; }
+
+    // What is under a point (the hover tooltip's text), for tests.
+    struct Hit { QRect rect; QString text; };
+    const QVector<Hit> &hits() const { return m_hits; }
+    // The boxes of the tag and signal labels drawn, for tests.
+    const QVector<QRect> &labelRects() const { return m_labels; }
 
 signals:
     void cursorIndexChanged(int index);
 
 protected:
     void paintEvent(QPaintEvent *) override;
+    bool event(QEvent *e) override;   // tooltips: the marks under the pointer
 
 private:
     QRect  trackRect() const;
@@ -46,6 +54,8 @@ private:
 
     TrackDiagram::Diagram m_d;
     int m_cursorIndex = -1;
+    QVector<Hit> m_hits;     // rebuilt by every paint
+    QVector<QRect> m_labels; // likewise
 };
 
 class TrackDiagramWindow : public QWidget

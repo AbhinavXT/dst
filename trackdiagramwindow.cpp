@@ -9,6 +9,10 @@
 #include <QApplication>
 #include <QDateTime>
 #include <QFileDialog>
+#include <QHelpEvent>
+#include <QToolTip>
+#include <cmath>
+#include <algorithm>
 #include <QHBoxLayout>
 #include <QPainter>
 #include <QPushButton>
@@ -69,7 +73,8 @@ void TrackDiagramCanvas::setCursorIndex(int index)
 
 QRect TrackDiagramCanvas::trackRect() const
 {
-    return QRect(50, 40, qMax(1, width() - 100), qMax(1, height() - 140));
+    // The rail's horizontal extent; the vertical layout is paintEvent's.
+    return QRect(56, 0, qMax(1, width() - 112), height());
 }
 
 double TrackDiagramCanvas::xOf(double locM) const
@@ -87,6 +92,62 @@ qint64 TrackDiagramCanvas::cursorMsOrLast() const
     return m_d.trace.samples.last().epochMs;
 }
 
+namespace {
+
+QString km(double m) { return QString::number(m / 1000.0, 'f', 3) + QStringLiteral(" km"); }
+QString hms(qint64 ms) { return QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss")); }
+QString modeText(const QString &mode) { QString m = mode; return m.replace(QLatin1Char('_'), QLatin1Char(' ')); }
+
+// Labels in one lane, stacked into up to `rows` rows so none overlaps;
+// a label with no free row is left out (its mark's tooltip still has it).
+// Returns the row per label, -1 = not drawn. Input must be sorted by x.
+QVector<int> stackLabels(const QVector<QPair<double, int>> &xw, int rows)
+{
+    QVector<double> rightEdge(rows, -1e9);
+    QVector<int> out;
+    for (const auto &l : xw) {
+        const double left = l.first - l.second / 2.0;
+        int row = -1;
+        for (int r = 0; r < rows; ++r) if (rightEdge.at(r) + 6 <= left) { row = r; break; }
+        if (row >= 0) rightEdge[row] = l.first + l.second / 2.0;
+        out << row;
+    }
+    return out;
+}
+
+// A label's box centred on x, slid back inside [0, width] where it would
+// run off an end.
+QRectF labelBox(double x, int w, int y, int h, int width)
+{
+    double left = x - w / 2.0;
+    left = qBound(2.0, left, double(width - w - 2));
+    return QRectF(left, y, w, h);
+}
+
+// A metre step for the scale: 1, 2 or 5 x 10^k, at least `minM`.
+double niceStep(double minM)
+{
+    double p = 1.0;
+    while (p * 10.0 <= minM) p *= 10.0;
+    for (double f : { 1.0, 2.0, 5.0, 10.0 }) if (p * f >= minM) return p * f;
+    return p * 10.0;
+}
+
+}  // namespace
+
+bool TrackDiagramCanvas::event(QEvent *e)
+{
+    if (e->type() == QEvent::ToolTip) {
+        const QPoint pos = static_cast<QHelpEvent *>(e)->pos();
+        QStringList lines;
+        for (const Hit &h : m_hits) if (h.rect.contains(pos)) lines << h.text;
+        if (lines.isEmpty()) { QToolTip::hideText(); e->ignore(); }
+        else QToolTip::showText(static_cast<QHelpEvent *>(e)->globalPos(), lines.join(QLatin1Char('\n')), this);
+        return true;
+    }
+    return QWidget::event(e);
+}
+
 void TrackDiagramCanvas::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
@@ -94,98 +155,225 @@ void TrackDiagramCanvas::paintEvent(QPaintEvent *)
     p.fillRect(rect(), palette().base());
     const QColor text = palette().color(QPalette::Text);
     const QColor ink = UiColor::muted(), frame = UiColor::frame(), grid = UiColor::grid();
+    m_hits.clear();
+    m_labels.clear();
 
     if (m_d.isEmpty()) {
         p.setPen(ink);
         p.drawText(rect(), Qt::AlignCenter, tr("No location in this tab: it needs @dmi or @lsrp frames"));
         return;
     }
+    if (!m_d.hasLocation()) {
+        p.setPen(ink);
+        p.drawText(rect(), Qt::AlignCenter,
+                   tr("No location to draw: every frame in this tab reports 0 m\n"
+                      "(the loco had not localised on an RFID tag)"));
+        return;
+    }
 
     const QRect track = trackRect();
-    const int midY = track.center().y();
     const qint64 cursorMs = cursorMsOrLast();
-
+    const QFontMetrics fm(p.font());
     QFont small = p.font();
     small.setPointSizeF(qMax(6.0, small.pointSizeF() - 1.0));
+    const QFontMetrics sfm(small);
+    const int lh = sfm.height();
+
+    // ---- vertical layout: one block, centred in whatever height there is -------
+    //   readout | event lane | tag labels (2 rows) | tags | RAIL | signals
+    //   | signal labels (2 rows) | scale | legend
+    const int readoutH = fm.height() + 10;
+    const int eventH = 26, tagLabH = 3 * lh, tagH = 14, signalH = 44, sigLabH = 2 * lh, scaleH = lh + 12, legendH = lh + 8;
+    const int blockH = readoutH + eventH + tagLabH + tagH + 22 + signalH + sigLabH + scaleH + legendH;
+    int y = qMax(0, (height() - blockH) / 2);
+    const int readoutY = y;              y += readoutH;
+    const int eventTop = y;              y += eventH;
+    const int tagLabTop = y;             y += tagLabH;
+    const int tagY = y + tagH / 2;       y += tagH;
+    const int midY = y + 11;             y += 22;
+    const int signalTop = y;             y += signalH;
+    const int sigLabTop = y;             y += sigLabH;
+    const int scaleY = y;                y += scaleH;
+    const int legendY = y;
+
+    // ---- the loco at the cursor: readout first, drawn last ------------------------
+    const bool haveCursor = m_cursorIndex >= 0 && m_cursorIndex < m_d.trace.samples.size();
+    const SpeedDistance::Sample &smp = haveCursor ? m_d.trace.samples.at(m_cursorIndex) : m_d.trace.samples.last();
+    const bool locoKnown = TrackDiagram::locationKnown(smp);
+    {
+        QFont bold = p.font();
+        bold.setWeight(QFont::DemiBold);
+        p.setFont(bold);
+        p.setPen(text);
+        const QString when = QDateTime::fromMSecsSinceEpoch(cursorMs).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+        const int ww = QFontMetrics(bold).horizontalAdvance(when);
+        p.drawText(QRect(track.left(), readoutY, ww + 4, readoutH), Qt::AlignLeft | Qt::AlignVCenter, when);
+        p.setFont(font());
+        QStringList parts;
+        if (locoKnown) parts << tr("loco at %1").arg(km(smp.locM));
+        else parts << tr("location not known (0 m: not localised)");
+        parts << tr("%1 km/h").arg(smp.speedKmh, 0, 'f', 0);
+        if (!smp.mode.isEmpty()) parts << modeText(smp.mode);
+        p.setPen(locoKnown ? text : UiColor::warning());
+        p.drawText(QRect(track.left() + ww + 16, readoutY, track.width() - ww - 16, readoutH),
+                   Qt::AlignLeft | Qt::AlignVCenter, parts.join(QStringLiteral("  ·  ")));
+    }
     p.setFont(small);
 
-    // ---- the rail --------------------------------------------------------------------
+    // ---- the rail and the scale -------------------------------------------------------
     p.setPen(QPen(frame, 2));
     p.drawLine(track.left(), midY, track.right(), midY);
     p.setPen(QPen(grid, 1));
-    for (int x = track.left(); x <= track.right(); x += 14) p.drawLine(x, midY - 6, x, midY + 6);
-
-    // ---- RFID tags ---------------------------------------------------------------------
-    for (const TrackDiagram::RfidMark &t : m_d.tags) {
-        const double x = xOf(t.locM);
-        const bool past = t.epochMs <= cursorMs;
-        const QColor c = past ? UiColor::series(0) : faded(ink);
-        p.setPen(c);
-        p.setBrush(c);
-        const double y = midY - 20;
-        QPolygonF diamond;
-        diamond << QPointF(x, y - 5) << QPointF(x + 5, y) << QPointF(x, y + 5) << QPointF(x - 5, y);
-        p.drawPolygon(diamond);
-        p.setPen(past ? text : ink);
-        p.drawText(QRectF(x - 30, y - 20, 60, 14), Qt::AlignCenter, QString::number(t.uniqueId));
-    }
-
-    // ---- signals and their MA end ------------------------------------------------------
-    for (const TrackDiagram::SignalMark &s : m_d.signalMarks) {
-        const double x = xOf(s.locM);
-        const bool past = s.epochMs <= cursorMs;
-        const QColor c = past ? aspectColor(s.aspect) : faded(aspectColor(s.aspect));
-        p.setPen(QPen(c, 3));
-        p.drawLine(QPointF(x, midY + 14), QPointF(x, midY + 44));
-        p.setBrush(c);
-        p.drawEllipse(QPointF(x, midY + 14), 5, 5);
-        p.setPen(past ? text : ink);
-        p.drawText(QRectF(x - 60, midY + 46, 120, 14), Qt::AlignCenter, s.name);
-        if (s.hasMa) {
-            const double xma = xOf(s.maEndLocM);
-            const QColor mc = past ? UiColor::accent() : faded(UiColor::accent());
-            p.setPen(QPen(mc, 1, Qt::DashLine));
-            p.drawLine(QPointF(x, midY + 29), QPointF(xma, midY + 29));
-            p.setBrush(mc);
-            QPolygonF flag;
-            flag << QPointF(xma, midY + 22) << QPointF(xma + 8, midY + 26) << QPointF(xma, midY + 30);
-            p.drawPolygon(flag);
+    for (int x = track.left(); x <= track.right(); x += 14) p.drawLine(x, midY - 5, x, midY + 5);
+    {
+        const double span = m_d.maxLocM - m_d.minLocM;
+        const double perPx = span / qMax(1, track.width());
+        const double step = niceStep(perPx * qMax(90, sfm.horizontalAdvance(QStringLiteral("888.888 km")) + 24));
+        const int decimals = step >= 1000.0 ? 0 : (step >= 100.0 ? 1 : (step >= 10.0 ? 2 : 3));
+        p.setPen(QPen(frame, 1));
+        p.drawLine(track.left(), scaleY, track.right(), scaleY);
+        for (double m = std::ceil(m_d.minLocM / step) * step; m <= m_d.maxLocM + 1e-6; m += step) {
+            const double x = xOf(m);
+            p.setPen(QPen(frame, 1));
+            p.drawLine(QPointF(x, scaleY), QPointF(x, scaleY + 4));
+            p.setPen(ink);
+            p.drawText(QRectF(x - 50, scaleY + 5, 100, lh), Qt::AlignCenter,
+                       QString::number(m / 1000.0, 'f', decimals) + QStringLiteral(" km"));
         }
     }
 
-    // ---- events ----------------------------------------------------------------------------
+    // ---- RFID tags ------------------------------------------------------------------------
+    {
+        QVector<QPair<double, int>> xw;
+        for (const TrackDiagram::RfidMark &t : m_d.tags)
+            xw << qMakePair(xOf(t.locM), sfm.horizontalAdvance(QString::number(t.uniqueId)));
+        QVector<int> order(m_d.tags.size());
+        for (int i = 0; i < order.size(); ++i) order[i] = i;
+        std::sort(order.begin(), order.end(), [&xw](int a, int b) { return xw.at(a).first < xw.at(b).first; });
+        QVector<QPair<double, int>> sorted;
+        for (int i : order) sorted << xw.at(i);
+        const QVector<int> rows = stackLabels(sorted, 3);
+        for (int k = 0; k < order.size(); ++k) {
+            const TrackDiagram::RfidMark &t = m_d.tags.at(order.at(k));
+            const double x = sorted.at(k).first;
+            const bool past = t.epochMs <= cursorMs;
+            const QColor c = past ? UiColor::series(0) : faded(ink);
+            p.setPen(c);
+            p.setBrush(c);
+            QPolygonF diamond;
+            diamond << QPointF(x, tagY - 5) << QPointF(x + 5, tagY) << QPointF(x, tagY + 5) << QPointF(x - 5, tagY);
+            p.drawPolygon(diamond);
+            if (rows.at(k) >= 0) {
+                p.setPen(past ? text : ink);
+                const int ly = tagLabTop + (2 - rows.at(k)) * lh;   // row 0 nearest the tag
+                const QRectF box = labelBox(x, sorted.at(k).second + 4, ly, lh, width());
+                p.drawText(box, Qt::AlignCenter, QString::number(t.uniqueId));
+                m_labels << box.toAlignedRect();
+            }
+            m_hits << Hit{ QRectF(x - 7, tagLabTop, 14, tagY + 7 - tagLabTop).toAlignedRect(),
+                           tr("RFID tag %1 at %2, read %3").arg(t.uniqueId).arg(km(t.locM), hms(t.epochMs)) };
+        }
+    }
+
+    // ---- signals and their MA end ----------------------------------------------------------
+    {
+        QVector<QPair<double, int>> xw;
+        for (const TrackDiagram::SignalMark &s : m_d.signalMarks)   // sorted by location in build()
+            xw << qMakePair(xOf(s.locM), sfm.horizontalAdvance(s.name));
+        if (m_d.trace.direction < 0) std::reverse(xw.begin(), xw.end());
+        QVector<int> rows = stackLabels(xw, 2);
+        if (m_d.trace.direction < 0) std::reverse(rows.begin(), rows.end());
+        for (int i = 0; i < m_d.signalMarks.size(); ++i) {
+            const TrackDiagram::SignalMark &s = m_d.signalMarks.at(i);
+            const double x = xOf(s.locM);
+            const bool past = s.epochMs <= cursorMs;
+            const QColor c = past ? aspectColor(s.aspect) : faded(aspectColor(s.aspect));
+            p.setPen(QPen(c, 3));
+            p.drawLine(QPointF(x, signalTop + 2), QPointF(x, signalTop + signalH - 6));
+            p.setBrush(c);
+            p.drawEllipse(QPointF(x, signalTop + 2), 5, 5);
+            if (rows.at(i) >= 0) {
+                p.setPen(past ? text : ink);
+                const QRectF box = labelBox(x, sfm.horizontalAdvance(s.name) + 4, sigLabTop + rows.at(i) * lh, lh, width());
+                p.drawText(box, Qt::AlignCenter, s.name);
+                m_labels << box.toAlignedRect();
+            }
+            QString tip = tr("Signal %1 at %2 (reading of %3)").arg(s.name, km(s.locM), hms(s.epochMs));
+            if (s.hasMa) {
+                const double xma = xOf(s.maEndLocM);
+                const QColor mc = past ? UiColor::accent() : faded(UiColor::accent());
+                const int my = signalTop + signalH / 2;
+                p.setPen(QPen(mc, 1, Qt::DashLine));
+                p.drawLine(QPointF(x, my), QPointF(xma, my));
+                p.setBrush(mc);
+                p.setPen(QPen(mc, 1));
+                QPolygonF flag;
+                const double dir = m_d.trace.direction < 0 ? -1.0 : 1.0;
+                flag << QPointF(xma, my - 7) << QPointF(xma + 8 * dir, my - 3) << QPointF(xma, my + 1);
+                p.drawPolygon(flag);
+                p.drawLine(QPointF(xma, my - 7), QPointF(xma, my + 5));
+                tip += QLatin1Char('\n') + tr("Movement authority ends at %1").arg(km(s.maEndLocM));
+                m_hits << Hit{ QRectF(xma - 6, my - 9, 16, 16).toAlignedRect(),
+                               tr("Movement authority end of %1 at %2").arg(s.name, km(s.maEndLocM)) };
+            }
+            m_hits << Hit{ QRectF(x - 7, signalTop - 4, 14, signalH + sigLabH).toAlignedRect(), tip };
+        }
+    }
+
+    // ---- events ---------------------------------------------------------------------------------
     for (const TrackDiagram::EventMark &e : m_d.events) {
         const double x = xOf(e.locM);
         const bool past = e.epochMs <= cursorMs;
         const QColor c = past ? eventColor(e.kind) : faded(eventColor(e.kind));
         p.setPen(QPen(c, 2));
-        p.drawLine(QPointF(x, midY - 44), QPointF(x, midY - 16));
+        p.drawLine(QPointF(x, eventTop + 4), QPointF(x, eventTop + eventH - 2));
+        m_hits << Hit{ QRectF(x - 4, eventTop, 8, eventH).toAlignedRect(),
+                       tr("%1 at %2, %3").arg(e.label, km(e.locM), hms(e.epochMs)) };
     }
 
-    // ---- the loco, at the cursor -------------------------------------------------------------
-    {
-        const bool have = m_cursorIndex >= 0 && m_cursorIndex < m_d.trace.samples.size();
-        const SpeedDistance::Sample &smp = have ? m_d.trace.samples.at(m_cursorIndex) : m_d.trace.samples.last();
+    // ---- the loco, at the cursor (only where its location is known) ------------------------------
+    if (locoKnown) {
         const double x = xOf(smp.locM);
         const QColor lc = UiColor::accent();
         p.setPen(QPen(lc, 2));
         p.setBrush(lc);
-        p.drawRect(QRectF(x - 10, midY - 10, 20, 20));
+        p.drawRect(QRectF(x - 9, midY - 9, 18, 18));
         if (m_d.trace.direction != 0) {
-            const double nx = x + (m_d.trace.direction > 0 ? 14 : -14);
-            p.drawLine(QPointF(x + (m_d.trace.direction > 0 ? 10 : -10), midY), QPointF(nx, midY));
+            const double d = m_d.trace.direction > 0 ? 1.0 : -1.0;
+            QPolygonF nose;
+            nose << QPointF(x + 11 * d, midY - 6) << QPointF(x + 18 * d, midY) << QPointF(x + 11 * d, midY + 6);
+            p.drawPolygon(nose);
         }
+        m_hits << Hit{ QRectF(x - 12, midY - 12, 24, 24).toAlignedRect(),
+                       tr("Loco at %1, %2 km/h, %3").arg(km(smp.locM)).arg(smp.speedKmh, 0, 'f', 0).arg(hms(smp.epochMs)) };
     }
 
-    // ---- axis + time readout ---------------------------------------------------------------------
-    p.setPen(ink);
-    p.drawText(QRect(track.left(), track.bottom() + 40, 160, 16), Qt::AlignLeft,
-              QString::number(m_d.minLocM, 'f', 0) + QStringLiteral(" m"));
-    p.drawText(QRect(track.right() - 160, track.bottom() + 40, 160, 16), Qt::AlignRight,
-              QString::number(m_d.maxLocM, 'f', 0) + QStringLiteral(" m"));
-    p.setPen(text);
-    p.drawText(QRect(0, 4, width(), 16), Qt::AlignCenter,
-              QDateTime::fromMSecsSinceEpoch(cursorMs).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")));
+    // ---- legend ------------------------------------------------------------------------------------
+    {
+        int x = track.left();
+        const int cy = legendY + legendH / 2;
+        auto label = [&](const QString &t) {
+            p.setPen(ink);
+            const int w = sfm.horizontalAdvance(t);
+            p.drawText(QRect(x, legendY, w + 2, legendH), Qt::AlignLeft | Qt::AlignVCenter, t);
+            x += w + 18;
+        };
+        p.setPen(UiColor::accent()); p.setBrush(UiColor::accent());
+        p.drawRect(QRectF(x, cy - 5, 10, 10)); x += 15; label(tr("loco"));
+        p.setPen(UiColor::series(0)); p.setBrush(UiColor::series(0));
+        QPolygonF dm; dm << QPointF(x + 5, cy - 5) << QPointF(x + 10, cy) << QPointF(x + 5, cy + 5) << QPointF(x, cy);
+        p.drawPolygon(dm); x += 15; label(tr("RFID tag"));
+        p.setPen(QPen(UiColor::signalLamp(QStringLiteral("green")), 3));
+        p.drawLine(x + 4, cy - 4, x + 4, cy + 6); x += 12; label(tr("signal (aspect colour)"));
+        p.setPen(QPen(UiColor::accent(), 1, Qt::DashLine));
+        p.drawLine(x, cy, x + 14, cy); x += 19; label(tr("movement authority end"));
+        for (const auto &k : { qMakePair(QStringLiteral("mode"), tr("mode change")),
+                               qMakePair(QStringLiteral("overspeed"), tr("overspeed / SoS")),
+                               qMakePair(QStringLiteral("emergency"), tr("emergency / fault / collision")) }) {
+            p.setPen(QPen(eventColor(k.first), 2));
+            p.drawLine(x + 3, cy - 6, x + 3, cy + 6); x += 10; label(k.second);
+        }
+    }
 }
 
 // =============================================================================
@@ -201,7 +389,7 @@ TrackDiagramWindow::TrackDiagramWindow(LogModel *model, const QString &tabKey, c
     setAttribute(Qt::WA_DeleteOnClose);
     setWindowTitle(tr("Track diagram — %1").arg(tabName.isEmpty() ? tabKey : tabName));
     WindowGeometry::makeResizableWindow(this);
-    resize(1040, 520);
+    resize(1100, 560);
 
     m_canvas = new TrackDiagramCanvas(this);
     m_slider = new QSlider(Qt::Horizontal, this);
@@ -249,9 +437,33 @@ void TrackDiagramWindow::rebuild()
     m_slider->blockSignals(false);
     m_slider->setEnabled(last > 0);
     m_play->setEnabled(last > 0);
-    if (m_diagram.isEmpty()) m_status->state(tr("No location in this tab"));
-    else m_status->state(tr("%1 tag(s), %2 signal(s), %3 event(s)")
-                              .arg(m_diagram.tags.size()).arg(m_diagram.signalMarks.size()).arg(m_diagram.events.size()));
+    auto count = [](int n, const QString &one, const QString &many) {
+        return QStringLiteral("%1 %2").arg(n).arg(n == 1 ? one : many);
+    };
+    if (m_diagram.isEmpty() || !m_diagram.hasLocation()) {
+        m_status->state(tr("No location in this tab"));
+    } else {
+        QStringList parts{ count(m_diagram.tags.size(), tr("RFID tag"), tr("RFID tags")),
+                           count(m_diagram.signalMarks.size(), tr("signal"), tr("signals")),
+                           count(m_diagram.events.size(), tr("event"), tr("events")) };
+        // Said, so a frame left off the rail is not mistaken for a missing
+        // one; the why is in the tooltip, to keep the line to one line.
+        if (m_diagram.unknownSamples > 0) {
+            QString lost = tr("not localised (0 m): %1 of %2 frames").arg(m_diagram.unknownSamples)
+                                                                  .arg(m_diagram.trace.samples.size());
+            if (m_diagram.unpinnedEvents > 0)
+                lost += QStringLiteral(", ") + count(m_diagram.unpinnedEvents, tr("event"), tr("events"));
+            parts << lost;
+        }
+        m_status->state(parts.join(QStringLiteral(" · ")));
+    }
+    m_status->setToolTip(m_diagram.unknownSamples > 0
+        ? tr("A loco that has not localised on an RFID tag reports 0 m.\n"
+             "Those frames are left off the rail, and the loco is not drawn\n"
+             "while the time cursor is on one. Events at such a moment are\n"
+             "not pinned: the last known location may be from before a\n"
+             "Stand_By, somewhere the loco no longer was.")
+        : QString());
 }
 
 void TrackDiagramWindow::onSliderMoved(int value)
