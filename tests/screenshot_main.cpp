@@ -43,6 +43,7 @@
 #include "framediffwindow.h"
 #include "subpacketwindow.h"
 #include "archivesearchwindow.h"
+#include "faultpanelwindow.h"
 #include "colorrules.h"
 #include "sessionfile.h"
 #include "querylineedit.h"
@@ -328,6 +329,29 @@ int main(int argc, char **argv)
                 t.start();
                 while (t.elapsed() < 3000) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
                 Settings::setDiskLogRoot(savedRoot);
+                win = w;
+            }
+            if (which == QLatin1String("fault")) {
+                // A run that raises and clears NMS faults (SHOT_CAP picks it).
+                auto *w = new FaultPanelWindow(&disp, nullptr);
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
+                w->resize(1100, 720);
+                w->show();
+                const QString cap = qEnvironmentVariableIsEmpty("SHOT_CAP") ? QStringLiteral("26062026_162418")
+                                                                            : qEnvironmentVariable("SHOT_CAP");
+                QFile run(QStringLiteral(DL_SRC_DIR "/replay/loco_1_1_%1.cap").arg(cap));
+                if (run.open(QIODevice::ReadOnly)) {
+                    int n = 0;
+                    while (!run.atEnd()) {
+                        const QByteArray l = run.readLine().trimmed();
+                        if (!l.startsWith('@')) continue;
+                        const QList<QByteArray> tok = l.split(' ');
+                        if (tok.size() < 3) continue;
+                        disp.ingestLocal(21, 1, l, QDateTime::fromString(QString::fromLatin1(tok.at(1)), Qt::ISODate).toMSecsSinceEpoch(), QString());
+                        if (++n % 500 == 0) { disp.drainNow(); QCoreApplication::processEvents(); }
+                    }
+                }
+                disp.drainNow();
                 win = w;
             }
             if (!win) return 2;

@@ -1,4 +1,5 @@
 #include "faultpanelwindow.h"
+#include "uistyle.h"
 #include "uicolors.h"
 #include "windowgeometry.h"
 #include "messagedispatcher.h"
@@ -11,6 +12,7 @@
 #include <QFile>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QPushButton>
 #include <QToolBar>
 #include <QFontDatabase>
 #include <QHBoxLayout>
@@ -152,14 +154,16 @@ void FaultPanelWindow::buildUi()
     // findChild<QToolBar*>() would have silently attached to nothing —
     // exactly the orphaned-action failure this codebase has already hit
     // once.)
-    QToolBar *tb = addToolBar(tr("Report"));
-    tb->setObjectName(QStringLiteral("faultReportBar"));
-    tb->setMovable(false);
-    QAction *exp = tb->addAction(tr("Save report…"));
+    // A button at the end of the header row (session 141): as a toolbar of
+    // one action it cost a whole row above the panel's own header.
+    auto *exp = new QPushButton(tr("Save report…"), central);
+    exp->setObjectName(QStringLiteral("faultSaveReport"));
     exp->setToolTip(tr("Save the current fault picture as an HTML report "
                        "for an incident record or handover."));
-    connect(exp, &QAction::triggered,
+    connect(exp, &QPushButton::clicked,
             this, &FaultPanelWindow::onExportReport);
+    top->addSpacing(12);
+    top->addWidget(exp);
 
 
     m_table = new QTableWidget(0, 8, stack);
@@ -172,6 +176,8 @@ void FaultPanelWindow::buildUi()
     m_table->setShowGrid(false);
     m_table->setAlternatingRowColors(true);
     QHeaderView *hh = m_table->horizontalHeader();
+    hh->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);   // as the other tool tables
+    m_table->setObjectName(QStringLiteral("faultTable"));
     hh->setSectionResizeMode(0, QHeaderView::Fixed);  m_table->setColumnWidth(0, 26);
     hh->setSectionResizeMode(1, QHeaderView::ResizeToContents);
     hh->setSectionResizeMode(2, QHeaderView::Stretch);
@@ -506,7 +512,7 @@ void FaultPanelWindow::rebuildTable()
     }
     if (m_stack) { m_stack->setCurrentWidget(m_table); }
 
-    const QFont mono = QFontDatabase::systemFont(QFontDatabase::FixedFont);
+    const QFont mono = UiStyle::monoFont();
     m_table->setRowCount(rows.size());
     for (int r = 0; r < rows.size(); ++r) {
         const Fault &f = rows[r].f;
@@ -529,7 +535,8 @@ void FaultPanelWindow::rebuildTable()
         cell(2, QStringLiteral("%1  (%2)").arg(f.moduleId).arg(f.moduleName), fg);
         QTableWidgetItem *fault = cell(3, f.faultName, act ? pc.active : pc.dim);
         QFont ff = fault->font(); ff.setBold(act); fault->setFont(ff);
-        QTableWidgetItem *code = cell(4, QStringLiteral("0x%1")
+        // "0x02", not "0X02": only the digits are upper case (session 141).
+        QTableWidgetItem *code = cell(4, QStringLiteral("0x") + QStringLiteral("%1")
                                       .arg(f.codeType, 2, 16, QChar('0')).toUpper(), fg);
         code->setFont(mono);
         cell(5, f.subsystemName, act ? pc.label : pc.dim);

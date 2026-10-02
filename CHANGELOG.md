@@ -11,6 +11,44 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-141"></a>
+## Session 141 — UI revamp, tool windows 18: the Fault panel
+
+- **"Save report…" is a button at the end of the panel's header row.**
+  It was a toolbar of one action, a whole row above the header.
+- **Codes read "0x02".** They read "0X02": the whole string was upper
+  cased, including the x. Only the digits are now.
+- **The code column is monospaced.** It used `systemFont(FixedFont)`;
+  now it uses `UiStyle::monoFont()` (see session 137).
+- **Headers align left**, as in the other tool tables.
+
+Not changed: "Active since" and "Last seen" count from when each frame
+arrived. That is the right clock for a live panel. Replayed or
+bulk-loaded traffic therefore reads "0s / now".
+
+Tests: `test_session141`, 8 checks, fed the whole of
+`replay/loco_1_1_26062026_162418.cap`, which leaves 4 faults active, with
+the app stylesheet applied:
+
+- no toolbar, and Save report sits in the header row;
+- codes read 0x… and are monospaced;
+- headers align left;
+- fits;
+- layout audit.
+
+`faultreport` passes unchanged.
+
+**Screenshot harness:** `SHOT_WINDOW=fault`.
+
+Files: `faultpanelwindow.cpp`, `tests/screenshot_main.cpp`,
+`tests/test_session141.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+190 suites / 5763 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-140"></a>
 ## Session 140 — UI revamp, tool windows 17: Search recorded sessions
 
