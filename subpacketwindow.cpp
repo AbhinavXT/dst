@@ -1,4 +1,7 @@
 #include "subpacketwindow.h"
+#include "emptystate.h"
+#include "uicolors.h"
+#include "uistyle.h"
 #include "windowgeometry.h"
 
 #include "packetmakerdialog.h"      // for the shared field-editor factory
@@ -36,6 +39,10 @@ SubPacketWindow::SubPacketWindow(QWidget *parent)
     scroll->setWidgetResizable(true);
     m_host = new QWidget;
     m_form = new QFormLayout(m_host);
+    // Editors at their own size (session 139): stretched across a wide
+    // window, a one-digit value sat 600 px from its name.
+    m_form->setFieldGrowthPolicy(QFormLayout::FieldsStayAtSizeHint);
+    m_form->setLabelAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     scroll->setWidget(m_host);
     root->addWidget(scroll, 1);
 
@@ -97,7 +104,9 @@ void SubPacketWindow::rebuild()
     while (m_form->count() > 0) {
         QLayoutItem *it = m_form->takeAt(0);
         if (!it) { break; }
-        if (it->widget()) { it->widget()->deleteLater(); }
+        // Hidden first: until deleteLater runs, a removed row stays visible
+        // at the form's corner (session 134 found the same in the Flasher).
+        if (it->widget()) { it->widget()->hide(); it->widget()->deleteLater(); }
         delete it;
     }
 
@@ -121,8 +130,20 @@ void SubPacketWindow::rebuild()
     for (const Schema::FieldInfo &f : sl.scalarFields) {
         QWidget *ed = PacketMakerDialog::makeFieldEditor(f, *m_enc, m_host);
         PacketMakerDialog::writeFieldEditor(ed, se.values.value(f.name, 0));
-        QString label = f.name;
-        if (!f.when.isEmpty()) { label += QStringLiteral("  [if %1]").arg(f.when); }
+        ed->setMinimumWidth(qMax(ed->minimumWidth(), 140));
+        // The condition muted after the name: it qualifies the field, it is
+        // not part of its name.
+        auto *label = new QLabel(m_host);
+        label->setObjectName(QStringLiteral("subFieldLabel"));
+        if (f.when.isEmpty()) {
+            label->setText(f.name);
+        } else {
+            label->setTextFormat(Qt::RichText);
+            label->setText(QStringLiteral("%1 <span style=\"color:%2\">if %3</span>")
+                               .arg(f.name.toHtmlEscaped(), UiColor::muted().name(), f.when.toHtmlEscaped()));
+            label->setToolTip(tr("Only on the wire when %1").arg(f.when));
+        }
+        label->setBuddy(ed);
         m_form->addRow(label, ed);
         m_editors.insert(f.name, ed);
     }
@@ -134,10 +155,15 @@ void SubPacketWindow::rebuild()
         auto *box = new QWidget(m_host);
         auto *bl  = new QVBoxLayout(box);
         bl->setContentsMargins(0, 0, 0, 0);
-        bl->addWidget(new QLabel(tr("repeat “%1” (count %2, auto) — %3..%4 rows")
-                                     .arg(ri.name, ri.countField.isEmpty() ? tr("fixed")
-                                                                           : ri.countField)
-                                     .arg(ri.cmin).arg(ri.cmax), box));
+        auto *caption = new QLabel(tr("%1 rows — %2 to %3%4")
+                                       .arg(ri.name).arg(ri.cmin).arg(ri.cmax)
+                                       .arg(ri.countField.isEmpty()
+                                                ? tr(" (a fixed count)")
+                                                : tr(" · the count goes in %1 by itself").arg(ri.countField)),
+                                   box);
+        caption->setObjectName(QStringLiteral("subRepeatCaption"));
+        UiStyle::makeSectionLabel(caption);
+        bl->addWidget(caption);
 
         auto *tbl = new QTableWidget(0, cols.size(), box);
         tbl->setHorizontalHeaderLabels(cols);
@@ -145,7 +171,13 @@ void SubPacketWindow::rebuild()
         tbl->setEditTriggers(QAbstractItemView::AllEditTriggers);
         tbl->verticalHeader()->setVisible(false);
         // Roomy on purpose: the repeat table is the reason this window exists.
-        tbl->setMinimumHeight(240);
+        tbl->setObjectName(QStringLiteral("subRepeatTable"));
+        tbl->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        tbl->setMinimumHeight(160);
+        // Empty, it says so and what it needs, rather than a blank grid.
+        const int need = ri.cmin;
+        EmptyState::attach(tbl, need > 0 ? tr("No rows yet — this needs at least %1. \"+ row\" adds one.").arg(need)
+                                         : tr("No rows. \"+ row\" adds one."));
         tbl->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
 
         const auto &rows = se.repeats.value(ri.name);

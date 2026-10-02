@@ -11,6 +11,50 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-139"></a>
+## Session 139 — UI revamp, tool windows 16: the Sub-packet window
+
+Packet Maker opens this window to edit one sub-packet's fields.
+
+- **Editors keep their own size.** The form let every editor stretch
+  across the window, so in a wide window a one-digit value sat 600 px
+  from its name. Editors now stay at their natural size, with a 140-px
+  floor, next to their labels.
+- **A field's condition is muted after its name**, in place of
+  "AUTHORIZED_SPEED  [if AUTHORITY_TYPE==1]". The tooltip reads "Only on
+  the wire when AUTHORITY_TYPE==1".
+- **Repeat tables say what they need.** An empty one shows "No rows yet
+  — this needs at least 1. "+ row" adds one." instead of a blank grid.
+  The caption is a section label: "tag rows — 1 to 62 · the count goes
+  in ROUTE_RFID_CNT by itself" (was "repeat "tag" (count ROUTE_RFID_CNT,
+  auto) — 1..62 rows"). Headers align left. A table's floor is 160 px,
+  not 240.
+- **The rebuild hides what it removes** before deleting it, the same
+  fix as the Flasher's pre-flight rows in session 134.
+
+Tests: `test_session139`, 17 checks, on SLRP sub-packets 0
+(MovementAuthority) and 5 (TagLinking), under the app stylesheet:
+
+- editors are ≤ 320 px in a 1100-px window;
+- conditional fields are marked and explained;
+- both repeat tables say they are empty, with left headers;
+- the tag table's caption gives its range and its count field;
+- re-targeting leaves nothing stray;
+- fits.
+
+`subpacketwindow` and `packetmakerlayout` pass unchanged.
+
+**Screenshot harness:** `SHOT_WINDOW=subpacket` (`SHOT_SUB=<type>`).
+
+Files: `subpacketwindow.cpp`, `tests/screenshot_main.cpp`,
+`tests/test_session139.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+188 suites / 5738 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-138"></a>
 ## Session 138 — UI revamp, tool windows 15: Frame Diff, and every checkbox
 

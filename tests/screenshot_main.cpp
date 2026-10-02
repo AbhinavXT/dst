@@ -41,6 +41,8 @@
 #include "replaywindow.h"
 #include "decodeworkbench.h"
 #include "framediffwindow.h"
+#include "subpacketwindow.h"
+#include "packetbuilder.h"
 #include <QDir>
 #include <QTemporaryDir>
 #include <QDateTime>
@@ -271,6 +273,18 @@ int main(int argc, char **argv)
                 int side = 0;
                 for (const QString &l : lines)
                     if (l.startsWith(QLatin1String("@lsrp")) && side < 3) w->setSide(side++, l);
+                win = w;
+            }
+            static PacketBuilder subBuilder;
+            static QVector<Schema::SubEntry> subs;
+            if (which == QLatin1String("subpacket")) {
+                // SLRP's sub-packet SHOT_SUB (default 0), as Packet Maker opens it.
+                subs.clear();
+                Schema::SubEntry e;
+                e.type = qEnvironmentVariableIsEmpty("SHOT_SUB") ? 0 : qEnvironmentVariableIntValue("SHOT_SUB");
+                subs.push_back(e);
+                auto *w = new SubPacketWindow(nullptr);
+                w->setTarget(&subBuilder.encoder(), QStringLiteral("slrp"), &subs, 0);
                 win = w;
             }
             if (!win) return 2;
