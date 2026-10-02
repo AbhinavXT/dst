@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QPixmap>
 #include <QTableView>
+#include <QTableWidget>
 #include <QScrollBar>
 #include <QTimer>
 #include "mainwindow.h"
@@ -44,6 +45,7 @@
 #include "subpacketwindow.h"
 #include "archivesearchwindow.h"
 #include "faultpanelwindow.h"
+#include "roundtripwindow.h"
 #include "colorrules.h"
 #include "sessionfile.h"
 #include "querylineedit.h"
@@ -352,6 +354,27 @@ int main(int argc, char **argv)
                     }
                 }
                 disp.drainNow();
+                win = w;
+            }
+            if (which == QLatin1String("roundtrip")) {
+                // A real run over the capture's lines as the live log.
+                auto *w = new RoundTripWindow(nullptr);
+                QVector<LogEntryPtr> entries;
+                for (const QString &l : lines) {
+                    auto e = LogEntryPtr::create();
+                    e->text = l;
+                    entries.push_back(e);
+                }
+                w->setLiveEntries(entries);
+                w->resize(1100, 720);
+                w->show();
+                QMetaObject::invokeMethod(w, "onRun");
+                QElapsedTimer t;
+                t.start();
+                auto *tbl = w->findChild<QTableWidget *>();
+                while (t.elapsed() < 8000 && !(tbl && tbl->rowCount() > 0))
+                    QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+                if (tbl && tbl->rowCount() > 0) tbl->selectRow(0);
                 win = w;
             }
             if (!win) return 2;

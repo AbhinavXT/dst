@@ -27,6 +27,8 @@
 #include <QTableWidget>
 #include <QTextEdit>
 #include <QVBoxLayout>
+#include <QCoreApplication>
+#include <QSplitter>
 
 namespace {
 
@@ -40,6 +42,15 @@ QTableWidgetItem *num(int v)
     return it;
 }
 
+}  // namespace
+
+namespace {
+// "1 frame" / "45 frames" (session 142; was "frame(s)").
+QString frames(int n)
+{
+    return n == 1 ? QCoreApplication::translate("RoundTripWindow", "1 frame")
+                  : QCoreApplication::translate("RoundTripWindow", "%1 frames").arg(n);
+}
 }  // namespace
 
 RoundTripWindow::RoundTripWindow(QWidget *parent)
@@ -114,6 +125,7 @@ void RoundTripWindow::buildUi()
            "mis-encoded frame still decodes and still has a valid CRC over its "
            "own wrong bytes."), this);
     why->setWordWrap(true);
+    why->setStyleSheet(UiColor::mutedStyle());   // the explanation, not the work
     root->addWidget(why);
 
     // ---- corpus ------------------------------------------------------------
@@ -139,8 +151,16 @@ void RoundTripWindow::buildUi()
     srcLay->addLayout(btns);
 
     m_fileList = new QListWidget(src);
+    m_fileList->setObjectName(QStringLiteral("roundtripFiles"));
     m_fileList->setMaximumHeight(90);
     srcLay->addWidget(m_fileList);
+    // Shown only once there are files in it (session 142): empty, it was a
+    // 90-px blank box while the live log was the whole corpus.
+    auto syncFiles = [this]() { m_fileList->setVisible(m_fileList->count() > 0); };
+    connect(m_fileList->model(), &QAbstractItemModel::rowsInserted, this, syncFiles);
+    connect(m_fileList->model(), &QAbstractItemModel::rowsRemoved, this, syncFiles);
+    connect(m_fileList->model(), &QAbstractItemModel::modelReset, this, syncFiles);
+    m_fileList->setVisible(false);
     root->addWidget(src);
 
     // ---- run ---------------------------------------------------------------
@@ -151,6 +171,10 @@ void RoundTripWindow::buildUi()
     m_progress  = new QProgressBar(this);
     m_progress->setRange(0, 100);
     m_progress->setValue(0);
+    // No "100%" on the bar (session 142): drawn in one colour over both the
+    // fill and the groove, it could not read on both; the bar and the
+    // status line already say how far along it is.
+    m_progress->setTextVisible(false);
     connect(m_runBtn,    &QPushButton::clicked, this, &RoundTripWindow::onRun);
     connect(m_cancelBtn, &QPushButton::clicked, this, &RoundTripWindow::onCancel);
     runRow->addWidget(m_runBtn);
@@ -168,6 +192,7 @@ void RoundTripWindow::buildUi()
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->verticalHeader()->setVisible(false);
     m_table->horizontalHeader()->setStretchLastSection(true);
+    m_table->horizontalHeader()->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);   // as the other tool tables
     connect(m_table, &QTableWidget::itemSelectionChanged,
             this,    &RoundTripWindow::onTypeSelected);
 
@@ -179,15 +204,25 @@ void RoundTripWindow::buildUi()
                                                 "Choose a corpus above and press Run."); }
         if (m_report.framesSeen == 0) { return tr("No capture frames were found in "
                                                   "that corpus."); }
-        return tr("%1 frame(s) read, but none belong to a packet type in the "
-                  "schema.").arg(m_report.framesSeen);
+        return tr("%1 read, but none belong to a packet type in the "
+                  "schema.").arg(frames(m_report.framesSeen));
     });
-    root->addWidget(m_table, 1);
 
     m_detail = new QTextEdit(this);
     m_detail->setReadOnly(true);
-    m_detail->setMinimumHeight(150);
-    root->addWidget(m_detail, 1);
+    m_detail->setMinimumHeight(90);
+
+    // The results and the selected type's detail share a splitter, 3 : 1
+    // for the results (session 142). Side by side at stretch 1 each, the
+    // table showed four of its rows while the detail held one line.
+    auto *split = new QSplitter(Qt::Vertical, this);
+    split->setObjectName(QStringLiteral("roundtripSplit"));
+    split->setChildrenCollapsible(false);
+    split->addWidget(m_table);
+    split->addWidget(m_detail);
+    split->setStretchFactor(0, 3);
+    split->setStretchFactor(1, 1);
+    root->addWidget(split, 1);
 
     auto *foot = new QHBoxLayout;
     m_status  = new StatusLine(this);
@@ -414,7 +449,7 @@ void RoundTripWindow::showDetail(const QString &captype)
     const RoundTrip::Tally &t = m_report.byType.value(captype);
     QStringList out;
 
-    out << tr("<b>%1</b> — %2 frame(s)").arg(captype).arg(t.frames);
+    out << tr("<b>%1</b> — %2").arg(captype, frames(t.frames));
 
     if (t.notEncodable) {
         out << tr("The encoder cannot emit this packet: <b>%1</b>. Nothing can be "
@@ -442,9 +477,9 @@ void RoundTripWindow::showDetail(const QString &captype)
         QStringList lines;
         for (int b : keys) {
             const QString f = RoundTrip::fieldAtByte(rows, s.bodyStart + b);
-            lines << tr("body byte %1 (%2 frame(s)) — %3")
+            lines << tr("body byte %1 (%2) — %3")
                          .arg(b)
-                         .arg(t.diffHistogram.value(b))
+                         .arg(frames(t.diffHistogram.value(b)))
                          .arg(f.isEmpty() ? tr("no field claims this byte") : f.toHtmlEscaped());
         }
         out << tr("Where the rebuild first goes wrong:");

@@ -11,6 +11,52 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-142"></a>
+## Session 142 — UI revamp, tool windows 19: the Round-trip validator
+
+**The results get the room.** In a 720-px window the results table showed
+4 of its 11 packet types. An empty 90-px file list, and a detail pane at
+the same stretch as the table, took the rest. Now it shows 10.
+
+- **The file list appears once it has files.** Empty, it was a blank box
+  while the live log was the whole corpus.
+- **Results and the selected type's detail share a splitter**, 3 : 1 for
+  the results. The detail's floor is 90 px, not 150, and the split can
+  be dragged.
+- **No percentage text on the progress bar.** Qt draws it in one colour
+  over both the fill and the empty groove, and in the light theme it was
+  grey on blue. The bar and the status line already say how far along
+  the run is.
+- **The introduction is muted**, as an explanation rather than part of
+  the work.
+- **Headers align left. Counts read "45 frames" / "1 frame"** (was
+  "frame(s)"), in the detail and in the empty-state message.
+
+Tests: `test_session142`, 11 checks, from a real run over 400 lines of
+`replay/loco_1_1_27062026_140226.cap`, with the app stylesheet applied:
+
+- no file list until there are files;
+- 11 types listed, at least 9 in view;
+- headers align left;
+- "45 frames" in the detail;
+- results get the larger share, in a splitter;
+- no text on the bar;
+- fits;
+- layout audit.
+
+`roundtrip` and `roundtripwindow` pass unchanged.
+
+**Screenshot harness:** `SHOT_WINDOW=roundtrip`.
+
+Files: `roundtripwindow.cpp`, `tests/screenshot_main.cpp`,
+`tests/test_session142.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+191 suites / 5774 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-141"></a>
 ## Session 141 — UI revamp, tool windows 18: the Fault panel
 
