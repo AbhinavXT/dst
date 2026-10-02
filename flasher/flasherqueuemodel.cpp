@@ -112,7 +112,12 @@ QVariant FlasherQueueModel::data(const QModelIndex &index, int role) const
             if (!row.image.loaded) {
                 return row.image.error;
             }
-            return QDir::toNativeSeparators(QFileInfo(row.image.path).absolutePath());
+            // Size, blocks and CRC under the name (session 134). They had a
+            // column each, and with those the name got ~100 px of a 1100-px
+            // window ("KAV…age"); the folder this line showed is in the
+            // detail strip, in full.
+            return tr("%1 · %2 blocks · CRC %3").arg(Flasher::formatBytes(static_cast<quint64>(row.image.sizeBytes)))
+                                                .arg(row.image.blockCount).arg(row.image.crcText());
         }
         if (role == MonospaceRole) {
             return row.hasImage();
@@ -163,6 +168,12 @@ QVariant FlasherQueueModel::data(const QModelIndex &index, int role) const
             }
             if (row.hasImage() && !row.image.loaded) {
                 return tr("Unreadable");
+            }
+            // The Card column already names the card (session 134): "Name
+            // matches Output" in a badge said it twice and was cut to "Name
+            // matches Ou…". The full sentence is the tooltip.
+            if (check.kind == Flasher::NameCheck::Matches) {
+                return tr("Name matches");
             }
             return check.badgeText;
         }
@@ -459,6 +470,10 @@ void FlasherQueueDelegate::paint(QPainter *painter, const QStyleOptionViewItem &
 
     // ---- the badge column ------------------------------------------------
     if (index.column() == FlasherQueueModel::ColumnCheck) {
+        if (primaryText.isEmpty()) {   // an unticked row with no image: no badge, not an empty pill
+            painter->restore();
+            return;
+        }
         const int kind = index.data(FlasherQueueModel::BadgeKindRole).toInt();
         QColor ink = FlasherStyle::muted();
         if (kind == 0) {

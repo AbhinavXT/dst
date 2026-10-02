@@ -113,6 +113,7 @@ void FlasherSummaryPage::showBatch(const Flasher::BatchPlan &plan, const QString
 
     // Replace the card panels.
     for (QFrame *panel : m_cardPanels) {
+        panel->hide();   // until deleteLater runs, an old panel would still show
         panel->deleteLater();
     }
     m_cardPanels.clear();
@@ -169,7 +170,9 @@ QFrame *FlasherSummaryPage::buildCardPanel(const Flasher::BatchEntry &entry, int
                      && entry.outcome != Flasher::CardOutcome::Queued;
     const bool failed = entry.outcome == Flasher::CardOutcome::Failed
                         || entry.outcome == Flasher::CardOutcome::Cancelled;
-    if (failed) {
+    // Not repeated when the banner above already says it, word for word
+    // (session 134: a one-card run printed the same paragraph twice).
+    if (failed && Flasher::failureExplanation(entry.result) != m_explanation->text()) {
         auto *reason = new QLabel(Flasher::failureExplanation(entry.result), panel);
         reason->setWordWrap(true);
         reason->setStyleSheet(UiColor::errorStyle());

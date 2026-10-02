@@ -336,6 +336,22 @@ QWidget *FlasherQueuePage::buildLeftColumn()
     targetLayout->addWidget(m_adapterCombo);
     columnLayout->addWidget(targetCard);
 
+    // Pre-flight before the route (session 134): it is what says whether
+    // Flash will work, and under the route diagram it sat below the fold.
+    // ---- Pre-flight ----------------------------------------------------------
+    QFrame *preflightCard = makeCard(column, QStringLiteral("flasherPreflightCard"), &m_cards);
+    auto *preflightOuter = new QVBoxLayout(preflightCard);
+    preflightOuter->setContentsMargins(18, 16, 18, 18);
+    preflightOuter->setSpacing(8);
+    auto *preflightTitle = new QLabel(tr("Pre-flight"), preflightCard);
+    m_sectionLabels.append(preflightTitle);
+    preflightOuter->addWidget(preflightTitle);
+    m_preflightLayout = new QVBoxLayout();
+    m_preflightLayout->setSpacing(6);
+    preflightOuter->addLayout(m_preflightLayout);
+    preflightOuter->addStretch(1);
+    columnLayout->addWidget(preflightCard);
+
     // ---- Delivery route ------------------------------------------------------
     QFrame *routeCard = makeCard(column, QStringLiteral("flasherRouteCard"), &m_cards);
     auto *routeLayout = new QVBoxLayout(routeCard);
@@ -352,20 +368,7 @@ QWidget *FlasherQueuePage::buildLeftColumn()
     routeNote->setStyleSheet(UiColor::mutedStyle());
     routeLayout->addWidget(routeNote);
     columnLayout->addWidget(routeCard);
-
-    // ---- Pre-flight ----------------------------------------------------------
-    QFrame *preflightCard = makeCard(column, QStringLiteral("flasherPreflightCard"), &m_cards);
-    auto *preflightOuter = new QVBoxLayout(preflightCard);
-    preflightOuter->setContentsMargins(18, 16, 18, 18);
-    preflightOuter->setSpacing(8);
-    auto *preflightTitle = new QLabel(tr("Pre-flight"), preflightCard);
-    m_sectionLabels.append(preflightTitle);
-    preflightOuter->addWidget(preflightTitle);
-    m_preflightLayout = new QVBoxLayout();
-    m_preflightLayout->setSpacing(6);
-    preflightOuter->addLayout(m_preflightLayout);
-    preflightOuter->addStretch(1);
-    columnLayout->addWidget(preflightCard, 1);
+    columnLayout->addStretch(1);
 
     return column;
 }
@@ -389,8 +392,13 @@ QWidget *FlasherQueuePage::buildQueueColumn()
     auto *title = new QLabel(tr("Flash queue"), queueCard);
     title->setFont(FlasherStyle::scaledFont(title->font(), 1.35, true));
     titleColumn->addWidget(title);
-    auto *subtitle = new QLabel(tr("One card per run · select it, press Flash, then power-cycle the chassis"), queueCard);
+    // One line at any width the window allows (session 134): wrapped to two,
+    // its extra height was not in the card's minimum and the detail strip
+    // landed on the table's last row. The full procedure is in the action
+    // bar beside Flash.
+    auto *subtitle = new QLabel(tr("One card per run: select it, press Flash, power-cycle"), queueCard);
     subtitle->setStyleSheet(UiColor::mutedStyle());
+    subtitle->setWordWrap(true);
     titleColumn->addWidget(subtitle);
     titleRow->addLayout(titleColumn, 1);
     auto *loadFolderButton = new QPushButton(tr("Load images from folder…"), queueCard);
@@ -426,12 +434,44 @@ QWidget *FlasherQueuePage::buildQueueColumn()
     header->setSectionResizeMode(FlasherQueueModel::ColumnImage, QHeaderView::Stretch);
     header->setDefaultAlignment(Qt::AlignLeft | Qt::AlignVCenter);
     m_table->setColumnHidden(FlasherQueueModel::ColumnHandle, true);
-    m_table->setColumnWidth(FlasherQueueModel::ColumnCard, 180);
-    m_table->setColumnWidth(FlasherQueueModel::ColumnSize, 110);
-    m_table->setColumnWidth(FlasherQueueModel::ColumnCrc, 120);
-    m_table->setColumnWidth(FlasherQueueModel::ColumnCheck, 190);
-    m_table->setColumnWidth(FlasherQueueModel::ColumnRemove, 40);
-    const int rowHeight = fontMetrics().height() * 2 + 24;
+    // Every fixed column measured to what it holds (session 134). At pixel
+    // widths (180 / 110 / 120 / 190) they left the Image column ~100 px in
+    // a 1100-px window: "KAV…age".
+    {
+        const QFontMetrics fm(m_table->font());
+        QFont bold = m_table->font();
+        bold.setBold(true);
+        const QFontMetrics bfm(bold);
+        const QFontMetrics mono(UiStyle::monoFont());
+        QFont badgeFont = bold;
+        badgeFont.setPointSizeF(badgeFont.pointSizeF() * 0.92);
+        const QFontMetrics bm(badgeFont);
+        auto header = [&](int col) {
+            return bfm.horizontalAdvance(m_model->headerData(col, Qt::Horizontal, Qt::DisplayRole).toString()) + 24;
+        };
+        int card = 0;
+        for (int c : { Flasher::CardVcc, Flasher::CardInput, Flasher::CardOutput, Flasher::CardAnalog })
+            card = qMax(card, bfm.horizontalAdvance(Flasher::cardName(c)));
+        // The check circle and its gap come first in that column.
+        m_table->setColumnWidth(FlasherQueueModel::ColumnCard, qMax(header(FlasherQueueModel::ColumnCard), card + 26 + 10 + 24));
+        m_table->setColumnWidth(FlasherQueueModel::ColumnSize,
+                                qMax(header(FlasherQueueModel::ColumnSize),
+                                     qMax(fm.horizontalAdvance(QStringLiteral("888.8 KB")),
+                                          fm.horizontalAdvance(QStringLiteral("8888 blocks"))) + 24));
+        m_table->setColumnWidth(FlasherQueueModel::ColumnCrc,
+                                qMax(header(FlasherQueueModel::ColumnCrc), mono.horizontalAdvance(QStringLiteral("0x88888888")) + 24));
+        int badge = 0;
+        for (const QString &t : { tr("Name matches"), tr("Name doesn't say"), tr("Unreadable") })
+            badge = qMax(badge, bm.horizontalAdvance(t));
+        for (int c : { Flasher::CardVcc, Flasher::CardInput, Flasher::CardOutput, Flasher::CardAnalog })
+            badge = qMax(badge, bm.horizontalAdvance(QStringLiteral("Looks like %1").arg(Flasher::cardShortName(c))));
+        m_table->setColumnWidth(FlasherQueueModel::ColumnCheck, qMax(header(FlasherQueueModel::ColumnCheck), badge + 20 + 24));
+    }
+    m_table->setColumnWidth(FlasherQueueModel::ColumnRemove, 32);
+    // Their values are on the Image cell's second line (FlasherQueueModel).
+    m_table->setColumnHidden(FlasherQueueModel::ColumnSize, true);
+    m_table->setColumnHidden(FlasherQueueModel::ColumnCrc, true);
+    const int rowHeight = fontMetrics().height() * 2 + 16;   // all four cards in view, in less height
     m_table->verticalHeader()->setDefaultSectionSize(rowHeight);
     m_table->setMinimumHeight(rowHeight * 4 + header->sizeHint().height() + 4);
 
@@ -444,9 +484,9 @@ QWidget *FlasherQueuePage::buildQueueColumn()
     m_detailStrip = new QFrame(queueCard);
     m_detailStrip->setObjectName(QStringLiteral("flasherDetailStrip"));
     auto *detailLayout = new QGridLayout(m_detailStrip);
-    detailLayout->setContentsMargins(20, 12, 20, 14);
+    detailLayout->setContentsMargins(20, 8, 20, 10);
     detailLayout->setHorizontalSpacing(16);
-    detailLayout->setVerticalSpacing(4);
+    detailLayout->setVerticalSpacing(2);
     m_detailTitle = new QLabel(m_detailStrip);
     m_detailTitle->setFont(FlasherStyle::scaledFont(m_detailTitle->font(), 1.0, true));
     detailLayout->addWidget(m_detailTitle, 0, 0, 1, 2);
@@ -463,8 +503,23 @@ QWidget *FlasherQueuePage::buildQueueColumn()
         return value;
     };
     m_detailPath = addDetailRow(1, tr("Full path"));
-    m_detailSha = addDetailRow(2, tr("SHA-256"));
-    m_detailModified = addDetailRow(3, tr("Modified"));
+    m_detailModified = addDetailRow(2, tr("Modified"));
+    // The hash on a line of its own, across the strip (session 134): 64 hex
+    // digits have nowhere to wrap, and beside its key it alone made the
+    // queue at least 1185 px wide. Kept whole rather than grouped, so a
+    // copy compares cleanly; the key says what it is.
+    m_detailSha = addDetailRow(3, tr("SHA-256"));
+    {
+        QLayoutItem *keyItem = detailLayout->itemAtPosition(3, 0);
+        QWidget *key = keyItem ? keyItem->widget() : nullptr;
+        detailLayout->removeWidget(m_detailSha);
+        if (key) {
+            detailLayout->removeWidget(key);
+            detailLayout->addWidget(key, 3, 0, 1, 2);
+        }
+        detailLayout->addWidget(m_detailSha, 4, 0, 1, 2);
+    }
+    m_detailSha->setWordWrap(false);
     m_detailModified->setFont(font());
     detailLayout->setColumnStretch(1, 1);
     queueLayout->addWidget(m_detailStrip);
@@ -478,7 +533,7 @@ QWidget *FlasherQueuePage::buildQueueColumn()
     // ---- action bar ------------------------------------------------------------
     QFrame *actionBar = makeCard(column, QStringLiteral("flasherActionBar"), &m_cards);
     auto *actionLayout = new QHBoxLayout(actionBar);
-    actionLayout->setContentsMargins(20, 14, 20, 14);
+    actionLayout->setContentsMargins(20, 10, 20, 10);
     actionLayout->setSpacing(16);
 
     // The procedure, stated where the button is. The updater listens for
@@ -490,6 +545,7 @@ QWidget *FlasherQueuePage::buildQueueColumn()
     actionLayout->addWidget(m_procedureNote, 1);
 
     m_blockerLabel = new QLabel(actionBar);
+    m_blockerLabel->setObjectName(QStringLiteral("flasherBlocker"));
     m_blockerLabel->setWordWrap(true);
     m_blockerLabel->setAlignment(Qt::AlignRight | Qt::AlignVCenter);
     actionLayout->addWidget(m_blockerLabel, 1);
@@ -700,6 +756,10 @@ void FlasherQueuePage::refreshPreflight()
     // simpler and cheaper to get right than diffing.
     while (QLayoutItem *item = m_preflightLayout->takeAt(0)) {
         if (item->widget() != nullptr) {
+            // Hidden first (session 134): out of the layout but not yet
+            // deleted, an old row stayed visible at the card's top-left
+            // corner -- the stray "⚠" over PRE-FLIGHT.
+            item->widget()->hide();
             item->widget()->deleteLater();
         }
         delete item;
@@ -754,6 +814,10 @@ void FlasherQueuePage::refreshPreflight()
                                  .arg(Flasher::kUpdaterListenSeconds)
                                  .arg(m_profile.updaterWaitSeconds));
     m_flashButton->setEnabled(report.ready);
+    // Hidden when empty (session 134): an empty label still took half the
+    // bar, the procedure note wrapped to five lines, and the bar's height
+    // pushed the detail strip over the queue's last row.
+    m_blockerLabel->setVisible(!report.ready);
     if (report.ready) {
         m_blockerLabel->clear();
     } else {
@@ -957,7 +1021,7 @@ void FlasherQueuePage::updateDetailStrip()
     m_detailPath->setText(QDir::toNativeSeparators(row.image.path));
     if (row.image.loaded) {
         m_detailSha->setText(row.image.shaHex());
-        m_detailModified->setText(tr("%1 · re-hashed automatically if the file changes on disk")
+        m_detailModified->setText(tr("%1 · re-hashed if the file changes")
                                       .arg(row.image.modified.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"))));
     } else {
         m_detailSha->setText(QStringLiteral("—"));

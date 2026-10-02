@@ -6,6 +6,7 @@
 #include "uistyle.h"
 
 #include <QApplication>
+#include <QResizeEvent>
 #include <QClipboard>
 #include <QDateTime>
 #include <QFile>
@@ -84,14 +85,18 @@ void FlasherPhaseStepper::setStep(int step, StepState state, double fraction,
     update();
 }
 
+// Under the bars (session 134): the phase name, wrapping onto a second
+// line if it must, and its time under that. On one line beside the time, a
+// step a quarter of the card wide cut "Waiting for updater" to "Waiting
+// for up…".
 QSize FlasherPhaseStepper::sizeHint() const
 {
-    return QSize(600, fontMetrics().height() + 18);
+    return QSize(600, 3 * fontMetrics().height() + 16);
 }
 
 QSize FlasherPhaseStepper::minimumSizeHint() const
 {
-    return QSize(300, fontMetrics().height() + 18);
+    return QSize(300, 3 * fontMetrics().height() + 16);
 }
 
 void FlasherPhaseStepper::paintEvent(QPaintEvent *)
@@ -152,16 +157,22 @@ void FlasherPhaseStepper::paintEvent(QPaintEvent *)
         } else if (m_states[step] == StepState::Failed) {
             labelColor = FlasherStyle::danger();
         }
-        const QRect textRect(left, barHeight + 8, stepWidth, lineHeight);
+        const QRect labelRect(left, barHeight + 8, stepWidth, 2 * lineHeight);
         painter.setFont(labelFont);
         painter.setPen(labelColor);
         const QFontMetrics labelMetrics(labelFont);
-        const int timeWidth = fontMetrics().horizontalAdvance(m_times[step]) + 6;
-        painter.drawText(textRect.adjusted(0, 0, -timeWidth, 0), Qt::AlignLeft | Qt::AlignVCenter,
-                         labelMetrics.elidedText(m_labels[step], Qt::ElideRight, stepWidth - timeWidth));
+        const QRect needed = labelMetrics.boundingRect(labelRect, Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap,
+                                                       m_labels[step]);
+        if (needed.height() <= labelRect.height())
+            painter.drawText(labelRect, Qt::AlignLeft | Qt::AlignTop | Qt::TextWordWrap, m_labels[step]);
+        else   // longer than two lines even so: one line, elided
+            painter.drawText(labelRect, Qt::AlignLeft | Qt::AlignTop,
+                             labelMetrics.elidedText(m_labels[step], Qt::ElideRight, stepWidth));
+        const int labelLines = needed.height() > lineHeight + 2 && needed.height() <= labelRect.height() ? 2 : 1;
         painter.setFont(font());
         painter.setPen(FlasherStyle::muted());
-        painter.drawText(textRect, Qt::AlignRight | Qt::AlignVCenter, m_times[step]);
+        painter.drawText(QRect(left, barHeight + 8 + labelLines * lineHeight, stepWidth, lineHeight),
+                         Qt::AlignLeft | Qt::AlignVCenter, m_times[step]);
     }
 }
 
@@ -176,22 +187,32 @@ FlasherBatchRow::FlasherBatchRow(int cardType, const QString &fileName, QWidget 
     // Left margin leaves room for the painted status dot.
     rowLayout->setContentsMargins(18 + 24 + 12, 12, 18, 12);
     rowLayout->setSpacing(8);
+    // Name and status on the first line, the file on its own line under
+    // them (session 134): beside the status, the file name was cut at a
+    // fixed 170 px and then clipped again by "Waiting" ("KAVACH_…ppimag").
     auto *textColumn = new QVBoxLayout();
     textColumn->setSpacing(2);
+    auto *nameRow = new QHBoxLayout();
+    nameRow->setSpacing(8);
     auto *name = new QLabel(Flasher::cardName(cardType), this);
     QFont nameFont = name->font();
     nameFont.setBold(true);
     name->setFont(nameFont);
-    textColumn->addWidget(name);
-    auto *file = new QLabel(this);
-    file->setFont(UiStyle::monoFont());
-    file->setStyleSheet(UiColor::mutedStyle());
-    file->setText(file->fontMetrics().elidedText(fileName, Qt::ElideMiddle, 170));
-    file->setToolTip(fileName);
-    textColumn->addWidget(file);
-    rowLayout->addLayout(textColumn, 1);
+    nameRow->addWidget(name, 1);
     m_status = new QLabel(this);
-    rowLayout->addWidget(m_status);
+    nameRow->addWidget(m_status);
+    textColumn->addLayout(nameRow);
+    m_fileName = fileName;
+    m_file = new QLabel(this);
+    m_file->setObjectName(QStringLiteral("flasherBatchFile"));
+    m_file->setFont(UiStyle::monoFont());
+    m_file->setStyleSheet(UiColor::mutedStyle());
+    m_file->setToolTip(fileName);
+    m_file->setMinimumWidth(40);
+    m_file->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    m_file->setText(fileName);
+    textColumn->addWidget(m_file);
+    rowLayout->addLayout(textColumn, 1);
     setOutcome(Flasher::CardOutcome::Queued, tr("Queued"));
     setAutoFillBackground(false);
     UiColor::onThemeChange(this, [this]() { setOutcome(m_outcome, m_status->text()); });
@@ -215,6 +236,12 @@ void FlasherBatchRow::setOutcome(Flasher::CardOutcome outcome, const QString &st
         m_status->setStyleSheet(UiColor::mutedStyle());
     }
     update();
+}
+
+void FlasherBatchRow::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    if (m_file) m_file->setText(m_file->fontMetrics().elidedText(m_fileName, Qt::ElideMiddle, m_file->width()));
 }
 
 void FlasherBatchRow::paintEvent(QPaintEvent *)
@@ -294,7 +321,7 @@ QWidget *FlasherFlashingPage::buildBatchColumn()
     auto *card = new QFrame(this);
     card->setObjectName(QStringLiteral("flasherBatchCard"));
     m_cards.append(card);
-    card->setFixedWidth(280);
+    card->setFixedWidth(250);
     auto *cardLayout = new QVBoxLayout(card);
     cardLayout->setContentsMargins(0, 16, 0, 16);
     cardLayout->setSpacing(10);
@@ -332,25 +359,32 @@ QFrame *FlasherFlashingPage::makeStatCard(const QString &title, QLabel **value, 
     auto *card = new QFrame(this);
     card->setObjectName(QStringLiteral("flasherStat%1").arg(m_cards.size()));
     m_cards.append(card);
+    // Value and caption on one line (session 134): three lines a card made
+    // the column of five 540 px tall, and with the log under it the window
+    // could not be shorter than 863 px -- taller than a 768-px laptop.
     auto *cardLayout = new QVBoxLayout(card);
-    cardLayout->setContentsMargins(16, 12, 16, 12);
-    cardLayout->setSpacing(2);
+    cardLayout->setContentsMargins(14, 8, 14, 8);
+    cardLayout->setSpacing(0);
     auto *titleLabel = new QLabel(title, card);
     m_sectionLabels.append(titleLabel);
     cardLayout->addWidget(titleLabel);
+    auto *valueRow = new QHBoxLayout();
+    valueRow->setSpacing(8);
     *value = new QLabel(QStringLiteral("—"), card);
     (*value)->setFont(FlasherStyle::statValueFont());
-    cardLayout->addWidget(*value);
+    valueRow->addWidget(*value, 0, Qt::AlignBaseline);
     *sub = new QLabel(card);
     (*sub)->setStyleSheet(UiColor::mutedStyle());
-    cardLayout->addWidget(*sub);
+    (*sub)->setWordWrap(true);
+    valueRow->addWidget(*sub, 1, Qt::AlignBaseline);
+    cardLayout->addLayout(valueRow);
     return card;
 }
 
 QWidget *FlasherFlashingPage::buildStatsColumn()
 {
     auto *column = new QWidget(this);
-    column->setFixedWidth(230);
+    column->setFixedWidth(220);
     auto *columnLayout = new QVBoxLayout(column);
     columnLayout->setContentsMargins(0, 0, 0, 0);
     columnLayout->setSpacing(10);
@@ -425,8 +459,10 @@ QWidget *FlasherFlashingPage::buildCentre()
     auto *mapTitle = new QLabel(tr("Block map"), mainCard);
     m_sectionLabels.append(mapTitle);
     mapTitleRow->addWidget(mapTitle);
-    auto *mapCaption = new QLabel(tr("From the board's STATUS bitmap · %1 B per block · hover for offset")
-                                      .arg(kflash::kBlockSize), mainCard);
+    // Short, with the source in the tooltip (session 134): the full sentence
+    // on one line made this card at least 681 px wide.
+    auto *mapCaption = new QLabel(tr("%1 B per block · hover a cell for its offset").arg(kflash::kBlockSize), mainCard);
+    mapCaption->setToolTip(tr("From the board's STATUS bitmap"));
     mapCaption->setStyleSheet(UiColor::mutedStyle());
     mapTitleRow->addWidget(mapCaption, 1, Qt::AlignRight);
     mainLayout->addLayout(mapTitleRow);
@@ -439,7 +475,7 @@ QWidget *FlasherFlashingPage::buildCentre()
     mapScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     m_blockMap = new BlockMapWidget(mapScroll);
     mapScroll->setWidget(m_blockMap);
-    mapScroll->setMinimumHeight(120);
+    mapScroll->setMinimumHeight(4 * 17);   // four rows of 14-px cells; it scrolls past that
     mainLayout->addWidget(mapScroll, 1);
 
     // Legend, with swatches in the same colours the map paints.
@@ -482,7 +518,9 @@ QWidget *FlasherFlashingPage::buildCentre()
     m_log->setReadOnly(true);
     m_log->setFont(UiStyle::monoFont());
     m_log->setMaximumBlockCount(kMaxLogBlocks);
-    m_log->setFixedHeight(150);
+    // Six lines, scrolling (was a fixed 150 px; the log is the history of
+    // the run, the block map above it is what to watch).
+    m_log->setFixedHeight(QFontMetrics(UiStyle::monoFont()).lineSpacing() * 6 + 10);
     m_log->setLineWrapMode(QPlainTextEdit::NoWrap);
     logLayout->addWidget(m_log);
     centreLayout->addWidget(logCard);

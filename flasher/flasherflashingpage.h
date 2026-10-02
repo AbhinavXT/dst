@@ -70,10 +70,13 @@ public:
 
 protected:
     void paintEvent(QPaintEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;   // re-elides the file name to the width it has
 
 private:
     Flasher::CardOutcome m_outcome = Flasher::CardOutcome::Queued;
     QLabel *m_status = nullptr;
+    QLabel *m_file = nullptr;
+    QString m_fileName;
 };
 
 class FlasherFlashingPage : public QWidget

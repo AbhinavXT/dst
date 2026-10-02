@@ -201,7 +201,7 @@ QWidget *FlasherWindow::buildAppBar()
     m_profileLabel = new QLabel(tr("Profile"), m_appBar);
     barLayout->addWidget(m_profileLabel);
     m_profileCombo = new QComboBox(m_appBar);
-    m_profileCombo->setMinimumWidth(200);
+    m_profileCombo->setMinimumWidth(170);
     m_profileCombo->setMinimumHeight(34);
     connect(m_profileCombo, QOverload<int>::of(&QComboBox::activated), this, &FlasherWindow::onProfileChosen);
     barLayout->addWidget(m_profileCombo);
@@ -323,6 +323,11 @@ void FlasherWindow::setFlashingState(bool flashing)
     m_profileCombo->setEnabled(!flashing);
     m_engineerButton->setEnabled(!flashing);
     m_operatorButton->setEnabled(!flashing);
+    // Hidden as well as disabled while flashing (session 134): the mode
+    // cannot change mid-run, and the caution badge needs the room -- with
+    // both in the bar the window could not be narrower than 1350 px.
+    m_engineerButton->setVisible(!flashing);
+    m_operatorButton->setVisible(!flashing);
     m_gearButton->setEnabled(!flashing);
     if (m_profileMenuButton) m_profileMenuButton->setEnabled(!flashing);   // no profile swaps mid-flash
     refreshAppBarTarget();

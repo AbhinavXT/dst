@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QPixmap>
 #include <QTableView>
+#include <QScrollBar>
 #include <QTimer>
 #include "mainwindow.h"
 #include "messagedispatcher.h"
@@ -32,6 +33,12 @@
 #include "twolocowindow.h"
 #include "incidentreportwindow.h"
 #include "incidentreportdialog.h"
+#include "flasherwindow.h"
+#include "flasherqueuepage.h"
+#include "flashercore.h"
+#include "layoutaudit.h"
+#include <QDir>
+#include <QTemporaryDir>
 #include <QDateTime>
 #include "namemap.h"
 #include "theme.h"
@@ -190,6 +197,47 @@ int main(int argc, char **argv)
                     win = w;
                 }
             }
+            QTemporaryDir flashDir;
+            if (which.startsWith(QLatin1String("flasher"))) {
+                // Three images (arbitrary bytes: the updater does not parse
+                // them) through a profile, as test_flasher does; the VCC
+                // address is one nothing answers on, so a run sits on the
+                // power-cycle prompt and then gives up.
+                auto writeImg = [&](const QString &name, int size) {
+                    QFile out(QDir(flashDir.path()).filePath(name));
+                    out.open(QIODevice::WriteOnly);
+                    QByteArray b(size, '\0');
+                    for (int i = 0; i < size; ++i) b[i] = char((i * 31 + 7) & 0xFF);
+                    out.write(b);
+                    return out.fileName();
+                };
+                Flasher::ProfileStore store(QDir(flashDir.path()).filePath(QStringLiteral("flasher_profiles.json")));
+                Flasher::FlashProfile profile;
+                profile.name = QStringLiteral("Bench 2");
+                profile.vccIp = QStringLiteral("127.0.0.1");
+                profile.port = 9;   // discard: nothing answers
+                profile.defaultImages.insert(Flasher::CardInput, writeImg(QStringLiteral("KAVACH_Input_Card_v5.appimage"), 40 * 1450));
+                profile.defaultImages.insert(Flasher::CardOutput, writeImg(QStringLiteral("KAVACH_Output_Card_v5.appimage"), 25 * 1450));
+                profile.defaultImages.insert(Flasher::CardVcc, writeImg(QStringLiteral("LKAVACH_v1.2.9.appimage"), 30 * 1450));
+                profile.updaterWaitSeconds = Flasher::kMinUpdaterWaitSeconds;
+                store.upsert(profile, store.names().first());
+                store.setActiveName(profile.name);
+                store.save();
+                auto *w = new FlasherWindow(nullptr, flashDir.path());
+                w->queuePage()->selectCard(Flasher::CardInput);
+                if (which != QLatin1String("flasher")) {
+                    w->resize(1100, 720);
+                    w->show();
+                    w->startBatch(false);
+                    QElapsedTimer t;
+                    t.start();
+                    const qint64 until = which == QLatin1String("flasherrun") ? 2500 : 60000;
+                    while (t.elapsed() < until && !(which == QLatin1String("flashersum")
+                                                    && w->currentPage() == FlasherWindow::SummaryPageIndex))
+                        QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+                }
+                win = w;
+            }
             if (!win) return 2;
             win->resize(1100, 720);
             win->show();
@@ -202,6 +250,27 @@ int main(int argc, char **argv)
             if (qEnvironmentVariableIsSet("SHOT_DUMP")) {
                 printf("window %dx%d  minHint %dx%d\n", win->width(), win->height(),
                        win->minimumSizeHint().width(), win->minimumSizeHint().height());
+                for (const QString &o : LayoutAudit::orphans(win)) printf("  loose: %s\n", qPrintable(o));
+                for (QTableView *tv : win->findChildren<QTableView *>()) {
+                    if (!tv->isVisible()) continue;
+                    QString cols;
+                    for (int c = 0; c < tv->model()->columnCount(); ++c)
+                        cols += QString::number(tv->isColumnHidden(c) ? 0 : tv->columnWidth(c)) + QLatin1Char(' ');
+                    printf("  table %s %dx%d viewport %dx%d rows %d rowH %d hbar %d cols %s\n", qPrintable(tv->objectName()),
+                           tv->width(), tv->height(), tv->viewport()->width(), tv->viewport()->height(),
+                           tv->model()->rowCount(), tv->rowHeight(0), tv->horizontalScrollBar()->isVisible(), qPrintable(cols));
+                }
+                if (qEnvironmentVariableIsSet("SHOT_DEEP")) {
+                    // Every visible widget whose minimum is at least SHOT_DEEP px wide or tall.
+                    const int big = qEnvironmentVariableIntValue("SHOT_DEEP");
+                    for (QWidget *c : win->findChildren<QWidget *>()) {
+                        if (!c->isVisible()) continue;
+                        const QSize m = c->minimumSizeHint().expandedTo(c->minimumSize());
+                        if (m.width() < big && m.height() < big) continue;
+                        printf("  %-28s %-24s min %4dx%-4d\n", c->metaObject()->className(),
+                               qPrintable(c->objectName().left(24)), m.width(), m.height());
+                    }
+                }
                 for (QWidget *c : win->findChildren<QWidget *>()) {
                     if (!c->isVisible()) continue;
                     const char *k = c->metaObject()->className();

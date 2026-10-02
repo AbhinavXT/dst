@@ -24,9 +24,13 @@ int runAll(const QString &only)
     QElapsedTimer timer;
     timer.start();
 
+    // One name, or several separated by commas (session 134), run in the
+    // registry's order: enough to find which earlier suite leaves state that
+    // breaks a later one.
+    const QStringList wanted = only.split(QLatin1Char(','), Qt::SkipEmptyParts);
     int suitesRun = 0;
     for (const Suite &s : registry()) {
-        if (!only.isEmpty() && only != QLatin1String(s.name)) continue;
+        if (!wanted.isEmpty() && !wanted.contains(QLatin1String(s.name))) continue;
 
         currentSuite = s.name;
         const int before       = checksRun;

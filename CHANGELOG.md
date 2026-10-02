@@ -11,6 +11,118 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-134"></a>
+## Session 134 — UI revamp, tool windows 11: the Firmware Flasher
+
+**The Flasher did not fit a laptop.** Its minimum size was 1255 × 863,
+or 1350 × 863 while flashing, so on a 1366 × 768 screen it ran off the
+bottom. It is now 1090 × 694 on every page.
+
+**The flashing page** set the height: five three-line stat cards stacked
+(540 px) plus a fixed 150-px log under them.
+
+- **Stat cards** have the value and its caption on one line, so each
+  card is one line shorter.
+- **The log** is six lines tall and scrolls.
+- **The block map's caption** is short ("1450 B per block · hover a cell
+  for its offset"), with "From the board's STATUS bitmap" in its
+  tooltip. On one line, the full sentence made the centre card at least
+  681 px wide.
+- **The map's floor** is four rows of cells, not 120 px.
+- **The phase stepper's labels** may wrap to two lines, with the time
+  under them. They used to be cut off ("Waiting for up…").
+- **The card list:** the file name has its own line, elided to the width
+  it has. It used to be cut at a fixed 170 px and then clipped again by
+  "Waiting" ("KAVACH_…ppimag").
+- **The Engineer/Operator toggle is hidden while flashing**, as well as
+  disabled. The mode cannot change mid-run, and the amber "keep the
+  chassis powered" bar needs the room.
+
+**The queue page.**
+
+- **The file name gets the width.** The fixed columns (180 / 110 / 120 /
+  190 px) left the Image column about 100 px in a 1100-px window
+  ("KAV…age"). Size, blocks and CRC are now on the Image cell's second
+  line ("56.6 KB · 40 blocks · CRC 0x32B2D566"), in place of the folder,
+  which the detail strip shows in full. The Card and Image-check columns
+  are measured to what they hold.
+- **The badge says "Name matches"**: the Card column already names the
+  card, and "Name matches Output" was cut to "Name matches Ou…". The full
+  sentence is the tooltip; other badges are as before. A row with no
+  image gets no badge, where it used to get an empty pill.
+- **The detail strip no longer sits on the table's last row**, which
+  hid the VCC row. Two causes:
+  - an empty "blocker" label took half the action bar, so the procedure
+    note wrapped to five lines and the bar grew to 121 px;
+  - the wrapped subtitle's and note's height was not in the window's
+    minimum.
+
+  The blocker label is now hidden when empty. The subtitle is shorter
+  ("One card per run: select it, press Flash, power-cycle"), and so is
+  the Modified note ("· re-hashed if the file changes").
+- **The SHA-256 has a line of its own** across the strip. Its 64 hex
+  digits cannot wrap, and beside its key they made the queue at least
+  1185 px wide. It is kept whole, so a copy compares cleanly.
+- **Pre-flight comes before the delivery route.** It is what says
+  whether Flash will work, and it used to sit below the fold.
+- **The stray "⚠" at the pre-flight card's corner is gone.** Each
+  refresh took the old checklist rows out of the layout but left them
+  visible until deleted. They are now hidden first. The summary page's
+  card panels had the same pattern and get the same fix.
+
+**The summary page** shows a one-card failure's explanation once: the
+card panel no longer repeats the banner word for word.
+
+**Found by the gate, not by the screenshot.** The detail strip still
+overlapped the table by 4 px in the full suite, but not when the new
+suite ran alone. A new comma-separated suite list in `dltests` (below)
+bisected it to `uipalette`, which leaves the app's stylesheet applied.
+The app always runs with that stylesheet, so the overlap was real. The
+suite now applies the stylesheet itself.
+
+**Test harness:** `dltests a,b,c` runs those suites in registry order,
+to find which earlier suite leaves state that breaks a later one.
+`dltests <one>` works as before.
+
+**Screenshot harness:** `SHOT_WINDOW=flasher`, `flasherrun` (a real run
+against an address nothing answers, on its power-cycle prompt) and
+`flashersum` (that run's summary). `SHOT_DUMP` also lists loose widgets
+and table geometry; `SHOT_DEEP=<px>` lists every widget whose minimum
+is at least that big.
+
+Tests: `test_session134`, 26 checks, under the app stylesheet:
+
+- fits 1100 × 700, on the queue and while flashing;
+- size and CRC sit under the name, and the Image column is ≥ 300 px;
+- the badge text and its tooltip, and no badge for an empty row;
+- the strip starts below the table, and all four cards are in view;
+- the blocker label is hidden when ready;
+- pre-flight comes before the route;
+- no stray widget after pre-flight refreshes;
+- the mode toggle is hidden mid-run and back after;
+- the power-cycle prompt shows;
+- the card's file name is elided to its width;
+- aborting lands on the summary;
+- the explanation shows once;
+- nothing stray on the summary.
+
+`flasher`, `flasherrun`, `flasherroute` and `session94` pass unchanged.
+
+Not changed: the block map's 14-px cells (the handoff's design). A small
+image still fills only a strip of the map.
+
+Files: `flasher/flasherwindow.cpp`, `flasher/flasherqueuepage.cpp`,
+`flasher/flasherqueuemodel.cpp`, `flasher/flasherflashingpage.h/.cpp`,
+`flasher/flashersummarypage.cpp`, `tests/main.cpp`,
+`tests/screenshot_main.cpp`, `tests/test_session134.cpp`,
+`tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+183 suites / 5660 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-133"></a>
 ## Session 133 — UI revamp, tool windows 9: the Incident report
 
