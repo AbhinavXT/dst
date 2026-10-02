@@ -68,6 +68,7 @@ int main(int argc, char **argv)
     // hand then disagreed with the gate, and was once read as evidence
     // about it. Set QT_QPA_PLATFORM explicitly to watch on a real screen.
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) qputenv("QT_QPA_PLATFORM", "offscreen");
+    std::setvbuf(stdout, nullptr, _IONBF, 0);   // whole logs, even after a crash (session 116)
     QApplication app(argc, argv);
 
     const QString only = (argc > 1) ? QString::fromLocal8Bit(argv[1]) : QString();

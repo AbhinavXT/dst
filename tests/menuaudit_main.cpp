@@ -75,6 +75,10 @@ int fails = 0;
 #define CHECK(c,m) do{ if(!(c)){ printf("FAIL: %s\n",m); ++fails;} else printf("ok  : %s\n",m);}while(0)
 
 int main(int argc, char **argv) {
+    // Unbuffered (session 116): on Windows a piped stdout lost everything
+    // after a buffer's worth, so the CI log stopped mid-line with no FAIL
+    // and no summary. Unbuffered, even a crash leaves the log whole.
+    std::setvbuf(stdout, nullptr, _IONBF, 0);
     // Offscreen unless told otherwise, as the gate runs it (see tests/main.cpp).
     if (qEnvironmentVariableIsEmpty("QT_QPA_PLATFORM")) qputenv("QT_QPA_PLATFORM", "offscreen");
     QApplication app(argc, argv);
