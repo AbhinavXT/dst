@@ -43,6 +43,17 @@
 #include <QTableView>
 #include <QVBoxLayout>
 
+// Source and Name hold one value per pane: the pane shows one source, named
+// in its picker above. In two panes at 1100 px they took ~200 px and left
+// Message ~35 px, scrolling sideways (session 154, Abhinav's decision).
+// Every other column follows View > Columns, as in the log tabs.
+static void hidePaneConstantColumns(QTableView *view)
+{
+    if (!view) return;
+    view->setColumnHidden(LogModel::ColSource, true);
+    view->setColumnHidden(LogModel::ColFriendly, true);
+}
+
 CompareWindow::CompareWindow(MessageDispatcher *dispatcher,
                              const NameMap     *names,
                              QWidget           *parent)
@@ -247,6 +258,7 @@ void CompareWindow::appendPane()
     // rows to Comfortable or hiding the Source column changed the log tabs
     // and left the compare panes looking like a different program.
     LogTableView::configure(p.view);
+    hidePaneConstantColumns(p.view);
 
     // An unbound pane and a bound one with nothing in it look identical
     // without this, and so does a source that has simply gone quiet.
@@ -878,6 +890,7 @@ void CompareWindow::rebindPane(int paneIndex)
     LogTableView::applyDefaultColumnWidths(p.view);
     LogTableView::applyColumnWidths(p.view);
     LogTableView::applyColumnVisibility(p.view);
+    hidePaneConstantColumns(p.view);
 
     updateAllTimestampReadouts();
 }

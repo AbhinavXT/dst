@@ -264,17 +264,21 @@ TEST_SUITE(comparerowmenu)
         CHECK(view->wordWrap() == Settings::wordWrapFor(Settings::rowDensity()),
               "and so does word wrap");
 
-        // Hidden columns are the setting's business, not the pane's.
+        // Hidden columns are the setting's business, except Source and Name,
+        // which a pane always hides: they hold one value per pane, named in
+        // its picker (session 154, Abhinav's decision; until then this check
+        // pinned "the setting's business, not the pane's").
         const QList<int> hidden = Settings::hiddenColumns();
         bool honoured = true;
         for (int c = 0; c < LogModel::ColumnCount; ++c) {
+            const bool paneHides = c == LogModel::ColSource || c == LogModel::ColFriendly;
             const bool shouldHide =
-                (c != LogModel::ColMessage) && hidden.contains(c);
+                paneHides || ((c != LogModel::ColMessage) && hidden.contains(c));
             if (view->isColumnHidden(c) != shouldHide) { honoured = false; }
         }
-        CHECK(honoured, "hidden columns match the setting, and Message is "
-                        "never hidden — a log table with no message in it is "
-                        "not a log table");
+        CHECK(honoured, "hidden columns match the setting, Source and Name "
+                        "are hidden in a pane, and Message is never hidden "
+                        "— a log table with no message in it is not a log table");
     }
 
     // ---- copies act on the whole selection ---------------------------------

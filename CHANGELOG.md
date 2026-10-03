@@ -11,6 +11,52 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-154"></a>
+## Session 154 — Compare panes hide Source and Name
+
+Abhinav's decision, 2026-10-03. It was open since session 129, and the
+review pass (153) showed the cost.
+
+- **Each Compare pane hides the Source and Name columns.** A pane shows
+  one source, named in its picker above, so those columns held one value
+  on every row. In two panes at 1100 px they took about 200 px and left
+  Message about 35 px, and both panes scrolled sideways. Message now gets
+  231 px, with no sideways scroll.
+- **The rule changes for Compare only.** `test_comparetools` pinned
+  "hidden columns are the setting's business, not the pane's"; it now
+  reads: the setting decides, except that a pane always hides Source and
+  Name. Message is still never hidden.
+- **Kept as they were:**
+  - the log tabs follow View ▸ Columns;
+  - the Merged window shows Source and Name, since it mixes sources;
+  - copies and exports from a pane: no code reads column visibility, so
+    a copied row still has every column.
+
+The panes re-hide both columns when rebound to another source: setting
+the model resets the header, which is why the widths are re-applied
+there too.
+
+Tests: `test_session154`, 12 checks, on 400 real lines of
+`replay/loco_1_1_27062026_140226.cap` across two sources:
+
+- in both panes at 1100 px, Source and Name are hidden, while Time and
+  Message are kept;
+- Message is at least 200 px wide;
+- no sideways scroll;
+- layout audit;
+- Merged still shows Source.
+
+`comparetools` (14 checks) passes with its check updated.
+
+Files: `comparewindow.cpp`, `tests/test_comparetools.cpp`,
+`tests/test_session154.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+203 suites / 5939 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-153"></a>
 ## Session 153 — the review pass after the revamp
 
