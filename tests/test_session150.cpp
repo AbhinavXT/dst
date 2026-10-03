@@ -13,6 +13,7 @@
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QLabel>
 #include <QPushButton>
 #include <QRegularExpression>
 
@@ -101,7 +102,15 @@ TEST_SUITE(session150)
         CHECK(panel->tiles().size() >= 4, "the default tiles");
         CHECK(panel->valueTextAt(1).contains(QLatin1String("Trip")), QByteArray("the mode tile reads the real run (") + panel->valueTextAt(1).toUtf8() + ")");
     }
-    CHECK(w.minimumSizeHint().width() <= 1100 && w.minimumSizeHint().height() <= 700, "fits a laptop with the tiles shown");
+    CHECK(w.minimumSizeHint().width() <= 1100 && w.minimumSizeHint().height() <= 700,
+          QByteArray("fits a laptop with the tiles shown (minimum ") + QByteArray::number(w.minimumSizeHint().width()) + " x "
+              + QByteArray::number(w.minimumSizeHint().height()) + "; the tiles' details held it at 1058 on the Mac, over 1100 on Linux)");
+    if (panel) {
+        bool whole = true;
+        for (QLabel *l : panel->findChildren<QLabel *>())
+            if (l->wordWrap() && l->isVisible()) whole = whole && l->height() >= l->heightForWidth(l->width());
+        CHECK(whole, "each tile's detail is shown whole, wrapped or not");
+    }
     const QStringList loose = LayoutAudit::orphans(&w);
     CHECK(loose.isEmpty(), QByteArray("no visible widget outside every layout (") + loose.join(QLatin1String(", ")).toUtf8() + ")");
 }

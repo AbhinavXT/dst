@@ -33,6 +33,9 @@ SettingsDialog::SettingsDialog(QWidget *parent)
         hint->setStyleSheet(UiColor::mutedStyle() + QStringLiteral(" font-style: italic;"));
         row->addWidget(hint);
         row->addStretch();
+        // No margins of its own (session 151): the default 11 px made these
+        // rows taller and set their fields 8 px right of the others.
+        row->setContentsMargins(0, 0, 0, 0);
         auto *w = new QWidget;
         w->setLayout(row);
         form->addRow(tr("UDP port:"), w);
@@ -49,6 +52,9 @@ SettingsDialog::SettingsDialog(QWidget *parent)
         hint->setStyleSheet(UiColor::mutedStyle() + QStringLiteral(" font-style: italic;"));
         row->addWidget(hint);
         row->addStretch();
+        // No margins of its own (session 151): the default 11 px made these
+        // rows taller and set their fields 8 px right of the others.
+        row->setContentsMargins(0, 0, 0, 0);
         auto *w = new QWidget;
         w->setLayout(row);
         form->addRow(tr("Receiver queue cap:"), w);
@@ -78,7 +84,10 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     m_diskRoot = new QLineEdit;
     {
         auto *row = new QHBoxLayout;
-        row->addWidget(m_diskRoot);
+        // The row's spare width, and room for a real path (session 151):
+        // without a stretch it shrank to its hint and showed "S/LOGS".
+        m_diskRoot->setMinimumWidth(240);
+        row->addWidget(m_diskRoot, 1);
         auto *browse = new QPushButton(tr("Browse…"));
         connect(browse, &QPushButton::clicked, this, [this]() {
             const QString d = QFileDialog::getExistingDirectory(
@@ -89,6 +98,9 @@ SettingsDialog::SettingsDialog(QWidget *parent)
         auto *hint = new QLabel(tr("(restart required)"));
         hint->setStyleSheet(UiColor::mutedStyle() + QStringLiteral(" font-style: italic;"));
         row->addWidget(hint);
+        // No margins of its own (session 151): the default 11 px made these
+        // rows taller and set their fields 8 px right of the others.
+        row->setContentsMargins(0, 0, 0, 0);
         auto *w = new QWidget;
         w->setLayout(row);
         form->addRow(tr("Disk-log root:"), w);

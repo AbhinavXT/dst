@@ -186,6 +186,12 @@ void BigNumberPanel::rebuild()
         layout->addWidget(tile.spark);
 
         tile.detail = new QLabel(tile.frame);
+        // Wraps rather than setting the tile's width (session 151): on one line,
+        // "FRAME_NUM 50577 · arp · 97d 08h ago" set the tile's minimum, and four
+        // of them held the Loco Console over 1100 px with Linux's fonts. The
+        // tiles then share the row evenly; a long detail takes two lines
+        // rather than being cut (a minimum width alone cut it).
+        tile.detail->setWordWrap(true);
         layout->addWidget(tile.detail);
         tile.frame->installEventFilter(this);
         tile.frame->setToolTip(tr("Double-click: plot over time · right-click: thresholds and more"));

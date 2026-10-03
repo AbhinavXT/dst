@@ -1,5 +1,7 @@
 #include "sessionkeydialog.h"
 #include "uicolors.h"
+#include "uistyle.h"
+#include <QFontMetrics>
 
 #include "sessionkeygen.h"
 #include "capturedecoder.h"
@@ -25,7 +27,10 @@ QLineEdit *hexField()
     auto *e = new QLineEdit;
     e->setPlaceholderText(QStringLiteral("32 hex chars"));
     e->setMaxLength(32);
-    e->setFont(QFont(QStringLiteral("monospace")));
+    // UiStyle's mono (session 151): QFont("monospace") came out proportional
+    // on the Mac. Wide enough for all 32 digits.
+    e->setFont(UiStyle::monoFont());
+    e->setMinimumWidth(QFontMetrics(e->font()).horizontalAdvance(QString(32, QLatin1Char('8'))) + 16);
     return e;
 }
 QDateTimeEdit *dtField(const QDateTime &v)
@@ -49,7 +54,9 @@ SessionKeyDialog::SessionKeyDialog(QWidget *parent, SessionKeyStore *keys) : QDi
 {
     m_keys = keys ? keys : new SessionKeyStore(this);
     setWindowTitle(tr("Session Key"));
-    resize(560, 620);
+    // The two key sets side by side (session 151): stacked, the dialog was
+    // 744 px tall at its minimum, over a 768-px screen.
+    resize(940, 560);
     auto *root = new QVBoxLayout(this);
 
     const QDateTime now = QDateTime::currentDateTime();
@@ -79,7 +86,7 @@ SessionKeyDialog::SessionKeyDialog(QWidget *parent, SessionKeyStore *keys) : QDi
     lkRow->addWidget(new QLabel(tr("key:"), liveBox));
     m_liveKey = new QLineEdit(liveBox);
     m_liveKey->setReadOnly(true);
-    m_liveKey->setFont(QFont(QStringLiteral("monospace")));
+    m_liveKey->setFont(UiStyle::monoFont());
     lkRow->addWidget(m_liveKey);
     auto *copyLive = new QPushButton(tr("Copy"), liveBox);
     auto *loadLive = new QPushButton(tr("Load into form"), liveBox);
@@ -87,6 +94,7 @@ SessionKeyDialog::SessionKeyDialog(QWidget *parent, SessionKeyStore *keys) : QDi
     lv->addLayout(lkRow);
     root->addWidget(liveBox);
 
+    auto *sets = new QHBoxLayout;
     auto buildSet = [&](const QString &title, QDateTimeEdit *&s, QDateTimeEdit *&e,
                         QLineEdit *&k0, QLineEdit *&k1) {
         auto *box = new QGroupBox(title, this);
@@ -97,13 +105,14 @@ SessionKeyDialog::SessionKeyDialog(QWidget *parent, SessionKeyStore *keys) : QDi
         g->addWidget(new QLabel(tr("end")),   0, 2); g->addWidget(e, 0, 3);
         g->addWidget(new QLabel(tr("key 1")), 1, 0); g->addWidget(k0, 1, 1, 1, 3);
         g->addWidget(new QLabel(tr("key 2")), 2, 0); g->addWidget(k1, 2, 1, 1, 3);
-        root->addWidget(box);
+        sets->addWidget(box, 1);
     };
     buildSet(tr("Key set 1"), m_s1Start, m_s1End, m_s1Key0, m_s1Key1);
     buildSet(tr("Key set 2"), m_s2Start, m_s2End, m_s2Key0, m_s2Key1);
+    root->addLayout(sets);
 
     // ids + randoms
-    auto *idBox = new QGroupBox(tr("Randoms & ids"), this);
+    auto *idBox = new QGroupBox(tr("Randoms && ids"), this);
     auto *ig = new QGridLayout(idBox);
     m_locoId = new QSpinBox(idBox); m_locoId->setRange(0, 1 << 20);
     m_stnId  = new QSpinBox(idBox); m_stnId->setRange(0, 65535);
@@ -129,6 +138,7 @@ SessionKeyDialog::SessionKeyDialog(QWidget *parent, SessionKeyStore *keys) : QDi
     nowRow->addWidget(nowBtn);
     nowRow->addStretch();
     auto *deriveBtn = new QPushButton(tr("Derive session key"), this);
+    UiStyle::makePrimary(deriveBtn);
     nowRow->addWidget(deriveBtn);
     root->addLayout(nowRow);
 
@@ -137,7 +147,7 @@ SessionKeyDialog::SessionKeyDialog(QWidget *parent, SessionKeyStore *keys) : QDi
     outRow->addWidget(new QLabel(tr("Session key:"), this));
     m_keyOut = new QLineEdit(this);
     m_keyOut->setReadOnly(true);
-    m_keyOut->setFont(QFont(QStringLiteral("monospace")));
+    m_keyOut->setFont(UiStyle::monoFont());
     outRow->addWidget(m_keyOut);
     m_copyBtn = new QPushButton(tr("Copy"), this);
     m_copyBtn->setEnabled(false);

@@ -54,6 +54,11 @@
 #include "fieldplot.h"
 #include "speeddistance.h"
 #include "brakingpanel.h"
+#include "settingsdialog.h"
+#include "exportdialog.h"
+#include "sessionkeydialog.h"
+#include "gototimestampdialog.h"
+#include "exporter.h"
 #include <QComboBox>
 #include <QLineEdit>
 #include <QSpinBox>
@@ -463,6 +468,16 @@ int main(int argc, char **argv)
                 while (t.elapsed() < 3000) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
                 win = w;
             }
+            // The small dialogs, at their own size (SHOT_SIZE=WxH to force one).
+            if (which == QLatin1String("settings")) win = new SettingsDialog(nullptr);
+            if (which == QLatin1String("export"))
+                win = new ExportDialog(QStringLiteral("/Users/operator/Documents/DLConsole/loco_1_1_export.csv"),
+                                       Exporter::CSV, Exporter::ColAll, nullptr);
+            if (which == QLatin1String("sessionkey")) win = new SessionKeyDialog(nullptr);
+            if (which == QLatin1String("gototime")) {
+                const qint64 t0 = QDateTime::fromString(QStringLiteral("2026-06-27T14:02:26"), Qt::ISODate).toMSecsSinceEpoch();
+                win = new GotoTimestampDialog(t0 + 60000, t0, t0 + 1800000, nullptr);
+            }
             if (which == QLatin1String("braking")) {
                 // SYNTHETIC @uba (schema/fixtures): no real capture in replay/
                 // carries braking curves. Layout only, not firmware evidence.
@@ -520,8 +535,14 @@ int main(int argc, char **argv)
                 win = w;
             }
             if (!win) return 2;
+            const bool small = which == QLatin1String("settings") || which == QLatin1String("export")
+                               || which == QLatin1String("sessionkey") || which == QLatin1String("gototime");
             if (which == QLatin1String("session")) win->resize(1200, 700);   // its own default
-            else win->resize(1100, 720);
+            else if (small) {
+                const QStringList wh = qEnvironmentVariable("SHOT_SIZE").split(QLatin1Char('x'));
+                if (wh.size() == 2) win->resize(wh.at(0).toInt(), wh.at(1).toInt());
+                else win->adjustSize();
+            } else win->resize(1100, 720);
             win->show();
             QElapsedTimer settle;
             settle.start();

@@ -11,6 +11,88 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-151"></a>
+## Session 151 — UI revamp, the small dialogs; two more Linux fits
+
+**Session key:**
+
+- **The two key sets sit side by side.** Stacked, the dialog was
+  533 x 744 at its minimum, over a 768-px screen. Now 996 x 588.
+- **Keys in UiStyle's mono**, each field wide enough for all 32 digits.
+  `QFont("monospace")` came out proportional on the Mac. The live key
+  and the derived key too.
+- **"Randoms & ids"**: the & was taken as a mnemonic and showed as
+  "Randoms _ids".
+- **Derive session key is the primary button.**
+
+**Settings:**
+
+- **The disk-log root takes the row's spare width**, at least 240 px. It
+  shrank to its hint and showed "S/LOGS".
+- **The rows built as wrapper widgets** (UDP port, Receiver queue cap,
+  Disk-log root) lose the default 11-px margins. Those made them taller
+  than the others, with their fields 8 px to the right.
+
+**Export:** the column names and their notes are in two columns. They
+were one string padded with spaces, which lines up only in a monospace
+font.
+
+**Go to timestamp:** unchanged. Checked to fit and pass the layout
+audit.
+
+**Two more Linux fits.** CI on Linux failed after 149 and after 150:
+
+- **Braking panel: 1112 px with Linux's fonts.**
+  - The tab box's floor is 100 px (was 120).
+  - The two spacers are gone.
+  - "Show frame in log" is now "Show in log", with the full words in its
+    tooltip.
+  - Mac minimum: 948 (was 1036).
+- **Loco Console with Big numbers: over 1100 px with Linux's fonts**
+  (1058 on the Mac). Each tile was as wide as its detail line
+  ("FRAME_NUM 50577 · arp · 97d 08h ago"). The detail now wraps instead,
+  the tiles share the row evenly, and a long detail takes two lines.
+  Tried and dropped: a small minimum width without wrapping, which cut
+  the line ("· 97c"). The panel's minimum went from 1038 to 743; the
+  window is 996, set by the console's header row.
+
+Tests: `test_session151`, 18 checks:
+
+- Session key:
+  - fits;
+  - the sets side by side;
+  - the escaped &;
+  - four mono key fields showing 32 digits;
+  - the primary button;
+  - layout audit.
+- Settings:
+  - fits;
+  - the path has room;
+  - every field starts at the same x;
+  - layout audit.
+- Export: seven columns, no padded names, each note beside its box,
+  layout audit.
+- Go to timestamp: small, layout audit.
+
+`session150` now also checks that each tile's detail is shown whole, and
+prints the minimum when it fails.
+
+**Screenshot harness:** `SHOT_WINDOW=settings|export|sessionkey|gototime`.
+Small dialogs are shot at their own size; `SHOT_SIZE=WxH` forces one.
+
+Files: `sessionkeydialog.cpp`, `settingsdialog.cpp`, `exportdialog.cpp`,
+`brakingpanel.cpp`, `bignumberpanel.cpp`, `tests/test_session150.cpp`,
+`tests/test_session151.cpp`, `tests/screenshot_main.cpp`,
+`tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+200 suites / 5910 checks, menu audit 157/157, headless smoke: all green.
+
+**This finishes the window-by-window revamp** begun in session 117.
+
+
+---
+
 <a id="session-150"></a>
 ## Session 150 — UI revamp, tool windows 27: Big numbers, and every toggle
 

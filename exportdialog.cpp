@@ -1,4 +1,5 @@
 #include "exportdialog.h"
+#include "uicolors.h"
 
 #include <QButtonGroup>
 #include <QCheckBox>
@@ -8,6 +9,7 @@
 #include <QFileInfo>
 #include <QFormLayout>
 #include <QGroupBox>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QLineEdit>
@@ -59,35 +61,35 @@ ExportDialog::ExportDialog(const QString &defaultPath,
     // ---- Column include checkboxes ---------------------------------
     {
         auto *grp = new QGroupBox(tr("Columns to include"));
-        auto *layout = new QVBoxLayout(grp);
+        // Name and explanation in two columns (session 151): they were one
+        // string padded with spaces, which lines up only in a monospace font.
+        auto *layout = new QGridLayout(grp);
+        layout->setColumnStretch(1, 1);
 
-        auto mkCb = [&](const QString &label, bool initial) {
+        auto mkCb = [&](const QString &label, const QString &what, bool initial) {
             auto *cb = new QCheckBox(label);
             cb->setChecked(initial);
-            layout->addWidget(cb);
+            auto *note = new QLabel(what);
+            note->setStyleSheet(UiColor::mutedStyle());
+            const int row = layout->rowCount();
+            layout->addWidget(cb, row, 0);
+            layout->addWidget(note, row, 1);
             return cb;
         };
 
-        m_cbTime      = mkCb(tr("Time              "
-                                "(time_iso; JSON also adds time_ms)"),
+        m_cbTime      = mkCb(tr("Time"), tr("time_iso; JSON also adds time_ms"),
                              defaultColumns & Exporter::ColTime);
-        m_cbSource    = mkCb(tr("Source            "
-                                "(CSV: 33_1; JSON: source_id + kvch_id)"),
+        m_cbSource    = mkCb(tr("Source"), tr("CSV: 33_1; JSON: source_id + kvch_id"),
                              defaultColumns & Exporter::ColSource);
-        m_cbFriendly  = mkCb(tr("Friendly name     "
-                                "(from friendly_names.csv)"),
+        m_cbFriendly  = mkCb(tr("Friendly name"), tr("from friendly_names.csv"),
                              defaultColumns & Exporter::ColFriendly);
-        m_cbDirection = mkCb(tr("Direction         "
-                                "(in / out / blank)"),
+        m_cbDirection = mkCb(tr("Direction"), tr("in / out / blank"),
                              defaultColumns & Exporter::ColDirection);
-        m_cbSeverity  = mkCb(tr("Severity          "
-                                "(info / warn / error)"),
+        m_cbSeverity  = mkCb(tr("Severity"), tr("info / warn / error"),
                              defaultColumns & Exporter::ColSeverity);
-        m_cbMessage   = mkCb(tr("Message           "
-                                "(the decoded text payload)"),
+        m_cbMessage   = mkCb(tr("Message"), tr("the decoded text payload"),
                              defaultColumns & Exporter::ColMessage);
-        m_cbRaw       = mkCb(tr("Raw bytes (hex)   "
-                                "(JSON only; CSV ignores this)"),
+        m_cbRaw       = mkCb(tr("Raw bytes (hex)"), tr("JSON only; CSV ignores this"),
                              defaultColumns & Exporter::ColRawBytes);
 
         root->addWidget(grp);

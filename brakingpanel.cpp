@@ -137,7 +137,7 @@ BrakingPanel::BrakingPanel(MessageDispatcher *dispatcher, QWidget *parent)
         auto *row = new QHBoxLayout;
         row->addWidget(new QLabel(tr("Tab:")));
         m_tabCombo = new QComboBox;
-        m_tabCombo->setMinimumWidth(120);   // 120, not 180 (session 149): the row held the window over 1100 px
+        m_tabCombo->setMinimumWidth(100);   // 100, not 180 (sessions 149, 151): the row held the window over 1100 px
         row->addWidget(m_tabCombo);
 
         auto *reload = new QToolButton;
@@ -146,14 +146,12 @@ BrakingPanel::BrakingPanel(MessageDispatcher *dispatcher, QWidget *parent)
         connect(reload, &QToolButton::clicked, this, &BrakingPanel::onReload);
         row->addWidget(reload);
 
-        row->addSpacing(8);
         row->addWidget(new QLabel(tr("Curve:")));
         m_curveCombo = new QComboBox;
         m_curveCombo->setMinimumWidth(110);
         m_curveCombo->setToolTip(tr("Which of curves_for_target[] to draw"));
         row->addWidget(m_curveCombo);
 
-        row->addSpacing(8);
 
         m_lock = new QCheckBox(tr("Lock axes"));
         m_lock->setChecked(true);
@@ -187,7 +185,10 @@ BrakingPanel::BrakingPanel(MessageDispatcher *dispatcher, QWidget *parent)
         row->addStretch(1);
 
         auto *jump = new QToolButton;
-        jump->setText(tr("Show frame in log"));
+        // Short (session 151): with Linux's fonts the top row still held the
+        // window at 1112 px.
+        jump->setText(tr("Show in log"));
+        jump->setToolTip(tr("Show this frame in the log"));
         connect(jump, &QToolButton::clicked, this, &BrakingPanel::onJumpToRow);
         row->addWidget(jump);
 
