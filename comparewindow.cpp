@@ -865,18 +865,19 @@ void CompareWindow::rebindPane(int paneIndex)
 
     // Re-connect scroll-bar and selection signals. setModel() invalidates
     // the previous selectionModel(), so connections to it are gone — we
-    // wire fresh ones, with paneIndex captured by value.
-    connect(p.view->verticalScrollBar(), &QScrollBar::valueChanged,
-            this, [this, paneIndex](int) { onPaneScrolled(paneIndex); },
-            Qt::UniqueConnection);
+    // wire fresh ones, with paneIndex captured by value. The old ones are
+    // dropped first so a rebind does not stack a second scroll handler.
+    disconnect(p.scrollConn);
+    disconnect(p.selectionConn);
+    p.scrollConn = connect(p.view->verticalScrollBar(), &QScrollBar::valueChanged,
+            this, [this, paneIndex](int) { onPaneScrolled(paneIndex); });
 
-    connect(p.view->selectionModel(),
+    p.selectionConn = connect(p.view->selectionModel(),
             &QItemSelectionModel::currentRowChanged,
             this, [this, paneIndex](const QModelIndex &cur,
                                     const QModelIndex &prev) {
                 onPaneSelectionChanged(paneIndex, cur, prev);
-            },
-            Qt::UniqueConnection);
+            });
 
     // The find bar was built against a view with no model at all, and this is
     // the second and every subsequent model it will be shown. Nothing in Qt

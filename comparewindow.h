@@ -187,6 +187,11 @@ private:
         QTableView *view      = nullptr;
         FindBar    *findBar   = nullptr;   // per pane, like the log tabs
         QString     currentKey;            // tab key currently shown
+        // Wired by rebindPane and dropped before it wires again. Not
+        // Qt::UniqueConnection: that needs a member-function slot, and Qt 6
+        // aborts on it with a lambda (Qt 5 silently stacked duplicates).
+        QMetaObject::Connection scrollConn;
+        QMetaObject::Connection selectionConn;
     };
 
     QVector<Pane> m_panes;

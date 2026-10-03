@@ -11,6 +11,61 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-155"></a>
+## Session 155 — Compare window aborted on open (Qt 6)
+
+Reported by Abhinav, 2026-10-03: opening Tools ▸ Compare Tabs from a
+Qt Creator (debug) build on Qt 6 aborted with `SIGABRT` in
+`QObject::connect`, called from `CompareWindow::rebindPane`.
+
+- **Cause.** `rebindPane` connected two lambdas (scroll bar → time-lock,
+  selection → inspector) with `Qt::UniqueConnection`. Qt can only check
+  uniqueness for a member-function slot. Qt 6 refuses a lambda here:
+  - **Debug build:** it asserts, and the window aborts as it binds its
+    first pane. This is the crash that was reported.
+  - **Release build** (the gate's, and the 6.9 deployment machine's): it
+    logs `unique connections require a pointer to member function` and
+    **makes no connection**. On Qt 6 the Compare window's time-lock
+    scrolling never followed, and selecting a row never reached the
+    inspector, the raw panel or the bookmark action.
+  - **Qt 5:** it accepted the connect and quietly added one more handler
+    on every source switch.
+- **Fix.** Each pane keeps its two `QMetaObject::Connection`s, and
+  `rebindPane` disconnects them before connecting again.
+- **What the operator sees:** on Qt 6, the Compare window opens,
+  time-lock works, and a clicked row shows in the inspector. On Qt 5 it
+  looks the same as before.
+- **Why the gate missed it:** `test_session154` already opened this
+  window with sources bound, but the assert is compiled out in release.
+  It printed only a warning, which nothing checked.
+
+Tests: `test_session155`, 11 checks, on 400 real lines of
+`replay/loco_1_1_27062026_140226.cap`:
+
+- with time-lock on, scrolling the left pane moves the right pane;
+- selecting a bookmarked row relabels the bookmark action;
+- six source switches leave the scroll-bar receiver count unchanged,
+  and time-lock still works after them;
+- Qt logs no `QObject::connect` warning;
+- a source scan finds no `connect(..., lambda, Qt::UniqueConnection)`.
+  This is the one check that catches the debug-only abort in a release
+  build.
+
+Against the unfixed code, 5 of the 11 checks fail on Qt 6.
+
+Files: `comparewindow.cpp`, `comparewindow.h`,
+`tests/test_session155.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+204 suites / 5950 checks, menu audit 157/157, headless smoke: all green.
+
+Not tested: the fix was not re-run in a debug (Qt Creator) build. The
+release Qt 6 checks cover the same code path, and the source scan
+covers the assert itself.
+
+
+---
+
 <a id="session-154"></a>
 ## Session 154 — Compare panes hide Source and Name
 
