@@ -11,6 +11,55 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-153"></a>
+## Session 153 — the review pass after the revamp
+
+Every window was shot again in dark and light, 29 of them, to catch
+what had drifted across 36 patches. Two findings, both fixed:
+
+- **The serial terminal was 1480 px wide at its minimum**, over a 1366-px
+  laptop. One row held:
+  - the port and its refresh;
+  - the baud and Find;
+  - data bits, parity, stop bits and flow;
+  - Low latency, DTR and RTS;
+  - Open.
+
+  The line settings (data bits through RTS) now have a row of their own,
+  under the port and baud. Now 811 x 461.
+- **A checkable group box's switch had no stylesheet rule**, and when off
+  it was drawn dark on dark: Packet Maker's "Also send to", "Extra header
+  fields" and "Fill from buffer" looked like plain labels. It now shares
+  the checkbox's rules: the outlined box, the accent fill when ticked,
+  hover and disabled.
+
+**Seen, not changed:**
+- **Compare panes:** in two panes at 1100 px, Message (the column that
+  matters) gets about 35 px and the panes scroll sideways. Source and
+  Name, which hold one value per pane, take 200. This is the open
+  decision from session 129, left for Abhinav.
+- **Replay (1269 px) and Packet Maker (1127 px)** fit a 1366-px screen,
+  as their passes (136, 128) intended.
+
+Tests: `test_session153`, 4 checks:
+
+- on all 11 themes, a group box's switch has the checkbox's rules,
+  unticked and ticked;
+- Packet Maker shows its switched sections;
+- the serial terminal fits a laptop;
+- the serial terminal passes the layout audit.
+
+**Screenshot harness:** no new case; the pass used the existing 29.
+
+Files: `serialconsolewindow.cpp`, `uistyle.cpp`,
+`tests/test_session153.cpp`, `tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+202 suites / 5927 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-152"></a>
 ## Session 152 — the filter bar, one row or two; Message never scrolls sideways
 

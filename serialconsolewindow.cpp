@@ -173,14 +173,18 @@ void SerialConsoleWindow::build()
                               "where the card's lines decode as @ frames. Closes the port while it looks, "
                               "and opens it at the rate it finds."));
     cfg->addWidget(label(tr("Baud")));      cfg->addWidget(m_baud); cfg->addWidget(m_findBaud);
-    cfg->addWidget(label(tr("Data")));      cfg->addWidget(m_dataBits);
-    cfg->addWidget(label(tr("Parity")));    cfg->addWidget(m_parity);
-    cfg->addWidget(label(tr("Stop")));      cfg->addWidget(m_stopBits);
-    cfg->addWidget(label(tr("Flow")));      cfg->addWidget(m_flow);
-    cfg->addWidget(m_lowLatency);
     cfg->addStretch(1);
-    cfg->addWidget(m_dtr); cfg->addWidget(m_rts);
     cfg->addWidget(m_open);
+    // The line settings on a row of their own (session 153): with them, the
+    // port row alone held the window at 1480 px, over a 1366-px laptop.
+    auto *line = new QHBoxLayout;
+    line->addWidget(label(tr("Data")));      line->addWidget(m_dataBits);
+    line->addWidget(label(tr("Parity")));    line->addWidget(m_parity);
+    line->addWidget(label(tr("Stop")));      line->addWidget(m_stopBits);
+    line->addWidget(label(tr("Flow")));      line->addWidget(m_flow);
+    line->addWidget(m_lowLatency);
+    line->addWidget(m_dtr); line->addWidget(m_rts);
+    line->addStretch(1);
 
     // ---- receive ------------------------------------------------------------------
     m_hexView = new QCheckBox(tr("Hex"), this);
@@ -317,6 +321,7 @@ void SerialConsoleWindow::build()
     connCol->setSpacing(UiStyle::space(2));
     connCol->addLayout(profRow);
     connCol->addLayout(cfg);
+    connCol->addLayout(line);
     root->addWidget(conn);
     root->addLayout(rxRow);
     root->addLayout(qRow);

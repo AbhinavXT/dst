@@ -429,15 +429,18 @@ QString sheet()
     // A tick you cannot find the box for is a control the operator does not
     // know is there.
     s += QStringLiteral(
-        "QCheckBox::indicator, QRadioButton::indicator {"
+        // QGroupBox::indicator too (session 153): a checkable group box's
+        // switch (Packet Maker's "Also send to", "Fill from buffer") had no
+        // rule and was drawn dark on dark when off.
+        "QCheckBox::indicator, QRadioButton::indicator, QGroupBox::indicator {"
         " width:14px; height:14px; background:%1; border:1px solid %2; }"
         "QRadioButton::indicator { border-radius:8px; }"
-        "QCheckBox::indicator { border-radius:3px; }"
-        "QCheckBox::indicator:hover, QRadioButton::indicator:hover {"
+        "QCheckBox::indicator, QGroupBox::indicator { border-radius:3px; }"
+        "QCheckBox::indicator:hover, QRadioButton::indicator:hover, QGroupBox::indicator:hover {"
         " border-color:%3; }"
-        "QCheckBox::indicator:checked, QRadioButton::indicator:checked {"
+        "QCheckBox::indicator:checked, QRadioButton::indicator:checked, QGroupBox::indicator:checked {"
         " background:%6; border-color:%6; }"
-        "QCheckBox::indicator:disabled, QRadioButton::indicator:disabled {"
+        "QCheckBox::indicator:disabled, QRadioButton::indicator:disabled, QGroupBox::indicator:disabled {"
         " background:%4; border-color:%5; }")
         .arg(base.name(), mix(window, text, isDark ? 0.42 : 0.38).name(),
              hi.name(), window.name(), subtle.name(),
