@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QPixmap>
 #include <QTableView>
+#include <QHeaderView>
 #include <QTableWidget>
 #include <QScrollBar>
 #include <QTimer>
@@ -667,6 +668,21 @@ int main(int argc, char **argv)
         }
         for (int i = 0; i < 20; ++i) { QCoreApplication::processEvents(); }
         w.grab().save(QStringLiteral("%1/shot_%2.png").arg(dir, ThemeUtil::toString(t)));
+        if (qEnvironmentVariableIsSet("SHOT_DUMP")) {
+            printf("main %dx%d minHint %dx%d\n", w.width(), w.height(), w.minimumSizeHint().width(), w.minimumSizeHint().height());
+            for (QTableView *tv : w.findChildren<QTableView *>()) {
+                if (!tv->isVisible() || tv->model()->columnCount() < 5) continue;
+                QString cols;
+                for (int c = 0; c < tv->model()->columnCount(); ++c)
+                    cols += QString::number(tv->isColumnHidden(c) ? 0 : tv->columnWidth(c)) + QLatin1Char(' ');
+                printf("  table %dx%d viewport %d hbar %d cols %s\n", tv->width(), tv->height(), tv->viewport()->width(),
+                       tv->horizontalScrollBar()->isVisible(), qPrintable(cols));
+                QHeaderView *hh = tv->horizontalHeader();
+                printf("  header minSection %d stretchLast %d lastMode %d defSection %d hintLast %d visualLast %d\n",
+                       hh->minimumSectionSize(), hh->stretchLastSection(), int(hh->sectionResizeMode(hh->logicalIndex(hh->count() - 1))),
+                       hh->defaultSectionSize(), hh->sectionSizeHint(hh->count() - 1), hh->logicalIndex(hh->count() - 1));
+            }
+        }
     }
     return 0;
 }

@@ -11,6 +11,60 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-152"></a>
+## Session 152 — the filter bar, one row or two; Message never scrolls sideways
+
+Asked for after the revamp finished (2026-10-03).
+
+- **The text box keeps 200 px.** On one row, the severity/direction
+  chips (321 px) and the count left the filter's text box about 40 px
+  wide in any pane under about 960 px: the main window's log tab, and the
+  recorded-session window. When one row would leave it less than 200,
+  the chips and the count now move to a second row under it. Wide panes
+  look as before.
+- **The bar's floor is the two-row width**, 583 px (was 846). That 846-px
+  floor held every window with a log table at least that wide. The
+  recorded-session window's minimum goes from 1146 to 883. In the main
+  window the Sources dock now gets its preferred width: its header no
+  longer reads "Soure".
+- **No sideways scroll from a stored Message width.** The stored column
+  widths were applied to every column, including Message, the stretched
+  last column. A stored width set on it held until the next resize, so a
+  pane narrower than the one it was saved in scrolled sideways: in the
+  main window's log tab at 1440 px, Message stayed at 350 px in a 790-px
+  view. Message is no longer given a stored width; it fills what is
+  left.
+
+Unchanged: every control, its wiring and its order. The chips, the count
+and the query-error label keep their parent; only their row changes.
+
+Tests: `test_session152`, 13 checks, on 200 real rows of
+`replay/loco_1_1_27062026_140226.cap`:
+
+- one row at 1300 px, chips beside the text box;
+- two rows at 790 px, the text box at least 200 px, chips and count on
+  the second row and the count shown whole;
+- the floor at most 650, and the text box keeps 200 px at the floor;
+- layout audit;
+- back to one row when wide again;
+- a stored 900-px Message width does not make a 700-px table scroll
+  sideways.
+
+`layout` and `session144` pass unchanged.
+
+**Screenshot harness:** the main-window shot prints its log table's
+geometry and header with `SHOT_DUMP=1`.
+
+Files: `filterbar.h/.cpp`, `logtableview.cpp`,
+`tests/test_session152.cpp`, `tests/screenshot_main.cpp`,
+`tests/tests.pro`.
+
+Gate, on Qt 5.15.19 and on Qt 6.11.2 alike: 11/11 validators, `dltests`
+201 suites / 5923 checks, menu audit 157/157, headless smoke: all green.
+
+
+---
+
 <a id="session-151"></a>
 ## Session 151 — UI revamp, the small dialogs; two more Linux fits
 

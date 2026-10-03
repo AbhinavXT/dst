@@ -43,6 +43,10 @@ void applyColumnWidths(QTableView *view)
     const QList<int> widths = Settings::logColumnWidths();
     if (widths.size() != LogModel::ColumnCount) { return; }
     for (int c = 0; c < LogModel::ColumnCount; ++c) {
+        // Not Message (session 152): it is the stretched last column, and a
+        // stored width set on it held until the next resize, so a narrower
+        // pane than the one it was saved in scrolled sideways.
+        if (c == LogModel::ColMessage) { continue; }
         if (widths.at(c) > 0) { view->setColumnWidth(c, widths.at(c)); }
     }
 }

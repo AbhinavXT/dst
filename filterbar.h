@@ -53,9 +53,16 @@ public:
     // Supplies friendly names to name:/bare-term matching in query mode.
     void setNameMap(const NameMap *names);
 
+    // Session 152: the chips and the count move to a second row when one row
+    // would leave the text box under kMinEdit; this is the two-row floor.
+    QSize minimumSizeHint() const override;
+    bool  isTwoRows() const;
+    static constexpr int kMinEdit = 200;
+
 protected:
     // Turns a click on the error label into "select the bad term".
     bool eventFilter(QObject *watched, QEvent *event) override;
+    void resizeEvent(QResizeEvent *event) override;
 
 public:
 
@@ -84,6 +91,14 @@ private slots:
 
 private:
     void applyFilter();
+    void updateRows();
+    int  firstRowFixedWidth() const;
+    int  oneRowWidth() const;
+
+    class QHBoxLayout *m_row1 = nullptr;
+    class QHBoxLayout *m_row2 = nullptr;
+    QWidget *m_trailing = nullptr;     // the chips and the count
+    bool     m_twoRows = false;
 
     LogModel              *m_source = nullptr;
     QSortFilterProxyModel *m_proxy  = nullptr;

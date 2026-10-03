@@ -1,4 +1,6 @@
 #include "filterbar.h"
+#include <QResizeEvent>
+#include <QVBoxLayout>
 #include "uicolors.h"
 #include "logmodel.h"
 #include "logquery.h"
@@ -267,9 +269,24 @@ FilterBar::FilterBar(LogModel *source, QWidget *parent)
     m_countLabel = new QLabel(tr("Showing 0 of 0"));
     m_countLabel->setStyleSheet(UiColor::mutedStyle());
 
-    auto *layout = new QHBoxLayout(this);
-    layout->setContentsMargins(4, 2, 4, 2);
+    // Two rows when narrow (session 152). On one row the chips and the count
+    // left the text box ~40 px in any pane under ~960 px, and their 846-px
+    // floor held every window that has a log table at least that wide. Now
+    // the text box keeps kMinEdit; past that the chips and the count move
+    // to a second row (updateRows()).
+    auto *rows = new QVBoxLayout(this);
+    rows->setContentsMargins(4, 2, 4, 2);
+    rows->setSpacing(2);
+    auto *layout = new QHBoxLayout;
+    layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(4);
+    m_row1 = layout;
+    m_row2 = new QHBoxLayout;
+    m_row2->setContentsMargins(0, 0, 0, 0);
+    m_row2->setSpacing(4);
+    rows->addLayout(m_row1);
+    rows->addLayout(m_row2);
+    m_edit->setMinimumWidth(kMinEdit);
     layout->addWidget(m_clearBtn);
     layout->addWidget(filterLabel);
     layout->addWidget(m_edit, 1);   // stretch — the line edit takes free space
@@ -278,11 +295,14 @@ FilterBar::FilterBar(LogModel *source, QWidget *parent)
     layout->addWidget(new QLabel(tr("in")));
     layout->addWidget(m_columnBox);
     layout->addWidget(m_queryError);
-    layout->addSpacing(8);
     // Session 118: one segmented control rather than five loose buttons. The
     // buttons, their group and their wiring are as before; only their parent
     // is new, and it is what the stylesheet draws as the group.
-    auto *segment = new QWidget(this);
+    m_trailing = new QWidget(this);
+    auto *trailingRow = new QHBoxLayout(m_trailing);
+    trailingRow->setContentsMargins(8, 0, 0, 0);
+    trailingRow->setSpacing(8);
+    auto *segment = new QWidget(m_trailing);
     segment->setObjectName(QStringLiteral("filterChips"));
     segment->setProperty("dlRole", QStringLiteral("segmented"));
     segment->setAttribute(Qt::WA_StyledBackground, true);
@@ -290,9 +310,9 @@ FilterBar::FilterBar(LogModel *source, QWidget *parent)
     segRow->setContentsMargins(0, 0, 0, 0);
     segRow->setSpacing(0);
     for (QPushButton *b : { allChip, errChip, warnChip, inChip, outChip }) segRow->addWidget(b);
-    layout->addWidget(segment);
-    layout->addSpacing(8);
-    layout->addWidget(m_countLabel);
+    trailingRow->addWidget(segment);
+    trailingRow->addWidget(m_countLabel);
+    layout->addWidget(m_trailing);
 
     // ---- Debounce timer ----------------------------------------------
     m_debounce = new QTimer(this);
@@ -422,6 +442,7 @@ void FilterBar::applyFilter()
                                       : proxy->queryError());
             m_queryError->setToolTip(tr("Click to select the offending term"));
             m_queryError->show();
+            updateRows();
             m_edit->setQueryError(proxy->queryError(), off);
         } else {
             m_queryError->hide();
@@ -483,4 +504,64 @@ void FilterBar::updateCountsLabel()
         return;
     }
     m_countLabel->setStyleSheet(UiColor::mutedStyle());
+}
+
+// =============================================================================
+//  One row or two (session 152)
+// =============================================================================
+int FilterBar::firstRowFixedWidth() const
+{
+    // Everything on the first row but the text box and the trailing group,
+    // at its preferred width, with the row's spacing.
+    int w = 0, items = 0;
+    for (int i = 0; i < m_row1->count(); ++i) {
+        QWidget *x = m_row1->itemAt(i)->widget();
+        if (!x || x == m_edit || x == m_trailing || x->isHidden()) continue;
+        w += x->sizeHint().width();
+        ++items;
+    }
+    return w + (items + 1) * m_row1->spacing();
+}
+
+int FilterBar::oneRowWidth() const
+{
+    const QMargins m = layout()->contentsMargins();
+    return m.left() + m.right() + firstRowFixedWidth() + kMinEdit + m_row1->spacing() + m_trailing->sizeHint().width();
+}
+
+QSize FilterBar::minimumSizeHint() const
+{
+    // The two-row floor: the first row with the text box at kMinEdit, or the
+    // chips and the count, whichever is wider.
+    const QMargins m = layout()->contentsMargins();
+    const int w = m.left() + m.right() + qMax(firstRowFixedWidth() + kMinEdit, m_trailing->sizeHint().width());
+    return QSize(w, QWidget::minimumSizeHint().height());
+}
+
+bool FilterBar::isTwoRows() const
+{
+    return m_twoRows;
+}
+
+void FilterBar::updateRows()
+{
+    const bool two = width() < oneRowWidth();
+    if (two == m_twoRows && m_trailing->parentWidget()) return;
+    m_twoRows = two;
+    m_row1->removeWidget(m_trailing);
+    m_row2->removeWidget(m_trailing);
+    if (two) {
+        m_row2->addStretch(0);
+        m_row2->addWidget(m_trailing, 1, Qt::AlignRight);
+    } else {
+        while (m_row2->count() > 0) delete m_row2->takeAt(0);
+        m_row1->addWidget(m_trailing);
+    }
+    updateGeometry();
+}
+
+void FilterBar::resizeEvent(QResizeEvent *event)
+{
+    QWidget::resizeEvent(event);
+    updateRows();
 }
