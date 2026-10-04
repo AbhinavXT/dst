@@ -29,3 +29,15 @@ __pycache__/
 
 # Gate output
 build-verify/
+
+# Qt / C++ build artifacts
+build/
+*.app/
+*.a
+
+
+# Qt / C++ build artifacts
+build/
+*.app/
+*.a
+

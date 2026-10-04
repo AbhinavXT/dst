@@ -1247,7 +1247,8 @@
     <field name="emu_train_length"                                                  bits="16" ui-group="Train lengths"/>
     <field name="trainset_train_length"                                             bits="16" ui-group="Train lengths"/>
     <field name="is_rfid_hardware_used"                                             bits="8" ui-group="Hardware &amp; system"/>
-    <field name="is_pg_hardware_used"                                               bits="8" ui-group="Hardware &amp; system"/>
+    <field name="is_eqep_used"                                                      bits="8" ui-group="Hardware &amp; system"/>
+    <field name="is_ecap_used"                                                      bits="8" ui-group="Hardware &amp; system"/>
     <field name="max_vital_fails"                                                   bits="8" ui-group="Hardware &amp; system"/>
     <field name="init_state_machine_atf"                                            bits="8" ui-group="Hardware &amp; system" c-name="use_init_state_machine_atf" ui-note="For the ATF brake-test version (v12: use_init_state_machine_atf)."/>
     <field name="vcc_crc"                                                           bits="32" hexup="8" ui-group="Hardware &amp; system" ui-note="Set by hand — must match the VCC build on this loco (v12: &quot;change crc&quot;)."/>

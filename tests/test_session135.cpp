@@ -50,9 +50,9 @@ TEST_SUITE(session135)
 
     auto *summary = w.findChild<QLabel *>(QStringLiteral("locoSummary"));
     auto *vcc = w.findChild<QLabel *>(QStringLiteral("locoVccCrc"));
-    CHECK(summary && summary->text().startsWith(QStringLiteral("375 B · src 28 → dest 2 · msg 120 · loco_info_crc 0x")),
+    CHECK(summary && summary->text().startsWith(QStringLiteral("376 B · src 28 → dest 2 · msg 120 · loco_info_crc 0x")),
           QByteArray("the summary, short (") + (summary ? summary->text().toUtf8() : QByteArray()) + ")");
-    CHECK(summary && summary->toolTip().contains(QLatin1String("375-byte")), "its tooltip spells the size out");
+    CHECK(summary && summary->toolTip().contains(QLatin1String("376-byte")), "its tooltip spells the size out");
     CHECK(summary && vcc && qAbs(summary->y() - vcc->y()) <= 4, "summary and vcc_crc on one line");
     CHECK(vcc && vcc->text().contains(QLatin1String("set by hand")), "vcc_crc still says it is set by hand");
     auto *noReply = w.findChild<QLabel *>(QStringLiteral("locoNoReply"));
