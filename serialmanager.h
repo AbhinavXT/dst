@@ -35,6 +35,9 @@
 #include <functional>
 
 #include "seriallink.h"
+#include "serialportscan.h"
+
+#include <QSet>
 
 class MessageDispatcher;
 class QSettings;
@@ -109,6 +112,9 @@ struct SerialProfile {
     // Session 115: the adapter, so the profile finds it again under a new
     // COM number. Empty for ports with none (virtual, built-in UARTs).
     QString      usbSerial;
+    // Session 156: the USB socket it was saved on, for adapters with no
+    // serial number of their own (CH340, PL2303, clone FTDI chips).
+    QString      usbLocation;
 
     static QVector<SerialProfile> loadAll(QSettings &s);
     static void saveAll(QSettings &s, const QVector<SerialProfile> &profiles);
@@ -135,6 +141,9 @@ public:
     // Opens `config.portName` (closing and reopening it if it was open with
     // other settings). False with the reason in the link's errorText().
     bool open(const SerialConfig &config);
+    // Session 156: the same, without waiting (see SerialLink::openAsync).
+    // openFinished() follows.
+    void openAsync(const SerialConfig &config);
     void close(const QString &portName);
     void closeAll();
 
@@ -150,10 +159,44 @@ public:
     bool isReconnecting(const QString &portName) const;
     // Tests: a faster tick, and a stand-in for the port enumerator.
     void setReconnectIntervalMs(int ms);
+    //
+    // Session 156: by default the search runs on a scan thread
+    // (SerialPortScanner) and matches by unique serial number, then USB
+    // socket, then model, then name (SerialScan::planReconnects), and the
+    // reopen does not block. setPortFinder() replaces all of that with the
+    // old synchronous name lookup -- kept for the session 106/115 tests.
     using PortFinder = std::function<QString(const QString &usbSerial, const QString &lastName)>;
     void setPortFinder(PortFinder f) { m_finder = std::move(f); }
+    // Tests: a stand-in for the enumerator, called on the scan thread.
+    void setPortScanFunction(SerialPortScanner::ScanFn fn) { m_scanner->setScanFunction(std::move(fn)); }
+    SerialPortScanner *scanner() const { return m_scanner; }
+    // The adapter a port is known by (from the scan after it opened).
+    SerialAdapterId adapterOf(const QString &portName) const;
+    // A port's USB serial number, or empty when it has none -- or shares it
+    // with another adapter present (clone chips), which identifies nothing.
     static QString usbSerialFor(const QString &portName);
+    static QString usbLocationFor(const QString &portName);
     static QString findPortBySerial(const QString &usbSerial, const QString &lastName);
+
+    // CONFIRMING IT IS THE SAME CARD (session 156)
+    //   After a reconnect, the first log lines are checked against the
+    //   packet types this port's tab had before the loss (@dip1, @dop2, ...).
+    //   The lines wait -- held, not fed -- until one of a known type arrives;
+    //   then they go into the console in order. If kVerifyLines log lines
+    //   arrive and none is of a known type (or kVerifyMs passes with only
+    //   unknown types), the port is SUSPECT: it stays open and visible in its
+    //   terminal, but its lines are kept out of the console tab, which says
+    //   why. feedAnyway() (the terminal's button), or a Close and an Open,
+    //   accepts it. kVerifyMs with no log line at all: fed, and said so.
+    static constexpr int    kVerifyLines = 5;
+    static constexpr qint64 kVerifyMs = 3000;
+    bool isVerifying(const QString &portName) const;
+    bool isSuspect(const QString &portName) const;
+    QString suspectText(const QString &portName) const;
+    void feedAnyway(const QString &portName);
+    // "dop1" from "@dop1_2_1 2026-06-29T13:41:29 ...": the type, without the
+    // loco's suffix. Empty for anything that is not an @ line.
+    static QString captureTypeOf(const QByteArray &line);
 
     // Opens a profile's port with its settings and feed, labelled with the
     // profile's name. A profile that knows its adapter opens it wherever it
@@ -164,6 +207,12 @@ public:
     QString resolveProfilePort(const SerialProfile &profile) const;
     // Opens each; returns "name: why" for each that failed (empty = all open).
     QStringList openProfiles(const QVector<SerialProfile> &profiles);
+    // Session 156: the same, without the GUI waiting on the enumerator or
+    // the driver. One scan finds every profile's adapter; each opens on its
+    // reader thread; profilesOpened() reports once all have finished. A
+    // profile that knows its adapter and cannot find it is NOT opened by its
+    // old name, which may now be another card.
+    void openProfilesAsync(const QVector<SerialProfile> &profiles);
 
     // A port's label: the profile it was opened from, else empty. Shown on
     // its chip and as its console tab's title.
@@ -213,6 +262,10 @@ signals:
     void portsChanged();                     // a port opened, closed, was lost or came back
     void portLost(const QString &portName, const QString &why);
     void portReconnected(const QString &portName, qint64 gapMs);
+    // Session 156.
+    void openFinished(const QString &portName, bool ok, const QString &error);
+    void profilesOpened(int opened, const QStringList &failed);
+    void portSuspect(const QString &portName, const QString &why);
 
 private:
     struct Entry {
@@ -224,7 +277,22 @@ private:
         QString tabPort;            // the name its console tab is keyed by (the first)
         QString usbSerial;          // the adapter, for finding it again
         qint64  lostAtMs = 0;       // > 0: lost, waiting for it
-        bool    reconnecting = false;
+        bool    reconnecting = false;   // a reopen after a loss is in flight
+        // Session 156.
+        SerialAdapterId adapter;        // what it is known by, for reconnect
+        bool    needIdentity = false;   // opened; the next scan says what it is
+        bool    asyncOpening = false;   // an openAsync() by the operator in flight
+        int     batch = -1;             // the openProfilesAsync() it belongs to
+        QString reconnectFrom;
+        SerialMatchBy reconnectBy = SerialMatchBy::None;
+        QSet<QString> typesSeen;        // packet types its tab has had
+        bool    verifying = false;
+        quint64 verifyRound = 0;
+        QVector<QPair<QByteArray, qint64>> held;
+        QStringList strangers;          // types seen while verifying
+        int     strangerLines = 0;
+        bool    suspect = false;
+        QString suspectText;
     };
     using EntryPtr = QSharedPointer<Entry>;
     static QString key(const QString &portName) { return portName.trimmed().toUpper(); }
@@ -235,13 +303,36 @@ private:
     void marker(Entry *e, const QString &text, qint64 ms);
     void tryReconnect();
     void updateReconnectTimer();
+    // Session 156.
+    void onScanned(const SerialPortList &ports);
+    void startReconnect(Entry *e, const QString &portName, SerialMatchBy by);
+    void finishReconnect(Entry *e);
+    void feedLine(Entry *e, const QByteArray &line, qint64 ms);
+    void endVerify(Entry *e, bool confirmed);
+    void markSuspect(Entry *e);
+    void verifyTimeout(Entry *e, quint64 round);
+    void resetCardCheck(Entry *e);
+    void finishBatchItem(Entry *e, bool ok, const QString &error);
+    struct Batch { int pending = 0; int opened = 0; QStringList failed; };
 
     MessageDispatcher        *m_dispatcher = nullptr;
     // Keyed by port name; a port renamed on reconnect is one entry under
     // both names.
     QHash<QString, EntryPtr>  m_ports;
+    // Session 156: every entry ever made, in order, for the manager's
+    // lifetime. m_ports is only the name -> entry index: after a swap (two
+    // adapters replugged in the other order) one name moves from one entry
+    // to the other, and an entry reachable by no name must still not be
+    // freed -- its link's signal handlers point at it.
+    QVector<EntryPtr>         m_owned;
     class QTimer             *m_reconnectTimer = nullptr;
     PortFinder                m_finder;
+    SerialPortScanner        *m_scanner = nullptr;
+    // Profiles waiting for a scan to find their adapters.
+    QVector<QPair<int, SerialProfile>> m_pendingProfiles;
+    QHash<int, Batch>         m_batches;
+    int                       m_nextBatch = 1;
+    quint64                   m_verifyRound = 0;
 };
 
 #endif // SERIALMANAGER_H

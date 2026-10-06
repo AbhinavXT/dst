@@ -622,6 +622,19 @@ MainWindow::MainWindow(QWidget *parent)
     // touched here; one opens only when the operator presses Open.
     m_serial = new SerialManager(m_dispatcher, this);
     connect(m_serial, &SerialManager::portsChanged, this, &MainWindow::rebuildSerialChips);
+    // Session 156: profiles open without the window waiting; the outcome
+    // is reported once every one of them has finished.
+    connect(m_serial, &SerialManager::profilesOpened, this, [this](int opened, const QStringList &failed) {
+        // A missing adapter at start-up is news, not an obstacle: the console
+        // still comes up, on Ethernet, and says which card is not being read.
+        for (const QString &f : failed) notify(NoteLevel::Warning, tr("Serial profile not opened: %1").arg(f));
+        if (opened > 0)
+            notify(NoteLevel::Info, opened == 1 ? tr("Opened 1 serial profile.")
+                                                : tr("Opened %1 serial profiles.").arg(opened));
+    });
+    connect(m_serial, &SerialManager::portSuspect, this, [this](const QString &, const QString &why) {
+        notify(NoteLevel::Warning, why);
+    });
     {
         // Health moves on its own (lines per second, the gap since the last
         // line), so the chips are refreshed each second while any is shown.

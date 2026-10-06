@@ -654,7 +654,8 @@ void MainWindow::refreshSerialChips()
         const QString port = chip->property("port").toString();
         const SerialLink *link = m_serial->link(port);
         const bool waiting = m_serial->isReconnecting(port);
-        const bool failing = waiting || m_serial->health(port, now).failing();
+        const bool suspect = m_serial->isSuspect(port);          // session 156
+        const bool failing = waiting || suspect || m_serial->health(port, now).failing();
         // The dot and the name, not colour alone; a warning sign when the
         // lines do not decode (wrong baud, most likely).
         const QString label = m_serial->label(port);
@@ -662,8 +663,13 @@ void MainWindow::refreshSerialChips()
                                : failing ? QStringLiteral("\u26A0 ") : QStringLiteral("\u25CF "))
                       + SerialManager::shortName(port)
                       + (label.isEmpty() ? QString() : QStringLiteral(" ") + label)
-                      + (waiting ? tr(" reconnecting\u2026") : QString()));
+                      + (waiting ? tr(" reconnecting\u2026") : suspect ? tr(" held") : QString()));
         chip->setStyleSheet(failing ? UiColor::warningStyle() : UiColor::okStyle());
+        if (suspect) {
+            chip->setToolTip(tr("%1\nClick to open a terminal on it.").arg(m_serial->suspectText(port)));
+            chip->setAccessibleName(tr("Serial port %1 held: it may be a different card").arg(port));
+            continue;
+        }
         if (waiting) {
             chip->setToolTip(tr("%1 was lost (the adapter went away). It reopens by itself when the "
                                 "same adapter comes back, under any port name.\nClick to open a terminal on it.")

@@ -637,9 +637,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                                : tr("Open this port with these settings"));
             connect(a, &QAction::triggered, this, [this, p, open]() {
                 if (open) { openSerialTerminal(p.config.portName); return; }
-                if (!m_serial->openProfile(p))
-                    notify(NoteLevel::Error, tr("Serial profile %1: %2")
-                                                 .arg(p.name, m_serial->link(p.config.portName)->errorText()));
+                m_serial->openProfilesAsync({ p });     // session 156: no wait; reported when done
             });
         }
     });

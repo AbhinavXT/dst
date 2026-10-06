@@ -168,6 +168,13 @@ public:
     ~SerialLink() override;
 
     bool open(const SerialConfig &config);
+    // Session 156: the same open, without waiting for it. The port is opened
+    // on the reader thread and this returns at once, so a driver that takes
+    // seconds to open (a Bluetooth COM port, a busy port) never freezes the
+    // GUI. opened() or openFailed() follows. A close() or another open made
+    // meanwhile wins: the late result is dropped (and its port closed).
+    void openAsync(const SerialConfig &config);
+    bool isOpening() const { return m_opening; }
     void close();
     bool isOpen() const;
     const SerialConfig &config() const { return m_config; }
@@ -200,6 +207,8 @@ signals:
     void lineReceived(const QByteArray &line, qint64 firstByteMs);
     void bytesWritten(const QByteArray &bytes, qint64 atMs);
     void opened();
+    // An openAsync() that did not open (errorOccurred() carries it too).
+    void openFailed(const QString &why);
     void closed();
     void errorOccurred(const QString &text);
     // Closed by the driver (the adapter vanished), not by close(): emitted
@@ -208,6 +217,7 @@ signals:
 
 private:
     void applyError(const SerialErrorOutcome &o);
+    void finishOpen(quint64 generation, bool ok, const QString &error, const QString &note);
 
     QThread            *m_thread = nullptr;
     SerialPortWorker   *m_worker = nullptr;
@@ -215,6 +225,8 @@ private:
     QString             m_error;
     QString             m_latencyNote;
     bool                m_open = false;
+    bool                m_opening = false;      // an openAsync() in flight
+    quint64             m_generation = 0;       // bumped by every open and close
 };
 
 // The half of SerialLink that lives on the reader thread. Internal: only

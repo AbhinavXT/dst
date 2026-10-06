@@ -74,7 +74,11 @@ public:
     void setConfigToUi(const SerialConfig &c);
 
     // Tests drive these as the buttons do.
-    bool openPort();
+    bool openPort();            // waits for the driver (tests, and nothing else)
+    // Session 156: what Open does. Returns at once; the status says
+    // "Opening", the button cancels, and the result arrives by signal.
+    bool openPortAsync();
+    bool isOpenPending() const { return m_openPending; }
     void closePort();
     bool sendText(const QString &text);        // honours hex / line-ending settings
     // Send file without the file and options dialogs (session 108).
@@ -153,6 +157,11 @@ private:
     QComboBox *m_port = nullptr, *m_baud = nullptr, *m_dataBits = nullptr,
               *m_parity = nullptr, *m_stopBits = nullptr, *m_flow = nullptr;
     QPushButton *m_open = nullptr;
+    QPushButton *m_feedAnyway = nullptr;     // session 156: a port held as a possibly different card
+    bool         m_openPending = false;      // an openPortAsync() in flight
+    SerialConfig m_pendingOpen;
+    bool prepareOpen(const SerialConfig &c);
+    void afterOpened(const SerialConfig &c);
     QComboBox *m_profile = nullptr;
     QCheckBox *m_autoOpen = nullptr;
     QCheckBox *m_dtr = nullptr, *m_rts = nullptr, *m_lowLatency = nullptr;

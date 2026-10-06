@@ -11,6 +11,227 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-156"></a>
+## Session 156 — Serial: the right card after a reconnect; no GUI stalls
+
+Three findings from the review of patch 155, all in the serial path.
+
+### 1. Reconnect could put one card's lines into another card's tab
+
+- **Cause.** Auto-reconnect (106) found a lost adapter by its USB serial
+  number, and by its port **name** when it had none. Cheap CH340 / PL2303
+  adapters have none, and clone FTDI chips often all report the same one.
+  Pull two such adapters and plug them back in the other order: Linux
+  swaps `ttyUSB0` / `ttyUSB1` (Windows can renumber COM ports the same
+  way), and the "IOA Input" tab carried on with the **Output** card's
+  lines, with nothing on screen to say so.
+- **Fix, part 1 — know the adapter by where it is plugged in.** At each
+  open, a scan records what the port's adapter is known by, strongest
+  first:
+  1. its USB serial number, **only when no other adapter present has the
+     same one**. A shared clone serial identifies nothing and is not kept.
+     This also applies to per-adapter settings and to profiles.
+  2. its **USB socket**: `/dev/serial/by-path` on Linux, the device's
+     location path from SetupAPI / the device tree on Windows. The socket
+     stays the same whatever order things are plugged in.
+  3. its model (USB VID:PID). After a move to another socket, it takes the
+     only free adapter of that model, but only when no other lost port of
+     the same model could claim it too.
+  4. its name, as before, only for ports known by nothing else (built-in
+     UARTs, virtual ports, macOS).
+
+  All lost ports are planned in one go (`SerialScan::planReconnects`), so
+  two of them can never be given the same adapter, and a guess that could
+  equally fit another port is not made.
+- **Fix, part 2 — check it is the same card.** After any reconnect, the
+  port's lines are **held** until they show which card it is:
+  - The first log line whose packet type the tab had before (`@dop1`,
+    `@nmshlth`, …) confirms it. The held lines then go into the tab, in
+    order.
+  - Five log lines of types the tab never had (or a few, then 3 s of
+    quiet) make the port **held as a possibly different card**. It stays
+    open and visible in its terminal, but its lines are kept out of the
+    console tab. The tab, the terminal and a notification say why, naming
+    what it had and what came. **Feed anyway** in the terminal, or Close
+    and Open, accepts it.
+  - No log line at all within 3 s (a quiet or rebooting card): fed, and the
+    tab says it could not be confirmed.
+- **A profile that knows its adapter and cannot find it is no longer
+  opened by its old name**, which may now be another card. It is reported
+  as "its adapter (…) is not plugged in". Profiles also save the USB socket
+  of an adapter that has no serial number.
+- **Found while testing: a swap could free a live entry.** When a
+  reconnected port took a name another port still held, that other
+  port's entry lost its only owning pointer and was freed while its
+  link's signal handlers still pointed at it. Entries are now owned for
+  the manager's lifetime (`m_owned`); names are only an index.
+
+### 2. The search for lost adapters no longer runs on the GUI thread
+
+- Before: every second, **once per lost port**, `QSerialPortInfo::
+  availablePorts()` ran on the GUI thread. That takes 50–500 ms on
+  Windows, so with three IOA adapters out the console stuttered for as
+  long as they stayed out. Opening a port also enumerated on the GUI
+  thread to learn its serial number.
+- Now `SerialPortScanner` enumerates on a thread of its own. There is one
+  scan per tick for every lost port, and asks made while a scan runs are
+  folded into one more scan.
+- **Found while testing:** a scan that was already running when an adapter
+  was pulled still lists it. It was taken as "the adapter is back". Now a
+  lost port is only planned from a scan that **began after** the loss. On
+  real hardware the stale reopen would have failed and been retried; with
+  a device that lingers, it would have reopened a port that was gone.
+
+### 3. Opening a port no longer freezes the window
+
+- `SerialLink::open()` waited for the reader thread to open the port. A
+  driver that takes seconds (a Bluetooth COM port, a port another program
+  holds) froze the console for that long.
+- **New `SerialLink::openAsync()`** opens on the reader thread and returns
+  at once, followed by `opened()` or `openFailed()`. A Close (or another
+  open) made meanwhile cancels it. A generation counter drops the late
+  result, and the close, queued behind the open, closes what it opened.
+- **Used by:**
+  - the terminal's Open button (it reads **"Opening COM5…"** and becomes
+    **Cancel**);
+  - Find baud's final open;
+  - the profile menu, Open all and the startup auto-open, through
+    `SerialManager::openProfilesAsync()`, which finds every profile's
+    adapter with one scan and reports once all have finished;
+  - auto-reconnect.
+- `open()` is unchanged and still blocking, for the tests and auto-baud's
+  probing link.
+
+### What the operator sees
+
+- After replugging adapters, each IOA tab carries on with its own card. The
+  tab line reads e.g. `── reconnected as /dev/ttyUSB1 (was /dev/ttyUSB0),
+  gap 4.2 s, found by the USB socket it is plugged into ──`.
+- If a tab would get another card's lines, it gets none:
+  - its terminal shows **⚠ … it may be a different card …** with
+    **Feed anyway**;
+  - the status-bar chip reads **held**;
+  - a notification says the same.
+- Open, profiles and Open all never freeze the window; the terminal says
+  "Opening…" until the driver answers.
+- No more stutter while an adapter is unplugged.
+
+### Files
+
+- **New:** `serialportscan.h/.cpp` — `SerialPortSnapshot`,
+  `SerialAdapterId`, `SerialScan::{scan, identify, planReconnects,
+  locationsFromByPath, platformLocations}`, `SerialPortScanner`.
+- `seriallink.h/.cpp`: `openAsync()`, `isOpening()`, `openFailed()`, the
+  generation counter.
+- `serialmanager.h/.cpp`:
+  - scan-thread reconnect, `openAsync()`, `openProfilesAsync()`;
+  - the card check (`isVerifying`, `isSuspect`, `feedAnyway`,
+    `captureTypeOf`);
+  - `m_owned`;
+  - `usbSerialFor()` ignores shared serials; new `usbLocationFor()`;
+  - `SerialProfile::usbLocation`.
+- `serialconsolewindow.h/.cpp`: Open without waiting (`openPortAsync()`),
+  Opening / Cancel, the held state and **Feed anyway**.
+- `mainwindow.cpp`, `mainwindow_tools.cpp`, `mainwindow_menus.cpp`,
+  `mainwindow_status.cpp`: profiles open without waiting, one report;
+  a notification and a **held** chip for a held port.
+- `serial.pri`: the new files; `win32: LIBS += -lsetupapi -lcfgmgr32
+  -ladvapi32`.
+- `tests/test_session156.cpp`, `tests/tests.pro` (in the `dl_serial`
+  block).
+
+### Tests
+
+`test_session156`, **74 checks**. The ports are real ptys and the
+enumerator is a stand-in (there is no USB in the test environment). Real
+`@dop1` / `@dop2` / `@nmshlth` lines are taken from
+`replay/loco_2_1_29062026_134128.cap`; there is no IOA input capture in
+`replay/`, so the "other card" is played by `@nmshlth`.
+
+- **Planner, on its own:**
+  - a swap of two CH340s is resolved by socket;
+  - clone serials are not kept;
+  - a serial that becomes shared is settled by socket;
+  - an adapter known by serial is not replaced by whatever has its name;
+  - a move to another socket is matched by model, but not when two lost
+    ports could claim it;
+  - another model in its socket is refused;
+  - a built-in UART is matched by name;
+  - open ports are never handed out;
+  - `/dev/serial/by-path` parsing, with a dangling link skipped.
+- **Scanner:**
+  - asking returns at once;
+  - three asks during a scan make one more scan;
+  - it runs off the GUI thread.
+- **End to end (two ptys as two CH340s in two sockets):** pulled and
+  replugged in the other order, each tab keeps its own card's lines,
+  confirmed by the first line, and the tab says it was found by socket.
+- **The card check (the old name-only finder, made to pick wrong):**
+  - a banner is held, then flushed in order on a known type;
+  - five lines of other types are held as a different card, and none
+    reaches the tab;
+  - the tab says why, and the terminal shows Feed anyway, which works;
+  - a few strangers then quiet are held;
+  - no line at all is fed with a note;
+  - an explicit Open is not checked.
+- **GUI thread:**
+  - with three adapters out and a 400 ms enumerator, the worst gap
+    between 10 ms GUI ticks over 2 s is under 150 ms, with 3–7 scans,
+    not one per port per tick;
+  - a scan that began before a loss does not reopen the port.
+- **Open without waiting:**
+  - with the reader thread busy for 600 ms, `openAsync()` returns in under
+    100 ms and `open()` takes ≥ 450 ms (the old behaviour, kept for
+    contrast);
+  - cancel while opening;
+  - a missing port reports `openFailed()`;
+  - the terminal's button shows Opening / Cancel, then Close;
+  - profiles: one found by socket under a new name, one whose adapter is
+    missing **not** opened by its old name (which is another pty), and a
+    second Open all leaves a running one running.
+
+**Checked against broken code.** Each of these deliberate breaks fails the
+suite:
+- with socket matching off and the card check always confirming,
+  **20 checks fail**;
+- with the scan run on the caller's thread and `openAsync()` made to wait,
+  **6 fail** (a 401 ms GUI stall; 601 ms and 501 ms opens);
+- with the "began after the loss" rule off, the stale-scan check fails
+  every time.
+
+That last rule was found by the suite itself: 1 run in 6 failed with
+"0 scans in 2 s", because the ports had already been reopened from a
+stale scan. After the fix, 10 runs in 10 were green.
+
+**Gate** on Qt 5.15.13 (Linux):
+- validators 11/11;
+- `dltests` **205 suites / 6024 checks**, 0 failed;
+- menu audit 157/157;
+- headless smoke alive.
+
+**Gate** on Qt 6.4.2 (Linux): the same, 205 suites / 6024 checks, 0 failed;
+menu audit 157/157; smoke alive. No compiler warnings from the touched
+files on either.
+
+### Not tested
+
+- **No real USB adapter was used.** Sockets, serial numbers and models
+  came from a stand-in enumerator, and the ports were ptys.
+- **The Windows socket lookup** (SetupAPI location paths, walking up to
+  the USB device for FTDI ports) was compiled and linked with MinGW
+  (`x86_64-w64-mingw32-g++`, no warnings), but not run on Windows or built
+  with MSVC. The Windows CI job is the first real check. On a machine
+  where it finds nothing, ports with no serial number fall back to the
+  model, then the name, as before, and the card check still guards the
+  tab.
+- macOS has no socket lookup (serial number, then model, then name).
+- Not done: reacting to Windows device-change messages instead of the
+  1-second poll. The poll no longer costs the GUI anything, so it was
+  left out.
+
+
+---
+
 <a id="session-155"></a>
 ## Session 155 — Compare window aborted on open (Qt 6)
 

@@ -302,9 +302,15 @@ void SerialConsoleWindow::build()
                             "\u201Cdriver errors\u201D counts every error the driver did report."));
     auto *resetCounts = new QToolButton(this);
     resetCounts->setText(tr("Reset"));
+    m_feedAnyway = new QPushButton(tr("Feed anyway"), this);
+    m_feedAnyway->setObjectName(QStringLiteral("serialFeedAnyway"));
+    m_feedAnyway->setToolTip(tr("This port came back sending other packet types than before, so its "
+                                "lines are kept out of the console. Feed them anyway: it is the right card."));
+    m_feedAnyway->hide();
     auto *stRow = new QHBoxLayout;
     // The state chip hugs its text; health, counters and Reset to the right.
     stRow->addWidget(m_state);
+    stRow->addWidget(m_feedAnyway);
     stRow->addStretch(1);
     stRow->addWidget(m_health);
     stRow->addWidget(m_counts);
@@ -379,7 +385,28 @@ void SerialConsoleWindow::build()
     connect(refresh, &QToolButton::clicked, this, &SerialConsoleWindow::refreshPorts);
     connect(m_open, &QPushButton::clicked, this, [this]() {
         const bool waiting = m_link && m_mgr->isReconnecting(m_link->config().portName);
-        if (isOpen() || waiting) closePort(); else openPort();
+        if (isOpen() || waiting || m_openPending) closePort(); else openPortAsync();
+    });
+    connect(m_feedAnyway, &QPushButton::clicked, this, [this]() {
+        if (!m_link) return;
+        m_mgr->feedAnyway(m_link->config().portName);
+        appendView(tr("── fed anyway at %1 ──").arg(stamp(QDateTime::currentMSecsSinceEpoch())));
+        updateState();
+    });
+    // Session 156: an Open that did not wait finishes here.
+    connect(m_mgr, &SerialManager::openFinished, this, [this](const QString &port, bool ok, const QString &error) {
+        if (!m_openPending || port.compare(m_pendingOpen.portName, Qt::CaseInsensitive) != 0) return;
+        m_openPending = false;
+        if (ok) { afterOpened(m_pendingOpen); return; }
+        updateState();
+        m_state->setText(tr("\u2715 %1").arg(error));
+        UiStyle::setTone(m_state, UiStyle::Tone::Fail);
+    });
+    connect(m_mgr, &SerialManager::portsChanged, this, [this]() { updateState(); });
+    connect(m_mgr, &SerialManager::portSuspect, this, [this](const QString &port, const QString &why) {
+        if (!m_link || m_mgr->link(port) != m_link) return;
+        appendView(tr("── %1 ──").arg(why));
+        updateState();
     });
     // Session 106: the port this window shows was lost, or came back.
     connect(m_mgr, &SerialManager::portLost, this, [this](const QString &port, const QString &why) {
@@ -464,7 +491,7 @@ void SerialConsoleWindow::build()
             return;
         }
         m_baud->setEditText(QString::number(rate));
-        openPort();
+        openPortAsync();
     });
     connect(m_sender, &SerialFileSender::progress, this, [this](qint64 sent, qint64 total) {
         // Bytes, scaled to int range for the bar.
@@ -666,9 +693,8 @@ void SerialConsoleWindow::refreshPorts()
 
 // ---- open / close -------------------------------------------------------------------
 
-bool SerialConsoleWindow::openPort()
+bool SerialConsoleWindow::prepareOpen(const SerialConfig &c)
 {
-    const SerialConfig c = configFromUi();
     if (c.portName.isEmpty()) {
         m_state->setText(tr("Choose a port first."));
         return false;
@@ -685,6 +711,25 @@ bool SerialConsoleWindow::openPort()
             && all.at(i).config.portName.compare(c.portName, Qt::CaseInsensitive) == 0;
         m_mgr->setLabel(c.portName, fromProfile ? all.at(i).name : QString());
     }
+    return true;
+}
+
+bool SerialConsoleWindow::openPortAsync()
+{
+    const SerialConfig c = configFromUi();
+    if (!prepareOpen(c)) return false;
+    m_pendingOpen = c;
+    m_openPending = true;
+    m_mgr->openAsync(c);              // openFinished() -> afterOpened()
+    updateState();
+    return true;
+}
+
+bool SerialConsoleWindow::openPort()
+{
+    const SerialConfig c = configFromUi();
+    if (!prepareOpen(c)) return false;
+    m_openPending = false;
     if (!m_mgr->open(c)) {
         updateState();
         m_state->setText(tr("\u2715 %1").arg(m_link->errorText()));
@@ -693,6 +738,12 @@ bool SerialConsoleWindow::openPort()
         UiStyle::setTone(m_state, UiStyle::Tone::Fail);
         return false;
     }
+    afterOpened(c);
+    return true;
+}
+
+void SerialConsoleWindow::afterOpened(const SerialConfig &c)
+{
     m_link->setDtr(m_dtr->isChecked());
     m_link->setRts(m_rts->isChecked());
     m_hex.reset();                                 // hex offsets count from the open
@@ -700,11 +751,11 @@ bool SerialConsoleWindow::openPort()
     appendView(tr("── opened %1 %2 at %3 ──").arg(c.portName, c.summary(), stamp(QDateTime::currentMSecsSinceEpoch())));
     if (!m_link->latencyNote().isEmpty()) appendView(tr("── %1 ──").arg(m_link->latencyNote()));
     updateState();
-    return true;
 }
 
 void SerialConsoleWindow::closePort()
 {
+    m_openPending = false;            // a Cancel while opening
     m_repeat->setChecked(false);
     const bool was = isOpen();
     // Through the manager: it also stops a wait for a lost adapter.
@@ -725,7 +776,19 @@ void SerialConsoleWindow::updateState()
                         static_cast<QWidget *>(m_lowLatency) })
         w->setEnabled(!open);
     m_sendBtn->setEnabled(open);
-    if (open) {
+    const QString shownPort = m_link ? m_link->config().portName : QString();
+    const bool suspect = open && m_mgr->isSuspect(shownPort);
+    m_feedAnyway->setVisible(suspect);
+    if (suspect) {
+        setWindowTitle(tr("Serial — %1 (held: a different card?)").arg(shownPort));
+        m_state->setText(tr("\u26A0 %1").arg(m_mgr->suspectText(shownPort)));
+        UiStyle::setTone(m_state, UiStyle::Tone::Warn);
+    } else if (open && m_mgr->isVerifying(shownPort)) {
+        setWindowTitle(tr("Serial — %1 (checking)").arg(shownPort));
+        m_state->setText(tr("\u25CC %1 reconnected \u2014 checking it is the same card; its lines wait "
+                            "until one of the types this tab had arrives").arg(shownPort));
+        UiStyle::setTone(m_state, UiStyle::Tone::Warn);
+    } else if (open) {
         const SerialConfig &c = m_link->config();
         setWindowTitle(tr("Serial — %1 %2").arg(c.portName, c.summary()));
         QString t = tr("\u25CF %1 open, %2").arg(c.portName, c.summary());
@@ -740,8 +803,14 @@ void SerialConsoleWindow::updateState()
         m_open->setText(tr("Stop waiting"));
         setWindowTitle(tr("Serial — %1 (lost)").arg(c.portName));
         m_state->setText(tr("\u25CC %1 lost \u2014 reconnecting when the adapter comes back "
-                            "(found by its USB serial number, under any port name)").arg(c.portName));
+                            "(found by its USB serial number or USB socket, under any port name)").arg(c.portName));
         UiStyle::setTone(m_state, UiStyle::Tone::Warn);
+    } else if (m_openPending || (m_link && m_link->isOpening())) {
+        const QString port = m_openPending ? m_pendingOpen.portName : shownPort;
+        m_open->setText(tr("Cancel"));
+        setWindowTitle(tr("Serial — %1 (opening)").arg(port));
+        m_state->setText(tr("\u25CC Opening %1\u2026").arg(port));
+        UiStyle::setTone(m_state, UiStyle::Tone::Neutral);
     } else {
         setWindowTitle(tr("Serial Port Terminal"));
         m_state->setText(tr("Closed"));
@@ -1034,6 +1103,8 @@ bool SerialConsoleWindow::saveProfile(const QString &name)
     p.autoOpen = m_autoOpen->isChecked();
     p.macros = m_macros;              // the row on screen goes with it
     p.usbSerial = SerialManager::usbSerialFor(p.config.portName);   // finds it after a renumber
+    // Session 156: and, for an adapter with no serial number, its USB socket.
+    if (p.usbSerial.isEmpty()) p.usbLocation = SerialManager::usbLocationFor(p.config.portName);
     if (p.name.isEmpty() || p.config.portName.isEmpty()) {
         m_state->setText(tr("A profile needs a name and a port."));
         return false;

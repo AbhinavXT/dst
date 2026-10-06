@@ -158,6 +158,8 @@ TEST_SUITE(session111)
         QElapsedTimer clock;
         clock.start();
         while (w.autoBaud()->isRunning() && clock.elapsed() < 4000) runCard(master, B57600, 25);
+        // Session 156: the open after a find does not wait for the driver.
+        while (!w.link()->isOpen() && clock.elapsed() < 6000) runCard(master, B57600, 25);
         CHECK(w.link()->isOpen() && w.link()->config().baud == 57600 && w.configFromUi().baud == 57600,
               "found 57600, set it, and opened at it");
         CHECK(w.receivedText().contains(QLatin1String("baud: 57600:")), "the terminal says what it found");

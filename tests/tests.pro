@@ -192,6 +192,7 @@ dl_serial {
                test_session110.cpp \
                test_session111.cpp \
                test_session115.cpp \
-               test_session122.cpp
+               test_session122.cpp \
+               test_session156.cpp
     linux: LIBS += -lutil   # openpty() for the serial end-to-end test
 }

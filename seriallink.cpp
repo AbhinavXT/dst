@@ -508,9 +508,58 @@ bool SerialLink::open(const SerialConfig &config)
     return true;
 }
 
+void SerialLink::openAsync(const SerialConfig &config)
+{
+    close();
+    m_config = config;
+    m_error.clear();
+    m_latencyNote.clear();
+    const quint64 generation = ++m_generation;
+    m_opening = true;
+    SerialPortWorker *worker = m_worker;
+    QMetaObject::invokeMethod(m_worker, [this, worker, config, generation]() {
+        QString err, note;
+        const bool ok = worker->openPort(config, &err, &note);
+        // Posted before any readyRead of the new port is handled (that waits
+        // for this call to return), so opened() comes before the first line.
+        // Dropped with the link if it is destroyed first: its destructor
+        // waits for this thread, and Qt discards events for a dead object.
+        QMetaObject::invokeMethod(this, [this, generation, ok, err, note]() {
+            finishOpen(generation, ok, err, note);
+        }, Qt::QueuedConnection);
+    }, Qt::QueuedConnection);
+}
+
+void SerialLink::finishOpen(quint64 generation, bool ok, const QString &error, const QString &note)
+{
+    // Superseded by a close() or a newer open: that call already closed
+    // whatever this one opened (its close ran on the worker after it).
+    if (generation != m_generation || !m_opening) return;
+    m_opening = false;
+    if (!ok) {
+        m_error = error;
+        emit errorOccurred(m_error);
+        emit openFailed(m_error);
+        return;
+    }
+    m_latencyNote = note;
+    m_open = true;
+    emit opened();
+}
+
 void SerialLink::close()
 {
+    if (m_opening) {
+        // An open in flight: cancel it. The close below is queued behind it
+        // on the reader thread, so it closes the port that open makes.
+        m_opening = false;
+        ++m_generation;
+        QMetaObject::invokeMethod(m_worker, [this]() { m_worker->closePort(); },
+                                  Qt::BlockingQueuedConnection);
+        if (!m_open) return;
+    }
     if (!m_open) return;
+    ++m_generation;
     QVector<SerialLineSplitter::Line> held;
     QMetaObject::invokeMethod(m_worker, [&]() { held = m_worker->closePort(); },
                               Qt::BlockingQueuedConnection);
