@@ -15,6 +15,12 @@
 #  include <windows.h>
 #  include <setupapi.h>
 #  include <cfgmgr32.h>
+// MinGW (Qt 5.15's 8.1) defaults _WIN32_WINNT to 0x0502 (XP), and its
+// cfgmgr32.h then leaves out this Vista-era property. The value is fixed:
+// SPDRP_LOCATION_PATHS (0x23) + 1, as for every CM_DRP_*.
+#  ifndef CM_DRP_LOCATION_PATHS
+#    define CM_DRP_LOCATION_PATHS 0x00000024
+#  endif
 #endif
 
 // =============================================================================

@@ -45,6 +45,14 @@
 //    the user has filtered to errors and then Ctrl+F's "STN_ID", they
 //    navigate among visible matching rows, not among hidden ones.
 //
+//  Live tabs (session 157):
+//    A search covers the rows that were there when it ran. Traffic arriving
+//    afterwards is not searched and starts no scan: matches stay where they
+//    were and Next / Previous walk them. Typing or changing an option runs
+//    the search again, over whatever has arrived by then. Before this, every
+//    batch restarted the 200 ms debounce, so under steady traffic the search
+//    the operator typed waited for a gap in the packets.
+//
 //  Per-tab:
 //    Each tab gets its own FindBar instance. Find state (last query, last
 //    match) is local to the tab. This matches what users expect from
@@ -210,26 +218,12 @@ private:
     bool    m_lastScanWasCapped = false;
     bool    m_scanDirty         = true;
 
-    // Rows arrived at the END since the last scan, and nothing else moved.
-    //
-    // Distinct from m_scanDirty, which means "row numbers changed, throw the
-    // answer away". An append renumbers nothing: every row already scanned
-    // keeps its number and its verdict, so the matches found so far are
-    // still true and only the tail is unknown. Live traffic is almost
-    // entirely this case, and treating it as dirty is what made Find slow
-    // while packets were coming in and fast the moment they stopped.
-    bool    m_scanAppendOnly    = false;
-
-    // The box's text exactly as typed, kept beside m_scanText (which holds
-    // the DECODED pattern and is empty in Regex and Hex).
-    //
-    // Appending needs only "is this the same search", which the raw text
-    // answers for every mode. Narrowing needs the decoded plain text,
-    // because it rests on one pattern containing another. Comparing the
-    // decoded form for both would have quietly excluded Regex and Hex from
-    // the append path — the two modes with the most expensive per-row test,
-    // and so the two that need it most.
-    QString m_scanRawText;
+    // Session 157: a search covers the rows present when it ran. Rows that
+    // arrive afterwards are not searched until the search is run again
+    // (typing, or changing an option); rows inserted or removed underneath
+    // only move the matches' row numbers, without a rescan.
+    void onRowsInserted(const QModelIndex &parent, int first, int last);
+    void onRowsRemoved(const QModelIndex &parent, int first, int last);
 
     // Re-point the model-change connections at whatever the view is showing
     // now. See the comment on the definition: a compare pane swaps its model

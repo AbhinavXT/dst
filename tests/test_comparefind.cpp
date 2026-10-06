@@ -143,8 +143,13 @@ TEST_SUITE(comparefind)
 
     m21->appendEntries({ mk(QStringLiteral("STN_ID 9 upcoming"), 4000) });
     QTest::qWait(400);
+    CHECK(bar->matchCount() == 2,
+          "a message arriving after the search waits for the next search (session 157)");
+    bar->setSearchText(QString());
+    bar->setSearchText(QStringLiteral("STN_ID"));
+    QTest::qWait(250);
     CHECK(bar->matchCount() == 3,
-          "a message arriving in the pane is picked up without retyping");
+          "searching again in the pane covers it: the bar follows the pane's model");
 
     // ---- switching the pane's source -----------------------------------------
     //

@@ -17,7 +17,13 @@ DEFINES += QT_NO_DEBUG_OUTPUT QT_DEPRECATED_WARNINGS
 # so it is a LINK error on Windows (the first Windows build since patch 88
 # stopped on exactly that, for LogEntry). An error here, so a Mac or Linux
 # build catches it before Windows does.
-clang|*-g++*|*g++: QMAKE_CXXFLAGS += -Werror=mismatched-tags
+#  GCC only has -Wmismatched-tags from GCC 10; older ones (Qt 5.15's MinGW
+#  8.1) reject -Werror=<unknown> outright, so the flag is left off there.
+clang {
+    QMAKE_CXXFLAGS += -Werror=mismatched-tags
+} else:*-g++*|*g++ {
+    greaterThan(QMAKE_GCC_MAJOR_VERSION, 9): QMAKE_CXXFLAGS += -Werror=mismatched-tags
+}
 
 # Session 116: the sources are UTF-8 (\u25B8 menu paths, \u2014 dashes,
 # \u25CF status glyphs, \u26A0 and \u2715 in labels). Without /utf-8, MSVC reads

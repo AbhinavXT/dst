@@ -1457,8 +1457,17 @@ void FieldPlotWindow::updateButtonText()
 
 void FieldPlotWindow::fillPacketMenu(QMenu *menu, bool adding)
 {
-    menu->clear();
-    qDeleteAll(menu->findChildren<QMenu *>(QString(), Qt::FindDirectChildrenOnly));
+    // Session 157: this runs from a field's own triggered() (choose(), and
+    // addField()), while the submenu that holds that action is still
+    // delivering the click. Deleting them here -- clear(), qDeleteAll -- freed
+    // the menu under QMenu's feet and crashed the console on every pick.
+    // They are taken off now and freed once the click has finished.
+    for (QAction *a : menu->actions()) {
+        menu->removeAction(a);
+        if (a->parent() == menu) a->deleteLater();
+    }
+    for (QMenu *old : menu->findChildren<QMenu *>(QString(), Qt::FindDirectChildrenOnly))
+        old->deleteLater();
     if (m_catalogue.isEmpty()) {
         QAction *none = menu->addAction(tr("(no decodable packets in this tab)"));
         none->setEnabled(false);

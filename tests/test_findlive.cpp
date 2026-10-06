@@ -17,18 +17,11 @@
 //  Reported from the field: with packets coming in, Find crawled — and the
 //  moment the ethernet cable came out it was instant again.
 //
-//  The cause was that EVERY model change was treated as a renumbering. It is
-//  true of a filter change, a re-sort or a row falling off the front, and it
-//  is the reason narrowing has to be given up in those cases. It is NOT true
-//  of an append, which is what live traffic does: rows land at the end, every
-//  row already scanned keeps its number, and its verdict with it. Treating
-//  that as dirty meant a full scan of the whole tab for every batch that
-//  arrived, so cost grew with the square of the session while it ran, and
-//  dropped to nothing the instant it stopped.
-//
-//  What is worth testing is that the tail scan gives the SAME answer as a
-//  full one — a faster search that is wrong is not a faster search — and
-//  that it really is a tail scan and not a full one wearing a hat.
+//  Session 157: every arriving batch restarted the 200 ms debounce timer, so
+//  under steady traffic the search the operator had typed waited for a gap
+//  in the packets. Now a search covers the rows present when it ran: rows
+//  arriving afterwards start no scan and are not searched until the search
+//  is run again; rows falling off the front only renumber the matches.
 // =============================================================================
 
 namespace {
@@ -83,30 +76,29 @@ TEST_SUITE(findlivetraffic)
 
     // ---- traffic arrives ---------------------------------------------------
     //
-    // Appended, which is what a live source does. The two hits already found
-    // are still hits and still at rows 0 and 2.
+    // The search covers the rows that were there when it ran. New rows are
+    // not searched, and the matches already found stay where they are.
     model.appendEntries({
         mk(QStringLiteral("more quiet"),         4000),  // 3
-        mk(QStringLiteral("STN_ID 9 upcoming"),  5000),  // 4  hit
+        mk(QStringLiteral("STN_ID 9 upcoming"),  5000),  // 4  hit, not searched
     });
     settle();
+    CHECK(bar.matchRows() == (QVector<int>{ 0, 2 }),
+          "a row arriving after the search is not searched");
 
-    CHECK(bar.matchRows() == (QVector<int>{ 0, 2, 4 }),
-          "the new row is found and the old ones are kept, in row order");
-
-    // Several batches without a search change — the live case, repeated.
     for (int i = 0; i < 5; ++i) {
         model.appendEntries({ mk(QStringLiteral("STN_ID batch"), 6000 + i * 10) });
     }
     settle();
-    CHECK(bar.matchRows().size() == 8,
-          "every batch adds its hits");
+    CHECK(bar.matchRows() == (QVector<int>{ 0, 2 }),
+          "nor are several batches of them");
 
-    // ---- the tail scan agrees with a full one ------------------------------
-    //
-    // The real risk of an incremental scan is a subtly different answer, so
-    // the same model is searched from scratch by a second bar that never saw
-    // the appends and has nothing to reuse.
+    // ---- running the search again covers what has arrived ------------------
+    edit->setText(QString());
+    edit->setText(QStringLiteral("STN_ID"));
+    settle();
+    CHECK(bar.matchRows() == (QVector<int>{ 0, 2, 4, 5, 6, 7, 8, 9 }),
+          "searching again covers every row there now");
     {
         QTableView fresh;
         fresh.setModel(&proxy);
@@ -117,25 +109,26 @@ TEST_SUITE(findlivetraffic)
             cold.findChild<QueryLineEdit *>(QStringLiteral("findEdit"));
         coldEdit->setText(QStringLiteral("STN_ID"));
         settle();
-
         CHECK(cold.matchRows() == bar.matchRows(),
-              "a bar that scanned the whole model in one go agrees exactly "
-              "with the one that scanned it in pieces");
+              "and agrees exactly with a bar that never saw the traffic");
     }
 
-    // ---- changing the search still rescans everything ----------------------
+    // ---- a search typed while traffic flows still runs ---------------------
     //
-    // The append path is only sound for the SAME search. A different one has
-    // to look at the rows it never asked about.
+    // The field report itself: batches every 50 ms used to restart the
+    // 200 ms debounce forever, so the typed search never ran.
     {
         edit->setText(QStringLiteral("quiet"));
-        settle();
+        for (int i = 0; i < 12; ++i) {
+            model.appendEntries({ mk(QStringLiteral("noise"), 10000 + i) });
+            QTest::qWait(50);
+        }
         CHECK(bar.matchRows() == (QVector<int>{ 1, 3 }),
-              "a new pattern is answered from the whole model, including the "
-              "rows the previous search had already dismissed");
+              "a search typed during steady traffic runs 200 ms after typing, "
+              "not after the traffic stops");
     }
 
-    // ---- and so does a change that really does renumber --------------------
+    // ---- a change that really does renumber --------------------------------
     //
     // A filter is the case the dirty flag exists for: row 2 of the proxy is
     // a different message afterwards, so nothing carried over would be true.
@@ -157,7 +150,6 @@ TEST_SUITE(findlivetraffic)
               "after a filter every match row is a row that still exists — "
               "carrying the old numbers across would point at other messages");
 
-        // And they are the right rows, not merely valid ones.
         bool allMatch = true;
         for (int r : after) {
             const QString cell =
@@ -170,12 +162,7 @@ TEST_SUITE(findlivetraffic)
         settle();
     }
 
-    // ---- regex and hex are not excluded ------------------------------------
-    //
-    // Appending needs only "is this the same search", which is true of every
-    // mode. Deciding it on the DECODED pattern would have quietly excluded
-    // Regex and Hex, whose decoded text is empty — the two modes with the
-    // costliest per-row test, and so the two that need this most.
+    // ---- regex too ---------------------------------------------------------
     {
         auto *modeBox = bar.findChild<QComboBox *>(QStringLiteral("findModeBox"));
         CHECK(modeBox != nullptr, "the bar has a mode selector");
@@ -186,10 +173,49 @@ TEST_SUITE(findlivetraffic)
             const int before = bar.matchRows().size();
             CHECK(before > 0, "the regex matches something");
 
-            model.appendEntries({ mk(QStringLiteral("STN_ID 42 upcoming"), 9000) });
+            model.appendEntries({ mk(QStringLiteral("STN_ID 42 upcoming"), 90000) });
             settle();
-            CHECK(bar.matchRows().size() == before + 1,
-                  "and a row arriving under a regex search is picked up too");
+            CHECK(bar.matchRows().size() == before,
+                  "a row arriving under a regex search waits for the next search");
+            modeBox->setCurrentIndex(modeBox->findData(int(FindBar::Mode::Text)));
         }
     }
+}
+
+// Rows falling off the front (the tab at its capacity) renumber the matches
+// without a rescan: the rest keep pointing at the same messages, and the
+// cursor stays on its message.
+TEST_SUITE(findliveeviction)
+{
+    LogModel model(nullptr, 10);         // trims 1 row (10%) per overflow
+    QSortFilterProxyModel proxy;
+    proxy.setSourceModel(&model);
+    QTableView view;
+    view.setModel(&proxy);
+    view.show();
+
+    FindBar bar(&view);
+    bar.activate();
+    auto *edit = bar.findChild<QueryLineEdit *>(QStringLiteral("findEdit"));
+
+    QVector<LogEntryPtr> rows;
+    for (int i = 0; i < 10; ++i)
+        rows << mk(i % 3 == 0 ? QStringLiteral("STN_ID %1").arg(i) : QStringLiteral("quiet"), 1000 + i);
+    model.appendEntries(rows);                         // hits at 0, 3, 6, 9
+    edit->setText(QStringLiteral("STN_ID"));
+    settle();
+    CHECK(bar.matchRows() == (QVector<int>{ 0, 3, 6, 9 }), "four hits");
+    CHECK(bar.matchCursor() == 0, "on the first");
+
+    model.appendEntries({ mk(QStringLiteral("STN_ID new"), 5000) });   // row 0 evicted
+    settle();
+    CHECK(bar.matchRows() == (QVector<int>{ 2, 5, 8 }),
+          "the evicted hit is gone and the others moved up one row, not rescanned "
+          "(the new row is not searched)");
+    CHECK(bar.matchCursor() == 0, "the cursor moved to the next hit");
+    bool same = true;
+    for (int r : bar.matchRows())
+        if (!proxy.data(proxy.index(r, LogModel::ColMessage)).toString().contains(QStringLiteral("STN_ID")))
+            same = false;
+    CHECK(same, "each match row is still a matching message");
 }

@@ -1,6 +1,7 @@
 #include "messageheader.h"
 
 #include <QJsonObject>
+#include <QStringList>
 
 namespace MessageHeader {
 

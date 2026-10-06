@@ -11,6 +11,79 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-157"></a>
+## Session 157 — Qt 5 / MinGW build; Find searches what was there; plot menu
+
+### 1. The build on Qt 5.15 with MinGW
+
+- **`CM_DRP_LOCATION_PATHS` not declared** (`serialportscan.cpp`, from
+  patch 156). Qt 5.15's MinGW 8.1 defaults `_WIN32_WINNT` to 0x0502 (XP),
+  and its `cfgmgr32.h` then leaves this Vista-era property out. Defined
+  as its fixed value (0x24) when the header lacks it.
+- **`-Werror=mismatched-tags` rejected.** GCC has `-Wmismatched-tags` only
+  from GCC 10; older ones refuse `-Werror=` of an unknown warning outright.
+  `core/core.pro` now adds it for clang always and for GCC only from 10.
+- `messageheader.cpp` includes `<QStringList>` itself.
+
+### 2. Find on a live tab searches what was there when it ran
+
+- **Cause.** Every arriving batch restarted Find's 200 ms debounce. Under
+  steady traffic the timer never fired, so the search the operator typed
+  waited for a gap in the packets: slow with the cable in, instant with
+  it out.
+- **Now** a search covers the rows present when it ran. Arriving rows
+  start no scan and are not searched until the search is run again
+  (typing, or changing an option). Rows falling off the front only
+  renumber the matches; the current match stays on its message, or moves
+  to the next if its row is gone. A filter, a re-sort or a reset still
+  rescans, keeping position.
+- The append-only tail scan is gone: nothing sets it now.
+
+### 3. Plot field over time: the field menu is not deleted mid-click
+
+Reported: choosing any field crashed the console. **Not reproduced here**,
+on Qt 5.15 or Qt 6.11, offscreen, with AddressSanitizer, through the real
+MainWindow and popup menus (28 fields, 14 packet types). One hazard was
+found and removed: choosing a field rebuilt the field menu from inside the
+click, deleting the submenu and action still delivering it. They are now
+detached at once and freed with `deleteLater()`. Whether this was the
+reported crash is **not confirmed**.
+
+### Files
+
+`core/core.pro`, `serialportscan.cpp`, `messageheader.cpp`, `findbar.h`,
+`findbar.cpp`, `fieldplot.cpp`; tests `test_findlive.cpp`,
+`test_comparefind.cpp`, new `test_session157.cpp`, `tests.pro`.
+
+### Tests
+
+- `findlivetraffic` / `test_comparefind`: arriving rows are not searched;
+  searching again covers them and agrees with a cold bar. A search typed
+  while batches arrive every 50 ms runs (the field report).
+- `findliveeviction` (new): an evicted hit drops out, the others move up a
+  row, the cursor moves to the next hit, every match is still a match.
+- `session157` (new): fields clicked in the real popup menus, Field and
+  Add, on `replay/loco_1_1_26062026_162418.cap`.
+
+**Gate** (macOS):
+- Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests` **207 suites /
+  6035 checks, 1 failed**; menu audit passed; headless smoke 500
+  datagrams, alive.
+- The one failure is `session156` "then it is open, as before", on macOS
+  only: DTR/RTS set on a pty reports ENOTTY, and that error overwrites the
+  "open" status after an async open. Patch 156's Linux gate had it green.
+  Not fixed here.
+
+### Not tested
+
+- The MinGW and GCC < 10 fixes were not compiled with MinGW or old GCC
+  (none here); the Windows CI job is MSVC.
+- The plot crash was not reproduced; Qt 6.12 (the Qt Creator kit) and
+  Windows were not tried.
+
+
+---
+
 <a id="session-156"></a>
 ## Session 156 — Serial: the right card after a reconnect; no GUI stalls
 

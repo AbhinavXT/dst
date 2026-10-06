@@ -98,20 +98,18 @@ FindBar::FindBar(QTableView *view, QWidget *parent)
     auto *escSc = new QShortcut(QKeySequence(Qt::Key_Escape), this);
     connect(escSc, &QShortcut::activated, this, &FindBar::close);
 
-    // Debounce timer for typing AND for model-change rebuilds. A burst
-    // of model inserts (e.g. dispatcher batch with 100 entries) would
-    // otherwise trigger one scan per insert. With a 200ms single-shot
-    // timer, the scan runs once after the burst settles.
+    // Debounce timer for typing AND for rebuilds after a filter, re-sort or
+    // reset. With a 200ms single-shot timer, the scan runs once after the
+    // burst settles. Arriving rows never start it (session 157).
     m_debounce = new QTimer(this);
     m_debounce->setSingleShot(true);
     m_debounce->setInterval(200);
     connect(m_debounce, &QTimer::timeout, this, [this]() {
         // Two very different reasons land on the same timer, and they must
         // not behave the same way. Typing means "show me the first match".
-        // A hundred new rows arriving means "nothing about my position
-        // changed" — re-scanning is required (the row numbers moved), but
-        // jumping is not, and jumping is what made a live tab unusable
-        // with Find open.
+        // A filter or a re-sort means "nothing about my position changed" —
+        // re-scanning is required (the row numbers moved), but jumping is
+        // not.
         if (m_userRescan) {
             m_userRescan = false;
             rebuildMatches();
@@ -120,10 +118,9 @@ FindBar::FindBar(QTableView *view, QWidget *parent)
         }
     });
 
-    // If the proxy model's row set changes (filter applied, new entries
-    // arrive), schedule a rebuild via the debounce timer rather than
-    // running it immediately. A typing user + a chatty source would
-    // otherwise cause continuous scans.
+    // A filter, a re-sort or a reset schedules a rebuild via the debounce
+    // timer. Rows arriving do not: a search covers the rows present when it
+    // ran (session 157, see onRowsInserted).
     ensureModelWiring();
 
     m_building = false;
@@ -923,36 +920,66 @@ void FindBar::ensureModelWiring()
         // must be a full one: narrowing rescans only the PREVIOUS match
         // rows, which is only sound while the rows underneath hold still.
         m_scanDirty = true;
-        m_scanAppendOnly = false;
         if (isVisible()) m_debounce->start();
     };
 
-    // Inserts are the one model change that is usually NOT a renumbering.
-    //
-    // Traffic appends: rows land at the end, and every row already scanned
-    // keeps both its number and its verdict. Treating that as dirty meant a
-    // full scan of the whole model for every batch that arrived — which is
-    // why Find crawled on a live tab and went instant the moment the cable
-    // came out. Only the tail is actually unknown.
-    auto scheduleInsert = [this](const QModelIndex &parent, int first, int) {
-        const bool appendedAtEnd = !parent.isValid()
-                                   && m_lastScanRowsTotal >= 0
-                                   && first >= m_lastScanRowsTotal;
-        // A capped scan never reached the end, so "past what we scanned" is
-        // not the same as "past what exists" and the tail cannot be trusted.
-        if (appendedAtEnd && !m_lastScanWasCapped && !m_scanDirty) {
-            m_scanAppendOnly = true;
-        } else {
-            m_scanDirty = true;
-            m_scanAppendOnly = false;
-        }
-        if (isVisible()) m_debounce->start();
-    };
-
-    m_modelConns << connect(m, &QAbstractItemModel::rowsInserted,  this, scheduleInsert);
-    m_modelConns << connect(m, &QAbstractItemModel::rowsRemoved,   this, scheduleRebuild);
+    // Rows arriving or falling off the front (session 157) start no scan and
+    // do not touch the debounce: under steady traffic a restarted timer
+    // never fired, and the search the operator typed waited for a gap in
+    // the packets. They only move the row numbers of the matches.
+    m_modelConns << connect(m, &QAbstractItemModel::rowsInserted,  this, &FindBar::onRowsInserted);
+    m_modelConns << connect(m, &QAbstractItemModel::rowsRemoved,   this, &FindBar::onRowsRemoved);
     m_modelConns << connect(m, &QAbstractItemModel::modelReset,    this, scheduleRebuild);
     m_modelConns << connect(m, &QAbstractItemModel::layoutChanged, this, scheduleRebuild);
+}
+
+void FindBar::onRowsInserted(const QModelIndex &parent, int first, int last)
+{
+    if (parent.isValid()) { return; }
+    const int n = last - first + 1;
+    // Appended at the end, which is what traffic does: nothing searched moved,
+    // and the new rows wait for the next search. Inserted among searched rows
+    // (a filter letting a row back in, a sorted view): the matches below move
+    // down, and the unsearched row in the middle means the next search cannot
+    // be a narrowing of this one.
+    for (int &r : m_matches) {
+        if (r >= first) { r += n; }
+    }
+    if (m_lastScanRowsTotal >= 0 && first < m_lastScanRowsTotal) {
+        m_lastScanRowsTotal += n;
+        m_scanDirty = true;
+    }
+}
+
+void FindBar::onRowsRemoved(const QModelIndex &parent, int first, int last)
+{
+    if (parent.isValid()) { return; }
+    const int n = last - first + 1;
+    if (m_lastScanRowsTotal > first) {
+        m_lastScanRowsTotal -= qMin(last + 1, m_lastScanRowsTotal) - first;
+    }
+    if (m_matches.isEmpty()) { return; }
+
+    // The rest are still matches; only their numbers change. The cursor
+    // stays on its row, or on the next match if its row is the one gone.
+    QVector<int> kept;
+    kept.reserve(m_matches.size());
+    int cursor = -1;
+    for (int i = 0; i < m_matches.size(); ++i) {
+        const int r = m_matches[i];
+        if (i == m_cursor) { cursor = kept.size(); }
+        if (r >= first && r <= last) { continue; }
+        kept.append(r > last ? r - n : r);
+    }
+    if (kept.size() == m_matches.size()) {
+        m_matches = kept;
+        return;
+    }
+    m_matches = kept;
+    m_cursor = m_matches.isEmpty() ? -1 : qMin(cursor, m_matches.size() - 1);
+    publishHits();            // the removed entries must not stay tinted
+    updateCountLabel();
+    refreshHold();
 }
 
 void FindBar::scanMatches()
@@ -966,13 +993,8 @@ void FindBar::scanMatches()
     const bool         previousCs   = m_scanCase;
     const int          previousCol  = m_scanColumn;
     const bool         wasDirty     = m_scanDirty;
-    const bool         wasAppend    = m_scanAppendOnly;
-    const QString      previousRaw  = m_scanRawText;
-    const int          previousRows = m_lastScanRowsTotal;
     m_scanDirty = false;
-    m_scanAppendOnly = false;
     m_scanText.clear();
-    m_scanRawText.clear();
 
     m_matches.clear();
     m_lastScanCapped = false;
@@ -1153,7 +1175,6 @@ void FindBar::scanMatches()
 
     // Remembered for the NEXT scan's decision, whichever way this one goes.
     m_scanText   = plain;
-    m_scanRawText = text;
     m_scanMode   = md;
     m_scanCase   = (cs == Qt::CaseSensitive);
     m_scanColumn = colSel;
@@ -1170,40 +1191,7 @@ void FindBar::scanMatches()
         return;
     }
 
-    // ---- or a tail scan rather than a full one? ---------------------------
-    //
-    // The other half of the same idea, for the other axis. Narrowing above
-    // handles the pattern getting LONGER over the same rows; this handles
-    // the rows getting MORE under the same pattern. Rows [0, previousRows)
-    // were scanned already and have not moved, so their verdicts stand and
-    // only [previousRows, scanLimit) is unknown.
-    //
-    // This is the live case. Without it, a source sending steadily meant a
-    // full scan of every row in the tab for every batch that arrived, and
-    // Find became usable again only when the traffic stopped.
-    //
-    // The same question as narrowing, asked of the search rather than the
-    // rows: it must be the SAME search, or the old verdicts answer a
-    // different one.
-    const bool canAppend =
-        !wasDirty
-        && wasAppend
-        && !previousRaw.isEmpty()
-        && text == previousRaw
-        && md == previousMode
-        && (cs == Qt::CaseSensitive) == previousCs
-        && colSel == previousCol
-        && previousRows >= 0
-        && previousRows <= scanLimit
-        && !m_lastScanWasCapped;
-
-    if (canAppend) {
-        m_matches = previous;
-        m_matches.reserve(previous.size() + (scanLimit - previousRows));
-    }
-    const int scanFrom = canAppend ? previousRows : 0;
-
-    for (int r = scanFrom; r < scanLimit; ++r) {
+    for (int r = 0; r < scanLimit; ++r) {
         bool hit = false;
 
         if (needsEntry) {
