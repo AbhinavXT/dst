@@ -11,6 +11,49 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-159"></a>
+## Session 159 — Loco Configuration: compare two configurations
+
+- **Manage ▸ Compare configurations…** Pick A and B (A starts as the
+  configuration open in the editor, B as the next one). The table lists
+  the fields whose values differ, A beside B, with each field's group,
+  formatted as the editor shows them (hex, dotted IPv4). **Show all
+  fields** lists the rest too, the differing ones bold and marked ●.
+- **Swap** exchanges A and B; **Copy** puts the table on the clipboard as
+  tab-separated text, headed by the two names, with the summary line.
+- The summary: "N of M fields differ", or "All M fields are the same: …
+  send the same bytes", or "A and B are the same configuration".
+- A field locked in either configuration says so in its tooltip.
+- Scope (decided with Abhinav): configuration against configuration only.
+  Send targets and what was last sent are not compared (this PC's, not
+  the loco's). The open configuration is saved first, so it is compared
+  as it is on screen.
+
+### Files
+
+New `lococonfig/lococonfigcomparedialog.{h,cpp}`; `lococonfig/lococonfig.pri`,
+`lococonfig/lococonfigwindow.{h,cpp}`; tests `test_session159.cpp` (new),
+`tests.pro`.
+
+### Tests
+
+`session159`: loco 9 duplicated from loco 7 with its own unit id and
+vcc_crc (values from the real `loco_defaults.json`): exactly those two
+listed, hex as in the editor; Show all lists every field but the CRC;
+identical and same-name pairs are said as such; Copy keeps the A/B order;
+the Manage menu has the item.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**212 suites / 6103 checks, 1 failed** (the macOS-only `session156` pty
+check, as in 157/158); menu audit 168 checks, passed; headless smoke 500
+datagrams, alive.
+
+### Not tested
+
+The dialog's look was not checked by eye or screenshot.
+
+---
+
 <a id="session-158"></a>
 ## Session 158 — Show on DMI; icons follow the theme; vcc_crc in the send box; locked fields
 

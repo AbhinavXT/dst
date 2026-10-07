@@ -12,12 +12,14 @@ SOURCES += \
     $$PWD/lococonfigcore.cpp \
     $$PWD/lococonfigmodel.cpp \
     $$PWD/lococonfighistorydialog.cpp \
+    $$PWD/lococonfigcomparedialog.cpp \
     $$PWD/lococonfigwindow.cpp
 
 HEADERS += \
     $$PWD/lococonfigcore.h \
     $$PWD/lococonfigmodel.h \
     $$PWD/lococonfighistorydialog.h \
+    $$PWD/lococonfigcomparedialog.h \
     $$PWD/lococonfigwindow.h
 
 RESOURCES += \

@@ -140,6 +140,7 @@ private slots:
     void importConfigsDialog();
     void exportBin();
     void resetToDefaults();
+    void compareConfigs();
     void openHistory();
 
 private:

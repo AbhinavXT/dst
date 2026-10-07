@@ -6,6 +6,7 @@
 
 #include "flasherstyle.h"
 #include "lococonfighistorydialog.h"
+#include "lococonfigcomparedialog.h"
 #include "lococonfigmodel.h"
 #include "settings.h"
 #include "statusline.h"
@@ -234,6 +235,9 @@ QWidget *LocoConfigWindow::buildAppBar()
     menu->addAction(tr("Delete…"), this, &LocoConfigWindow::deleteConfig);
     menu->addSeparator();
     menu->addAction(tr("Import loco_info.bin…"), this, &LocoConfigWindow::importBin);
+    menu->addSeparator();
+    // Session 159: two configurations' values, side by side.
+    menu->addAction(tr("Compare configurations…"), this, &LocoConfigWindow::compareConfigs);
     menu->addSeparator();
     // Session 94: to and from another PC.
     menu->addAction(tr("Export configurations…"), this, &LocoConfigWindow::exportConfigsDialog);
@@ -801,6 +805,16 @@ void LocoConfigWindow::deleteConfig()
         return true;
     });
     m_status->say(tr("Deleted \"%1\". Ctrl+Z brings it back.").arg(removed.name));
+}
+
+void LocoConfigWindow::compareConfigs()
+{
+    // Saved first, so the open configuration is compared as it is on screen.
+    if (m_saveTimer.isActive()) {
+        saveNow();
+    }
+    LocoConfigCompareDialog dialog(&m_layout, &m_presentation, m_store->all(), m_config.name, this);
+    dialog.exec();
 }
 
 void LocoConfigWindow::resetToDefaults()
