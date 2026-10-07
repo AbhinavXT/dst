@@ -1,4 +1,5 @@
 #include "watchpanel.h"
+#include "watchrules.h"
 #include "undolog.h"
 
 #include <QPointer>
@@ -18,6 +19,7 @@
 #include <QPushButton>
 #include <QTableWidget>
 #include <QTimer>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 namespace {
@@ -69,6 +71,21 @@ WatchPanel::WatchPanel(QWidget *parent)
     m_addBtn = new QPushButton(tr("Watch"), this);
     m_addBtn->setObjectName(QStringLiteral("watchAddBtn"));
     row->addWidget(m_addBtn);
+
+    // Session 161: named Kavach conditions, ticked on rather than written.
+    m_readyBtn = new QToolButton(this);
+    m_readyBtn->setObjectName(QStringLiteral("watchReadyMade"));
+    m_readyBtn->setText(tr("Ready-made"));
+    m_readyBtn->setToolTip(tr("EB, FSB, SoS, TSR, modes, CRC: tick one to watch for it. Each is an ordinary "
+                              "watch; its condition is shown in the list."));
+    m_readyBtn->setPopupMode(QToolButton::InstantPopup);
+    m_readyMenu = new QMenu(m_readyBtn);
+    m_readyMenu->setObjectName(QStringLiteral("watchReadyMadeMenu"));
+    m_readyMenu->setToolTipsVisible(true);
+    m_readyBtn->setMenu(m_readyMenu);
+    connect(m_readyMenu, &QMenu::aboutToShow, this, &WatchPanel::fillReadyMenu);
+    fillReadyMenu();
+    row->addWidget(m_readyBtn);
     root->addLayout(row);
 
     m_table = new QTableWidget(0, ColCount, this);
@@ -143,6 +160,70 @@ WatchPanel::WatchPanel(QWidget *parent)
     m_tick->setInterval(1000);
     connect(m_tick, &QTimer::timeout, this, &WatchPanel::refresh);
     m_tick->start();
+}
+
+int WatchPanel::indexOfExpr(const QString &expr) const
+{
+    for (int i = 0; i < m_list.count(); ++i) {
+        if (m_list.watches().at(i).expr == expr) return i;
+    }
+    return -1;
+}
+
+void WatchPanel::fillReadyMenu()
+{
+    // Rebuilt each time it opens: a rule's tick follows the list, which the
+    // operator may have changed by hand (Remove, or the same query typed).
+    m_readyMenu->clear();
+    for (const WatchRule &r : WatchRules::all()) {
+        QAction *a = m_readyMenu->addAction(r.label);
+        a->setObjectName(QStringLiteral("watchRule_%1").arg(r.id));
+        a->setCheckable(true);
+        a->setChecked(indexOfExpr(r.expr) >= 0);
+        a->setToolTip(r.why + QStringLiteral("\n") + r.expr);
+        const QString id = r.id;
+        connect(a, &QAction::toggled, this, [this, id](bool on) { setRuleOn(id, on); });
+    }
+    m_readyMenu->addSeparator();
+    QAction *note = m_readyMenu->addAction(tr("Mode changes and frame age: not a condition on one frame"));
+    note->setEnabled(false);
+    note->setToolTip(tr("A watch looks at one frame. A mode change needs the frame before it; a frame's age "
+                        "needs its arrival time against FRAME_NUM. The Run summary report lists mode changes."));
+}
+
+bool WatchPanel::ruleOn(const QString &id) const
+{
+    const WatchRule *r = WatchRules::byId(id);
+    return r && indexOfExpr(r->expr) >= 0;
+}
+
+bool WatchPanel::setRuleOn(const QString &id, bool on)
+{
+    const WatchRule *r = WatchRules::byId(id);
+    if (!r || ruleOn(id) == on) return false;
+    if (on) {
+        m_list.add(r->expr, r->label);
+        m_status->ok(tr("Watching for %1.").arg(r->label));
+    } else {
+        const QStringList before = m_list.toStrings();
+        m_list.remove(indexOfExpr(r->expr));
+        if (m_undo) {
+            QPointer<WatchPanel> self(this);
+            m_undo->push(tr("Remove watch %1").arg(r->label), [self, before]() {
+                if (!self) { return false; }
+                self->m_list.fromStrings(before);
+                self->persist();
+                self->refresh();
+                return true;
+            });
+            m_status->say(tr("Stopped watching for %1. Ctrl+Z puts it back.").arg(r->label));
+        } else {
+            m_status->say(tr("Stopped watching for %1.").arg(r->label));
+        }
+    }
+    persist();
+    refresh();
+    return true;
 }
 
 void WatchPanel::addWatch()

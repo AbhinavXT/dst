@@ -11,6 +11,66 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-161"></a>
+## Session 161 — Watch panel: ready-made watches
+
+- **Ready-made ▾** beside *Watch*: named Kavach conditions to tick on
+  instead of writing the query. Each one becomes an ordinary watch (named,
+  its condition in the list, beep / bookmark / every-time as usual,
+  saved like any other). Unticking removes it (Ctrl+Z puts it back). A
+  watch typed by hand with the same condition shows the rule ticked.
+- The rules (`watchrules.cpp`), each defined the way the console already
+  counts the same thing elsewhere:
+
+| Rule | Condition | As in |
+|---|---|---|
+| EB applied | `@dmi field:brake_type=4` | incident report EB episodes |
+| FSB applied | `@dmi field:brake_type=3` | incident report FSB episodes |
+| SoS | `@lsos` | two-loco view SoS events |
+| TSR acted on | `field:TSR_STATUS=2` | TSR entries act only at 2 |
+| Trip / System failure / Isolation mode | `field:LOCO_MODE=7` / `12` / `13` | locoMode enum |
+| CRC failed (DMI, RFID) | `(@dmi OR @rfid) field:CRC~FAIL` | the decoder's CRC row |
+
+- **Two that were offered and are not here.** A watch is a condition on
+  one frame. A *mode change* needs the frame before it, and *frame too
+  old / too early* needs the arrival time against FRAME_NUM. Neither is
+  imitated; the menu says so in a disabled line (the Run summary report
+  lists mode changes).
+- **CRC is DMI and RFID only.** Every recorded `@ccsys` (2,092) and
+  `@dlsys` (1,050) frame fails its CRC check, as the Packet Maker round
+  trip already noted. A watch there would fire on every frame and say
+  nothing until that question is settled.
+
+### Files
+
+New `watchrules.{h,cpp}` (in `dlcore.pri`); `watchpanel.{h,cpp}`; tests
+`test_session161.cpp` (new), `tests.pro`.
+
+### Tests
+
+- `session161rules`: every rule parses. Captures from `replay/` go
+  through the real dispatcher until each rule real frames can show has
+  been seen; each rule's match count must equal a count taken from the
+  decoder's own rendered rows: EB 767, FSB 40, Trip 717, System failure
+  44, CRC 2 (the two RFID tags recorded with a zero CRC). All equal.
+- `session161panel`: the button and menu; ticking adds one named watch
+  with the exact condition, saved; ticking twice adds nothing; a
+  hand-typed equal condition shows ticked; unticking removes only that
+  watch; the note on what a watch cannot do is there.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**215 suites / 6152 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit 168 checks, passed; headless smoke 500 datagrams, alive.
+
+### Not tested
+
+- **SoS, TSR acted on, Isolation**: no capture in `replay/` has an
+  `@lsos` frame, a TSR sub-packet, or LOCO_MODE 13. Their conditions parse
+  (the query refuses unknown field names), but no real frame shows they
+  match. Worth checking on the first capture that has one.
+
+---
+
 <a id="session-160"></a>
 ## Session 160 — DMI window: two locos side by side
 

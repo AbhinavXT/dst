@@ -17,6 +17,7 @@ class NameMap;
 class QLineEdit;
 class QPushButton;
 class QTableWidget;
+class QMenu;
 class QTimer;
 class QueryLineEdit;
 class StatusLine;
@@ -44,6 +45,13 @@ public:
     bool setActions(int index, bool beep, bool bookmark, bool everyTime);
     const WatchList &list() const { return m_list; }
 
+    // Session 161: a ready-made watch (watchrules.h) on or off. On adds it
+    // as an ordinary watch (once); off removes it, with undo. False when
+    // nothing changed or the id is unknown.
+    bool setRuleOn(const QString &id, bool on);
+    bool ruleOn(const QString &id) const;
+    QMenu *readyMadeMenu() const { return m_readyMenu; }
+
 signals:
     // A watch fired. The owner announces it — this panel may be behind
     // another window, which is exactly when a watch matters most.
@@ -69,6 +77,10 @@ private:
     QueryLineEdit *m_expr    = nullptr;
     QLineEdit     *m_label   = nullptr;
     QPushButton   *m_addBtn  = nullptr;
+    class QToolButton *m_readyBtn = nullptr;
+    QMenu         *m_readyMenu = nullptr;
+    void           fillReadyMenu();
+    int            indexOfExpr(const QString &expr) const;
     QPushButton   *m_delBtn  = nullptr;
     QPushButton   *m_armBtn  = nullptr;
     QTableWidget  *m_table   = nullptr;

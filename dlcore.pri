@@ -118,6 +118,7 @@ SOURCES += \
     $$PWD/emptystate.cpp \
     $$PWD/watchpanel.cpp \
     $$PWD/watchlist.cpp \
+    $$PWD/watchrules.cpp \
     $$PWD/pinboard.cpp \
     $$PWD/pinpanel.cpp \
     $$PWD/frameclock.cpp \
@@ -238,6 +239,7 @@ HEADERS += \
     $$PWD/emptystate.h \
     $$PWD/watchpanel.h \
     $$PWD/watchlist.h \
+    $$PWD/watchrules.h \
     $$PWD/pinboard.h \
     $$PWD/pinpanel.h \
     $$PWD/frameclock.h \
