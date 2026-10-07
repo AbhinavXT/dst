@@ -202,6 +202,15 @@ public:
     // the moment pointed at last.
     static DmiWindow *showFollowing(QWidget *owner, MessageDispatcher *dispatcher);
 
+    // Session 160: two locos side by side. Panel B has its own loco picker
+    // and draws the same moment as A (or its own live frame). Remembered.
+    void setTwoLocos(bool on);
+    bool twoLocos() const { return m_twoLocos; }
+    DmiView *viewB() const { return m_viewB; }
+    QString selectedSourceB() const;
+    void setSelectedSourceB(const QString &key);
+    QString statusTextB() const;
+
     // Session 92: the "Fields" side panel -- the decoded fields of the frame
     // the panel is drawing (live or at the moment).
     void setFieldsVisible(bool on);
@@ -211,7 +220,12 @@ public:
 
 private:
     void refreshStatus();
-    void render();                 // the selected source, live or at the moment
+    void render();                 // the selected source(s), live or at the moment
+    // One panel: `key`'s frame (live, or at the moment) into `view`; the
+    // frame drawn is returned. And that panel's status line.
+    CaptureLine drawPanel(DmiView *view, const QString &key);
+    QString     statusFor(DmiView *view, const QString &key);
+    void        pickOtherB();      // B on a loco other than A, when there is one
     void addSource(const QString &key);
     MessageDispatcher *m_dispatcher = nullptr;
     DmiView   *m_view = nullptr;
@@ -222,6 +236,14 @@ private:
     QTableWidget *m_fields = nullptr;
     QWidget   *m_fieldsPane = nullptr;
     QLabel    *m_fieldsTitle = nullptr;
+    // Session 160: panel B.
+    bool       m_twoLocos = false;
+    QCheckBox *m_twoBtn = nullptr;
+    QComboBox *m_sourceB = nullptr;
+    QLabel    *m_sourceBLabel = nullptr;
+    DmiView   *m_viewB = nullptr;
+    QLabel    *m_statusB = nullptr;
+    QWidget   *m_columnB = nullptr;
     CaptureLine m_shown;                          // the frame the panel is drawing
     void refreshFields();
     bool       m_following = false;

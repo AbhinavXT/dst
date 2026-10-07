@@ -11,6 +11,50 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-160"></a>
+## Session 160 — DMI window: two locos side by side
+
+- **Two locos** (a tick in the DMI window's bar) adds a second panel, B,
+  beside the first, with its own loco picker ("B:") and its own status
+  line. The window widens by a panel rather than halving the first.
+  Remembered (`dmi/twoLocos`).
+- **Following the cursor**, both panels draw the same moment: A on the
+  loco pointed at (as before), B on its chosen loco if that loco has a
+  frame then, else on another loco that does. A moment with no frame from
+  B's loco leaves B empty and says so; B is never drawn from an old frame.
+- **Live**, each panel draws its own loco's latest frame; staleness is
+  judged per panel.
+- **Save image…** saves both panels side by side (`dmi_two_locos.png`).
+- Scope (decided with Abhinav): one window with two panels. The Fields
+  pane still shows panel A's frame.
+
+### Files
+
+`dmipanel.{h,cpp}` (drawing and status split into per-panel helpers,
+`drawPanel` / `statusFor`); tests `test_session160.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session160`, real frames from `replay/loco_1_1_27062026_140226.cap` and
+`replay/loco_2_1_27062026_140226.cap`: one panel by default; Two locos
+widens the window and starts B on the other loco; live, each panel draws
+its own loco; at a moment, A and B show each loco's frame and B moves off
+A's loco; no frame from B's loco leaves B empty with the reason; Save
+image holds both; the setting is remembered. Sessions 83, 84 and 92 (the
+DMI window's earlier suites) pass unchanged. Checked by eye on a
+screenshot: loco 1 at 0 km/h beside loco 2 at 80 km/h, same moment.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**213 suites / 6118 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit 168 checks, passed; headless smoke 500 datagrams, alive.
+
+### Not tested
+
+Live two-loco traffic through the dispatcher (frames were fed to the
+window directly); the look on Windows.
+
+---
+
 <a id="session-159"></a>
 ## Session 159 — Loco Configuration: compare two configurations
 

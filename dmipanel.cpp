@@ -804,11 +804,32 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
     m_status = new QLabel(this);
     m_status->setObjectName(QStringLiteral("dmiStatus"));
     m_status->setStyleSheet(UiColor::mutedStyle());
+    m_status->setWordWrap(true);
+
+    // Session 160: panel B, hidden until "Two locos" is ticked.
+    m_twoBtn = new QCheckBox(tr("Two locos"), this);
+    m_twoBtn->setObjectName(QStringLiteral("dmiTwoLocos"));
+    m_twoBtn->setToolTip(tr("A second panel beside the first, for another loco: both at the same moment "
+                            "when following the cursor (head-on, rear-end, SoS)"));
+    m_sourceB = new QComboBox(this);
+    m_sourceB->setObjectName(QStringLiteral("dmiSourceB"));
+    m_sourceB->setMinimumWidth(120);
+    m_sourceBLabel = new QLabel(tr("B:"), this);
+    m_viewB = new DmiView(this);
+    m_viewB->setObjectName(QStringLiteral("dmiViewB"));
+    m_viewB->setAnnexureColours(annexure->isChecked());
+    m_statusB = new QLabel(this);
+    m_statusB->setObjectName(QStringLiteral("dmiStatusB"));
+    m_statusB->setStyleSheet(UiColor::mutedStyle());
+    m_statusB->setWordWrap(true);
 
     auto *top = new QHBoxLayout;
     top->addWidget(new QLabel(tr("Loco / Ctrl:"), this));
     top->addWidget(m_source);
+    top->addWidget(m_sourceBLabel);
+    top->addWidget(m_sourceB);
     top->addWidget(m_follow);
+    top->addWidget(m_twoBtn);
     top->addWidget(annexure);
     top->addStretch(1);
     top->addWidget(m_fieldsBtn);
@@ -816,13 +837,25 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
     auto *root = new QVBoxLayout(this);
     root->addLayout(top);
     auto *body = new QHBoxLayout;
-    body->addWidget(m_view, 1);
+    auto *columnA = new QVBoxLayout;
+    columnA->addWidget(m_view, 1);
+    columnA->addWidget(m_status);
+    m_columnB = new QWidget(this);
+    auto *columnB = new QVBoxLayout(m_columnB);
+    columnB->setContentsMargins(0, 0, 0, 0);
+    columnB->addWidget(m_viewB, 1);
+    columnB->addWidget(m_statusB);
+    body->addLayout(columnA, 1);
+    body->addWidget(m_columnB, 1);
     body->addWidget(m_fieldsPane);
     root->addLayout(body, 1);
-    root->addWidget(m_status);
+    m_columnB->hide();
+    m_sourceB->hide();
+    m_sourceBLabel->hide();
 
     connect(annexure, &QCheckBox::toggled, this, [this](bool on) {
         m_view->setAnnexureColours(on);
+        m_viewB->setAnnexureColours(on);
         QSettings s(Settings::iniPath(), QSettings::IniFormat);
         s.setValue(QStringLiteral("dmi/annexureColours"), on);
     });
@@ -831,8 +864,15 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
         render();
         refreshStatus();
     });
+    connect(m_sourceB, &QComboBox::currentTextChanged, this, [this](const QString &) {
+        render();
+        refreshStatus();
+    });
+    connect(m_twoBtn, &QCheckBox::toggled, this, [this](bool on) { setTwoLocos(on); });
     connect(save, &QPushButton::clicked, this, [this]() {
-        const QString path = QFileDialog::getSaveFileName(this, tr("Save DMI image"), QStringLiteral("dmi.png"), tr("PNG (*.png)"));
+        const QString path = QFileDialog::getSaveFileName(this, tr("Save DMI image"),
+                                                          m_twoLocos ? QStringLiteral("dmi_two_locos.png") : QStringLiteral("dmi.png"),
+                                                          tr("PNG (*.png)"));
         if (!path.isEmpty()) saveImage(path);
     });
     connect(m_fieldsBtn, &QPushButton::toggled, this, [this](bool on) { setFieldsVisible(on); });
@@ -857,6 +897,7 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
     // reopening the window in the same mode.
     if (settings.value(QStringLiteral("dmi/followCursor"), false).toBool()) m_follow->setChecked(true);
     else refreshStatus();
+    if (settings.value(QStringLiteral("dmi/twoLocos"), false).toBool()) m_twoBtn->setChecked(true);
 }
 
 DmiWindow *DmiWindow::showFollowing(QWidget *owner, MessageDispatcher *dispatcher)
@@ -879,8 +920,64 @@ DmiWindow *DmiWindow::showFollowing(QWidget *owner, MessageDispatcher *dispatche
 
 void DmiWindow::addSource(const QString &key)
 {
-    if (!key.isEmpty() && m_source->findText(key) < 0) m_source->addItem(key);
+    if (key.isEmpty()) return;
+    if (m_source->findText(key) < 0) m_source->addItem(key);
+    if (m_sourceB->findText(key) < 0) {
+        m_sourceB->addItem(key);
+        if (m_twoLocos && m_sourceB->currentText() == m_source->currentText()) pickOtherB();
+    }
 }
+
+void DmiWindow::setTwoLocos(bool on)
+{
+    if (m_twoBtn->isChecked() != on) {
+        m_twoBtn->setChecked(on);          // comes back here through toggled
+        return;
+    }
+    if (m_twoLocos == on) return;
+    m_twoLocos = on;
+    QSettings s(Settings::iniPath(), QSettings::IniFormat);
+    s.setValue(QStringLiteral("dmi/twoLocos"), on);
+    m_columnB->setVisible(on);
+    m_sourceB->setVisible(on);
+    m_sourceBLabel->setVisible(on);
+    // Widen by a panel rather than halving the one already there.
+    if (!isMaximized() && !isFullScreen()) {
+        const int panel = m_view->width();
+        resize(on ? width() + panel : qMax(minimumSizeHint().width(), width() - m_viewB->width()), height());
+    }
+    if (on && (m_sourceB->currentText().isEmpty() || m_sourceB->currentText() == m_source->currentText())) {
+        pickOtherB();
+    }
+    render();
+    refreshStatus();
+}
+
+void DmiWindow::pickOtherB()
+{
+    // At a moment: a loco other than A that has a frame then; else any other.
+    const QString a = m_source->currentText();
+    QString want;
+    if (m_following && m_moment.valid) {
+        for (const DmiFrameAt &f : m_moment.frames) {
+            if (f.key != a) { want = f.key; break; }
+        }
+    }
+    for (int i = 0; want.isEmpty() && i < m_sourceB->count(); ++i) {
+        if (m_sourceB->itemText(i) != a) want = m_sourceB->itemText(i);
+    }
+    if (!want.isEmpty()) m_sourceB->setCurrentText(want);
+}
+
+QString DmiWindow::selectedSourceB() const { return m_sourceB->currentText(); }
+
+void DmiWindow::setSelectedSourceB(const QString &key)
+{
+    addSource(key);
+    m_sourceB->setCurrentText(key);
+}
+
+QString DmiWindow::statusTextB() const { return m_statusB->text(); }
 
 void DmiWindow::observeLine(const QString &sourceKey, const QString &line)
 {
@@ -892,7 +989,8 @@ void DmiWindow::observeLine(const QString &sourceKey, const QString &line)
     addSource(key);
     // Following, a live frame is remembered for when following stops but
     // does not replace the moment on screen.
-    if (!m_following && m_source->currentText() == key) {
+    if (!m_following && (m_source->currentText() == key
+                         || (m_twoLocos && m_sourceB->currentText() == key))) {
         render();
         refreshStatus();
     }
@@ -906,7 +1004,21 @@ void DmiWindow::setSelectedSource(const QString &key)
     m_source->setCurrentText(key);
 }
 
-bool DmiWindow::saveImage(const QString &path) const { return m_view->grab().save(path, "PNG"); }
+bool DmiWindow::saveImage(const QString &path) const
+{
+    if (!m_twoLocos) return m_view->grab().save(path, "PNG");
+    // Both panels, A on the left, as on screen.
+    const QPixmap a = m_view->grab();
+    const QPixmap b = m_viewB->grab();
+    QPixmap both(a.width() + b.width(), qMax(a.height(), b.height()));
+    both.setDevicePixelRatio(a.devicePixelRatio());
+    both.fill(Qt::black);
+    QPainter p(&both);
+    p.drawPixmap(0, 0, a);
+    p.drawPixmap(qRound(a.width() / a.devicePixelRatio()), 0, b);
+    p.end();
+    return both.save(path, "PNG");
+}
 
 QString DmiWindow::statusText() const { return m_status->text(); }
 
@@ -942,31 +1054,43 @@ void DmiWindow::showMoment(const DmiMoment &moment)
     QString want = m_source->currentText();
     if (!moment.preferredKey.isEmpty() && moment.frameFor(moment.preferredKey)) want = moment.preferredKey;
     else if (!moment.frameFor(want) && !moment.frames.isEmpty()) want = moment.frames.first().key;
-    if (!want.isEmpty() && want != m_source->currentText()) {
-        m_source->setCurrentText(want);    // renders through currentTextChanged
-    } else {
-        render();
-        refreshStatus();
+    {
+        // Panel B follows below, once: no render per combo change.
+        const QSignalBlocker blockA(m_source);
+        const QSignalBlocker blockB(m_sourceB);
+        if (!want.isEmpty()) m_source->setCurrentText(want);
+        // B stays on its loco if that has a frame at this moment and is not A.
+        if (m_twoLocos) {
+            const QString b = m_sourceB->currentText();
+            if (b.isEmpty() || b == m_source->currentText() || !moment.frameFor(b)) pickOtherB();
+        }
     }
+    render();
+    refreshStatus();
+}
+
+CaptureLine DmiWindow::drawPanel(DmiView *view, const QString &key)
+{
+    if (!m_following) {
+        view->setEmptyText(QString());
+        const CaptureLine cap = CaptureDecoder::parseLine(m_lastLine.value(key));
+        view->setState(dmiStateFromCapture(cap));
+        return cap;
+    }
+    const DmiFrameAt *f = m_moment.valid ? m_moment.frameFor(key) : nullptr;
+    if (!m_moment.valid) view->setEmptyText(tr("Pick a row in any tab, or move a replay cursor"));
+    else if (!f)         view->setEmptyText(tr("No @dmi at or before this moment"));
+    view->setState(f ? dmiStateFromCapture(f->cap) : DmiState());
+    view->setStale(f && m_moment.atMs - f->frameMs > kDmiStaleMs);
+    return f ? f->cap : CaptureLine();
 }
 
 void DmiWindow::render()
 {
-    const QString key = m_source->currentText();
-    if (!m_following) {
-        m_view->setEmptyText(QString());
-        m_shown = CaptureDecoder::parseLine(m_lastLine.value(key));
-        m_view->setState(dmiStateFromCapture(m_shown));
-        refreshFields();
-        return;
-    }
-    const DmiFrameAt *f = m_moment.valid ? m_moment.frameFor(key) : nullptr;
-    if (!m_moment.valid) m_view->setEmptyText(tr("Pick a row in any tab, or move a replay cursor"));
-    else if (!f)         m_view->setEmptyText(tr("No @dmi at or before this moment"));
-    m_shown = f ? f->cap : CaptureLine();
-    m_view->setState(f ? dmiStateFromCapture(f->cap) : DmiState());
+    m_shown = drawPanel(m_view, m_source->currentText());
     refreshFields();
-    m_view->setStale(f && m_moment.atMs - f->frameMs > kDmiStaleMs);
+    if (m_twoLocos) drawPanel(m_viewB, m_sourceB->currentText());
+    if (!m_following) return;
     setWindowTitle(m_moment.valid
                        ? tr("DMI (LP-OCIP) \u2014 at %1").arg(QDateTime::fromMSecsSinceEpoch(m_moment.atMs).toString(QStringLiteral("HH:mm:ss")))
                        : tr("DMI (LP-OCIP) \u2014 following cursor"));
@@ -974,12 +1098,20 @@ void DmiWindow::render()
 
 void DmiWindow::refreshStatus()
 {
-    const QString key = m_source->currentText();
+    const QString style = m_following ? UiColor::accentStyle() : UiColor::mutedStyle();
+    m_status->setStyleSheet(style);
+    m_status->setText(statusFor(m_view, m_source->currentText()));
+    if (m_twoLocos) {
+        m_statusB->setStyleSheet(style);
+        m_statusB->setText(statusFor(m_viewB, m_sourceB->currentText()));
+    }
+}
+
+QString DmiWindow::statusFor(DmiView *view, const QString &key)
+{
     if (m_following) {
-        m_status->setStyleSheet(UiColor::accentStyle());
         if (!m_moment.valid) {
-            m_status->setText(tr("\u23F1 Following the cursor: select a row in any tab, or move a replay window's cursor."));
-            return;
+            return tr("\u23F1 Following the cursor: select a row in any tab, or move a replay window's cursor.");
         }
         const auto clock = [](qint64 ms) {
             return QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss.zzz"));
@@ -987,28 +1119,25 @@ void DmiWindow::refreshStatus()
         const QString where = tr("\u23F1 At %1 \u00B7 %2").arg(clock(m_moment.atMs), m_moment.origin);
         const DmiFrameAt *f = m_moment.frameFor(key);
         if (!f) {
-            m_status->setText(tr("%1 \u00B7 no @dmi from %2 in the %3 min before this moment")
-                                  .arg(where, key.isEmpty() ? tr("any loco") : key)
-                                  .arg(kDmiLookbackMs / 60000));
-            return;
+            return tr("%1 \u00B7 no @dmi from %2 in the %3 min before this moment")
+                .arg(where, key.isEmpty() ? tr("any loco") : key)
+                .arg(kDmiLookbackMs / 60000);
         }
         const qint64 gap = m_moment.atMs - f->frameMs;
         QString text = tr("%1 \u00B7 %2's @dmi of %3, %4 s before")
                            .arg(where, key, clock(f->frameMs), QString::number(gap / 1000.0, 'f', 1));
         if (gap > kDmiStaleMs) text += tr(" \u2014 stale, muted");
-        m_status->setText(text);
-        return;
+        return text;
     }
-    m_status->setStyleSheet(UiColor::mutedStyle());
+    // Live: staleness is judged here, every 2 s tick.
     if (key.isEmpty() || !m_lastMs.contains(key)) {
-        m_view->setStale(false);
-        m_status->setText(tr("No @dmi received yet. The panel is drawn from the loco's DMI frames."));
-        return;
+        view->setStale(false);
+        return tr("No @dmi received yet. The panel is drawn from the loco's DMI frames.");
     }
     const qint64 age = QDateTime::currentMSecsSinceEpoch() - m_lastMs.value(key);
-    m_view->setStale(age > 3000);
-    m_status->setText(tr("%1 · last @dmi %2 s ago · RDSO/SPN/196/2020 Annexure-B Amdt-3 layout")
-                          .arg(key).arg(age / 1000));
+    view->setStale(age > 3000);
+    return tr("%1 · last @dmi %2 s ago · RDSO/SPN/196/2020 Annexure-B Amdt-3 layout")
+        .arg(key).arg(age / 1000);
 }
 
 // ---- Session 92: the decoded fields beside the panel ---------------------------------------------
