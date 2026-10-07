@@ -293,6 +293,7 @@ QWidget *LocoConfigWindow::buildBody()
     addGroup(LocoFieldFilter::allFields());
     addGroup(LocoFieldFilter::changedFromDefault());
     addGroup(LocoFieldFilter::changedSinceSent());
+    addGroup(LocoFieldFilter::lockedFields());
     for (const LocoInfo::Presentation::Group &group : m_presentation.groups) {
         addGroup(group.title);
     }
@@ -343,12 +344,21 @@ QWidget *LocoConfigWindow::buildBody()
             return;
         }
         const QString key = index.data(LocoFieldModel::KeyRole).toString();
+        const bool locked = m_model->isLocked(key);
         QMenu menu(this);
         QAction *revertDefault = menu.addAction(tr("Revert to default"));
         QAction *revertSent = menu.addAction(tr("Revert to last sent"));
-        revertSent->setEnabled(m_model->hasLastSent());
+        revertDefault->setEnabled(!locked);
+        revertSent->setEnabled(!locked && m_model->hasLastSent());
+        menu.addSeparator();
+        // Session 158: a field that must not change by accident (vcc_crc,
+        // loco_unit_id, ...) is locked for this configuration.
+        QAction *lock = menu.addAction(locked ? tr("Unlock field…") : tr("Lock field"));
+        lock->setObjectName(QStringLiteral("locoLockField"));
         QAction *chosen = menu.exec(m_table->viewport()->mapToGlobal(position));
-        if (chosen == revertDefault) {
+        if (chosen == lock && chosen != nullptr) {
+            setFieldLocked(key, !locked, true);
+        } else if (chosen == revertDefault) {
             m_model->setValue(key, m_defaults.value(key));
             onValueEdited(key);
         } else if (chosen == revertSent && chosen != nullptr) {
@@ -505,8 +515,8 @@ QWidget *LocoConfigWindow::buildSendBar()
                 .arg(m_liveKeyShown, m_config.name),
             QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
         if (answer == QMessageBox::Yes) {
-            applyValues(live.values);
-            m_status->ok(tr("Loaded the values loco %1 reports").arg(m_liveKeyShown));
+            const QString kept = applyValues(live.values);
+            m_status->ok(tr("Loaded the values loco %1 reports").arg(m_liveKeyShown) + kept);
         }
     });
     liveRow->addWidget(m_liveLoad);
@@ -584,6 +594,8 @@ void LocoConfigWindow::loadConfig(const QString &name)
     m_loadingConfig = true;
     m_config = m_store->config(name);
     m_model->setConfig(m_config.values, m_defaults, lastSentValues());
+    m_model->setLocked(m_config.locked);
+    m_filter->refresh();
     for (int row = 0; row < LocoInfo::kMaxTargets; ++row) {
         const LocoInfo::SendTarget target = m_config.targets.value(row);
         m_targetOn.at(row)->setChecked(target.enabled);
@@ -608,13 +620,54 @@ void LocoConfigWindow::onConfigChosen(int index)
     loadConfig(name);
 }
 
-void LocoConfigWindow::applyValues(const LocoInfo::Values &values)
+QString LocoConfigWindow::applyValues(const LocoInfo::Values &values)
 {
-    m_config.values = values;
-    LocoInfo::completeValues(m_layout, m_defaults, &m_config.values);
+    LocoInfo::Values incoming = values;
+    LocoInfo::completeValues(m_layout, m_defaults, &incoming);
+    QStringList kept;
+    m_config.values = LocoInfo::keepLocked(m_layout, incoming, m_config.values, m_config.locked, &kept);
     m_model->setConfig(m_config.values, m_defaults, lastSentValues());
+    m_filter->refresh();
     scheduleSave();
     refreshSummary();
+    if (kept.isEmpty()) {
+        return QString();
+    }
+    return tr(" · %n locked field(s) kept: %1", nullptr, kept.size()).arg(kept.join(QStringLiteral(", ")));
+}
+
+bool LocoConfigWindow::setFieldLocked(const QString &key, bool locked, bool ask)
+{
+    const LocoInfo::Field *field = m_layout.field(key);
+    if (field == nullptr || field->isCrc || m_config.locked.contains(key) == locked) {
+        return false;
+    }
+    if (!locked && ask) {
+        const auto answer = QMessageBox::question(
+            this, windowTitle(),
+            tr("Unlock %1 in \"%2\"? It can then be edited, and loading values replaces it.")
+                .arg(key, m_config.name),
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+        if (answer != QMessageBox::Yes) {
+            return false;
+        }
+    }
+    if (locked) {
+        m_config.locked.append(key);
+        m_config.locked.sort();
+    } else {
+        m_config.locked.removeAll(key);
+    }
+    m_model->setLocked(m_config.locked);
+    m_filter->refresh();
+    scheduleSave();
+    refreshGroupCounts();
+    if (locked) {
+        m_status->ok(tr("%1 locked in \"%2\": it cannot be edited until unlocked").arg(key, m_config.name));
+    } else {
+        m_status->say(tr("%1 unlocked in \"%2\"").arg(key, m_config.name));
+    }
+    return true;
 }
 
 void LocoConfigWindow::onValueEdited(const QString &key)
@@ -754,13 +807,16 @@ void LocoConfigWindow::resetToDefaults()
 {
     const auto answer = QMessageBox::question(
         this, windowTitle(),
-        tr("Set every field of \"%1\" back to the defaults (%2)?").arg(m_config.name, m_defaultsSource),
+        tr("Set every field of \"%1\" back to the defaults (%2)?").arg(m_config.name, m_defaultsSource)
+            + (m_config.locked.isEmpty()
+                   ? QString()
+                   : tr("\n\nLocked fields keep their values: %1.").arg(m_config.locked.join(QStringLiteral(", ")))),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (answer == QMessageBox::Yes) {
         const LocoInfo::Values before = m_model->values();
         const QString configName = m_config.name;
-        applyValues(m_defaults);
-        m_status->say(tr("All fields reset to defaults. Ctrl+Z puts them back."));
+        const QString kept = applyValues(m_defaults);
+        m_status->say(tr("All fields reset to defaults. Ctrl+Z puts them back.") + kept);
         QPointer<LocoConfigWindow> self(this);
         m_undo->push(tr("Reset \"%1\" to defaults").arg(configName), [self, before, configName]() {
             if (!self || self->m_config.name != configName) {
@@ -803,8 +859,8 @@ void LocoConfigWindow::importBin()
     const auto answer = QMessageBox::question(this, windowTitle(), question,
                                               QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (answer == QMessageBox::Yes) {
-        applyValues(parsed.values);
-        m_status->ok(tr("Loaded %1").arg(QFileInfo(path).fileName()));
+        const QString kept = applyValues(parsed.values);
+        m_status->ok(tr("Loaded %1").arg(QFileInfo(path).fileName()) + kept);
     }
 }
 
@@ -932,6 +988,7 @@ void LocoConfigWindow::refreshGroupCounts()
     QHash<QString, int> changedPerGroup;
     int changedFromDefault = 0;
     int changedSinceSent = 0;
+    const int locked = m_config.locked.size();
     const LocoInfo::Values sent = lastSentValues();
     for (const LocoInfo::Field &field : m_layout.fields()) {
         if (field.isCrc) {
@@ -956,6 +1013,8 @@ void LocoConfigWindow::refreshGroupCounts()
             count = changedFromDefault;
         } else if (key == LocoFieldFilter::changedSinceSent()) {
             count = changedSinceSent;
+        } else if (key == LocoFieldFilter::lockedFields()) {
+            count = locked;
         }
         if (count > 0) {
             item->setText(QStringLiteral("%1  (%2)").arg(key).arg(count));
@@ -1204,6 +1263,39 @@ void LocoConfigWindow::recordVerification(const QString &key, const LiveInfo &li
     emit verified(text, v.match, differences.join(QLatin1Char('\n')));
 }
 
+QString LocoConfigWindow::sendConfirmVccHtml() const
+{
+    const LocoInfo::Field *field = m_layout.field(QStringLiteral("vcc_crc"));
+    if (field == nullptr) {
+        // Said, not skipped: the operator should know it was not shown.
+        return tr("<p style=\"font-size:large\"><b>vcc_crc: not in this schema's LOCO_INFO</b></p>"
+                  "<p>kavach.xml &lt;packet name=\"LINFO\"&gt; has no vcc_crc field, so it cannot be shown here.</p>");
+    }
+    const QString format = m_presentation.formats.value(field->key);
+    const QVariant value = m_config.values.value(field->key);
+    QString html = tr("<p style=\"font-size:x-large\"><b>vcc_crc %1</b></p>")
+                       .arg(LocoInfo::formatValue(*field, value, format).toHtmlEscaped());
+    QString state;
+    if (m_config.lastSentBody.isEmpty()) {
+        state = tr("Set by hand: it must match this loco's VCC build. Not sent from this configuration before.");
+    } else {
+        const QVariant sent = lastSentValues().value(field->key);
+        if (LocoInfo::sameValue(*field, value, sent)) {
+            state = tr("Set by hand: it must match this loco's VCC build. The same as the last send (%1).")
+                        .arg(m_config.lastSentAt.toLocalTime().toString(QStringLiteral("yyyy-MM-dd HH:mm")));
+        } else {
+            state = tr("Set by hand: it must match this loco's VCC build. <b>Changed</b> since the last send: "
+                       "it was %1.").arg(LocoInfo::formatValue(*field, sent, format).toHtmlEscaped());
+        }
+    }
+    if (LocoInfo::sameValue(*field, value, m_defaults.value(field->key))) {
+        state += m_defaultsSource.isEmpty()
+                     ? tr(" This is the default value.")
+                     : tr(" This is the default value (%1).").arg(m_defaultsSource.toHtmlEscaped());
+    }
+    return html + QStringLiteral("<p>") + state + QStringLiteral("</p>");
+}
+
 bool LocoConfigWindow::sendNow(bool confirm)
 {
     if (!isUsable()) {
@@ -1275,15 +1367,16 @@ bool LocoConfigWindow::sendNow(bool confirm)
                                  .arg(LocoInfo::formatValue(*unitField, m_config.values.value(unitField->key)));
             }
         }
-        QMessageBox box(QMessageBox::Question, windowTitle(), question,
+        // Session 158: vcc_crc in the question itself, large, every time.
+        // It is set by hand and must match the VCC build on the loco; as one
+        // line among the changes it was easy to read past.
+        QMessageBox box(QMessageBox::Question, windowTitle(), QString(),
                         QMessageBox::Yes | QMessageBox::No, this);
-        const LocoInfo::Field *vccField = m_layout.field(QStringLiteral("vcc_crc"));
-        QString vccLine;
-        if (vccField != nullptr) {
-            vccLine = tr("\n\nvcc_crc %1 · loco_info_crc %2")
-                          .arg(LocoInfo::formatValue(*vccField, m_config.values.value(vccField->key)),
-                               LocoInfo::crcText(LocoInfo::crc32(body.left(body.size() - 4))));
-        }
+        box.setTextFormat(Qt::RichText);
+        box.setText(question.toHtmlEscaped().replace(QLatin1Char('\n'), QStringLiteral("<br>"))
+                    + sendConfirmVccHtml());
+        const QString vccLine = tr("\n\nloco_info_crc %1")
+                                    .arg(LocoInfo::crcText(LocoInfo::crc32(body.left(body.size() - 4))));
         box.setInformativeText(summary + vccLine + sameForAll
                                + tr("\n\nThe VCC does not reply; nothing will confirm it arrived."));
         if (!details.isEmpty()) {
@@ -1392,8 +1485,8 @@ void LocoConfigWindow::openHistory()
                             .arg(description, m_config.name),
                         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
                     if (answer == QMessageBox::Yes) {
-                        applyValues(parsed.values);
-                        m_status->ok(tr("Loaded the values sent %1").arg(description));
+                        const QString kept = applyValues(parsed.values);
+                        m_status->ok(tr("Loaded the values sent %1").arg(description) + kept);
                     }
                 });
     } else {

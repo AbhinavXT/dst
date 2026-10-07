@@ -213,6 +213,12 @@ struct LocoConfig {
     QDateTime  lastSentAt;
     QString    lastSentTarget;    // "ip:port" -- or several, comma-separated, after a bulk send
 
+    // Session 158: fields the operator has locked: the table will not edit
+    // them, and loading values in bulk (defaults, a .bin, the loco's own
+    // values, a past send) leaves them as they are. Field keys, sorted.
+    // Saved with the configuration and carried by export/import.
+    QStringList locked;
+
     static QVector<SendTarget> defaultTargets()
     {
         QVector<SendTarget> rows(kMaxTargets);
@@ -220,6 +226,12 @@ struct LocoConfig {
         return rows;
     }
 };
+
+// Session 158: `incoming`, except that every field in `locked` keeps its
+// value from `current`. `kept` (if given) lists the locked fields whose
+// incoming value differed, i.e. the ones the lock actually held.
+Values keepLocked(const Layout &layout, const Values &incoming, const Values &current,
+                  const QStringList &locked, QStringList *kept = nullptr);
 
 // All configurations, in one JSON file beside dlconsole.ini
 // (loco_configs.json), written atomically.

@@ -1,6 +1,7 @@
 #include "lococonfigmodel.h"
 
 #include "flasherstyle.h"
+#include "uistyle.h"
 
 #include <QFont>
 
@@ -29,6 +30,18 @@ void LocoFieldModel::setConfig(const LocoInfo::Values &values, const LocoInfo::V
     m_defaults = defaults;
     m_lastSent = lastSent;
     endResetModel();
+}
+
+void LocoFieldModel::setLocked(const QStringList &keys)
+{
+    const QSet<QString> next(keys.begin(), keys.end());
+    if (next == m_locked) {
+        return;
+    }
+    m_locked = next;
+    if (!m_rows.isEmpty()) {
+        emit dataChanged(index(0, 0), index(m_rows.size() - 1, ColumnCount - 1));
+    }
 }
 
 void LocoFieldModel::setValue(const QString &key, const QVariant &value)
@@ -103,9 +116,11 @@ QVariant LocoFieldModel::data(const QModelIndex &index, int role) const
     case ChangedSinceSentRole:   return changedSinceSent;
     case SearchTextRole:
         return field.key + QLatin1Char(' ') + m_presentation->notes.value(field.key);
+    case LockedRole:             return m_locked.contains(field.key);
     default:
         break;
     }
+    const bool locked = m_locked.contains(field.key);
 
     const int column = index.column();
     if (role == Qt::DisplayRole || role == Qt::EditRole) {
@@ -148,7 +163,16 @@ QVariant LocoFieldModel::data(const QModelIndex &index, int role) const
         if (changedSinceSent) {
             tip += QLatin1Char('\n') + tr("Changed since the last send from this configuration");
         }
+        if (locked) {
+            tip += QLatin1Char('\n') + tr("Locked: right-click \u25B8 Unlock field to change it");
+        }
         return tip;
+    }
+
+    if (role == Qt::DecorationRole && column == ColumnField && locked) {
+        // Drawn in the current theme's colour each time (a cached icon would
+        // keep the colour of the theme it was drawn in).
+        return UiIcons::icon(QStringLiteral("lock"), FlasherStyle::muted(), 14);
     }
 
     if (role == Qt::FontRole && column == ColumnValue && changedFromDefault) {
@@ -174,7 +198,7 @@ Qt::ItemFlags LocoFieldModel::flags(const QModelIndex &index) const
         return Qt::NoItemFlags;
     }
     Qt::ItemFlags itemFlags = Qt::ItemIsEnabled | Qt::ItemIsSelectable;
-    if (index.column() == ColumnValue) {
+    if (index.column() == ColumnValue && !m_locked.contains(fieldAt(index.row()).key)) {
         itemFlags |= Qt::ItemIsEditable;
     }
     return itemFlags;
@@ -186,6 +210,10 @@ bool LocoFieldModel::setData(const QModelIndex &index, const QVariant &value, in
         return false;
     }
     const LocoInfo::Field &field = fieldAt(index.row());
+    if (m_locked.contains(field.key)) {
+        emit editRejected(tr("%1 is locked: right-click \u25B8 Unlock field to change it").arg(field.key));
+        return false;
+    }
     QVariant parsed;
     QString error;
     if (!LocoInfo::parseValueText(field, value.toString(), m_presentation->formats.value(field.key),
@@ -228,7 +256,7 @@ void LocoFieldFilter::refresh()
 {
     // Only the "changed" views depend on values; the others need no re-filter
     // (and re-filtering would reset the editor the operator is typing in).
-    if (m_group == changedFromDefault() || m_group == changedSinceSent()) {
+    if (m_group == changedFromDefault() || m_group == changedSinceSent() || m_group == lockedFields()) {
         invalidateFilter();
     }
 }
@@ -253,6 +281,9 @@ bool LocoFieldFilter::filterAcceptsRow(int sourceRow, const QModelIndex &sourceP
     }
     if (m_group == changedSinceSent()) {
         return index.data(LocoFieldModel::ChangedSinceSentRole).toBool();
+    }
+    if (m_group == lockedFields()) {
+        return index.data(LocoFieldModel::LockedRole).toBool();
     }
     return index.data(LocoFieldModel::GroupRole).toString() == m_group;
 }

@@ -859,6 +859,24 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
     else refreshStatus();
 }
 
+DmiWindow *DmiWindow::showFollowing(QWidget *owner, MessageDispatcher *dispatcher)
+{
+    // One panel per owner: a second window for every right-click would bury
+    // the first. A replay's own DMI windows are its children, not the owner's.
+    DmiWindow *w = nullptr;
+    if (owner) {
+        for (DmiWindow *c : owner->findChildren<DmiWindow *>(QString(), Qt::FindDirectChildrenOnly)) {
+            if (c->isVisible()) { w = c; break; }
+        }
+    }
+    if (!w) w = new DmiWindow(dispatcher, owner);
+    w->setFollowCursor(true);
+    w->show();
+    w->raise();
+    w->activateWindow();
+    return w;
+}
+
 void DmiWindow::addSource(const QString &key)
 {
     if (!key.isEmpty() && m_source->findText(key) < 0) m_source->addItem(key);

@@ -689,6 +689,9 @@ QJsonObject configToJson(const Layout &layout, const LocoConfig &config)
         object.insert(QStringLiteral("port"), static_cast<int>(config.targets.first().port));
     }
     object.insert(QStringLiteral("values"), valuesToJson(layout, config.values));
+    if (!config.locked.isEmpty()) {
+        object.insert(QStringLiteral("locked_fields"), QJsonArray::fromStringList(config.locked));
+    }
     if (!config.lastSentBody.isEmpty()) {
         object.insert(QStringLiteral("last_sent_body_hex"), QString::fromLatin1(config.lastSentBody.toHex()));
         object.insert(QStringLiteral("last_sent_at"), config.lastSentAt.toUTC().toString(Qt::ISODateWithMs));
@@ -737,6 +740,15 @@ LocoConfig configFromJson(const Layout &layout, const Values &defaults, const QJ
     for (const QString &key : completeValues(layout, defaults, &config.values)) {
         dropped->insert(key);
     }
+    // Locks on fields this schema no longer has (or on the computed CRC)
+    // are dropped, as their values are.
+    for (const QJsonValue &key : object.value(QStringLiteral("locked_fields")).toArray()) {
+        const Field *field = layout.field(key.toString());
+        if (field != nullptr && !field->isCrc && !config.locked.contains(field->key)) {
+            config.locked.append(field->key);
+        }
+    }
+    config.locked.sort();
     config.lastSentBody = QByteArray::fromHex(object.value(QStringLiteral("last_sent_body_hex")).toString().toLatin1());
     config.lastSentAt = QDateTime::fromString(object.value(QStringLiteral("last_sent_at")).toString(), Qt::ISODateWithMs);
     config.lastSentTarget = object.value(QStringLiteral("last_sent_target")).toString();
@@ -744,6 +756,23 @@ LocoConfig configFromJson(const Layout &layout, const Values &defaults, const QJ
 }
 
 }  // namespace
+
+Values keepLocked(const Layout &layout, const Values &incoming, const Values &current,
+                  const QStringList &locked, QStringList *kept)
+{
+    Values out = incoming;
+    for (const QString &key : locked) {
+        const Field *field = layout.field(key);
+        if (field == nullptr || !current.contains(key)) {
+            continue;
+        }
+        if (kept != nullptr && !sameValue(*field, incoming.value(key), current.value(key))) {
+            kept->append(key);
+        }
+        out.insert(key, current.value(key));
+    }
+    return out;
+}
 
 ConfigStore::ConfigStore(const QString &filePath, const Layout *layout, const Values &defaults)
     : m_filePath(filePath)

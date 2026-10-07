@@ -1,3 +1,4 @@
+#include "dmipanel.h"
 #include "dmitimetravel.h"
 #include "sessionwindow.h"
 #include "uistyle.h"
@@ -161,15 +162,7 @@ void SessionWindow::buildTab(const QString &tabKey, LogModel *model)
     // the recording. Every tab of this session is searched, none of the live
     // console's: a recording is its own timeline.
     connect(view->selectionModel(), &QItemSelectionModel::currentRowChanged, this,
-            [this, tabKey, model, filterBar](const QModelIndex &cur, const QModelIndex &) {
-                if (!cur.isValid()) return;
-                const QModelIndex src = filterBar->proxyModel()->mapToSource(cur);
-                if (!src.isValid()) return;
-                const QString name = m_names ? m_names->lookupByKey(tabKey) : tabKey;
-                DmiTimeTravel::instance()->offer(
-                    this, dmiTabResolver(m_models.values().toVector(), model, model->entryAt(src.row()), src.row(),
-                                         tr("recording, tab %1").arg(name.isEmpty() ? tabKey : name)));
-            });
+            [this, tabKey](const QModelIndex &cur, const QModelIndex &) { offerDmiAt(tabKey, cur); });
 
     view->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(view, &QWidget::customContextMenuRequested,
@@ -657,6 +650,19 @@ void SessionWindow::onToolPlotField()
     plot->raise();
 }
 
+void SessionWindow::offerDmiAt(const QString &tabKey, const QModelIndex &proxyIndex)
+{
+    const auto it = m_tabUi.constFind(tabKey);
+    if (!proxyIndex.isValid() || it == m_tabUi.constEnd() || !it->model || !it->filterBar) return;
+    const QModelIndex src = it->filterBar->proxyModel()->mapToSource(proxyIndex);
+    if (!src.isValid()) return;
+    LogModel *model = it->model;
+    const QString name = m_names ? m_names->lookupByKey(tabKey) : tabKey;
+    DmiTimeTravel::instance()->offer(
+        this, dmiTabResolver(m_models.values().toVector(), model, model->entryAt(src.row()), src.row(),
+                             tr("recording, tab %1").arg(name.isEmpty() ? tabKey : name)));
+}
+
 void SessionWindow::onRowContextMenu(const QPoint &pos)
 {
     auto *view = qobject_cast<QTableView *>(sender());
@@ -685,6 +691,21 @@ void SessionWindow::onRowContextMenu(const QPoint &pos)
     QAction *pm = menu.addAction(tr("Open in Packet Maker"));
     pm->setEnabled(haveBytes);
     connect(pm, &QAction::triggered, this, &SessionWindow::onToolRowToPacketMaker);
+
+    // Session 158: an @dmi row, on the panel as it stood then (this
+    // recording's timeline: no live dispatcher feeds that window).
+    const LogEntryPtr cur = currentEntry();
+    if (cur && !dmiKeyOfText(cur->text).isEmpty()) {
+        menu.addSeparator();
+        QAction *dmi = menu.addAction(tr("Show on DMI"));
+        dmi->setObjectName(QStringLiteral("rowShowOnDmi"));
+        connect(dmi, &QAction::triggered, this, [this, view]() {
+            for (auto it = m_tabUi.constBegin(); it != m_tabUi.constEnd(); ++it) {
+                if (it->view == view) offerDmiAt(it.key(), view->currentIndex());
+            }
+            DmiWindow::showFollowing(this, nullptr);
+        });
+    }
 
     menu.exec(view->viewport()->mapToGlobal(pos));
 }

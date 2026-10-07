@@ -67,7 +67,7 @@ SearchWindow::SearchWindow(MessageDispatcher *dispatcher,
     top->setContentsMargins(UiStyle::space(3), UiStyle::space(2), UiStyle::space(2), UiStyle::space(2));
     top->setSpacing(UiStyle::space(2));
     auto *icon = new QLabel;
-    icon->setPixmap(UiIcons::icon(QStringLiteral("search"), UiColor::muted(), 16).pixmap(16, 16));
+    UiIcons::bind(icon, QStringLiteral("search"), 16, []() { return UiColor::muted(); });
     icon->setAccessibleName(tr("Query"));
     top->addWidget(icon);
     top->addWidget(m_edit, 1);

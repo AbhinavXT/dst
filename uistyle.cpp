@@ -18,6 +18,7 @@
 #include <QPainter>
 #include <QPainterPath>
 #include <QPalette>
+#include <QPointer>
 #include <QPushButton>
 #include <QStyle>
 
@@ -735,7 +736,7 @@ namespace UiIcons {
 QStringList names()
 {
     return { "log", "dmi", "track", "serial", "send", "report", "settings",
-             "search", "twoloco", "more", "pin", "filter" };
+             "search", "twoloco", "more", "pin", "filter", "lock" };
 }
 
 QIcon icon(const QString &name, const QColor &color, int px)
@@ -800,6 +801,11 @@ QIcon icon(const QString &name, const QColor &color, int px)
         } else if (name == QLatin1String("filter")) {
             path.moveTo(P(4, 5)); path.lineTo(P(20, 5)); path.lineTo(P(14, 12));
             path.lineTo(P(14, 19)); path.lineTo(P(10, 17)); path.lineTo(P(10, 12)); path.closeSubpath();
+        } else if (name == QLatin1String("lock")) {
+            path.addRoundedRect(QRectF(P(5, 11), P(19, 21)), 1.5 * u, 1.5 * u);
+            path.moveTo(P(8, 11)); path.lineTo(P(8, 8));
+            path.arcTo(QRectF(P(8, 4), P(16, 12)), 180, -180);
+            path.lineTo(P(16, 11));
         } else {
             path.addRect(QRectF(P(5, 5), P(19, 19)));     // unknown name: a visible box, not nothing
         }
@@ -814,6 +820,34 @@ QIcon icon(const QString &name, const QColor &color, int px)
 QIcon icon(const QString &name)
 {
     return icon(name, qApp ? qApp->palette().color(QPalette::WindowText) : QColor(Qt::black));
+}
+
+namespace {
+QColor bindColor(const std::function<QColor()> &color)
+{
+    if (color) return color();
+    return qApp ? qApp->palette().color(QPalette::WindowText) : QColor(Qt::black);
+}
+}  // namespace
+
+void bind(QAbstractButton *button, const QString &name, int px, std::function<QColor()> color)
+{
+    if (!button) return;
+    button->setIcon(icon(name, bindColor(color), px));
+    QPointer<QAbstractButton> b(button);
+    UiColor::onThemeChange(button, [b, name, px, color]() {
+        if (b) b->setIcon(icon(name, bindColor(color), px));
+    });
+}
+
+void bind(QLabel *label, const QString &name, int px, std::function<QColor()> color)
+{
+    if (!label) return;
+    label->setPixmap(icon(name, bindColor(color), px).pixmap(px, px));
+    QPointer<QLabel> l(label);
+    UiColor::onThemeChange(label, [l, name, px, color]() {
+        if (l) l->setPixmap(icon(name, bindColor(color), px).pixmap(px, px));
+    });
 }
 
 }  // namespace UiIcons

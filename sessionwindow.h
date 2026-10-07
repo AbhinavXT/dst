@@ -137,6 +137,8 @@ private:
     };
 
     void buildToolsMenu();
+    // Session 84: tell the DMI broker the cursor is at this row of tab `tabKey`.
+    void offerDmiAt(const QString &tabKey, const QModelIndex &proxyIndex);
     void jumpToProxyRow(int row);     // select, centre, focus
     void stepProblem(int dir);
     void stepBookmark(int dir);

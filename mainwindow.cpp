@@ -1070,6 +1070,13 @@ void MainWindow::onLogRowContextMenu(const QPoint &pos)
             actToPm->setToolTip(why);
         }
     }
+    // Session 158: an @dmi row, on the panel as the loco pilot saw it then.
+    // The DMI window follows the cursor from here on, as its checkbox says.
+    QAction *actDmi = nullptr;
+    if (!dmiKeyOfText(entry->text).isEmpty()) {
+        actDmi = menu.addAction(tr("Show on D&MI"));
+        actDmi->setObjectName(QStringLiteral("rowShowOnDmi"));
+    }
     menu.addSeparator();
     QAction *actWhy      = menu.addAction(tr("&Why this colour?"));
     QAction *actFilterSrc = menu.addAction(
@@ -1111,6 +1118,9 @@ void MainWindow::onLogRowContextMenu(const QPoint &pos)
         openEntryInWorkbench(entry);
     } else if (chosen == actToPm) {
         openEntryInPacketMaker(entry);
+    } else if (actDmi && chosen == actDmi) {
+        offerDmiMoment(key, idx);       // this row, even if another was pointed at since
+        DmiWindow::showFollowing(this, m_dispatcher);
     }
 }
 

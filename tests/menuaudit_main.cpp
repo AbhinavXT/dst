@@ -35,6 +35,11 @@
 #include <QTreeWidget>
 #include <QElapsedTimer>
 #include "logmodel.h"
+#include "dmipanel.h"
+#include "dmitimetravel.h"
+#include "capturedecoder.h"
+#include <QDateTime>
+#include <QMouseEvent>
 #include "uicolors.h"
 #include "workspacesnapshot.h"
 #include "clockskewalarm.h"
@@ -368,6 +373,137 @@ int main(int argc, char **argv) {
         CHECK(themes == ThemeUtil::all().size(), "View > Theme lists every theme");
         CHECK(ticked == 1, "exactly one theme is ticked");
         CHECK(hasToggle, "and Toggle Dark/Light is there");
+    }
+
+    // ---- session 158: the rail icons follow a theme change ----------------------
+    // Drawn once at start-up, they kept the colour of that theme: dark-theme
+    // (light) icons on a light window after switching back.
+    {
+        auto inkOf = [](const QIcon &icon) {
+            const QImage img = icon.pixmap(18, 18).toImage().convertToFormat(QImage::Format_ARGB32);
+            QColor best; int bestAlpha = 0;
+            for (int y = 0; y < img.height(); ++y)
+                for (int x = 0; x < img.width(); ++x)
+                    if (img.pixelColor(x, y).alpha() > bestAlpha) { bestAlpha = img.pixelColor(x, y).alpha(); best = img.pixelColor(x, y); }
+            return best;
+        };
+        auto near = [](const QColor &a, const QColor &b) {
+            return qAbs(a.red() - b.red()) <= 8 && qAbs(a.green() - b.green()) <= 8 && qAbs(a.blue() - b.blue()) <= 8;
+        };
+        QToolButton *railDmi = w.findChild<QToolButton *>(QStringLiteral("rail_dmi"));
+        QToolButton *more = w.findChild<QToolButton *>(QStringLiteral("logMore"));
+        QAction *toggle = nullptr;
+        if (view) for (QAction *a : view->actions())
+            if (a->menu() && a->text().remove(QLatin1Char('&')) == QStringLiteral("Theme"))
+                toggle = findAction(a->menu(), "Toggle Dark/Light");
+        CHECK(railDmi && more && toggle, "fixture: the rail's DMI button, the log's More button, Toggle Dark/Light");
+        if (railDmi && more && toggle) {
+            bool allFollow = true;
+            for (int i = 0; i < 2; ++i) {          // there and back
+                toggle->trigger();
+                QApplication::processEvents();
+                const QColor text = qApp->palette().color(QPalette::WindowText);
+                allFollow = allFollow && near(inkOf(railDmi->icon()), text) && near(inkOf(more->icon()), text);
+            }
+            CHECK(allFollow, "Toggle Dark/Light, twice: the rail and More icons are redrawn in each theme's text colour");
+        }
+    }
+
+    // ---- session 158: right-click an @dmi row > Show on DMI -----------------------
+    {
+        QSettings ini(Settings::iniPath(), QSettings::IniFormat);
+        const QVariant savedFollow = ini.value(QStringLiteral("dmi/followCursor"));
+        auto *tabs = w.findChild<QTabWidget *>(QStringLiteral("tabWidget"));
+        QTableView *table = nullptr;
+        LogModel *lm = nullptr;
+        if (tabs && tabs->count() > 0) {
+            tabs->setCurrentIndex(0);
+            table = tabs->widget(0)->findChild<QTableView *>();
+            QAbstractItemModel *m = table ? table->model() : nullptr;
+            while (auto *proxy = qobject_cast<QAbstractProxyModel *>(m)) m = proxy->sourceModel();
+            lm = qobject_cast<LogModel *>(m);
+        }
+        CHECK(table && lm, "fixture: the first tab's table and model");
+        if (table && lm) {
+            const int base = lm->count();
+            // A real frame: replay/loco_1_1_27062026_170159.cap, its first @dmi.
+            LogEntryPtr dmi(new LogEntry);
+            dmi->epochMs = QDateTime(QDate(2026, 6, 27), QTime(17, 2, 0)).toMSecsSinceEpoch();
+            dmi->text = QStringLiteral(
+                "@dmi_1_1 2026-06-27T17:02:00 3983 AA AA 74 02 01 0A 6F 00 71 21 00 00 00 00 00 00 00 00 00 00 1B 06 "
+                "EA 07 11 02 00 00 00 00 00 01 00 00 00 00 00 0A 84 40 06 04 01 00 00 60 A2 75 82 07 00 00 1E 01 00 00 "
+                "80 07 00 00 56 01 00 80 49 00 0F 02 00 00 FA 00 00 00 00 00 B9 01 15 2D 6A 0D 00 00 00 00 00 00 50 00 "
+                "00 00 00 00 F0 3C 00 F4 01 0D 00 00 00 01 06 0F 00 00 01 00 18 CB 09 2A BB BB");
+            LogEntryPtr other(new LogEntry);
+            other->epochMs = dmi->epochMs + 500;
+            other->text = QStringLiteral("audit row, not a DMI frame");
+            lm->appendEntry(dmi);
+            lm->appendEntry(other);
+            QApplication::processEvents();
+
+            auto *proxy = qobject_cast<QAbstractProxyModel *>(table->model());
+            auto rowPos = [&](int sourceRow) {
+                QModelIndex at = lm->index(sourceRow, 0);
+                if (proxy) at = proxy->mapFromSource(at);
+                table->scrollTo(at);
+                return table->visualRect(at).center();
+            };
+            // Pops the row menu as a right-click does; `click` the item if it is there.
+            auto rowMenu = [&](int sourceRow, bool click) {
+                bool found = false;
+                QTimer::singleShot(50, [&]() {
+                    auto *menu = qobject_cast<QMenu *>(QApplication::activePopupWidget());
+                    if (!menu) return;
+                    QAction *show = menu->findChild<QAction *>(QStringLiteral("rowShowOnDmi"));
+                    found = show && show->text().remove(QLatin1Char('&')) == QStringLiteral("Show on DMI");
+                    if (found && click) {
+                        // Clicked in the menu itself, so exec() returns it as chosen.
+                        const QPoint at = menu->actionGeometry(show).center();
+                        menu->setActiveAction(show);
+                        QMouseEvent press(QEvent::MouseButtonPress, at, menu->mapToGlobal(at),
+                                          Qt::LeftButton, Qt::LeftButton, Qt::NoModifier);
+                        QMouseEvent release(QEvent::MouseButtonRelease, at, menu->mapToGlobal(at),
+                                            Qt::LeftButton, Qt::NoButton, Qt::NoModifier);
+                        QApplication::sendEvent(menu, &press);
+                        QApplication::sendEvent(menu, &release);
+                    } else {
+                        menu->hide();
+                    }
+                });
+                emit table->customContextMenuRequested(rowPos(sourceRow));
+                for (int i = 0; i < 5; ++i) QApplication::processEvents();
+                return found;
+            };
+            auto dmiWindows = []() {
+                QVector<DmiWindow *> out;
+                for (QWidget *t : QApplication::topLevelWidgets())
+                    if (auto *d = qobject_cast<DmiWindow *>(t)) if (d->isVisible()) out << d;
+                return out;
+            };
+
+            CHECK(!rowMenu(base + 1, false), "a row that is not @dmi has no Show on DMI");
+            CHECK(rowMenu(base, true), "an @dmi row has Show on DMI");
+            QVector<DmiWindow *> open = dmiWindows();
+            CHECK(open.size() == 1, "and it opens the DMI window");
+            DmiWindow *d = open.value(0);
+            const DmiFrameAt *f = d ? d->moment().frameFor(QStringLiteral("1_1")) : nullptr;
+            CHECK(d && d->followCursor() && d->moment().valid, "following the cursor, at a moment");
+            CHECK(f && f->cap.bytes == CaptureDecoder::parseLine(dmi->text).bytes && d->selectedSource() == QStringLiteral("1_1"),
+                  "showing that row's frame, for its loco");
+
+            // The cursor moves on (another row), then Show on DMI again: the
+            // same window, back on the @dmi row.
+            table->setCurrentIndex(proxy ? proxy->mapFromSource(lm->index(base + 1, 0)) : lm->index(base + 1, 0));
+            CHECK(rowMenu(base, true), "Show on DMI, a second time");
+            CHECK(dmiWindows().size() == 1, "reuses the open DMI window");
+            CHECK(d && d->moment().atMs == dmi->epochMs, "at the @dmi row's moment");
+
+            for (DmiWindow *x : dmiWindows()) x->close();
+            for (int i = 0; i < 5; ++i) { QApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete); QApplication::processEvents(); }
+            lm->clear();
+        }
+        if (savedFollow.isValid()) ini.setValue(QStringLiteral("dmi/followCursor"), savedFollow);
+        else ini.remove(QStringLiteral("dmi/followCursor"));
     }
 
     // The Live Loco Console has Find: a TableFindBar under its tabs and

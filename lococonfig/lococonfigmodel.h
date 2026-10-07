@@ -12,11 +12,15 @@
 //    3  Last sent   what went out last from this configuration
 //    4  Type        u8 / u16 / u32 / f32 / char[40]
 //
+//  A LOCKED field (session 158) shows a lock beside its name and cannot be
+//  edited here; right-click ▸ Unlock field first.
+//
 //  Editing goes through LocoInfo::parseValueText, so a value that cannot be
 //  packed never reaches the configuration; the reason is emitted for the
 //  status line instead.
 // =============================================================================
 #include <QAbstractTableModel>
+#include <QSet>
 #include <QSortFilterProxyModel>
 
 #include "lococonfigcore.h"
@@ -31,7 +35,8 @@ public:
         GroupRole,
         ChangedFromDefaultRole,
         ChangedSinceSentRole,
-        SearchTextRole
+        SearchTextRole,
+        LockedRole
     };
 
     LocoFieldModel(const LocoInfo::Layout *layout, const LocoInfo::Presentation *presentation,
@@ -43,6 +48,9 @@ public:
     const LocoInfo::Values &values() const { return m_values; }
     void setValue(const QString &key, const QVariant &value);
     bool hasLastSent() const { return !m_lastSent.isEmpty(); }
+    // Session 158: the locked fields (keys).
+    void setLocked(const QStringList &keys);
+    bool isLocked(const QString &key) const { return m_locked.contains(key); }
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     int columnCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -66,6 +74,7 @@ private:
     LocoInfo::Values  m_values;
     LocoInfo::Values  m_defaults;
     LocoInfo::Values  m_lastSent;
+    QSet<QString>     m_locked;
 };
 
 // Group + search filter over the model.
@@ -77,6 +86,7 @@ public:
     static QString allFields()      { return QStringLiteral("All fields"); }
     static QString changedFromDefault() { return QStringLiteral("Changed from defaults"); }
     static QString changedSinceSent()   { return QStringLiteral("Changed since last send"); }
+    static QString lockedFields()       { return QStringLiteral("Locked fields"); }
 
     explicit LocoFieldFilter(QObject *parent = nullptr);
     void setGroup(const QString &group);

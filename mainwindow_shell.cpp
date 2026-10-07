@@ -89,12 +89,16 @@ void MainWindow::buildShell()
 
     // The command palette, as a search field you can click: it already
     // reaches every menu command by name.
-    auto *search = new QPushButton(UiIcons::icon(QStringLiteral("search"), UiColor::muted(), 14),
-                                   tr("Search commands, tools, settings…   Ctrl+P"), m_strip);
+    auto *search = new QPushButton(tr("Search commands, tools, settings…   Ctrl+P"), m_strip);
+    UiIcons::bind(search, QStringLiteral("search"), 14, []() { return UiColor::muted(); });
     search->setObjectName(QStringLiteral("stripSearch"));
     search->setToolTip(tr("Run any command by name (Help ▸ Run command…)"));
     search->setMinimumWidth(320);
-    search->setStyleSheet(QStringLiteral("text-align:left; color:%1;").arg(UiColor::muted().name()));
+    auto searchStyle = [search]() {
+        search->setStyleSheet(QStringLiteral("text-align:left; color:%1;").arg(UiColor::muted().name()));
+    };
+    searchStyle();
+    UiColor::onThemeChange(search, searchStyle);   // the muted text colour, too
     connect(search, &QPushButton::clicked, this, &MainWindow::onActionCommandPalette);
     m_strip->addWidget(search);
     m_strip->addWidget(hSpacer(m_strip));
@@ -159,7 +163,7 @@ void MainWindow::buildShell()
         if (!a) continue;                       // feature not in this build
         auto *b = new QToolButton(m_rail);
         b->setDefaultAction(a);
-        b->setIcon(UiIcons::icon(QString::fromLatin1(it.icon), palette().color(QPalette::WindowText)));
+        UiIcons::bind(b, QString::fromLatin1(it.icon));
         UiStyle::makeRailButton(b, a->text().remove(QLatin1Char('&')).remove(QStringLiteral("…")));
         b->setToolButtonStyle(Qt::ToolButtonIconOnly);
         b->setObjectName(QStringLiteral("rail_%1").arg(QString::fromLatin1(it.icon)));
@@ -171,7 +175,7 @@ void MainWindow::buildShell()
     if (QAction *settings = findMenuAction(menuBar(), QStringLiteral("Settings"))) {
         auto *b = new QToolButton(m_rail);
         b->setDefaultAction(settings);
-        b->setIcon(UiIcons::icon(QStringLiteral("settings"), palette().color(QPalette::WindowText)));
+        UiIcons::bind(b, QStringLiteral("settings"));
         UiStyle::makeRailButton(b, tr("Settings"));
         b->setToolButtonStyle(Qt::ToolButtonIconOnly);
         b->setObjectName(QStringLiteral("rail_settings"));
@@ -212,7 +216,7 @@ void MainWindow::buildShell()
     // slots, Undo and the tests that click them by name are untouched.
     m_moreBtn = new QToolButton(header);
     m_moreBtn->setObjectName(QStringLiteral("logMore"));
-    m_moreBtn->setIcon(UiIcons::icon(QStringLiteral("more"), palette().color(QPalette::WindowText), 16));
+    UiIcons::bind(m_moreBtn, QStringLiteral("more"), 16);
     m_moreBtn->setToolTip(tr("More: clear this tab, clear all tabs, check buffer"));
     m_moreBtn->setAccessibleName(tr("More actions"));
     m_moreBtn->setPopupMode(QToolButton::InstantPopup);

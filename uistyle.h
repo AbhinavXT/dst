@@ -23,6 +23,7 @@
 //  toggle: the sheet is rebuilt from the new palette.
 // =====================================================================
 #include <QColor>
+#include <functional>
 #include <QFont>
 #include <QIcon>
 #include <QString>
@@ -140,11 +141,20 @@ QString durationText(qint64 ms);
 
 // Icons drawn from paths in the active theme's colours (no image files, no
 // Qt SVG module). Names: "log", "dmi", "track", "serial", "send", "report",
-// "settings", "search", "twoloco", "more", "pin", "filter".
+// "settings", "search", "twoloco", "more", "pin", "filter", "lock".
 namespace UiIcons {
 QIcon icon(const QString &name, const QColor &color, int px = 18);
 QIcon icon(const QString &name);            // in the palette's text colour
 QStringList names();
+
+// Session 158: set the icon, and draw it again on every theme change. An
+// icon is a picture: drawn once, it kept the colour of the theme it was
+// drawn in, so dark-theme icons stayed light on a light window. `color` is
+// asked again each time; empty = the palette's text colour.
+void bind(QAbstractButton *button, const QString &name, int px = 18,
+          std::function<QColor()> color = std::function<QColor()>());
+void bind(QLabel *label, const QString &name, int px = 18,
+          std::function<QColor()> color = std::function<QColor()>());
 }
 
 #endif  // UISTYLE_H

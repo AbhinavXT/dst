@@ -94,6 +94,12 @@ public:
     QString historyPath() const;
     QByteArray currentBody() const;
     QString sendBlocker() const;      // why Send is disabled, or empty
+    // Session 158: lock / unlock a field of this configuration. Unlocking
+    // with `ask` asks first. False when nothing changed (or refused).
+    bool setFieldLocked(const QString &key, bool locked, bool ask = false);
+    QStringList lockedFields() const { return m_config.locked; }
+    // Session 158: the vcc_crc paragraph of the send confirmation (HTML).
+    QString sendConfirmVccHtml() const;
 
     // ---- the live check: what the loco actually holds ------------------------
     // The VCC prints its LOCO_INFO (@linfo) periodically. Each one is
@@ -144,7 +150,9 @@ private:
     void     loadConfig(const QString &name);
     void     reloadConfigCombo();
     void     refreshGroupCounts();
-    void     applyValues(const LocoInfo::Values &values);
+    // Locked fields keep their values; returns " · N locked field(s) kept: …"
+    // for the status line, or empty when the locks held nothing back.
+    QString  applyValues(const LocoInfo::Values &values);
     void     scheduleSave();
     LocoInfo::Values lastSentValues() const;
     bool     writeBin(const QString &path, const QByteArray &body);

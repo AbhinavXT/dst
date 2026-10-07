@@ -11,6 +11,97 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-158"></a>
+## Session 158 — Show on DMI; icons follow the theme; vcc_crc in the send box; locked fields
+
+### 1. Right-click an @dmi row ▸ Show on DMI
+
+- In a main-window tab and in a recorded-session (.dlr) tab, the row menu
+  of an `@dmi` row has **Show on DMI**. It opens the DMI window (or brings
+  the one already open to the front), sets it to follow the cursor, and
+  shows the panel as it stood at that row, for that row's loco. Rows that
+  are not `@dmi` do not get the item.
+- The row's moment is offered again when the item is chosen, so it wins
+  even if another row or a replay cursor was pointed at since.
+- The window stays in "Follow cursor" afterwards (its checkbox says so),
+  as when the operator ticks it by hand.
+
+### 2. Icons follow a theme change
+
+- **Cause.** The rail icons, the log header's More button and the search
+  icons were drawn once, when the window was built, in that theme's text
+  colour. After switching from a dark theme back to a light one they
+  stayed light-on-light.
+- **Now** `UiIcons::bind()` sets an icon and draws it again on every
+  theme change (through `UiColor::onThemeChange`). Used by the rail, More,
+  the command-search field (its muted text colour too) and the Search
+  window's query icon.
+
+### 3. vcc_crc in the send confirmation, every time
+
+- Loco Configuration ▸ Send to VCC: the question itself now carries
+  **vcc_crc and its value, bold and large**, with what it is (set by hand,
+  must match this loco's VCC build) and its state: not sent before / the
+  same as the last send / **Changed** since the last send (with the old
+  value) / still the default value. Single and bulk sends alike.
+- Before, it was one line inside the details text, among the changed
+  fields. If the schema's LINFO has no `vcc_crc`, the box says so instead
+  of leaving it out. `loco_info_crc` stays in the details.
+
+### 4. Locked fields (Loco Configuration)
+
+- Right-click a field ▸ **Lock field**. Locked, it shows a lock beside its
+  name and cannot be edited in the table; Revert to default / last sent
+  are off for it. **Unlock field…** asks first.
+- Locks belong to the configuration (decided with Abhinav): saved in
+  `loco_configs.json` as `locked_fields`, kept by Duplicate, carried by
+  Export/Import. A lock on a field the schema no longer has is dropped.
+- Loading values in bulk keeps locked values (decided with Abhinav):
+  Reset to defaults, Import loco_info.bin, Load the loco's values, and
+  loading a past send from History. The status line names the locked
+  fields that were kept; the Reset question lists them.
+- A **Locked fields** group in the group list, with its count.
+
+### Files
+
+`dmipanel.{h,cpp}`, `mainwindow.cpp`, `sessionwindow.{h,cpp}`,
+`uistyle.{h,cpp}`, `mainwindow_shell.cpp`, `searchwindow.cpp`,
+`lococonfig/lococonfigcore.{h,cpp}`, `lococonfig/lococonfigmodel.{h,cpp}`,
+`lococonfig/lococonfigwindow.{h,cpp}`; tests `test_session158.cpp` (new),
+`menuaudit_main.cpp`, `tests.pro`.
+
+### Tests
+
+- `session158icons`: a bound button and label are redrawn in each theme's
+  colour, Dark → Light → Nord.
+- `session158lockcore`: `keepLocked`; locks saved, reloaded (unknown and
+  CRC locks dropped), carried by export/import.
+- `session158lockwindow`: a locked field is not editable and setData
+  refuses it; Reset to defaults keeps it and says so; unlocking asks (No
+  keeps it); the lock survives closing and reopening.
+- `session158vcccrc`: the real confirmation box, answered No: vcc_crc in
+  the question (bold, large) when never sent, changed, with many changes,
+  in a bulk send, and unchanged.
+- Menu audit (real MainWindow): Toggle Dark/Light twice, the rail and More
+  icons drawn in each theme's text colour; the row menu of a real `@dmi`
+  frame (replay/loco_1_1_27062026_170159.cap) has Show on DMI and a plain
+  row has not; it opens one DMI window, following, on that frame; a second
+  time reuses the window.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**211 suites / 6092 checks, 1 failed**; menu audit **168 checks, passed**;
+headless smoke 500 datagrams, alive. The one failure is the macOS-only
+`session156` pty check noted in patch 157, unchanged.
+
+### Not tested
+
+- Show on DMI in the .dlr window was not clicked in a test (the same
+  helper as the main window, which was).
+- The new look of the confirmation box was checked by its text, not by
+  eye on Windows.
+
+---
+
 <a id="session-157"></a>
 ## Session 157 — Qt 5 / MinGW build; Find searches what was there; plot menu
 

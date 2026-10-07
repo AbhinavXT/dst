@@ -196,6 +196,12 @@ public:
     void showMoment(const DmiMoment &moment);
     const DmiMoment &moment() const { return m_moment; }
 
+    // Session 158: "Show on DMI" on a row. The DMI window `owner` already
+    // has open (else a new one), set to follow the cursor, brought to the
+    // front. Offer the row's moment to the broker first: following picks up
+    // the moment pointed at last.
+    static DmiWindow *showFollowing(QWidget *owner, MessageDispatcher *dispatcher);
+
     // Session 92: the "Fields" side panel -- the decoded fields of the frame
     // the panel is drawing (live or at the moment).
     void setFieldsVisible(bool on);
