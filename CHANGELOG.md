@@ -11,6 +11,61 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-174"></a>
+## Session 174 — Fault timeline
+
+Feature 4. 81_1 carries 397 NMS fault frames over the day (up to 10 faults
+each), and CCSYS reports the LCU elements going up and down. The Fault
+panel (141) shows what is active *now*. **Tools ▸ Monitor ▸ Fault
+timeline…** shows the whole tab as a Gantt chart:
+
+- **The mode band** on top: the missions' modes (171: the DMI's, the ARP's
+  while the DMI is silent), with every **System_Failure** as a dashed line
+  through all rows.
+- **One row per card / module**, a bar per fault from raised to cleared.
+  An NMS fault clears when a later frame **from the same reporting
+  subsystem** no longer lists it (the fault panel's rule); otherwise it
+  is open to the end of the log. NMS bars are in the error colour.
+- **LCU elements** (CCSYS `lcu_elem_status1/2`: can0, can1, radio1,
+  radio2, gps1, gps2) get rows of their own, with a bar while the bit
+  reads 0, in the warning colour.
+- **Under the chart:** for each System_Failure, the faults raised at that
+  moment.
+- Hover a bar for the fault and its times; hover the mode band for the
+  mode or the System_Failure; click to jump the log; Save image. The
+  chart scrolls when the rows outgrow the window.
+
+On the 81_1 excerpt it shows a burst at each restart. At 10:52:36 there
+are 15 raised: 9 LCU elements down, the Comm card's 3.3 V and 1.2 V PS,
+Radio-1, Radio-2 and GPS-2. There is also a long VCC Mc-4 safety error
+from 10:57 to 11:08, while the loco was in Staff_Responsible.
+
+### Files
+
+`faulttimeline.{h,cpp}`, `faulttimelinewindow.{h,cpp}` (new, in
+`dlcore.pri`), `mainwindow.h`, `mainwindow_menus.cpp`,
+`mainwindow_tools.cpp`; tests `test_session174.cpp` (new), `tests.pro`.
+
+### Tests
+
+- `session174`, on the 81_1 excerpt, against `schema/engine.py` with the
+  same rules:
+  - 97 bars on 23 rows, 2 open at the end;
+  - the first bar is Analogue Card Mc-2's safety error, 10:52:20–22;
+  - LCU rows;
+  - System_Failure at 10:52:36, 10:56:27 and 11:08:52, with 15, 1 (GSM-1)
+    and 9 faults raised;
+  - the list under the chart.
+- The window: hover a bar, hover the band at a failure, and it fits a
+  laptop.
+
+**Gate** (macOS), Qt 5.15.19: validators 11/11; `dltests` **226 suites /
+6346 checks, 1 failed** (the macOS-only `session156` pty check); menu audit
+passed; smoke alive. Qt 6.11.2: the same, plus 175's half-written suite,
+which that run picked up.
+
+---
+
 <a id="session-173"></a>
 ## Session 173 — Radio health
 

@@ -86,6 +86,8 @@ SOURCES += \
     $$PWD/missionreport.cpp \
     $$PWD/radiohealth.cpp \
     $$PWD/radiohealthwindow.cpp \
+    $$PWD/faulttimeline.cpp \
+    $$PWD/faulttimelinewindow.cpp \
     $$PWD/runreportwindow.cpp \
     $$PWD/incidentreport.cpp \
     $$PWD/incidentreportdialog.cpp \
@@ -211,6 +213,8 @@ HEADERS += \
     $$PWD/missionreport.h \
     $$PWD/radiohealth.h \
     $$PWD/radiohealthwindow.h \
+    $$PWD/faulttimeline.h \
+    $$PWD/faulttimelinewindow.h \
     $$PWD/runreportwindow.h \
     $$PWD/incidentreport.h \
     $$PWD/incidentreportdialog.h \

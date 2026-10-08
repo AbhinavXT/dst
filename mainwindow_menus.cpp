@@ -487,6 +487,13 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                                   "the radio holes announced, radios not OK, temperatures, power, GSM RSSI"));
     connect(actRadioHealth, &QAction::triggered, this, &MainWindow::onActionRadioHealth);
 
+    // Session 174: every fault as a bar, under the mode.
+    QAction *actFaultTimeline = monitorMenu->addAction(tr("&Fault timeline…"));
+    actFaultTimeline->setObjectName(QStringLiteral("actFaultTimeline"));
+    actFaultTimeline->setToolTip(tr("The current tab's NMS faults and LCU elements as bars per card, under the "
+                                    "loco's mode, with the faults raised at each System_Failure"));
+    connect(actFaultTimeline, &QAction::triggered, this, &MainWindow::onActionFaultTimeline);
+
     // Session 97: one incident, read in one pass.
     QAction *actIncidentReport = monitorMenu->addAction(tr("&Incident report…"));
     actIncidentReport->setShortcut(QKeySequence("Ctrl+Alt+I"));
