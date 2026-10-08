@@ -20,6 +20,8 @@
 //    self SoS (178)                NMS LOCO_SELF_SOS start..end; COLLISION_DETECTION
 //    session keys (179)            NMS CURRENT_RUNNING_KEY / REMAINING_KEY_NUMBERS;
 //                                  @auth_keys1 loads
+//    RFID tag check (180)          tagcheck.h: main / duplicate read, NMS
+//                                  duplicate missing, route tags passed unread
 //    RFID tags                     LSRP LAST_RFID_TAG, each change
 //    speed                         DMI (or LSRP) speed; above-permitted
 //                                  episodes from DMI speed_limit_permissible
@@ -32,6 +34,8 @@
 //                                  reject rule (rejectrules.xml), by clause
 //  Every list is capped (the count is always the full count).
 // =============================================================================
+
+#include "tagcheck.h"
 
 #include <QMap>
 #include <QString>
@@ -143,6 +147,8 @@ struct Summary {
     QVector<Episode>    noKeys;
     int                 minRemainingKeys = -1;
     QVector<qint64>     keyLoads;
+    // Session 180: the RFID tag check (tagcheck.h).
+    TagCheck::Report    tagCheck;
     QMap<QString, int>  rejectClauses;     // "31.16.1 PKT_DIR" -> frames
     int                 slrpFrames = 0;
     // Session 170: received ARPs (arprecv) judged by the same rules: the

@@ -328,6 +328,9 @@ void LaneBand::paintEvent(QPaintEvent *)
         const qint64 until = i + 1 < m_sum.tagReads.size() ? m_sum.tagReads.at(i + 1).ms : m_to;
         bar(2, t.ms, qMax(until, t.ms + 1), colourFor(QStringLiteral("tag ") + t.to), t.to);
     }
+    // Session 180: NMS reported a tag's duplicate missing: a tick on the RFID lane.
+    for (const TagCheck::Tag &tg : m_sum.tagCheck.tags)
+        if (tg.duplicateMissingMs) tick(2, tg.duplicateMissingMs, UiColor::warning(), QString());
     for (const RunReport::Gap &g : m_sum.gaps) bar(3, g.fromMs, g.toMs, UiColor::warning(), tr("gap"));
     // Session 179: no session keys (top half of the Link lane), key loads (ticks).
     for (const RunReport::Episode &k : m_sum.noKeys) {
@@ -408,6 +411,9 @@ QString LaneBand::describeAt(const QPoint &pos) const
                     return tr("Overspeed %1 – %2, worst %3 km/h over").arg(hm(e.fromMs), hm(e.toMs)).arg(e.worst, 0, 'f', 0);
             return QString();
         case 2: {
+            for (const TagCheck::Tag &tg : m_sum.tagCheck.tags)
+                if (tg.duplicateMissingMs && qAbs(tg.duplicateMissingMs - ms) <= slack)
+                    return tr("NMS: duplicate of tag %1 missing, at %2").arg(tg.tag, hm(tg.duplicateMissingMs));
             // The span under the point: the last tag read at or before it.
             const RunReport::Change *at = nullptr;
             int i = 0;

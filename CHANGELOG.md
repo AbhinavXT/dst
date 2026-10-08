@@ -11,6 +11,55 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-180"></a>
+## Session 180 — RFID tag check
+
+Feature 10. Each RFID tag the loco read, against what else the capture
+says about it, as a new section of the run summary:
+
+| Column | From |
+|---|---|
+| Main / Duplicate | @rfid `duplication`: was the Main Tag read, and was its Duplicate Tag |
+| NMS: duplicate missing | NMS `DUPLICATE_MISSING_RFID` named the tag (first time) |
+| On an SLRP route | an SLRP route tag list (`tag[i]`) named it |
+
+- **Route tags passed without a read.** Take two consecutive tag reads, A
+  then B. If the latest SLRP route list before B holds A and B in that
+  order with tags between them, those tags were passed and not read. Only
+  the list's order is used; no positions are computed.
+- The **RFID lane** gets a warning tick where the NMS reported a tag's
+  duplicate missing, named on hover.
+- What 81_1 shows: the duplicate tag is read for only a few tags, and the
+  NMS reports a duplicate missing 104 times over the day (each sent
+  twice). Over the whole day, no route tag was passed without a read (183
+  distinct reads).
+
+### Files
+
+`tagcheck.{h,cpp}` (new, in `dlcore.pri`), `runreport.{h,cpp}`,
+`laneband.cpp`; tests `test_session180.cpp` (new), `tests.pro`.
+
+### Tests
+
+- `session180`, on the 10:52 excerpt, against `schema/engine.py`:
+  - 15 tags in order, each main tag read;
+  - duplicates read only for 906, 898 and 900;
+  - 7 of the 15 on a route list;
+  - the NMS reports tag 18's duplicate missing at 11:12:33;
+  - no route tag skipped.
+- **The skip rule on real frames, with some left out** (none altered):
+  tag 18's two reads and the SLRP frames from 11:12:38 on. That leaves 16
+  then 906 under a route list holding 16, 18, 906, so 18 is named as
+  passed without a read, at 11:12:49.
+- The run summary section; the RFID lane on hover.
+- `session143` (report wording), `session164`, `session97` pass.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**232 suites / 6413 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-179"></a>
 ## Session 179 — Session keys
 

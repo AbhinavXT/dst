@@ -259,6 +259,7 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
     s.distinctTags = tags.size();
     if (options.hasWindow) s.rows = included;
     s.brakes = options.hasWindow ? brakeEvents(model, options.fromMs, options.toMs) : brakeEvents(model);
+    s.tagCheck = options.hasWindow ? TagCheck::build(model, options.fromMs, options.toMs) : TagCheck::build(model);
 
     // ---- speed, from the same extraction as the speed–distance view ----------------
     const SpeedDistance::Trace trace = options.hasWindow
@@ -540,6 +541,9 @@ QString toHtml(const Summary &s, const Options &options)
         }
         h += QStringLiteral("</table>") + more(s.faults.size());
     }
+
+    // ---- RFID tag check (session 180) -------------------------------------------------------------------
+    h += TagCheck::toHtml(s.tagCheck, cap);
 
     // ---- reject conditions ---------------------------------------------------------------------------------
     int rejected = 0;
