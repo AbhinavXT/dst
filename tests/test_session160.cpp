@@ -10,6 +10,7 @@
 #include <QCoreApplication>
 #include <QFile>
 #include <QImage>
+#include <QScreen>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <QComboBox>
@@ -72,7 +73,11 @@ TEST_SUITE(session160)
         w.setTwoLocos(true);
         QCoreApplication::processEvents();
         CHECK(w.twoLocos() && w.viewB()->isVisible(), "Two locos: a second panel");
-        CHECK(w.width() > before + 300, "the window widens by a panel rather than halving the first");
+        // As far as the screen allows: a native window (Windows CI) cannot
+        // grow past its screen, so the bar is "a panel wider, or the screen".
+        const int room = w.screen() ? w.screen()->availableGeometry().width() : 100000;
+        CHECK(w.width() >= qMin(before + 300, room - 80),
+              "the window widens by a panel (as far as the screen allows) rather than halving the first");
         CHECK(w.selectedSourceB() == QStringLiteral("2_1"), "B starts on the other loco, not on A's");
         CHECK(w.view()->state().locoId == dmiStateFromCapture(cap1).locoId &&
                   w.viewB()->state().locoId == dmiStateFromCapture(cap2).locoId &&

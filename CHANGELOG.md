@@ -11,6 +11,33 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-162"></a>
+## Session 162 — session160 on Windows CI: the widen check follows the screen
+
+- **Cause.** `session160` "the window widens by a panel" asked for at
+  least 300 px more. Windows CI runs the tests on the native platform,
+  where a window cannot grow past its screen, so the check failed there
+  (Linux and macOS run offscreen, which does not clamp). The feature was
+  right; the test pinned a width the CI screen cannot hold.
+- **Now** the check is "a panel wider, or as wide as the screen allows"
+  (the screen's available width, less 80 px for the frame).
+- The same run's `linux-qt6` job was cancelled after six hours in its
+  "Qt 6 and tools" install step: an install that hung, not a test.
+
+### Files
+
+`tests/test_session160.cpp`.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**215 suites / 6152 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit 168 checks, passed; headless smoke 500 datagrams, alive.
+
+### Not tested
+
+Not run on Windows here: the next CI run is the check.
+
+---
+
 <a id="session-161"></a>
 ## Session 161 — Watch panel: ready-made watches
 
