@@ -11,17 +11,31 @@
 //                      safe status colours, text size
 //    tags              the colour tag and label on each tab
 //    pins              status-bar pins, Loco Console big-number tiles, the
-//                      Pinned fields panel
+//                      Pinned fields panel; the Loco Console's cab fields
+//                      and which of its panels show (session 165)
+//    lanes             lanes over the log on/off, and the custom lanes
+//                      (session 165)
+//    watches           the Watch list (ready-made ones included) and the
+//                      saved filter presets (session 165)
+//    view              log columns, widths and row density, UTC times,
+//                      Find's preferences, the DMI window's options, the
+//                      offline thresholds, the two-loco warning distance
+//                      (session 165)
 //    layouts           named window layouts (window_layouts.json)
 //    flasher_profiles  Firmware Flasher profiles (flasher_profiles.json)
 //    loco_configs      Loco Configuration configurations (loco_configs.json)
 //    serial            serial port profiles with their macros, the default
 //                      macro row, and each port's / adapter's settings
-//                      (session 115)
+//                      (session 115); the terminal's own options: echo,
+//                      line ending, hex view, timestamps, send as hex (165)
 //
 //  Deliberately NOT carried: network port, disk-log paths and quotas,
 //  window positions outside layouts, session keys, history logs. Those
 //  belong to the machine or to the record, not to the person's setup.
+//  Nor the Flasher's engineer/operator mode (flasher/mode): which mode a
+//  station runs in is that station's decision, and an import must not
+//  switch an operator PC to engineer mode. Nor the per-tab row capacity
+//  (memory: the machine's), the query history, the last port used.
 //
 //  IMPORT REPLACES A SECTION WHOLE
 //    Merging tab tags or flasher profiles key by key would leave a mix
@@ -44,7 +58,9 @@
 
 namespace SettingsBundle {
 
-enum class Section { Appearance, Tags, Pins, Layouts, FlasherProfiles, LocoConfigs, Serial };
+// New sections go at the END (session 165: Lanes, Watches, View).
+enum class Section { Appearance, Tags, Pins, Layouts, FlasherProfiles, LocoConfigs, Serial,
+                     Lanes, Watches, View };
 
 QList<Section> allSections();
 QString id(Section s);            // the key in the file: "appearance", ...

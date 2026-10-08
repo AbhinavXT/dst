@@ -42,7 +42,32 @@ QStringList iniKeys(Section s)
                  QStringLiteral("ui/textZoom") };
     case Section::Pins:
         return { QStringLiteral("ui/statusPins"), QStringLiteral("lococonsole/bigNumbers"),
-                 QStringLiteral("ui/pinned_fields") };
+                 QStringLiteral("ui/pinned_fields"),
+                 // Session 165: the rest of the Loco Console's layout.
+                 QStringLiteral("lococonsole/bigNumbersShown"), QStringLiteral("lococonsole/cabFields"),
+                 QStringLiteral("lococonsole/cabShown"), QStringLiteral("lococonsole/highlightChanges") };
+    case Section::Lanes:
+        return { QStringLiteral("ui/laneBand"), QStringLiteral("ui/customLanes") };
+    case Section::Watches:
+        return { QStringLiteral("ui/watches"), QStringLiteral("ui/pin_freeze_on_watch"),
+                 QStringLiteral("query/preset_names"), QStringLiteral("query/preset_queries") };
+    case Section::View:
+        return { QStringLiteral("ui/visible_columns"), QStringLiteral("ui/hidden_columns"),
+                 QStringLiteral("ui/column_widths"), QStringLiteral("ui/row_density"),
+                 QStringLiteral("ui/show_utc"),
+                 QStringLiteral("ui/find_advanced"), QStringLiteral("ui/find_detached"),
+                 QStringLiteral("ui/find_mode"), QStringLiteral("ui/find_scan_limit"),
+                 QStringLiteral("ui/find_wrap"),
+                 QStringLiteral("dmi/annexureColours"), QStringLiteral("dmi/followCursor"),
+                 QStringLiteral("dmi/twoLocos"),
+                 QStringLiteral("ui/offline_warn_seconds"), QStringLiteral("ui/offline_err_seconds"),
+                 QStringLiteral("ui/two_loco_warn_apart_km") };
+    case Section::Serial:
+        // The terminal's own options (session 165); the profiles, macros and
+        // per-port groups are the prefixes below.
+        return { QStringLiteral("serial/echo"), QStringLiteral("serial/ending"),
+                 QStringLiteral("serial/hexView"), QStringLiteral("serial/timestamps"),
+                 QStringLiteral("serial/sendHex") };
     default:
         return {};
     }
@@ -68,7 +93,8 @@ bool ownsByPrefix(Section s, const QString &key)
 
 bool isIniSection(Section s)
 {
-    return s == Section::Appearance || s == Section::Tags || s == Section::Pins || s == Section::Serial;
+    return s == Section::Appearance || s == Section::Tags || s == Section::Pins || s == Section::Serial
+        || s == Section::Lanes || s == Section::Watches || s == Section::View;
 }
 
 QStringList keysOf(Section s, QSettings &settings)
@@ -209,8 +235,9 @@ QString countAndNames(int n, const QString &one, const QString &many, const QStr
 
 QList<Section> allSections()
 {
-    return { Section::Appearance, Section::Tags, Section::Pins,
-             Section::Layouts, Section::FlasherProfiles, Section::LocoConfigs, Section::Serial };
+    return { Section::Appearance, Section::Tags, Section::Pins, Section::Lanes, Section::Watches,
+             Section::View, Section::Layouts, Section::FlasherProfiles, Section::LocoConfigs,
+             Section::Serial };
 }
 
 QString id(Section s)
@@ -223,6 +250,9 @@ QString id(Section s)
     case Section::FlasherProfiles: return QStringLiteral("flasher_profiles");
     case Section::LocoConfigs:     return QStringLiteral("loco_configs");
     case Section::Serial:          return QStringLiteral("serial");
+    case Section::Lanes:           return QStringLiteral("lanes");
+    case Section::Watches:         return QStringLiteral("watches");
+    case Section::View:            return QStringLiteral("view");
     }
     return QString();
 }
@@ -232,7 +262,10 @@ QString label(Section s)
     switch (s) {
     case Section::Appearance:      return QObject::tr("Theme and appearance");
     case Section::Tags:            return QObject::tr("Tab colour tags");
-    case Section::Pins:            return QObject::tr("Pins and big numbers");
+    case Section::Pins:            return QObject::tr("Pins, big numbers and the Loco Console");
+    case Section::Lanes:           return QObject::tr("Lanes over the log, custom lanes");
+    case Section::Watches:         return QObject::tr("Watches and saved filters");
+    case Section::View:            return QObject::tr("Log columns, Find, DMI and display options");
     case Section::Layouts:         return QObject::tr("Window layouts");
     case Section::FlasherProfiles: return QObject::tr("Firmware Flasher profiles");
     case Section::LocoConfigs:     return QObject::tr("Loco configurations");
@@ -314,6 +347,29 @@ QString Bundle::summary(Section s) const
     case Section::LocoConfigs: {
         const QJsonArray a = file.value(QStringLiteral("configs")).toArray();
         return countAndNames(a.size(), QObject::tr("1 configuration"), QObject::tr("%1 configurations"), namesIn(a, "name"));
+    }
+    case Section::Lanes: {
+        const QString on = ini.value(QStringLiteral("ui/laneBand")).toVariant().toString();
+        QStringList names;
+        for (const QJsonValue &v : ini.value(QStringLiteral("ui/customLanes")).toArray())
+            names << v.toString().replace(QLatin1Char('\t'), QStringLiteral(" \u25B8 "));
+        return (on == QLatin1String("false") ? QObject::tr("lanes off") : QObject::tr("lanes on")) + QStringLiteral(", ")
+            + countAndNames(names.size(), QObject::tr("1 custom lane"), QObject::tr("%1 custom lanes"), names);
+    }
+    case Section::Watches:
+        return QObject::tr("%1 watches, %2 saved filters")
+            .arg(listSize("ui/watches")).arg(listSize("query/preset_names"));
+    case Section::View: {
+        QStringList parts;
+        if (ini.contains(QStringLiteral("ui/visible_columns")) || ini.contains(QStringLiteral("ui/column_widths")))
+            parts << QObject::tr("log columns");
+        if (ini.contains(QStringLiteral("ui/row_density"))) parts << QObject::tr("row density");
+        if (ini.value(QStringLiteral("ui/show_utc")).toVariant().toString() == QLatin1String("true"))
+            parts << QObject::tr("UTC times");
+        if (ini.contains(QStringLiteral("ui/find_mode"))) parts << QObject::tr("Find");
+        if (ini.contains(QStringLiteral("dmi/annexureColours")) || ini.contains(QStringLiteral("dmi/twoLocos")))
+            parts << QObject::tr("DMI");
+        return parts.isEmpty() ? QObject::tr("%1 options").arg(ini.size()) : parts.join(QStringLiteral(", "));
     }
     case Section::Serial: {
         const int profiles = ini.value(QStringLiteral("serial/profiles/size")).toVariant().toInt();

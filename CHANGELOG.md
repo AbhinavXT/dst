@@ -11,6 +11,70 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-165"></a>
+## Session 165 — Export / Import settings: everything set up since
+
+An audit of every INI key the code writes against what File ▸ Export
+settings carried. Big numbers, Flasher profiles and Loco configurations
+were already carried (the big-number tiles since 79, the files since 94);
+much added since was not.
+
+### Now carried
+
+| Section | What | New |
+|---|---|---|
+| Pins, big numbers and the Loco Console | status pins, big-number tiles, pinned fields | **the Loco Console's cab fields, which panels show, change highlighting** |
+| **Lanes over the log, custom lanes** (new) | lanes on/off, the custom lanes (164) | all |
+| **Watches and saved filters** (new) | the Watch list (ready-made ones included), freeze-on-watch, saved filter presets | all |
+| **Log columns, Find, DMI and display options** (new) | visible / hidden columns, widths, row density, UTC times, Find's options, the DMI window's (Annexure colours, follow cursor, two locos), offline thresholds, two-loco warning distance | all |
+| Serial profiles, macros and port settings | profiles, macros, per-port / per-adapter | **the terminal's own: echo, line ending, hex view, timestamps, send as hex** |
+
+Theme and appearance, tab tags, window layouts, Firmware Flasher profiles
+and Loco configurations (with their locked fields, 158) are as before.
+
+- **Applied at once** on import, no restart: lanes (every tab), the watch
+  list, log columns / widths / density, UTC times, offline thresholds.
+  Find, the DMI window and the two-loco view read theirs when they open;
+  the Loco Console and serial terminal when they open, as before.
+- Edit ▸ Undo puts an import back, as before.
+- Files from before this patch import as they did (they just lack the new
+  sections); a file from this one, read by an older DLConsole, has its
+  new sections ignored (that was already the rule).
+
+### Still not carried, on purpose
+
+The machine's or the record's: network port, disk-log paths and quotas,
+window positions outside layouts, session keys, histories, the per-tab
+row capacity (memory), the query history, the last serial port used. And
+**the Flasher's engineer/operator mode**: which mode a station runs in is
+that station's decision; an import must not switch an operator PC to
+engineer mode.
+
+### Files
+
+`settingsbundle.{h,cpp}`, `mainwindowsession.cpp`, `mainwindow_menus.cpp`
+(the UTC action has an object name); tests `test_session165.cpp` (new),
+`menuaudit_main.cpp`, `tests.pro`.
+
+### Tests
+
+- `session165`: a console with one value in every newly carried key
+  (31 keys, in the shapes the code writes), exported, read, imported into
+  another: every key arrives with its value and reads back as bool / int /
+  double; the chooser's summaries; the Flasher's mode on the target is
+  untouched; nothing of the machine's leaks (UDP port, disk root, row
+  capacity, query history, last port); an older file still imports.
+- Menu audit: a lanes import puts the custom lane on every tab's band at
+  once; Ctrl+Z puts it back.
+- `settingsbundle` and `session115` pass unchanged.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**217 suites / 6181 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit **174 checks, passed**; headless smoke 500 datagrams,
+alive.
+
+---
+
 <a id="session-164"></a>
 ## Session 164 — Lanes: RFID as spans; custom lanes from any packet field
 

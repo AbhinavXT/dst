@@ -325,6 +325,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     // but switchable, because the archives are UTC and correlating the two
     // is exactly when this matters.
     QAction *actUtc = viewMenu->addAction(tr("Show times in &UTC"));
+    actUtc->setObjectName(QStringLiteral("actShowUtc"));
     actUtc->setCheckable(true);
     actUtc->setChecked(Settings::showUtc());
     connect(actUtc, &QAction::triggered, this, &MainWindow::onActionToggleUtc);

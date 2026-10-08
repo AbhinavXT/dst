@@ -26,6 +26,7 @@
 #include "uicolors.h"
 #include "uistyle.h"
 #include "undolog.h"
+#include "logmodel.h"
 #include "watchpanel.h"
 #include "workspacesnapshot.h"
 
@@ -660,5 +661,46 @@ void MainWindow::afterSettingsImported(const QStringList &ids)
     }
     if (ids.contains(id(Section::Layouts))) {
         rebuildLayoutsMenu();
+    }
+    // Session 165: the new sections, applied now rather than at the next start.
+    if (ids.contains(id(Section::Lanes))) {
+        QSettings ini(Settings::iniPath(), QSettings::IniFormat);
+        m_lanesOn = ini.value(QStringLiteral("ui/laneBand"), true).toBool();
+        if (auto *act = findChild<QAction *>(QStringLiteral("actLaneBand"))) {
+            const QSignalBlocker block(act);
+            act->setChecked(m_lanesOn);
+        }
+        QVector<CustomLane> lanes;
+        for (const QString &k : ini.value(QStringLiteral("ui/customLanes")).toStringList()) {
+            const QStringList parts = k.split(QLatin1Char('\t'));
+            if (parts.size() == 2 && !parts.at(0).isEmpty() && !parts.at(1).isEmpty())
+                lanes << CustomLane{ parts.at(0), parts.at(1) };
+        }
+        for (auto it = m_tabs.begin(); it != m_tabs.end(); ++it)
+            if (it->lanes) it->lanes->setEnabled2(m_lanesOn);
+        setCustomLanes(lanes);
+    }
+    if (ids.contains(id(Section::Watches))) {
+        if (m_watchPanel) m_watchPanel->restore();
+    }
+    if (ids.contains(id(Section::View))) {
+        applyColumnVisibilityToAllTabs();
+        applyDensityToAllTabs();
+        for (auto it = m_tabs.constBegin(); it != m_tabs.constEnd(); ++it)
+            if (it->view) applyColumnWidths(it->view);
+        const bool utc = Settings::showUtc();
+        if (auto *act = findChild<QAction *>(QStringLiteral("actShowUtc"))) {
+            const QSignalBlocker block(act);
+            act->setChecked(utc);
+        }
+        if (m_dispatcher) {
+            m_dispatcher->setShowUtc(utc);
+            for (const QString &key : m_dispatcher->knownKeys())
+                if (LogModel *m = m_dispatcher->modelForKey(key)) m->setShowUtc(utc);
+        }
+        m_offlineWarnSec = Settings::offlineWarnSeconds();
+        m_offlineErrSec  = Settings::offlineErrSeconds();
+        refreshTabHealth();
+        // Find, the DMI window and the two-loco view read theirs when they open.
     }
 }

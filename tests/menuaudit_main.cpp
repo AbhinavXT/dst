@@ -1188,6 +1188,32 @@ int main(int argc, char **argv) {
             CHECK(w.tabTags()->tag(QStringLiteral("21_1")).label == before.label,
                   "Ctrl+Z puts the old tags back");
 
+            // Session 165: a lanes section is applied at once, and undone.
+            {
+                const QString lanesFile = tmp.filePath(QStringLiteral("lanes.json"));
+                QJsonObject lanesIni;
+                lanesIni[QStringLiteral("ui/laneBand")] = QStringLiteral("true");
+                lanesIni[QStringLiteral("ui/customLanes")] = QJsonArray{ QStringLiteral("lsrp\tTRAIN_SPEED") };
+                QJsonObject lanesSection;
+                lanesSection[QStringLiteral("ini")] = lanesIni;
+                QJsonObject lroot;
+                lroot[QStringLiteral("format")] = QStringLiteral("dlconsole-settings");
+                lroot[QStringLiteral("version")] = 1;
+                lroot[QStringLiteral("sections")] = QJsonObject{ { QStringLiteral("lanes"), lanesSection } };
+                QFile lf(lanesFile); lf.open(QIODevice::WriteOnly); lf.write(QJsonDocument(lroot).toJson()); lf.close();
+                const CustomLane speed{ QStringLiteral("lsrp"), QStringLiteral("TRAIN_SPEED") };
+                const QList<LaneBand *> bands = w.findChildren<LaneBand *>();
+                const bool hadIt = !bands.isEmpty() && bands.first()->customLanes().contains(speed);
+                error.clear();
+                CHECK(w.importSettingsFrom(lanesFile, { QStringLiteral("lanes") }, &error), "a lanes import succeeds");
+                bool all = !bands.isEmpty();
+                for (LaneBand *b : bands) all = all && b->customLanes().contains(speed);
+                CHECK(all, "and every tab's lanes have the imported custom lane at once, no restart");
+                if (undo) undo->trigger();
+                CHECK(!bands.isEmpty() && bands.first()->customLanes().contains(speed) == hadIt,
+                      "Ctrl+Z puts the lanes back as they were");
+            }
+
             QMenu *toolsM = findMenu(bar, "Tools");
             QAction *locoAct = toolsM ? findAction(toolsM, "Loco Configuration") : nullptr;
             if (locoAct) locoAct->trigger();
