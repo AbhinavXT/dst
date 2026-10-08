@@ -199,6 +199,10 @@ bool TwoLocoCanvas::event(QEvent *e)
             add(m_pair.keyB, m_pair.eventsB.headOn, tr("head-on"));
             add(m_pair.keyA, m_pair.eventsA.rearEnd, tr("rear-end"));
             add(m_pair.keyB, m_pair.eventsB.rearEnd, tr("rear-end"));
+            add(m_pair.keyA, m_pair.eventsA.trip, tr("Trip"));
+            add(m_pair.keyB, m_pair.eventsB.trip, tr("Trip"));
+            add(m_pair.keyA, m_pair.eventsA.failure, tr("System_Failure"));
+            add(m_pair.keyB, m_pair.eventsB.failure, tr("System_Failure"));
         }
         if (lines.isEmpty()) { QToolTip::hideText(); e->ignore(); }
         else QToolTip::showText(he->globalPos(), lines.join(QLatin1Char('\n')), this);
@@ -361,6 +365,11 @@ void TwoLocoCanvas::paintEvent(QPaintEvent *)
     drawTicks(m_pair.eventsB.headOn, UiColor::error());
     drawTicks(m_pair.eventsA.rearEnd, UiColor::error());
     drawTicks(m_pair.eventsB.rearEnd, UiColor::error());
+    // Session 172: Trip and System_Failure, from each loco's mode.
+    drawTicks(m_pair.eventsA.trip, UiColor::error());
+    drawTicks(m_pair.eventsB.trip, UiColor::error());
+    drawTicks(m_pair.eventsA.failure, UiColor::muted());
+    drawTicks(m_pair.eventsB.failure, UiColor::muted());
 
     // ---- time axis: round ticks, labelled ---------------------------------------------------
     {
@@ -508,6 +517,7 @@ TwoLocoWindow::TwoLocoWindow(MessageDispatcher *dispatcher, QWidget *parent)
     QStringList keys = m_dispatcher ? m_dispatcher->knownKeys() : QStringList();
     keys.sort();
     if (keys.size() >= 2) setSources(keys.at(0), keys.at(1));
+    else if (keys.size() == 1 && m_boxB->count() > 1) setSources(keys.at(0), m_boxB->itemData(1).toString());   // one log: it and a loco it heard
     else rebuild();
 }
 
@@ -523,6 +533,15 @@ void TwoLocoWindow::refreshPickers()
         for (const QString &k : keys) {
             const QString friendly = m_dispatcher->friendlyNameFor(k);
             box->addItem(friendly == k ? k : QStringLiteral("%1   (%2)").arg(friendly, k), k);
+        }
+        // Session 172: B can also be a loco as a tab's received ARPs report it.
+        if (box == m_boxB) {
+            for (const QString &k : keys) {
+                for (qint64 id : TwoLocoView::heardLocos(m_dispatcher->modelForKey(k))) {
+                    box->addItem(tr("Loco %1, as heard by %2").arg(id).arg(m_dispatcher->friendlyNameFor(k)),
+                                 QStringLiteral("heard:%1:%2").arg(k).arg(id));
+                }
+            }
         }
         if (!keep.isEmpty()) { const int idx = box->findData(keep); if (idx >= 0) box->setCurrentIndex(idx); }
         box->blockSignals(false);
@@ -542,8 +561,15 @@ void TwoLocoWindow::rebuild()
     const QString keyA = m_boxA->currentData().toString();
     const QString keyB = m_boxB->currentData().toString();
     LogModel *modelA = (m_dispatcher && !keyA.isEmpty()) ? m_dispatcher->modelForKey(keyA) : nullptr;
-    LogModel *modelB = (m_dispatcher && !keyB.isEmpty()) ? m_dispatcher->modelForKey(keyB) : nullptr;
-    m_pair = TwoLocoView::build(modelA, keyA, modelB, keyB, 0, 0, 2000, m_warnApart->value() * 1000.0);
+    if (keyB.startsWith(QLatin1String("heard:"))) {
+        const QStringList part = keyB.split(QLatin1Char(':'));
+        LogModel *by = m_dispatcher && part.size() == 3 ? m_dispatcher->modelForKey(part.at(1)) : nullptr;
+        m_pair = TwoLocoView::buildHeard(modelA, keyA, by, part.value(2).toLongLong(),
+                                         tr("loco %1 (heard)").arg(part.value(2)), 0, 0, 3000, m_warnApart->value() * 1000.0);
+    } else {
+        LogModel *modelB = (m_dispatcher && !keyB.isEmpty()) ? m_dispatcher->modelForKey(keyB) : nullptr;
+        m_pair = TwoLocoView::build(modelA, keyA, modelB, keyB, 0, 0, 2000, m_warnApart->value() * 1000.0);
+    }
     m_canvas->setPair(m_pair);
 
     QString tip;

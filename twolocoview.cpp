@@ -1,7 +1,11 @@
 #include "twolocoview.h"
 
+#include "capturedecoder.h"
 #include "fieldplot.h"
 #include "logmodel.h"
+
+#include <QSet>
+#include <algorithm>
 
 #include <QDateTime>
 
@@ -74,6 +78,11 @@ Events extractEvents(const LogModel *model, qint64 fromMs, qint64 toMs)
     return out;
 }
 
+namespace {
+// The gap and the plausibility checks, once both traces are in `p`.
+void finishPair(Pair &p, qint64 toleranceMs, double warnApartM);
+}  // namespace
+
 Pair build(const LogModel *modelA, const QString &keyA,
           const LogModel *modelB, const QString &keyB,
           qint64 fromMs, qint64 toMs, qint64 toleranceMs, double warnApartM)
@@ -85,6 +94,33 @@ Pair build(const LogModel *modelA, const QString &keyA,
     p.b = SpeedDistance::extract(modelB, 200000, fromMs, toMs);
     p.eventsA = extractEvents(modelA, fromMs, toMs);
     p.eventsB = extractEvents(modelB, fromMs, toMs);
+    addModeEvents(p.a, &p.eventsA);
+    addModeEvents(p.b, &p.eventsB);
+    finishPair(p, toleranceMs, warnApartM);
+    return p;
+}
+
+Pair buildHeard(const LogModel *modelA, const QString &keyA,
+                const LogModel *heardBy, qint64 heardId, const QString &keyB,
+                qint64 fromMs, qint64 toMs, qint64 toleranceMs, double warnApartM)
+{
+    Pair p;
+    p.keyA = keyA;
+    p.keyB = keyB;
+    p.a = SpeedDistance::extract(modelA, 200000, fromMs, toMs);
+    p.b = heardTrace(heardBy, heardId, fromMs, toMs);
+    p.eventsA = extractEvents(modelA, fromMs, toMs);
+    p.eventsB = heardEvents(heardBy, heardId, fromMs, toMs);
+    addModeEvents(p.a, &p.eventsA);
+    addModeEvents(p.b, &p.eventsB);
+    finishPair(p, toleranceMs, warnApartM);
+    return p;
+}
+
+namespace {
+void finishPair(Pair &p, qint64 toleranceMs, double warnApartM)
+{
+    const QString &keyA = p.keyA, &keyB = p.keyB;
 
     for (const SpeedDistance::Sample &sa : p.a.samples) {
         if (!SpeedDistance::locationKnown(sa)) continue;
@@ -121,7 +157,114 @@ Pair build(const LogModel *modelA, const QString &keyA,
             : QStringLiteral("%1 reports 0 m throughout (never localised on an RFID tag): "
                              "there is no gap to show.").arg(p.hasLocA ? keyB : keyA);
     }
-    return p;
+}
+}  // namespace
+
+// ---- Session 172 ------------------------------------------------------------------------
+
+namespace {
+// The loco's own ID, from its own ARP / LSRP (the last one seen).
+qint64 ownIdOf(const LogModel *model)
+{
+    for (int i = model->count() - 1; i >= 0; --i) {
+        const LogEntryPtr e = model->entryAt(i);
+        if (!e) continue;
+        const QString type = captureTypeOf(e->text);
+        if (type != QLatin1String("arp") && type != QLatin1String("lsrp")) continue;
+        QHash<QString, qint64> raw;
+        CaptureDecoder::describe(CaptureDecoder::parseLine(e->text), nullptr, 0, &raw);
+        if (raw.contains(QStringLiteral("SOURCE_LOCO_ID"))) return raw.value(QStringLiteral("SOURCE_LOCO_ID"));
+    }
+    return -1;
+}
+
+// Each received ARP from another loco (CRC not failing), in row order.
+template <typename F>
+void forEachHeard(const LogModel *model, qint64 fromMs, qint64 toMs, F &&f)
+{
+    if (!model) return;
+    const qint64 own = ownIdOf(model);
+    for (int i = 0; i < model->count(); ++i) {
+        const LogEntryPtr e = model->entryAt(i);
+        if (!e || !e->text.startsWith(QLatin1String("@arprecv_"))) continue;
+        if ((fromMs > 0 && e->epochMs < fromMs) || (toMs > 0 && e->epochMs > toMs)) continue;
+        const CaptureLine cap = CaptureDecoder::parseLine(e->text);
+        if (!cap.valid || (cap.crcChecked && !cap.crcOk)) continue;
+        QHash<QString, qint64> raw;
+        const QVector<FieldRow> rows = CaptureDecoder::describe(cap, nullptr, 0, &raw);
+        if (!raw.contains(QStringLiteral("SOURCE_LOCO_ID"))) continue;
+        const qint64 id = raw.value(QStringLiteral("SOURCE_LOCO_ID"));
+        if (id == own) continue;
+        f(i, e->epochMs, id, raw, rows);
+    }
+}
+
+QString rowValue(const QVector<FieldRow> &rows, const char *name)
+{
+    for (const FieldRow &r : rows)
+        if (r.field.trimmed() == QLatin1String(name)) return r.value.trimmed();
+    return QString();
+}
+}  // namespace
+
+QVector<qint64> heardLocos(const LogModel *model)
+{
+    QSet<qint64> ids;
+    forEachHeard(model, 0, 0, [&](int, qint64, qint64 id, const QHash<QString, qint64> &, const QVector<FieldRow> &) { ids.insert(id); });
+    QVector<qint64> out(ids.begin(), ids.end());
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+SpeedDistance::Trace heardTrace(const LogModel *model, qint64 locoId, qint64 fromMs, qint64 toMs)
+{
+    SpeedDistance::Trace t;
+    t.source = QStringLiteral("arprecv");
+    bool first = true;
+    forEachHeard(model, fromMs, toMs, [&](int row, qint64 ms, qint64 id, const QHash<QString, qint64> &raw, const QVector<FieldRow> &rows) {
+        if (id != locoId) return;
+        const qint64 speed = raw.value(QStringLiteral("TRAIN_SPEED"), 511);
+        if (speed == 511) { ++t.rowsSkipped; return; }          // unidentified
+        SpeedDistance::Sample smp;
+        smp.row = row;
+        smp.epochMs = ms;
+        smp.locM = double(raw.value(QStringLiteral("ABS_LOCO_LOC")));
+        smp.speedKmh = double(speed);
+        smp.mode = rowValue(rows, "LOCO_MODE");
+        t.samples << smp;
+        t.maxSpeedKmh = qMax(t.maxSpeedKmh, smp.speedKmh);
+        if (SpeedDistance::locationKnown(smp)) {
+            t.minLocM = first ? smp.locM : qMin(t.minLocM, smp.locM);
+            t.maxLocM = first ? smp.locM : qMax(t.maxLocM, smp.locM);
+            first = false;
+        }
+    });
+    return t;
+}
+
+Events heardEvents(const LogModel *model, qint64 locoId, qint64 fromMs, qint64 toMs)
+{
+    Events out;
+    RunReport::EpisodeTracker sos{ &out.sos }, headOn{ &out.headOn }, rearEnd{ &out.rearEnd };
+    forEachHeard(model, fromMs, toMs, [&](int row, qint64 ms, qint64 id, const QHash<QString, qint64> &raw, const QVector<FieldRow> &rows) {
+        if (id != locoId) return;
+        const qint64 em = raw.value(QStringLiteral("EMERGENCY_STATUS"), 0);
+        const QString what = rowValue(rows, "EMERGENCY_STATUS");
+        sos.observe(em == 1 || em == 2 || em == 6, ms, row, what, 0.0, false);
+        headOn.observe(em == 4, ms, row, what, 0.0, false);
+        rearEnd.observe(em == 5, ms, row, what, 0.0, false);
+    });
+    return out;
+}
+
+void addModeEvents(const SpeedDistance::Trace &trace, Events *events)
+{
+    RunReport::EpisodeTracker trip{ &events->trip }, failure{ &events->failure };
+    for (const SpeedDistance::Sample &s : trace.samples) {
+        if (s.mode.isEmpty()) continue;
+        trip.observe(s.mode.startsWith(QLatin1String("7 ")), s.epochMs, s.row, s.mode, 0.0, false);
+        failure.observe(s.mode.startsWith(QLatin1String("12 ")), s.epochMs, s.row, s.mode, 0.0, false);
+    }
 }
 
 QString gapToCsv(const Pair &pair)

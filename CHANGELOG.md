@@ -11,6 +11,61 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-172"></a>
+## Session 172 — Two locos from one log (received ARP)
+
+Feature 2. The two-loco view (98) needed both locos' tabs, and its events
+came from @lsos, which these logs don't have. But a loco's **received ARPs**
+carry the other loco's ABS_LOCO_LOC, TRAIN_SPEED, LOCO_MODE and
+EMERGENCY_STATUS about every 2 s (7,677 of them in 81_1). One log is
+enough.
+
+- **Loco B** also offers "**Loco 2, as heard by 81_1**", one entry for each
+  other loco in each tab's received ARPs. Its trace is those ARPs.
+  Excluded: the loco's own ID (its own ARP coming back, session 170) and
+  frames whose CRC fails (3 of 305 in the fixture: a garbled ID or
+  position is not another loco). With only one tab open, the window
+  starts on that tab and the first loco it heard.
+- **Events:** the heard loco's EMERGENCY_STATUS gives SoS (1, 2, 6),
+  head-on (4) and rear-end (5) episodes. **Trip and System_Failure** are
+  marked for both locos from their modes (any source, not only received
+  ARPs): Trip in the error colour, System_Failure muted, with tooltips.
+- The gap pairs samples within 3 s (received ARPs come about every 2 s).
+  The plausibility warnings are unchanged.
+
+### Files
+
+`twolocoview.{h,cpp}`, `twolocowindow.cpp`; tests `test_session172.cpp`
+(new), `tests.pro`.
+
+### Tests
+
+- `session172`, on `replay/2026-10-08/loco_1_1_08102026_105200.cap`, against
+  `schema/engine.py` (8-byte received header):
+  - loco 1 heard only loco 2; 302 samples (305 minus the 3 that fail
+    their CRC, named);
+  - located 161,099–161,694 m, 100 km/h at most, mode on each sample;
+  - System_Failure from 10:58:33, no Trip; one SoS spell 11:03:33–11:06:41;
+  - each gap is B minus A, both known; loco 1's own System_Failure is
+    marked too.
+- On the 81_2 excerpt, loco 2's heard locos are {1}: its own ARP coming
+  back is not listed.
+- The window's B picker entry, and its one-tab default.
+
+**Gate** (macOS), 171 and 172 together, Qt 5.15.19 and Qt 6.11.2: see the
+commit. The first run picked up 172's half-written code and showed that the
+new fixtures, sorting first in `replay/`, changed the inputs of
+`lococonsolelive`, `slrpcarry` and `session92` (hence the subfolder).
+
+### Found, not fixed
+
+Today's CCSYS frames (81_1) do not round-trip through the Packet Maker's
+encoder byte for byte (226 of 400 in `session92`'s corpus before the move).
+The older captures' frames do. To be looked at with the radio panel
+(feature 3).
+
+---
+
 <a id="session-171"></a>
 ## Session 171 — Missions, and the full mission report
 

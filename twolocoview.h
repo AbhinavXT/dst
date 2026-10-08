@@ -53,7 +53,26 @@ struct Events {
     QVector<RunReport::Episode> sos;       // access SOS / unusual stop / train parted
     QVector<RunReport::Episode> headOn;    // is_head_on_collision_recvd
     QVector<RunReport::Episode> rearEnd;   // is_rear_end_collision_recvd
+    // Session 172: from the loco's mode (its trace's samples).
+    QVector<RunReport::Episode> trip;      // 7 (Trip)
+    QVector<RunReport::Episode> failure;   // 12 (System_Failure)
 };
+
+// ---- Session 172: a loco as another loco heard it -----------------------------------
+//
+//  A loco's received ARPs (arprecv) carry the OTHER loco's ABS_LOCO_LOC,
+//  TRAIN_SPEED, LOCO_MODE and EMERGENCY_STATUS, about every 2 s. So one
+//  loco's log is enough for both: its own trace, and the other's as heard.
+//  Excluded: the loco's own ID (its own ARP coming back, session 170) and
+//  frames whose CRC fails (a garbled ID is not another loco).
+
+// The other locos `model`'s received ARPs come from, ascending.
+QVector<qint64> heardLocos(const LogModel *model);
+// One heard loco's trace (source "arprecv") and its events.
+SpeedDistance::Trace heardTrace(const LogModel *model, qint64 locoId, qint64 fromMs = 0, qint64 toMs = 0);
+Events heardEvents(const LogModel *model, qint64 locoId, qint64 fromMs = 0, qint64 toMs = 0);
+// Trip / System_Failure episodes from a trace's modes, into `events`.
+void addModeEvents(const SpeedDistance::Trace &trace, Events *events);
 
 // @lsos in `model`, windowed if fromMs/toMs > 0 (both, like collectRowFields).
 Events extractEvents(const LogModel *model, qint64 fromMs = 0, qint64 toMs = 0);
@@ -87,6 +106,12 @@ Pair build(const LogModel *modelA, const QString &keyA,
           const LogModel *modelB, const QString &keyB,
           qint64 fromMs = 0, qint64 toMs = 0, qint64 toleranceMs = 2000,
           double warnApartM = 0.0);
+
+// Session 172: B is loco `heardId` as `heardBy`'s received ARPs report it.
+Pair buildHeard(const LogModel *modelA, const QString &keyA,
+                const LogModel *heardBy, qint64 heardId, const QString &keyB,
+                qint64 fromMs = 0, qint64 toMs = 0, qint64 toleranceMs = 3000,
+                double warnApartM = 0.0);
 
 // CSV of the gap samples (time, gap_m), for export.
 QString gapToCsv(const Pair &pair);
