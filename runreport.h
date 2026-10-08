@@ -13,6 +13,8 @@
 //    span and packet counts        every row
 //    silences in the traffic       every row, gaps over a threshold
 //    loco mode changes             LSRP LOCO_MODE
+//    start of mission (168)        ARP in Stand_By with no direction, tag
+//                                  or location, as episodes
 //    emergency status              LSRP EMERGENCY_STATUS != 0, as episodes
 //    RFID tags                     LSRP LAST_RFID_TAG, each change
 //    speed                         DMI (or LSRP) speed; above-permitted
@@ -88,6 +90,11 @@ struct Summary {
     QVector<Gap>        gaps;
     QVector<Change>     modeChanges;
     QString             firstMode;
+    // Session 168: each spell of ARPs in the start-of-mission state
+    // (CaptureDecoder::isStartOfMission). fromMs / row: the first such ARP
+    // after any other; toMs: the last; what: the LOCO_MODE of the ARP that
+    // followed ("" while the window ends still in it).
+    QVector<Episode>    missionStarts;
     QVector<Episode>    emergencies;
     QVector<Change>     tagReads;          // to = tag number, from = previous
     int                 distinctTags = 0;

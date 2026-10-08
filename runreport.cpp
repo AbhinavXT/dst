@@ -64,6 +64,7 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
     EpisodeTracker skew{ &s.clockSkew };
     int included = 0;
     bool haveFirst = false;
+    bool inMissionStart = false;
 
     for (int i = 0; i < n; ++i) {
         const LogEntryPtr e = model->entryAt(i);
@@ -95,6 +96,22 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
                 locoFrameNum = raw.value(QStringLiteral("FRAME_NUM"));
                 locoFrameMs = e->epochMs;
             }
+        }
+        if (type == QLatin1String("arp")) {
+            const bool som = CaptureDecoder::isStartOfMission(raw);
+            if (som && !inMissionStart) {
+                Episode m;
+                m.fromMs = m.toMs = e->epochMs;
+                m.row = i;
+                s.missionStarts << m;
+            } else if (som) {
+                s.missionStarts.last().toMs = e->epochMs;
+            } else if (inMissionStart) {
+                for (const FieldRow &r : rows) {
+                    if (r.field.trimmed() == QLatin1String("LOCO_MODE")) { s.missionStarts.last().what = r.value.trimmed(); break; }
+                }
+            }
+            inMissionStart = som;
         }
         if (type == QLatin1String("lsrp")) {
             QString modeText;
@@ -248,6 +265,20 @@ QString toHtml(const Summary &s, const Options &options)
             }
             h += QStringLiteral("</table>") + more(s.modeChanges.size());
         }
+    }
+
+    // ---- start of mission (session 168) ------------------------------------------------------
+    h += QStringLiteral("<h2>Start of mission (ARP): %1</h2>").arg(s.missionStarts.size());
+    if (!s.missionStarts.isEmpty()) {
+        h += QStringLiteral("<p class=\"muted\">ARP in Stand_By with no direction, no RFID tag and no location.</p>"
+                            "<table><tr><th>From</th><th>Last such ARP</th><th>Then</th></tr>");
+        for (int i = 0; i < s.missionStarts.size() && i < cap; ++i) {
+            const Episode &m = s.missionStarts.at(i);
+            h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td></tr>")
+                     .arg(timeText(m.fromMs), timeText(m.toMs),
+                          m.what.isEmpty() ? QStringLiteral("<span class=\"muted\">still so at the end</span>") : esc(m.what));
+        }
+        h += QStringLiteral("</table>") + more(s.missionStarts.size());
     }
 
     // ---- emergency -------------------------------------------------------------------------

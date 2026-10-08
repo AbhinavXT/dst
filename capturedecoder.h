@@ -299,6 +299,12 @@ SlrpProfile carryProfile(const SlrpProfile &held, const SlrpProfile &latest);
 // Track-condition type (4-bit) -> short name (mirrors kavach.xml tcType enum).
 QString           tcTypeName(int t);
 
+// Session 168: an ARP's decoded values (describe()'s rawValues) report the
+// start-of-mission state: LOCO_MODE 1 (Stand_By), MOVEMENT_DIR 0, LAST_RFID_TAG
+// 0, ABS_LOCO_LOC 0 -- powered up, not yet told where it is or which way it
+// faces. False when any of the four is missing.
+bool isStartOfMission(const QHash<QString, qint64> &arp);
+
 // Fully-named active faults from an NMS fault packet (empty for other types).
 QVector<ActiveFaultInfo> faultsOf(const CaptureLine &c);
 

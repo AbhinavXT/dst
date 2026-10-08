@@ -94,6 +94,7 @@ public:
     TableFindBar *findBar() const { return m_find; }
     QTableWidget *tableForLabel(const QString &label) const;
     QTabWidget   *tabs() const { return m_tabs; }
+    QLabel       *missionChip() const { return m_lblMission; }
 
 private:
 
@@ -121,6 +122,12 @@ private:
         quint32 lastSeq = 0;
         quint64 seqGaps = 0;
         quint64 total   = 0;
+
+        // Session 168: start of mission, from ARP (CaptureDecoder::
+        // isStartOfMission). Times are the frames' own (RTC).
+        bool      inMissionStart = false;
+        QDateTime missionFrom, missionTo;
+        QString   missionThen;               // LOCO_MODE of the ARP that followed
     };
 
     // One open output for a single recorded source.
@@ -160,6 +167,7 @@ private:
     QLabel       *m_lblRate   = nullptr;
     QLabel       *m_lblCrc    = nullptr;
     QLabel       *m_lblSeq    = nullptr;
+    QLabel       *m_lblMission = nullptr;     // session 168
     QTabWidget   *m_tabs      = nullptr;
     QTableWidget *m_linkTable = nullptr;
     QMap<int, QTableWidget*>  m_typeTables;   // (int)CapType -> field table

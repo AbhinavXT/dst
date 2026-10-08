@@ -149,6 +149,9 @@ Summary build(LogModel *tabModel, const QString &tabKey, const QString &tabName,
     for (const RunReport::Episode &e : s.brakeEpisodes) {
         moments << keyMomentAt(tabModel, e.fromMs, QStringLiteral("Brake: %1 applied").arg(e.what));
     }
+    for (const RunReport::Episode &m : s.run.missionStarts) {
+        moments << keyMomentAt(tabModel, m.fromMs, QStringLiteral("Start of mission (ARP)"));
+    }
     moments << keyMomentAt(tabModel, s.toMs, QStringLiteral("Window end"));
     std::sort(moments.begin(), moments.end(), [](const KeyMoment &a, const KeyMoment &b) { return a.ms < b.ms; });
     if (moments.size() > options.maxDmiMoments) {
@@ -258,6 +261,20 @@ QString toHtml(const Summary &s, const Options &options)
             h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td></tr>").arg(timeText(c.ms), esc(c.from), esc(c.to));
         }
         h += QStringLiteral("</table>") + more(s.run.modeChanges.size());
+    }
+
+    // ---- start of mission (session 168) --------------------------------------------------------------
+    if (!s.run.missionStarts.isEmpty()) {
+        h += QStringLiteral("<h2>Start of mission (ARP): %1</h2>").arg(s.run.missionStarts.size());
+        h += QStringLiteral("<p class=\"muted\">ARP in Stand_By with no direction, no RFID tag and no location.</p>"
+                            "<table><tr><th>From</th><th>Last such ARP</th><th>Then</th></tr>");
+        for (int i = 0; i < s.run.missionStarts.size() && i < cap; ++i) {
+            const RunReport::Episode &m = s.run.missionStarts.at(i);
+            h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td></tr>")
+                     .arg(timeText(m.fromMs), timeText(m.toMs),
+                          m.what.isEmpty() ? QStringLiteral("<span class=\"muted\">still so at window end</span>") : esc(m.what));
+        }
+        h += QStringLiteral("</table>") + more(s.run.missionStarts.size());
     }
 
     // ---- EB/FSB applications ------------------------------------------------------------------------

@@ -196,6 +196,13 @@ void LocoConsoleWindow::buildUi()
     // added under it.
     QHBoxLayout *readouts = top;
     top = new QHBoxLayout();
+    // Session 168: start of mission, from the loco's ARP. On the actions
+    // row: the readouts row is full at a laptop's width (session 150).
+    m_lblMission = new QLabel(tr("start of mission --"), central);
+    m_lblMission->setObjectName(QStringLiteral("locoMissionChip"));
+    UiStyle::makeChip(m_lblMission, UiStyle::Tone::Neutral);
+    m_lblMission->setMinimumWidth(140);              // may be cut short at a laptop's width; the tooltip has it all
+    top->addWidget(m_lblMission);
     top->addStretch(1);
     m_btnRecord = new QPushButton(tr("\u25CF Record"), central);
     m_btnRecord->setToolTip(tr("Record one or more live sources, each to its own .cap file for replay"));
@@ -404,6 +411,25 @@ void LocoConsoleWindow::ingest(const CaptureLine &c, qint64 nowMs)
     if (c.crcChecked) { if (c.crcOk) { ls.crcOkCount++; } else { ls.crcFail++; } }
 
     st.latest[int(c.type)] = c;          // keep the whole frame for the field tab
+
+    // Session 168: start of mission. Only ARP is decoded here (~1 frame/s).
+    if (c.type == CapType::ARP) {
+        QHash<QString, qint64> raw;
+        const QVector<FieldRow> rows = CaptureDecoder::describe(c, nullptr, 0, &raw);
+        const bool som = CaptureDecoder::isStartOfMission(raw);
+        const QDateTime at = c.rtc.isValid() ? c.rtc : QDateTime::fromMSecsSinceEpoch(nowMs);
+        if (som && !st.inMissionStart) {
+            st.missionFrom = at;
+            st.missionThen.clear();
+        }
+        if (som) st.missionTo = at;
+        if (!som && st.inMissionStart) {
+            for (const FieldRow &r : rows) {
+                if (r.field.trimmed() == QLatin1String("LOCO_MODE")) { st.missionThen = r.value.trimmed(); break; }
+            }
+        }
+        st.inMissionStart = som;
+    }
 }
 
 void LocoConsoleWindow::onSelectionChanged(int index)
@@ -870,6 +896,29 @@ void LocoConsoleWindow::refreshHeader(const LocoState &st, qint64 nowMs)
                       : crcFail ? tr("\u2715 CRC %1 failed of %2").arg(crcFail).arg(crcTot)
                                 : tr("\u2713 CRC %1/%2").arg(crcOk).arg(crcTot));
     UiStyle::setTone(m_lblCrc, !crcTot ? UiStyle::Tone::Neutral : crcFail ? UiStyle::Tone::Fail : UiStyle::Tone::Ok);
+
+    // Session 168: start of mission.
+    {
+        const QString hms = QStringLiteral("HH:mm:ss");
+        const QString what = tr("ARP in Stand_By with no direction, no RFID tag and no location");
+        if (!st.missionFrom.isValid()) {
+            m_lblMission->setText(tr("start of mission --"));
+            m_lblMission->setToolTip(tr("No start of mission seen from this loco yet (%1).").arg(what));
+            UiStyle::setTone(m_lblMission, UiStyle::Tone::Neutral);
+        } else if (st.inMissionStart) {
+            m_lblMission->setText(tr("\u23F5 at start of mission since %1").arg(st.missionFrom.toString(hms)));
+            m_lblMission->setToolTip(tr("At start of mission: every ARP since %1 is %2.").arg(st.missionFrom.toString(hms), what));
+            UiStyle::setTone(m_lblMission, UiStyle::Tone::Accent);
+        } else {
+            QString mode = st.missionThen;
+            const int open = mode.indexOf(QLatin1Char('(')), close = mode.lastIndexOf(QLatin1Char(')'));
+            if (open > 0 && close > open) mode = mode.mid(open + 1, close - open - 1);
+            m_lblMission->setText(tr("mission started %1 \u2192 %2").arg(st.missionFrom.toString(hms), mode));
+            m_lblMission->setToolTip(tr("Start of mission from %1 to %2 (%3); the next ARP reported %4.")
+                                         .arg(st.missionFrom.toString(hms), st.missionTo.toString(hms), what, st.missionThen));
+            UiStyle::setTone(m_lblMission, UiStyle::Tone::Neutral);
+        }
+    }
 
     m_lblSeq->setText(tr("seq %1 \u00B7 gaps %2").arg(st.lastSeq).arg(st.seqGaps));
     UiStyle::setTone(m_lblSeq, st.seqGaps ? UiStyle::Tone::Warn : UiStyle::Tone::Neutral);

@@ -11,6 +11,64 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-168"></a>
+## Session 168 — Start of mission, from ARP
+
+A loco that has just powered up sends ARPs in **Stand_By with no
+direction, no RFID tag and no location** (LOCO_MODE 1, MOVEMENT_DIR 0,
+LAST_RFID_TAG 0, ABS_LOCO_LOC 0). Abhinav's frame of 2026-10-08
+(`@arp_2_1 … 41683`, FRAME_NUM 59899, loco 2) is one. The console now
+recognises that state (`CaptureDecoder::isStartOfMission`) and shows it in
+four places:
+
+- **On the row**: every such ARP gets a `start of mission` row in its
+  decode ("…the loco reports it is at the start of a mission"). ARP
+  only. LSRP carries the same fields, but this rule is ARP's.
+- **Lanes**: each spell is marked on the MODE lane in the accent colour
+  (at least 6 px wide), with a line at its start. Hovering it says when
+  it started and what the next ARP reported ("then 2 (Staff_Responsible)
+  after 14:07:30"), or that it was still so.
+- **Run summary and Incident report**: a "Start of mission (ARP)"
+  section (from, last such ARP, then). In the incident report each start
+  is also a key moment, so the pack shows the DMI as it was then.
+- **Live Loco Console**: a chip at the left of the actions row reads
+  "start of mission --", then "⏵ at start of mission since 14:06:46",
+  then "mission started 14:06:46 → Staff_Responsible". Its tooltip has
+  the full times. The chip can shrink, so the console still fits a
+  laptop (session 150's ≤ 1100 px).
+
+A spell begins at the first such ARP after any other ARP (or the first
+ARP seen) and ends at the next ARP that is not in that state.
+
+### Files
+
+`capturedecoder.{h,cpp}`, `runreport.{h,cpp}`, `incidentreport.cpp`,
+`laneband.{h,cpp}`, `lococonsolewindow.{h,cpp}`; tests
+`test_session168.cpp` (new), `tests.pro`.
+
+### Tests
+
+- `session168`: Abhinav's frame decoded bit for bit (CRC passes;
+  Stand_By, 0, 0, 0, FRAME_NUM 59899, loco 2) and annotated; each of the
+  four fields alone breaks the match; a missing field does too; a
+  running-mission ARP and an LSRP are not annotated. Over
+  `replay/loco_1_1_27062026_140226.cap`, the expected spells come from
+  `schema/engine.py`: 14:06:46–14:07:30 then Staff_Responsible, and
+  14:59:44 to the end. The run report finds exactly these; the incident
+  report has the key moment and section; the lane band's 15-minute
+  window shows the second in the accent colour with its tooltip; the
+  console chip steps through its three states, and the console's
+  minimum width stays ≤ 1100.
+- `session150` (console width), `session82`, `session124` pass.
+
+Six replay captures hold a start of mission; only one is used in the tests.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**220 suites / 6245 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit passed; headless smoke 500 datagrams, alive.
+
+---
+
 <a id="session-167"></a>
 ## Session 167 — DMI window: up to four locos, fields under each panel
 

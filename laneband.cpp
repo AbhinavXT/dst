@@ -179,7 +179,8 @@ bool LaneBand::customLaneIsGraph(int i) const
 
 bool LaneBand::hasContent() const
 {
-    return !m_sum.firstMode.isEmpty() || !m_sum.modeChanges.isEmpty() || !m_sum.emergencies.isEmpty()
+    return !m_sum.firstMode.isEmpty() || !m_sum.modeChanges.isEmpty() || !m_sum.missionStarts.isEmpty()
+        || !m_sum.emergencies.isEmpty()
         || !m_sum.overspeed.isEmpty() || !m_sum.tagReads.isEmpty() || !m_sum.faults.isEmpty()
         || !m_custom.isEmpty();
 }
@@ -293,6 +294,16 @@ void LaneBand::paintEvent(QPaintEvent *)
         }
         if (!mode.isEmpty()) bar(0, at, m_to, colourFor(mode), named(mode));
     }
+    // Session 168: start of mission (ARP), over the mode it precedes: the
+    // spell in the accent colour, at least 6 px so a few seconds still show.
+    for (const RunReport::Episode &m : m_sum.missionStarts) {
+        const QRect r = track(0);
+        const int x1 = xFor(m.fromMs, r);
+        const qint64 minMs = m_to > m_from ? (m_to - m_from) * 6 / qMax(1, r.width()) : 1;
+        bar(0, m.fromMs, qMax(m.toMs, qMin(m.fromMs + minMs, m_to)), UiColor::accent(), tr("Start of mission"));
+        p.setPen(QPen(UiColor::accent(), 2));
+        p.drawLine(x1, r.top() - 2, x1, r.bottom() + 2);
+    }
     for (const RunReport::Episode &e : m_sum.emergencies) bar(1, e.fromMs, qMax(e.toMs, e.fromMs + 1), UiColor::error(), tr("EMERGENCY"));
     for (const RunReport::Episode &e : m_sum.overspeed) bar(1, e.fromMs, qMax(e.toMs, e.fromMs + 1), UiColor::warning(), tr("overspeed"));
     // RFID (session 164): the last tag read holds until the next read, as
@@ -347,6 +358,14 @@ QString LaneBand::describeAt(const QPoint &pos) const
         const qint64 slack = r.width() > 0 ? (m_to - m_from) * 4 / r.width() : 0;   // ±4 px
         switch (lane) {
         case 0: {
+            for (const RunReport::Episode &m : m_sum.missionStarts) {
+                if (ms < m.fromMs - slack || ms > m.toMs + slack * 2) continue;
+                return m.what.isEmpty()
+                    ? tr("Start of mission from %1 (ARP: Stand_By, no direction, tag or location), still so at %2")
+                          .arg(hm(m.fromMs), hm(m.toMs))
+                    : tr("Start of mission from %1 (ARP: Stand_By, no direction, tag or location); "
+                         "then %2 after %3").arg(hm(m.fromMs), m.what, hm(m.toMs));
+            }
             QString mode = m_sum.firstMode;
             for (const RunReport::Change &c : m_sum.modeChanges) { if (c.ms > ms) break; mode = c.to; }
             return mode.isEmpty() ? QString() : tr("Mode %1 at %2").arg(mode, hm(ms));

@@ -1226,6 +1226,14 @@ SlrpProfile profileOf(const CaptureLine &c)
 
 // Fully-named active faults from an NMS fault packet. Reuses decodeFault() plus
 // the module / fault-input dictionaries so naming lives in one place.
+bool isStartOfMission(const QHash<QString, qint64> &arp)
+{
+    static const QString keys[] = { QStringLiteral("LOCO_MODE"), QStringLiteral("MOVEMENT_DIR"),
+                                    QStringLiteral("LAST_RFID_TAG"), QStringLiteral("ABS_LOCO_LOC") };
+    for (const QString &k : keys) if (!arp.contains(k)) return false;
+    return arp.value(keys[0]) == 1 && arp.value(keys[1]) == 0 && arp.value(keys[2]) == 0 && arp.value(keys[3]) == 0;
+}
+
 QVector<ActiveFaultInfo> faultsOf(const CaptureLine &c)
 {
     QVector<ActiveFaultInfo> out;
@@ -1440,7 +1448,15 @@ QVector<FieldRow> describe(const CaptureLine &c, const QHash<int, qint64> *tagLo
         const QString token = (c.type == CapType::LSRP) ? QStringLiteral("lsrp")
                                                         : QStringLiteral("arp");
         if (hdr > 0) {
-            r += schemaRows(b, token, nullptr, hdr * 8, rawValues);
+            QHash<QString, qint64> own;
+            QHash<QString, qint64> *raw = rawValues ? rawValues : &own;
+            r += schemaRows(b, token, nullptr, hdr * 8, raw);
+            // Session 168: the state an ARP reports before a mission starts.
+            if (c.type != CapType::LSRP && isStartOfMission(*raw)) {
+                r.push_back({ QStringLiteral("start of mission"),
+                              QStringLiteral("Stand_By, no direction, no RFID tag, no location: "
+                                             "the loco reports it is at the start of a mission") });
+            }
         }
         break;
     }

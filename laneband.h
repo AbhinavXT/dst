@@ -5,7 +5,8 @@
 //  LaneBand (session 121, UI revamp step 5) — what happened when, over the log
 //  -----------------------------------------------------------------------------
 //  A strip of lanes above a tab's log for its newest stretch of traffic:
-//    Mode     the loco's mode as segments, named
+//    Mode     the loco's mode as segments, named; a start of mission (ARP
+//             in Stand_By, no direction / tag / location) marked over it (168)
 //    Safety   emergency spells (fail) and overspeed (warning)
 //    RFID     the last tag read, as a span from its read to the next one,
 //             named (session 164; was a tick per read)
