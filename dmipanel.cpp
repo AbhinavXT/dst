@@ -213,7 +213,7 @@ QStringList dmiAssumptions()
         QObject::tr("Next lower speed (B7) is target_speed, shown while there is a target."),
         QObject::tr("Tag diagram (M): the current, last and last-but-one tag IDs (rc/rl/rll), each with its status "
                     "(rcs/rls/rlls): 1 read (dark green, \u2713), 2 missed (red, \u2717), 0 none (grey), 3 unnamed (?)."),
-        QObject::tr("RF bars (J3): signal_strength, capped at 5."),
+        QObject::tr("RF bars (J3): signal_strength, capped at 5; 0 crosses out the antenna (no radio)."),
     };
 }
 
@@ -690,6 +690,13 @@ void DmiView::paintEvent(QPaintEvent *)
             p.setPen(QPen(b < s.rfBars ? ink : c.lgy, 4));
             if (b >= s.rfBars) p.setPen(QPen(c.lgy, 1));
             p.drawLine(QPointF(x0 + 52 + b * 8, base), QPointF(x0 + 52 + b * 8, base - h));
+        }
+        // Session 166: no signal (signal_strength 0) -- a cross over the
+        // antenna, so "no radio" does not read as five grey bars only.
+        if (s.rfBars == 0) {
+            p.setPen(QPen(m_stale ? c.lgy : c.brd, 4, Qt::SolidLine, Qt::RoundCap));
+            p.drawLine(QPointF(x0 + 6, base - 42), QPointF(x0 + 46, base - 2));
+            p.drawLine(QPointF(x0 + 46, base - 42), QPointF(x0 + 6, base - 2));
         }
     }
     // ---- L: last tag ----------------------------------------------------------------------------------

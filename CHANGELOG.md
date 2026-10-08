@@ -11,6 +11,34 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-166"></a>
+## Session 166 — DMI: a cross over the antenna when there is no radio
+
+Region J (RF) drew five thin grey bars when `signal_strength` was 0,
+which reads much like "low" at a glance. Now a **red cross over the
+antenna** says plainly that there is no radio signal; with any bar
+(1–5) there is no cross. On a stale panel the cross greys out with
+everything else. The Fields notes ("Where each region comes from") say
+so.
+
+### Files
+
+`dmipanel.cpp`; tests `test_session166.cpp` (new), `tests.pro`.
+
+### Tests
+
+- `session166`, real frames from `replay/loco_1_1_26062026_162418.cap`:
+  @dmi #0 (`signal_strength` 0) draws red over the antenna; #289 (5)
+  draws none; one bar draws none; stale draws none; the note is there.
+- `session83` / `session160` (the DMI's earlier suites) pass unchanged.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**218 suites / 6189 checks, 1 failed** (the macOS-only `session156` pty
+check, as in 165); menu audit passed; headless smoke 500 datagrams,
+alive.
+
+---
+
 <a id="session-165"></a>
 ## Session 165 — Export / Import settings: everything set up since
 
