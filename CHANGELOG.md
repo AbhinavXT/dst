@@ -11,6 +11,55 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-181"></a>
+## Session 181 — Level crossings approached, and the horn
+
+Feature 11, the last of the eleven. The DMI names the level crossing
+ahead (`lc.id`, with `lc.manning`, `lc.auto_whistle` and `lc.distance`),
+and the DIO records the horn solenoid (@dip1 `horn1/2_solenoid_no`). Put
+together, they answer: did the horn sound while the loco approached?
+
+- **An approach** is a spell of @dmi frames naming the same LC. A gap
+  over 30 s starts a new one.
+- **The horn** counts as sounding while either solenoid feedback reads
+  other than its usual value (the cab-inputs rule, 176). Without @dip1 in
+  the span it is "not known", not "none".
+- **Run summary**: a "Level crossings approached" table (LC, manning,
+  auto whistle, from, to, distance shown, horn spells).
+- **Mission report**: each mission's approaches, with "none" flagged
+  when the horn did not sound.
+- What 81_1 shows over the day: four approaches to LC 191 (manned, auto
+  whistle 1). The horn sounded during those at 10:35 and 10:50, but
+  **not during the 12:02 and 14:54 approaches**. The whole-day mission
+  report lists the 14:54 one (698 → 7 m shown) as "horn none". The 12:02
+  one falls outside the 200,000 rows a tab holds by default.
+
+### Fixture
+
+`replay/2026-10-08/loco_1_1_08102026_103520.cap` (new, 3,729 lines,
+0.61 MB): 81_1 from 10:35:20 to 10:38:30, every packet type, capture lines
+unchanged.
+
+### Files
+
+`lccheck.{h,cpp}` (new, in `dlcore.pri`), `runreport.{h,cpp}`,
+`missionreport.{h,cpp}`; tests `test_session181.cpp` (new), `tests.pro`.
+
+### Tests
+
+- `session181`, against `schema/engine.py` with the same rules:
+  - LC 19 (unmanned) 10:35:34–35, 727 → 713 m, horn at 10:35:35;
+  - LC 191 (manned) 10:35:36–10:38:12, 699 → 286 m, horn 10:35:36–42,
+    10:35:50–10:36:02, 10:37:17–25 and 10:37:31–10:38:06;
+  - the table, and the run summary.
+- `session171` (missions), `session143`, `session97`, `session180` pass.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**233 suites / 6422 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-180"></a>
 ## Session 180 — RFID tag check
 

@@ -257,6 +257,11 @@ QVector<Mission> split(const LogModel *model, const Options &options)
     for (Mission &m : out)
         for (const RunReport::BrakeEvent &b : brakes)
             if (b.fromMs >= m.fromMs && (b.fromMs < m.toMs || (b.fromMs == m.toMs && &m == &out.last()))) m.brakes << b;
+    // Session 181: each mission's level-crossing approaches.
+    const QVector<LcCheck::Approach> lcs = LcCheck::build(model);
+    for (Mission &m : out)
+        for (const LcCheck::Approach &a : lcs)
+            if (a.fromMs >= m.fromMs && (a.fromMs < m.toMs || &m == &out.last())) m.lcApproaches << a;
     if (!out.isEmpty() && out.last().index > 0) out.last().endsWithLog = true;
     if (!out.isEmpty() && out.last().index == 0) out.last().endsWithLog = true;
     return out;
@@ -375,6 +380,19 @@ QString toHtml(const QVector<Mission> &missions, const QString &tabKey, const QS
                          .arg(timeText(b.fromMs), timeText(b.toMs), esc(b.type), esc(b.reasonsText()));
             }
             h += QStringLiteral("</table>");
+        }
+        if (!m.lcApproaches.isEmpty()) {
+            h += QStringLiteral("<h3>Level crossings approached</h3><ul>");
+            for (const LcCheck::Approach &a : m.lcApproaches) {
+                QStringList horn;
+                for (const auto &sp : a.horn) horn << timeText(sp.first);
+                h += QStringLiteral("<li>LC %1 (%2) %3–%4: horn %5</li>")
+                         .arg(esc(a.lc), esc(a.manning), timeText(a.fromMs), timeText(a.toMs),
+                              !a.dioSeen ? QStringLiteral("not known (no @dip1)")
+                                         : horn.isEmpty() ? QStringLiteral("<span class=\"flag\">none</span>")
+                                                          : QStringLiteral("from ") + horn.join(QStringLiteral(", ")));
+            }
+            h += QStringLiteral("</ul>");
         }
         h += QStringLiteral("<h3>Run</h3><p>Highest speed %1 km/h%2. %3. No radio on the DMI for %4.</p>")
                  .arg(m.maxSpeedKmh, 0, 'f', 0)

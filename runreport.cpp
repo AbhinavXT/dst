@@ -260,6 +260,7 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
     if (options.hasWindow) s.rows = included;
     s.brakes = options.hasWindow ? brakeEvents(model, options.fromMs, options.toMs) : brakeEvents(model);
     s.tagCheck = options.hasWindow ? TagCheck::build(model, options.fromMs, options.toMs) : TagCheck::build(model);
+    s.lcApproaches = options.hasWindow ? LcCheck::build(model, options.fromMs, options.toMs) : LcCheck::build(model);
 
     // ---- speed, from the same extraction as the speed–distance view ----------------
     const SpeedDistance::Trace trace = options.hasWindow
@@ -544,6 +545,9 @@ QString toHtml(const Summary &s, const Options &options)
 
     // ---- RFID tag check (session 180) -------------------------------------------------------------------
     h += TagCheck::toHtml(s.tagCheck, cap);
+
+    // ---- level crossings (session 181) ------------------------------------------------------------------
+    if (!s.lcApproaches.isEmpty()) h += LcCheck::toHtml(s.lcApproaches, cap);
 
     // ---- reject conditions ---------------------------------------------------------------------------------
     int rejected = 0;

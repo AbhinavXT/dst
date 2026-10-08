@@ -22,6 +22,7 @@
 //                                  @auth_keys1 loads
 //    RFID tag check (180)          tagcheck.h: main / duplicate read, NMS
 //                                  duplicate missing, route tags passed unread
+//    level crossings (181)         lccheck.h: each LC approach, and the horn
 //    RFID tags                     LSRP LAST_RFID_TAG, each change
 //    speed                         DMI (or LSRP) speed; above-permitted
 //                                  episodes from DMI speed_limit_permissible
@@ -35,6 +36,7 @@
 //  Every list is capped (the count is always the full count).
 // =============================================================================
 
+#include "lccheck.h"
 #include "tagcheck.h"
 
 #include <QMap>
@@ -149,6 +151,8 @@ struct Summary {
     QVector<qint64>     keyLoads;
     // Session 180: the RFID tag check (tagcheck.h).
     TagCheck::Report    tagCheck;
+    // Session 181: level crossings approached, and the horn (lccheck.h).
+    QVector<LcCheck::Approach> lcApproaches;
     QMap<QString, int>  rejectClauses;     // "31.16.1 PKT_DIR" -> frames
     int                 slrpFrames = 0;
     // Session 170: received ARPs (arprecv) judged by the same rules: the
