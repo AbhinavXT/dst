@@ -83,7 +83,8 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
 
         // Only the types this report reads are decoded.
         const bool wanted = type == QLatin1String("lsrp") || type == QLatin1String("arp")
-                         || type == QLatin1String("slrp") || type == QLatin1String("nmsflt");
+                         || type == QLatin1String("slrp") || type == QLatin1String("nmsflt")
+                         || type == QLatin1String("arprecv");
         if (!wanted) continue;
         const CaptureLine cap = CaptureDecoder::parseLine(e->text);
         if (!cap.valid || cap.bytes.isEmpty()) continue;
@@ -160,6 +161,20 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
             for (auto it = ctx.cbegin(); it != ctx.cend(); ++it) judged.insert(it.key(), it.value());
             for (const RejectRules::Finding &f : kavachRejectRules().evaluate(judged, type)) {
                 s.rejectClauses[QStringLiteral("%1  %2").arg(f.rule.clause, f.rule.field)] += 1;
+            }
+        } else if (type == QLatin1String("arprecv")) {
+            // Session 170: another loco's ARP, unless it carries this
+            // loco's own ID (rejectrules.xml, clause "DLConsole").
+            ++s.arpRecvFrames;
+            QHash<QString, qint64> judged = raw;
+            const QHash<QString, qint64> ctx = identity.contextFor(sourceKey);
+            for (auto it = ctx.cbegin(); it != ctx.cend(); ++it) judged.insert(it.key(), it.value());
+            for (const RejectRules::Finding &f : kavachRejectRules().evaluate(judged, type)) {
+                s.arpRecvRejects[QStringLiteral("%1  %2").arg(f.rule.clause, f.rule.field)] += 1;
+                if (f.rule.field == QLatin1String("SOURCE_LOCO_ID")) {
+                    if (!s.arpRecvOwnFirstMs) s.arpRecvOwnFirstMs = e->epochMs;
+                    s.arpRecvOwnLastMs = e->epochMs;
+                }
             }
         } else if (type == QLatin1String("nmsflt")) {
             // Each frame lists the faults active now: a fault appearing is
@@ -367,6 +382,24 @@ QString toHtml(const Summary &s, const Options &options)
             h += QStringLiteral("<tr><td>%1</td><td class=\"num\">%2</td></tr>").arg(esc(it.key())).arg(it.value());
         }
         h += QStringLiteral("</table>");
+    }
+    // Session 170: received ARPs.
+    if (s.arpRecvFrames > 0) {
+        int recvRejected = 0;
+        for (int v : s.arpRecvRejects) recvRejected += v;
+        h += QStringLiteral("<h2>Received ARP frames matching a reject condition: %1 over %2</h2>")
+                 .arg(countOf(recvRejected, "match", "matches"), countOf(s.arpRecvFrames, "frame", "frames"));
+        if (s.arpRecvOwnFirstMs)
+            h += QStringLiteral("<p>Received ARP carrying this loco's own ID (its own transmission coming back, or "
+                                "another loco configured with the same ID), %1 to %2: the loco would not process "
+                                "these as another loco.</p>").arg(timeText(s.arpRecvOwnFirstMs), timeText(s.arpRecvOwnLastMs));
+        if (!s.arpRecvRejects.isEmpty()) {
+            h += QStringLiteral("<table><tr><th>Clause · field</th><th class=\"num\">Frames</th></tr>");
+            for (auto it = s.arpRecvRejects.constBegin(); it != s.arpRecvRejects.constEnd(); ++it) {
+                h += QStringLiteral("<tr><td>%1</td><td class=\"num\">%2</td></tr>").arg(esc(it.key())).arg(it.value());
+            }
+            h += QStringLiteral("</table>");
+        }
     }
     h += QStringLiteral("</body></html>");
     return h;

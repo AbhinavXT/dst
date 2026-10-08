@@ -445,12 +445,31 @@ void LocoConsoleWindow::ingest(const CaptureLine &c, qint64 nowMs)
     ls.lastSeq    = c.seq;
     if (c.crcChecked) { if (c.crcOk) { ls.crcOkCount++; } else { ls.crcFail++; } }
 
+    // Session 170: a received ARP carrying this loco's own ID is not
+    // another loco (rejectrules.xml, clause "DLConsole"): counted, and kept
+    // off the arprecv tab, which shows the last ARP from ANOTHER loco.
+    if (c.type == CapType::ArpRecv && st.ownLocoId >= 0) {
+        QHash<QString, qint64> raw;
+        CaptureDecoder::describe(c, nullptr, 0, &raw);
+        if (raw.contains(QStringLiteral("SOURCE_LOCO_ID")) && raw.value(QStringLiteral("SOURCE_LOCO_ID")) == st.ownLocoId) {
+            ++st.ownArpRecv;
+            st.ownArpRecvLast = c.rtc.isValid() ? c.rtc : QDateTime::fromMSecsSinceEpoch(nowMs);
+            return;
+        }
+    }
+    if (c.type == CapType::LSRP) {
+        QHash<QString, qint64> raw;
+        CaptureDecoder::describe(c, nullptr, 0, &raw);
+        if (raw.contains(QStringLiteral("SOURCE_LOCO_ID"))) learnOwnId(st, raw.value(QStringLiteral("SOURCE_LOCO_ID")));
+    }
+
     st.latest[int(c.type)] = c;          // keep the whole frame for the field tab
 
     // Session 168: start of mission. Only ARP is decoded here (~1 frame/s).
     if (c.type == CapType::ARP) {
         QHash<QString, qint64> raw;
         const QVector<FieldRow> rows = CaptureDecoder::describe(c, nullptr, 0, &raw);
+        if (raw.contains(QStringLiteral("SOURCE_LOCO_ID"))) learnOwnId(st, raw.value(QStringLiteral("SOURCE_LOCO_ID")));
         const bool som = CaptureDecoder::isStartOfMission(raw);
         const QDateTime at = c.rtc.isValid() ? c.rtc : QDateTime::fromMSecsSinceEpoch(nowMs);
         if (som && !st.inMissionStart) {
@@ -465,6 +484,22 @@ void LocoConsoleWindow::ingest(const CaptureLine &c, qint64 nowMs)
         }
         st.inMissionStart = som;
     }
+}
+
+// Session 170: the loco's own ID, from its ARP / LSRP. A received ARP
+// that came in before the ID was known and carries it is withdrawn now.
+void LocoConsoleWindow::learnOwnId(LocoState &st, qint64 id)
+{
+    if (st.ownLocoId == id) return;
+    st.ownLocoId = id;
+    const auto held = st.latest.find(int(CapType::ArpRecv));
+    if (held == st.latest.end()) return;
+    QHash<QString, qint64> raw;
+    CaptureDecoder::describe(held.value(), nullptr, 0, &raw);
+    if (raw.value(QStringLiteral("SOURCE_LOCO_ID"), -1) != id) return;
+    ++st.ownArpRecv;
+    st.ownArpRecvLast = held.value().rtc;
+    st.latest.erase(held);
 }
 
 void LocoConsoleWindow::onSelectionChanged(int index)
@@ -1026,13 +1061,23 @@ void LocoConsoleWindow::refreshTypeTables(const LocoState &st, qint64 nowMs)
 
         if (!st.latest.contains(t)) {
             tbl->setRowCount(1);
+            const bool onlyOwn = t == int(CapType::ArpRecv) && st.ownArpRecv > 0 && !m_following;
             tbl->setItem(0, 0, new QTableWidgetItem(m_following ? tr("(none in the %1 min before this moment)").arg(kDmiLookbackMs / 60000)
-                                                                : tr("(no data yet)")));
-            tbl->setItem(0, 1, new QTableWidgetItem(QString()));
+                                                    : onlyOwn  ? tr("rejected")
+                                                               : tr("(no data yet)")));
+            tbl->setItem(0, 1, new QTableWidgetItem(onlyOwn
+                ? tr("%1 received ARP(s) carrying this loco's own ID %2, last %3: not another loco; none from another loco yet")
+                      .arg(st.ownArpRecv).arg(st.ownLocoId).arg(st.ownArpRecvLast.toString(QStringLiteral("HH:mm:ss")))
+                : QString()));
             continue;
         }
 
         QVector<FieldRow> rows = CaptureDecoder::describe(st.latest[t], nullptr, 0, nullptr, m_keys);
+        if (t == int(CapType::ArpRecv) && st.ownArpRecv > 0 && !m_following) {
+            rows.prepend({ tr("rejected"),
+                           tr("%1 received ARP(s) carrying this loco's own ID %2, last %3: not another loco, not shown here")
+                               .arg(st.ownArpRecv).arg(st.ownLocoId).arg(st.ownArpRecvLast.toString(QStringLiteral("HH:mm:ss"))) });
+        }
         if (m_following && m_moment.valid && m_momentFrameMs.contains(t)) {
             const qint64 fms = m_momentFrameMs.value(t);
             rows.prepend({ tr("\u23F1 frame"),
@@ -1334,6 +1379,11 @@ LocoConsoleWindow::LocoState LocoConsoleWindow::momentView(const LocoState &live
     if (!m_moment.valid) return view;
     view.rtc = QDateTime::fromMSecsSinceEpoch(m_moment.atMs);
     for (const DmiFrameAt &f : m_moment.latestFor(m_selectedKey)) {
+        if (f.cap.type == CapType::ArpRecv && live.ownLocoId >= 0) {      // session 170: not another loco
+            QHash<QString, qint64> raw;
+            CaptureDecoder::describe(f.cap, nullptr, 0, &raw);
+            if (raw.value(QStringLiteral("SOURCE_LOCO_ID"), -1) == live.ownLocoId) continue;
+        }
         view.latest[int(f.cap.type)] = f.cap;
         m_momentFrameMs.insert(int(f.cap.type), f.frameMs);
         // A tile reads the freshest source: freshness at the moment.

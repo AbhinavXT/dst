@@ -24,8 +24,8 @@
 //                                  outside the accept window, as episodes
 //    faults                        NMS fault frames: each fault raised and
 //                                  cleared
-//    reject conditions             SLRP frames matching a reject rule
-//                                  (rejectrules.xml), counted by clause
+//    reject conditions             SLRP and received-ARP frames matching a
+//                                  reject rule (rejectrules.xml), by clause
 //  Every list is capped (the count is always the full count).
 // =============================================================================
 
@@ -107,6 +107,11 @@ struct Summary {
     QVector<FaultEvent> faults;
     QMap<QString, int>  rejectClauses;     // "31.16.1 PKT_DIR" -> frames
     int                 slrpFrames = 0;
+    // Session 170: received ARPs (arprecv) judged by the same rules: the
+    // own-ID one ("received ARP from this loco's own ID") in practice.
+    QMap<QString, int>  arpRecvRejects;    // "DLConsole  SOURCE_LOCO_ID" -> frames
+    int                 arpRecvFrames = 0;
+    qint64              arpRecvOwnFirstMs = 0, arpRecvOwnLastMs = 0;
 };
 
 Summary summarise(const LogModel *model, const QString &tabKey, const QString &tabName,

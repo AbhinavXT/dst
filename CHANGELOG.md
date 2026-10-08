@@ -11,6 +11,60 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-170"></a>
+## Session 170 — Received ARP from the loco's own ID: rejected
+
+Abhinav's 81_2 capture of 2026-10-08 shows loco 2 hearing **its own ARP**
+as a received ARP (566 times in 27 minutes). The rule was already in
+`rejectrules.xml` (session 92: an `arprecv` whose SOURCE_LOCO_ID is the
+loco's own, clause "DLConsole"). It was evaluated only in the Field
+inspector, on the selected row. Now it acts where received ARPs are used:
+
+- **Live Loco Console**: the received-ARP tab shows the last ARP from
+  *another* loco. An own-ID one no longer replaces it. A first row reads
+  "rejected: N received ARP(s) carrying this loco's own ID 2, last
+  HH:MM:SS: not another loco, not shown here". The own ID comes from the
+  loco's ARP / LSRP SOURCE_LOCO_ID. A received ARP that came in before
+  the ID was known, and carries it, is withdrawn once the ID is learned.
+  While following the cursor, an own-ID received ARP is skipped the same
+  way. The Link tab still counts every frame received.
+- **Run summary**: received ARPs are judged by the reject rules, in their
+  own section: "Received ARP frames matching a reject condition: 43
+  matches over 63 frames", with the own-ID spell's times and "the loco
+  would not process these as another loco". Before the loco is
+  identified the rule stays quiet, as it always has (the first own ARP
+  in the excerpt arrives before the loco's first ARP and is not counted).
+
+### Fixture
+
+`replay/loco_2_1_08102026_162008.cap` (new, 2,297 lines, 383 KB): the
+first two minutes of 81_2 (16:20:08–16:22:00 loco time), copied
+unchanged from the capture lines of the log. It is the first capture in
+`replay/` with received ARPs: 44 from loco 2 itself, 19 from loco 1. All
+11 validators pass over it.
+
+### Files
+
+`runreport.{h,cpp}`, `lococonsolewindow.{h,cpp}`; tests
+`test_session170.cpp` (new), `tests.pro`;
+`replay/loco_2_1_08102026_162008.cap`.
+
+### Tests
+
+- `session170`: brute force from the decoder (8-byte received header):
+  44 own, 43 of them after the ID is known, 19 from loco 1. The run
+  report counts 63 judged and 43 own-ID matches, with no other clause;
+  the report wording is checked. The console, before loco 1 is heard:
+  all own ones rejected, including the withdrawn first one, and no
+  SOURCE_LOCO_ID shown. After: the tab is loco 1's ARP, with "44
+  received ARP(s)" above it.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**222 suites / 6281 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit passed; headless smoke 500 datagrams, alive.
+
+---
+
 <a id="session-169"></a>
 ## Session 169 — Live Loco Console: follow the cursor, save a snapshot
 

@@ -141,6 +141,13 @@ private:
         bool      inMissionStart = false;
         QDateTime missionFrom, missionTo;
         QString   missionThen;               // LOCO_MODE of the ARP that followed
+
+        // Session 170: the loco's own ID (SOURCE_LOCO_ID of its ARP /
+        // LSRP), and the received ARPs that carried it: rejected, not
+        // shown as "another loco" on the arprecv tab.
+        qint64    ownLocoId = -1;
+        quint64   ownArpRecv = 0;
+        QDateTime ownArpRecvLast;
     };
 
     // One open output for a single recorded source.
@@ -152,6 +159,7 @@ private:
     void buildUi();
     void addTypeTab(CapType t);
     void ingest(const CaptureLine &c, qint64 nowMs);
+    void learnOwnId(LocoState &st, qint64 id);
     void refreshHeader(const LocoState &st, qint64 nowMs);
     void refreshLink  (const LocoState &st, qint64 nowMs);
     void refreshTypeTables(const LocoState &st, qint64 nowMs);
