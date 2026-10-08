@@ -252,6 +252,11 @@ QVector<Mission> split(const LogModel *model, const Options &options)
         b.prevDmiMs = ms;
     }
     finish(lastMs);
+    // Session 175: each mission's EB/FSB, with the reasons the capture gives.
+    const QVector<RunReport::BrakeEvent> brakes = RunReport::brakeEvents(model);
+    for (Mission &m : out)
+        for (const RunReport::BrakeEvent &b : brakes)
+            if (b.fromMs >= m.fromMs && (b.fromMs < m.toMs || (b.fromMs == m.toMs && &m == &out.last()))) m.brakes << b;
     if (!out.isEmpty() && out.last().index > 0) out.last().endsWithLog = true;
     if (!out.isEmpty() && out.last().index == 0) out.last().endsWithLog = true;
     return out;
@@ -361,13 +366,14 @@ QString toHtml(const QVector<Mission> &missions, const QString &tabKey, const QS
                 h += QStringLiteral("</table>");
             }
         }
-        if (!m.eb.isEmpty() || !m.fsb.isEmpty()) {
-            h += QStringLiteral("<h3>Brakes (DMI brake_type)</h3><table><tr><th>From</th><th>To</th><th>Type</th></tr>");
-            QVector<RunReport::Episode> all = m.eb;
-            all += m.fsb;
-            std::sort(all.begin(), all.end(), [](const RunReport::Episode &a, const RunReport::Episode &c) { return a.fromMs < c.fromMs; });
-            for (int i = 0; i < all.size() && i < cap; ++i)
-                h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td></tr>").arg(timeText(all.at(i).fromMs), timeText(all.at(i).toMs), esc(all.at(i).what));
+        if (!m.brakes.isEmpty()) {
+            h += QStringLiteral("<h3>Brakes (DMI brake_type)</h3><table><tr><th>From</th><th>To</th><th>Type</th>"
+                                "<th>Reasons in the capture</th></tr>");
+            for (int i = 0; i < m.brakes.size() && i < cap; ++i) {
+                const RunReport::BrakeEvent &b = m.brakes.at(i);
+                h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td><td>%4</td></tr>")
+                         .arg(timeText(b.fromMs), timeText(b.toMs), esc(b.type), esc(b.reasonsText()));
+            }
             h += QStringLiteral("</table>");
         }
         h += QStringLiteral("<h3>Run</h3><p>Highest speed %1 km/h%2. %3. No radio on the DMI for %4.</p>")

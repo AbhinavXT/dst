@@ -121,19 +121,9 @@ Summary build(LogModel *tabModel, const QString &tabKey, const QString &tabName,
     ro.toMs   = s.toMs;
     s.run = RunReport::summarise(tabModel, tabKey, tabName, ro);
 
-    // ---- EB/FSB applications, from @dmi brake_type -----------------------------------
-    {
-        bool capped = false;
-        const QVector<RowFields> rows = collectRowFields(tabModel, QStringLiteral("dmi"),
-            { QStringLiteral("brake_type") }, 200000, s.fromMs, s.toMs, &capped);
-        RunReport::EpisodeTracker brake{ &s.brakeEpisodes };
-        for (const RowFields &r : rows) {
-            if (!r.has(QStringLiteral("brake_type"))) continue;
-            const qint64 bt = r.raw.value(QStringLiteral("brake_type"));
-            const bool active = bt == 3 || bt == 4;   // FULL_SERVICE_BRAKE / EMERGENCY_BRAKE
-            brake.observe(active, r.epochMs, r.row, r.display.value(QStringLiteral("brake_type")), 0.0, false);
-        }
-    }
+    // ---- EB/FSB applications, from @dmi brake_type (session 175: with reasons) ---------
+    for (const RunReport::BrakeEvent &b : s.run.brakes)
+        s.brakeEpisodes << RunReport::Episode{ b.fromMs, b.toMs, b.type, 0.0, b.row };
 
     // ---- the speed/permitted/target plot, windowed ----------------------------------------
     s.speedTrace = SpeedDistance::extract(tabModel, 200000, s.fromMs, s.toMs);
@@ -280,10 +270,12 @@ QString toHtml(const Summary &s, const Options &options)
     // ---- EB/FSB applications ------------------------------------------------------------------------
     h += QStringLiteral("<h2>EB/FSB applications (@dmi brake_type): %1</h2>").arg(countOf(s.brakeEpisodes.size(), "episode", "episodes"));
     if (!s.brakeEpisodes.isEmpty()) {
-        h += QStringLiteral("<table><tr><th>From</th><th>To</th><th>Type</th></tr>");
+        h += QStringLiteral("<table><tr><th>From</th><th>To</th><th>Type</th><th>Reasons in the capture</th></tr>");
         for (int i = 0; i < s.brakeEpisodes.size() && i < cap; ++i) {
             const RunReport::Episode &e = s.brakeEpisodes.at(i);
-            h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td></tr>").arg(timeText(e.fromMs), timeText(e.toMs), esc(e.what));
+            const QString why = i < s.run.brakes.size() ? s.run.brakes.at(i).reasonsText() : QString();
+            h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td><td>%4</td></tr>")
+                     .arg(timeText(e.fromMs), timeText(e.toMs), esc(e.what), esc(why));
         }
         h += QStringLiteral("</table>") + more(s.brakeEpisodes.size());
     }

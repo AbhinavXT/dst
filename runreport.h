@@ -16,6 +16,7 @@
 //    start of mission (168)        ARP in Stand_By with no direction, tag
 //                                  or location, as episodes
 //    emergency status              LSRP EMERGENCY_STATUS != 0, as episodes
+//    brakes (175)                  DMI EB/FSB, each with its reasons
 //    RFID tags                     LSRP LAST_RFID_TAG, each change
 //    speed                         DMI (or LSRP) speed; above-permitted
 //                                  episodes from DMI speed_limit_permissible
@@ -82,6 +83,24 @@ struct EpisodeTracker {
 };
 struct FaultEvent { qint64 ms = 0; bool raised = true; QString text; };
 
+// Session 175: an EB / FSB application (@dmi brake_type 4 / 3) and what the
+// capture says about why, from three places, all observed:
+//   NMS    BRAKE_APPLICATION_REASON (@nmshlth) within kBrakeReasonWindowMs
+//          of the onset ("Overspeed", "No LP Acknowledge", "Loco Specific SoS")
+//   DMI    the context message and system alarm shown with it ("SOS - Other
+//          Loco Manual", "System Fault, Isolate or Restart KAVACH")
+//   DMI    collision_loco_id, when the DMI names another loco
+// Nothing is inferred: with none of these, the event says so.
+constexpr qint64 kBrakeReasonWindowMs = 10000;
+struct BrakeEvent {
+    qint64      fromMs = 0, toMs = 0;
+    int         row = -1;
+    QString     type;          // the brake_type text at onset
+    QStringList reasons;       // "NMS: 3  (Overspeed)", "DMI: SOS - Other Loco Manual", ...
+    QString reasonsText() const;
+};
+QVector<BrakeEvent> brakeEvents(const LogModel *model, qint64 fromMs = 0, qint64 toMs = 0);
+
 struct Summary {
     QString tabKey, tabName;
     int     rows = 0;
@@ -105,6 +124,7 @@ struct Summary {
     QVector<Episode>    clockSkew;         // worst = seconds (signed)
     int                 skewComparisons = 0;
     QVector<FaultEvent> faults;
+    QVector<BrakeEvent> brakes;            // session 175: EB/FSB with reasons
     QMap<QString, int>  rejectClauses;     // "31.16.1 PKT_DIR" -> frames
     int                 slrpFrames = 0;
     // Session 170: received ARPs (arprecv) judged by the same rules: the

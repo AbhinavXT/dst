@@ -180,6 +180,7 @@ bool LaneBand::customLaneIsGraph(int i) const
 bool LaneBand::hasContent() const
 {
     return !m_sum.firstMode.isEmpty() || !m_sum.modeChanges.isEmpty() || !m_sum.missionStarts.isEmpty()
+        || !m_sum.brakes.isEmpty()
         || !m_sum.emergencies.isEmpty()
         || !m_sum.overspeed.isEmpty() || !m_sum.tagReads.isEmpty() || !m_sum.faults.isEmpty()
         || !m_custom.isEmpty();
@@ -306,6 +307,12 @@ void LaneBand::paintEvent(QPaintEvent *)
     }
     for (const RunReport::Episode &e : m_sum.emergencies) bar(1, e.fromMs, qMax(e.toMs, e.fromMs + 1), UiColor::error(), tr("EMERGENCY"));
     for (const RunReport::Episode &e : m_sum.overspeed) bar(1, e.fromMs, qMax(e.toMs, e.fromMs + 1), UiColor::warning(), tr("overspeed"));
+    // Session 175: EB / FSB applications, along the bottom of the Safety lane.
+    for (const RunReport::BrakeEvent &b : m_sum.brakes) {
+        const QRect r = track(1);
+        const int x1 = xFor(b.fromMs, r), x2 = qMax(xFor(b.toMs, r), x1 + 3);
+        p.fillRect(QRect(x1, r.bottom() - 4, x2 - x1, 4), b.type.startsWith(QLatin1String("4")) ? UiColor::error() : UiColor::warning());
+    }
     // RFID (session 164): the last tag read holds until the next read, as
     // the mode holds until the next change -- a span per tag, named.
     for (int i = 0; i < m_sum.tagReads.size(); ++i) {
@@ -371,6 +378,9 @@ QString LaneBand::describeAt(const QPoint &pos) const
             return mode.isEmpty() ? QString() : tr("Mode %1 at %2").arg(mode, hm(ms));
         }
         case 1:
+            for (const RunReport::BrakeEvent &b : m_sum.brakes)
+                if (ms >= b.fromMs - slack && ms <= b.toMs + slack)
+                    return tr("%1 %2 – %3: %4").arg(b.type, hm(b.fromMs), hm(b.toMs), b.reasonsText());
             for (const RunReport::Episode &e : m_sum.emergencies)
                 if (ms >= e.fromMs - slack && ms <= e.toMs + slack) return tr("Emergency %1 – %2: %3").arg(hm(e.fromMs), hm(e.toMs), e.what);
             for (const RunReport::Episode &e : m_sum.overspeed)

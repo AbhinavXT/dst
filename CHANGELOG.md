@@ -11,6 +11,64 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-175"></a>
+## Session 175 — Brake reasons beside every EB / FSB
+
+Feature 5. The console listed EB / FSB applications (DMI `brake_type` 4 / 3)
+without saying why, though the capture often says. Every EB / FSB now
+carries the reasons the capture gives, from three places. All of them are
+observed, none inferred:
+
+| Source | What |
+|---|---|
+| NMS | `BRAKE_APPLICATION_REASON` (@nmshlth) within 10 s of the onset: Overspeed, No LP Acknowledge, Loco Specific SoS, MBT selected, ... |
+| DMI | the context message and system alarm shown during it: "SOS - Other Loco Manual", "System Fault, Isolate or Restart KAVACH", ... |
+| DMI | `collision_loco_id`, when the DMI names another loco |
+
+With none of them, the event says "no reason in the capture".
+
+- **One function, `RunReport::brakeEvents()`**, shared by everything that
+  lists brakes:
+  - the **Run summary** gets an "EB / FSB applications" section with
+    reasons;
+  - the **Incident report**'s EB/FSB table gets a reasons column (its
+    episodes are the same as before);
+  - the **Mission report** lists each mission's brakes with reasons;
+  - the **lanes** draw them along the bottom of the Safety lane (EB in
+    the error colour, FSB in the warning colour), and hovering one gives
+    its type, times and reasons.
+- On 81_1 it explains the four EBs at 11:04–11:06: "SOS - Other Loco
+  Manual", collision target loco 2. That is loco 2's manual SoS, heard as
+  its EMERGENCY_STATUS 2 at the same time (172). The EB at the 10:52:36
+  restart carries "System Fault, Isolate or Restart KAVACH" and NMS
+  "Overspeed".
+
+### Files
+
+`runreport.{h,cpp}`, `incidentreport.cpp`, `missionreport.{h,cpp}`,
+`laneband.cpp`; tests `test_session175.cpp` (new), `tests.pro`.
+
+### Tests
+
+- `session175`, on the 81_1 excerpt, against `schema/engine.py`:
+  - five EB spells with their times;
+  - the first carries the DMI alarm and NMS "3 (Overspeed)";
+  - the other four carry the manual SoS and collision target loco 2, with
+    no NMS reason.
+- The run summary, the incident report around 11:05 and the mission
+  report (one brake before the first start, four in mission 2) each list
+  them with reasons.
+- The lane band's 15-minute window holds four, and hovering the Safety
+  lane at 11:04:20 names them.
+- `session97`, `session133`, `session143` (incident and run reports)
+  pass unchanged.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**227 suites / 6358 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-174"></a>
 ## Session 174 — Fault timeline
 

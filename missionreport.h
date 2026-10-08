@@ -61,6 +61,7 @@ struct Mission {
     int     trips = 0;
 
     QVector<RunReport::Episode> eb, fsb;
+    QVector<RunReport::BrakeEvent> brakes;   // session 175: EB/FSB with their reasons
     double  maxSpeedKmh = 0;
     qint64  maxSpeedMs = 0;
     qint64  minLocM = 0, maxLocM = 0;  // 0 = no located frame

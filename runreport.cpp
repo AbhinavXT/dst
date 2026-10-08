@@ -40,6 +40,18 @@ QString esc(const QString &t) { return t.toHtmlEscaped(); }
 
 }  // namespace
 
+// First row with epochMs >= ms (rows are in arrival order).
+static int logModelRowAfterMs(const LogModel *model, qint64 ms)
+{
+    int lo = 0, hi = model->count();
+    while (lo < hi) {
+        const int mid = lo + (hi - lo) / 2;
+        const LogEntryPtr e = model->entryAt(mid);
+        if (e && e->epochMs < ms) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+}
+
 Summary summarise(const LogModel *model, const QString &tabKey, const QString &tabName, const Options &options)
 {
     Summary s;
@@ -193,6 +205,7 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
     }
     s.distinctTags = tags.size();
     if (options.hasWindow) s.rows = included;
+    s.brakes = options.hasWindow ? brakeEvents(model, options.fromMs, options.toMs) : brakeEvents(model);
 
     // ---- speed, from the same extraction as the speed–distance view ----------------
     const SpeedDistance::Trace trace = options.hasWindow
@@ -208,6 +221,62 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
                      smp.speedKmh - smp.permittedKmh);
     }
     return s;
+}
+
+QString BrakeEvent::reasonsText() const
+{
+    return reasons.isEmpty() ? QStringLiteral("no reason in the capture") : reasons.join(QStringLiteral("; "));
+}
+
+QVector<BrakeEvent> brakeEvents(const LogModel *model, qint64 fromMs, qint64 toMs)
+{
+    QVector<BrakeEvent> out;
+    if (!model) return out;
+    const QVector<RowFields> rows = collectRowFields(model, QStringLiteral("dmi"),
+        { QStringLiteral("brake_type"), QStringLiteral("context_values"), QStringLiteral("alarm_code"),
+          QStringLiteral("collision_loco_id") }, 200000, fromMs, toMs);
+    bool open = false;
+    auto addReason = [](BrakeEvent &e, const QString &r) { if (!r.isEmpty() && !e.reasons.contains(r)) e.reasons << r; };
+    for (const RowFields &f : rows) {
+        if (!f.has(QStringLiteral("brake_type"))) continue;
+        const qint64 bt = f.raw.value(QStringLiteral("brake_type"));
+        if (bt != 3 && bt != 4) { open = false; continue; }
+        if (!open) {
+            BrakeEvent e;
+            e.fromMs = e.toMs = f.epochMs;
+            e.row = f.row;
+            e.type = f.display.value(QStringLiteral("brake_type"));
+            out << e;
+            open = true;
+        }
+        BrakeEvent &e = out.last();
+        e.toMs = f.epochMs;
+        const QString ctx = f.display.value(QStringLiteral("context_values"));
+        if (!ctx.isEmpty() && ctx != QLatin1String("(none)"))
+            for (const QString &c : ctx.split(QStringLiteral("; "), Qt::SkipEmptyParts)) addReason(e, QStringLiteral("DMI: ") + c);
+        const QString alarm = f.display.value(QStringLiteral("alarm_code"));
+        if (!alarm.isEmpty() && alarm != QLatin1String("no_alarm") && alarm != QLatin1String("(none)"))
+            for (const QString &a : alarm.split(QStringLiteral("; "), Qt::SkipEmptyParts)) addReason(e, QStringLiteral("DMI alarm: ") + a);
+        const qint64 other = f.raw.value(QStringLiteral("collision_loco_id"), 0);
+        if (other > 0) addReason(e, QStringLiteral("DMI: collision target loco %1").arg(other));
+    }
+    if (out.isEmpty()) return out;
+
+    // NMS reasons near each onset. Its fields are events: display rows only.
+    const qint64 lo = out.first().fromMs - kBrakeReasonWindowMs, hi = out.last().fromMs + kBrakeReasonWindowMs;
+    QVector<QPair<qint64, QString>> nms;
+    for (int i = logModelRowAfterMs(model, lo); i < model->count(); ++i) {
+        const LogEntryPtr e = model->entryAt(i);
+        if (!e) continue;
+        if (e->epochMs > hi) break;
+        if (!e->text.startsWith(QLatin1String("@nmshlth_"))) continue;
+        for (const FieldRow &r : CaptureDecoder::describe(CaptureDecoder::parseLine(e->text)))
+            if (r.field.trimmed() == QLatin1String("BRAKE_APPLICATION_REASON")) nms << qMakePair(e->epochMs, r.value.trimmed());
+    }
+    for (BrakeEvent &e : out)
+        for (const auto &n : nms)
+            if (qAbs(n.first - e.fromMs) <= kBrakeReasonWindowMs) addReason(e, QStringLiteral("NMS: ") + n.second);
+    return out;
 }
 
 QString toHtml(const Summary &s, const Options &options)
@@ -305,6 +374,18 @@ QString toHtml(const Summary &s, const Options &options)
             h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td></tr>").arg(timeText(e.fromMs), timeText(e.toMs), esc(e.what));
         }
         h += QStringLiteral("</table>") + more(s.emergencies.size());
+    }
+
+    // ---- brakes (session 175) -------------------------------------------------------------------
+    h += QStringLiteral("<h2>EB / FSB applications (DMI brake_type): %1</h2>").arg(s.brakes.size());
+    if (!s.brakes.isEmpty()) {
+        h += QStringLiteral("<table><tr><th>From</th><th>To</th><th>Type</th><th>Reasons in the capture</th></tr>");
+        for (int i = 0; i < s.brakes.size() && i < cap; ++i) {
+            const BrakeEvent &b = s.brakes.at(i);
+            h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td><td>%4</td></tr>")
+                     .arg(timeText(b.fromMs), timeText(b.toMs), esc(b.type), esc(b.reasonsText()));
+        }
+        h += QStringLiteral("</table>") + more(s.brakes.size());
     }
 
     // ---- speed -------------------------------------------------------------------------------
