@@ -97,6 +97,7 @@
 #include "serialmanager.h"
 #endif
 #include "runreportwindow.h"
+#include "radiohealthwindow.h"
 #include "incidentreportdialog.h"
 #include "incidentreportwindow.h"
 #include "speeddistance.h"
@@ -473,6 +474,21 @@ void MainWindow::onActionMissionReport()
     }
     QString name = m_tabs.value(key).friendlyName;
     auto *w = new RunReportWindow(model, key, name.isEmpty() ? key : name, this, RunReportWindow::Kind::Missions);
+    w->show();
+    w->raise();
+}
+
+void MainWindow::onActionRadioHealth()
+{
+    const QString key = currentTabKey();
+    LogModel *model = key.isEmpty() ? nullptr : m_dispatcher->modelForKey(key);
+    if (!model || model->count() == 0) {
+        notify(NoteLevel::Info, tr("Select a tab with messages first."));
+        return;
+    }
+    QString name = m_tabs.value(key).friendlyName;
+    auto *w = new RadioHealthWindow(model, key, name.isEmpty() ? key : name, this);
+    connect(w, &RadioHealthWindow::jumpRequested, this, &MainWindow::jumpToEntry);
     w->show();
     w->raise();
 }

@@ -84,6 +84,8 @@ SOURCES += \
     $$PWD/clockskewalarm.cpp \
     $$PWD/runreport.cpp \
     $$PWD/missionreport.cpp \
+    $$PWD/radiohealth.cpp \
+    $$PWD/radiohealthwindow.cpp \
     $$PWD/runreportwindow.cpp \
     $$PWD/incidentreport.cpp \
     $$PWD/incidentreportdialog.cpp \
@@ -207,6 +209,8 @@ HEADERS += \
     $$PWD/clockskewalarm.h \
     $$PWD/runreport.h \
     $$PWD/missionreport.h \
+    $$PWD/radiohealth.h \
+    $$PWD/radiohealthwindow.h \
     $$PWD/runreportwindow.h \
     $$PWD/incidentreport.h \
     $$PWD/incidentreportdialog.h \

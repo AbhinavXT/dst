@@ -480,6 +480,13 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                                     "saved as one HTML file"));
     connect(actMissionReport, &QAction::triggered, this, &MainWindow::onActionMissionReport);
 
+    // Session 173: the radio and GSM links over time.
+    QAction *actRadioHealth = monitorMenu->addAction(tr("Radio &health…"));
+    actRadioHealth->setObjectName(QStringLiteral("actRadioHealth"));
+    actRadioHealth->setToolTip(tr("The current tab's radio over time: DMI signal bars, no-radio spells against "
+                                  "the radio holes announced, radios not OK, temperatures, power, GSM RSSI"));
+    connect(actRadioHealth, &QAction::triggered, this, &MainWindow::onActionRadioHealth);
+
     // Session 97: one incident, read in one pass.
     QAction *actIncidentReport = monitorMenu->addAction(tr("&Incident report…"));
     actIncidentReport->setShortcut(QKeySequence("Ctrl+Alt+I"));

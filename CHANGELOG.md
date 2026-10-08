@@ -11,6 +11,65 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-173"></a>
+## Session 173 — Radio health
+
+Feature 3 from the 2026-10-08 logs. In 81_1 the DMI showed no radio for
+spells of up to 68 minutes, and the radio data was spread over four packets
+nobody read together. **Tools ▸ Monitor ▸ Radio health…** shows them on one
+time axis for the current tab:
+
+| Strip | From |
+|---|---|
+| DMI signal, 0–5 bars | @dmi `signal_strength`; **no-radio spells** shaded behind it; **radio holes announced** ("Approaching Radio Hole" in `alarm_code`) marked along its top |
+| Radio not OK | @nmshlth `RADIO_1/2_HEALTH` = 3 (Radio Fail); @ccsys `health_radio1/2` not OK, `active_radio` 0 |
+| Temperature | @ccsys radio 1 / 2 and PA 1 / 2 |
+| Forward power | @ccsys radio 1 / 2 |
+| GSM RSSI | @dlsys GSM-1 / GSM-2 (99 = not known: a gap, not a value) |
+
+- **The question it answers:** was a loss of radio a radio hole the loco
+  had been told of? Each no-radio spell is "announced" when a radio-hole
+  announcement was on the DMI during it or in the 2 minutes before. The
+  header says how many were and were not. That is observed, not judged:
+  an unannounced spell is listed, not called a fault.
+- A spell ends when the condition stops or the frames go quiet for over
+  10 s.
+- Hover for every value at that moment; click to jump the log there; Save
+  image.
+- NMS health fields are events with meanings (eid). They come only as
+  display rows, which `collectRowFields()` drops, so they are read
+  directly.
+
+### Files
+
+`radiohealth.{h,cpp}`, `radiohealthwindow.{h,cpp}` (new, in `dlcore.pri`),
+`mainwindow.h`, `mainwindow_menus.cpp`, `mainwindow_tools.cpp`; tests
+`test_session173.cpp` (new), `tests.pro`.
+
+### Tests
+
+- `session173`, on the 81_1 excerpt, against `schema/engine.py` with the
+  same spell rule:
+  - 747 @dmi;
+  - no radio 10:52:00–06, 10:52:20–40, 10:56:34–11:08:23 (the longest,
+    11 min 49 s) and 11:08:37–45, none announced;
+  - 10 radio-not-OK spells, all within seconds of the two restarts (the
+    radios going down);
+  - radio 1 at 36–37 °C over 226 @ccsys;
+  - GSM-1 RSSI 99 throughout, so "not known".
+- No capture holds "Approaching Radio Hole", so the matching rule is
+  checked on spans set by hand (no bytes invented): a spell with an
+  announcement exactly 2 minutes before, one with an announcement during
+  it, and one with neither.
+- The window: summary, five strips, the hover text, a click jumps, and it
+  fits a laptop.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**225 suites / 6332 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit passed; headless smoke 500 datagrams, alive.
+
+---
+
 <a id="session-172"></a>
 ## Session 172 — Two locos from one log (received ARP)
 
@@ -52,8 +111,10 @@ enough.
   back is not listed.
 - The window's B picker entry, and its one-tab default.
 
-**Gate** (macOS), 171 and 172 together, Qt 5.15.19 and Qt 6.11.2: see the
-commit. The first run picked up 172's half-written code and showed that the
+**Gate** (macOS), 171 and 172 together, Qt 5.15.19 and Qt 6.11.2:
+validators 11/11; `dltests` **224 suites / 6315 checks, 1 failed** (the
+macOS-only `session156` pty check); menu audit passed; headless smoke
+500 datagrams, alive. The first run picked up 172's half-written code and showed that the
 new fixtures, sorting first in `replay/`, changed the inputs of
 `lococonsolelive`, `slrpcarry` and `session92` (hence the subfolder).
 
@@ -147,7 +208,7 @@ HTML may carry colour literals, like the other standalone reports),
   the whole log's report. On 81_1: 9 missions in the 200,000 rows the
   tab keeps (13:11 onward).
 
-**Gate**: run together with 172, below.
+**Gate**: run together with 172 (see 172).
 
 ---
 
