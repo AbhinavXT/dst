@@ -202,50 +202,65 @@ public:
     // the moment pointed at last.
     static DmiWindow *showFollowing(QWidget *owner, MessageDispatcher *dispatcher);
 
-    // Session 160: two locos side by side. Panel B has its own loco picker
-    // and draws the same moment as A (or its own live frame). Remembered.
-    void setTwoLocos(bool on);
-    bool twoLocos() const { return m_twoLocos; }
-    DmiView *viewB() const { return m_viewB; }
-    QString selectedSourceB() const;
-    void setSelectedSourceB(const QString &key);
-    QString statusTextB() const;
+    // Session 160: two locos side by side. Session 167: up to four panels
+    // (1-3 in a row, 4 as a 2x2 grid), each with its own loco picker and,
+    // when Fields is open, its own decoded-fields table under it. Panel 0 is
+    // "A", panel 1 "B". The count is remembered (dmi/panels).
+    static const int kMaxPanels = 4;
+    void setPanelCount(int n);
+    int  panelCount() const { return m_count; }
+    DmiView *panelView(int i) const;
+    QString panelSource(int i) const;
+    void setPanelSource(int i, const QString &key);
+    QString panelStatus(int i) const;
+    void setTwoLocos(bool on) { setPanelCount(on ? 2 : 1); }
+    bool twoLocos() const { return m_count >= 2; }
+    DmiView *viewB() const { return panelView(1); }
+    QString selectedSourceB() const { return panelSource(1); }
+    void setSelectedSourceB(const QString &key) { setPanelSource(1, key); }
+    QString statusTextB() const { return panelStatus(1); }
 
-    // Session 92: the "Fields" side panel -- the decoded fields of the frame
-    // the panel is drawing (live or at the moment).
+    // Session 92: the decoded fields of the frame each panel is drawing
+    // (live or at the moment). Session 167: under each panel.
     void setFieldsVisible(bool on);
     bool fieldsVisible() const;
-    QStringList fieldNames() const;              // for tests
-    QString fieldValue(const QString &name) const;
+    QStringList fieldNames(int panel = 0) const;              // for tests
+    QString fieldValue(const QString &name, int panel = 0) const;
 
 private:
+    struct Panel {
+        QWidget      *column = nullptr;
+        QComboBox    *source = nullptr;
+        DmiView      *view = nullptr;
+        QLabel       *status = nullptr;
+        QWidget      *fieldsPane = nullptr;
+        QLabel       *fieldsTitle = nullptr;
+        QTableWidget *fields = nullptr;
+        CaptureLine   shown;                    // the frame the panel is drawing
+    };
+    void buildPanel(int i, bool annexure);
+    void layoutPanels();
     void refreshStatus();
-    void render();                 // the selected source(s), live or at the moment
+    void render();                 // the visible panels, live or at the moment
     // One panel: `key`'s frame (live, or at the moment) into `view`; the
     // frame drawn is returned. And that panel's status line.
     CaptureLine drawPanel(DmiView *view, const QString &key);
     QString     statusFor(DmiView *view, const QString &key);
-    void        pickOtherB();      // B on a loco other than A, when there is one
+    void        pickOther(int i);  // panel i on a loco no other panel shows, when there is one
     void addSource(const QString &key);
+    void refreshFields(int i);
     MessageDispatcher *m_dispatcher = nullptr;
-    DmiView   *m_view = nullptr;
-    QComboBox *m_source = nullptr;
-    QLabel    *m_status = nullptr;
+    QVector<Panel> m_panels;
+    int        m_count = 1;
+    DmiView   *m_view = nullptr;     // m_panels[0].view
+    QComboBox *m_source = nullptr;   // m_panels[0].source
+    QLabel    *m_status = nullptr;   // m_panels[0].status
     QCheckBox *m_follow = nullptr;
-    QPushButton  *m_fieldsBtn = nullptr;
-    QTableWidget *m_fields = nullptr;
-    QWidget   *m_fieldsPane = nullptr;
-    QLabel    *m_fieldsTitle = nullptr;
-    // Session 160: panel B.
-    bool       m_twoLocos = false;
-    QCheckBox *m_twoBtn = nullptr;
-    QComboBox *m_sourceB = nullptr;
-    QLabel    *m_sourceBLabel = nullptr;
-    DmiView   *m_viewB = nullptr;
-    QLabel    *m_statusB = nullptr;
-    QWidget   *m_columnB = nullptr;
-    CaptureLine m_shown;                          // the frame the panel is drawing
-    void refreshFields();
+    QComboBox *m_countBox = nullptr;
+    QPushButton *m_fieldsBtn = nullptr;
+    bool       m_fieldsOn = false;
+    QLabel    *m_fieldNotes = nullptr;
+    class QGridLayout *m_grid = nullptr;
     bool       m_following = false;
     DmiMoment  m_moment;
     QHash<QString, QString> m_lastLine;     // source -> last @dmi line

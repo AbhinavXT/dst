@@ -8,6 +8,10 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFileDialog>
+#include <QGridLayout>
+#include <QScreen>
+#include <QScrollArea>
+#include <QSet>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QPainter>
@@ -763,123 +767,87 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
     resize(880, 720);
     WindowGeometry::restore(this, QStringLiteral("dmiWindow"));
 
-    m_view = new DmiView(this);
-    m_source = new QComboBox(this);
-    m_source->setObjectName(QStringLiteral("dmiSource"));
-    m_source->setMinimumWidth(120);
     auto *annexure = new QCheckBox(tr("Annexure-B colours"), this);
     annexure->setObjectName(QStringLiteral("dmiAnnexureColours"));
     annexure->setToolTip(tr("Table B.2's exact colours on black, as the real panel. Off: follow the console's theme."));
     QSettings settings(Settings::iniPath(), QSettings::IniFormat);
     annexure->setChecked(settings.value(QStringLiteral("dmi/annexureColours"), false).toBool());
-    m_view->setAnnexureColours(annexure->isChecked());
+
+    // Session 160 / 167: the panels. Built once; the ones past the count are hidden.
+    m_grid = new QGridLayout;
+    m_grid->setContentsMargins(0, 0, 0, 0);
+    for (int i = 0; i < kMaxPanels; ++i) buildPanel(i, annexure->isChecked());
+    m_view = m_panels[0].view;
+    m_source = m_panels[0].source;
+    m_status = m_panels[0].status;
+
     // Session 84: time travel.
-    m_follow = new QCheckBox(tr("\u23F1 Follow cursor"), this);
+    m_follow = new QCheckBox(tr("⏱ Follow cursor"), this);
     m_follow->setObjectName(QStringLiteral("dmiFollowCursor"));
     m_follow->setToolTip(tr("Show the panel as it was at the row selected in any tab, or at a replay window's "
                             "cursor: each loco's latest @dmi at or before that moment. Off: the live panel."));
+    m_countBox = new QComboBox(this);
+    m_countBox->setObjectName(QStringLiteral("dmiPanels"));
+    for (int n = 1; n <= kMaxPanels; ++n) m_countBox->addItem(n == 1 ? tr("1 loco") : tr("%1 locos").arg(n), n);
+    m_countBox->setToolTip(tr("Panels side by side, one per loco (four as a 2 × 2 grid): all at the same "
+                              "moment when following the cursor (head-on, rear-end, SoS)"));
     auto *save = new QPushButton(tr("Save image…"), this);
-    // Session 92: "Fields" opens a side panel with the displayed frame's
-    // decoded @dmi fields. It replaces "Field sources…", whose notes on
-    // which field feeds which region now sit under that table.
-    m_fieldsBtn = new QPushButton(tr("Fields \u25B8"), this);
+    // Session 92: "Fields" shows the drawn frame's decoded @dmi fields.
+    // Session 167: one table under each panel; the notes on which field
+    // feeds which region sit once, under the panels.
+    m_fieldsBtn = new QPushButton(tr("Fields ▾"), this);
     m_fieldsBtn->setObjectName(QStringLiteral("dmiFieldsButton"));
     m_fieldsBtn->setCheckable(true);
-    m_fieldsBtn->setToolTip(tr("Show the decoded fields of the @dmi frame the panel is drawing, beside it"));
-    m_fields = new QTableWidget(0, 2, this);
-    m_fields->setObjectName(QStringLiteral("dmiFieldsTable"));
-    m_fields->setHorizontalHeaderLabels({ tr("Field"), tr("Value") });
-    m_fields->verticalHeader()->hide();
-    m_fields->horizontalHeader()->setStretchLastSection(true);
-    m_fields->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_fields->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_fields->setAlternatingRowColors(true);
-    m_fields->setWordWrap(false);
-    auto *sources = new QLabel(tr("<b>Where each region comes from</b><br>") + dmiAssumptions().join(QStringLiteral("<br>")), this);
-    sources->setWordWrap(true);
-    sources->setStyleSheet(UiColor::mutedStyle());
-    m_fieldsPane = new QWidget(this);
-    m_fieldsPane->setObjectName(QStringLiteral("dmiFieldsPane"));
-    auto *paneLay = new QVBoxLayout(m_fieldsPane);
-    paneLay->setContentsMargins(0, 0, 0, 0);
-    m_fieldsTitle = new QLabel(m_fieldsPane);
-    paneLay->addWidget(m_fieldsTitle);
-    paneLay->addWidget(m_fields, 1);
-    paneLay->addWidget(sources);
-    m_fieldsPane->setMinimumWidth(300);
-    m_fieldsPane->hide();
-    m_status = new QLabel(this);
-    m_status->setObjectName(QStringLiteral("dmiStatus"));
-    m_status->setStyleSheet(UiColor::mutedStyle());
-    m_status->setWordWrap(true);
-
-    // Session 160: panel B, hidden until "Two locos" is ticked.
-    m_twoBtn = new QCheckBox(tr("Two locos"), this);
-    m_twoBtn->setObjectName(QStringLiteral("dmiTwoLocos"));
-    m_twoBtn->setToolTip(tr("A second panel beside the first, for another loco: both at the same moment "
-                            "when following the cursor (head-on, rear-end, SoS)"));
-    m_sourceB = new QComboBox(this);
-    m_sourceB->setObjectName(QStringLiteral("dmiSourceB"));
-    m_sourceB->setMinimumWidth(120);
-    m_sourceBLabel = new QLabel(tr("B:"), this);
-    m_viewB = new DmiView(this);
-    m_viewB->setObjectName(QStringLiteral("dmiViewB"));
-    m_viewB->setAnnexureColours(annexure->isChecked());
-    m_statusB = new QLabel(this);
-    m_statusB->setObjectName(QStringLiteral("dmiStatusB"));
-    m_statusB->setStyleSheet(UiColor::mutedStyle());
-    m_statusB->setWordWrap(true);
+    m_fieldsBtn->setToolTip(tr("Show the decoded fields of the @dmi frame each panel is drawing, under it"));
+    m_fieldNotes = new QLabel(tr("<b>Where each region comes from</b><br>") + dmiAssumptions().join(QStringLiteral("<br>")), this);
+    m_fieldNotes->setObjectName(QStringLiteral("dmiFieldNotes"));
+    m_fieldNotes->setWordWrap(true);
+    m_fieldNotes->setMinimumWidth(200);              // wraps to the window, never widens it
+    m_fieldNotes->setStyleSheet(UiColor::mutedStyle());
+    m_fieldNotes->hide();
 
     auto *top = new QHBoxLayout;
-    top->addWidget(new QLabel(tr("Loco / Ctrl:"), this));
-    top->addWidget(m_source);
-    top->addWidget(m_sourceBLabel);
-    top->addWidget(m_sourceB);
+    top->addWidget(new QLabel(tr("Panels:"), this));
+    top->addWidget(m_countBox);
     top->addWidget(m_follow);
-    top->addWidget(m_twoBtn);
     top->addWidget(annexure);
     top->addStretch(1);
     top->addWidget(m_fieldsBtn);
     top->addWidget(save);
+    // The panels scroll as one: four at 4:3 with their fields need more
+    // height than a laptop screen has; they keep their shape and scroll
+    // rather than squash.
+    auto *host = new QWidget;
+    host->setObjectName(QStringLiteral("dmiPanelsHost"));
+    auto *hostLay = new QVBoxLayout(host);
+    hostLay->setContentsMargins(0, 0, 0, 0);
+    hostLay->addLayout(m_grid, 1);
+    hostLay->addWidget(m_fieldNotes);
+    m_fieldNotes->setParent(host);
+    for (Panel &p : m_panels) p.column->setParent(host);
+    auto *scroll = new QScrollArea(this);
+    scroll->setObjectName(QStringLiteral("dmiPanelsScroll"));
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidgetResizable(true);
+    scroll->setWidget(host);
     auto *root = new QVBoxLayout(this);
     root->addLayout(top);
-    auto *body = new QHBoxLayout;
-    auto *columnA = new QVBoxLayout;
-    columnA->addWidget(m_view, 1);
-    columnA->addWidget(m_status);
-    m_columnB = new QWidget(this);
-    auto *columnB = new QVBoxLayout(m_columnB);
-    columnB->setContentsMargins(0, 0, 0, 0);
-    columnB->addWidget(m_viewB, 1);
-    columnB->addWidget(m_statusB);
-    body->addLayout(columnA, 1);
-    body->addWidget(m_columnB, 1);
-    body->addWidget(m_fieldsPane);
-    root->addLayout(body, 1);
-    m_columnB->hide();
-    m_sourceB->hide();
-    m_sourceBLabel->hide();
+    root->addWidget(scroll, 1);
+    layoutPanels();
 
     connect(annexure, &QCheckBox::toggled, this, [this](bool on) {
-        m_view->setAnnexureColours(on);
-        m_viewB->setAnnexureColours(on);
+        for (Panel &p : m_panels) p.view->setAnnexureColours(on);
         QSettings s(Settings::iniPath(), QSettings::IniFormat);
         s.setValue(QStringLiteral("dmi/annexureColours"), on);
     });
     connect(m_follow, &QCheckBox::toggled, this, [this](bool on) { setFollowCursor(on); });
-    connect(m_source, &QComboBox::currentTextChanged, this, [this](const QString &) {
-        render();
-        refreshStatus();
-    });
-    connect(m_sourceB, &QComboBox::currentTextChanged, this, [this](const QString &) {
-        render();
-        refreshStatus();
-    });
-    connect(m_twoBtn, &QCheckBox::toggled, this, [this](bool on) { setTwoLocos(on); });
+    connect(m_countBox, qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this](int index) { setPanelCount(index + 1); });
     connect(save, &QPushButton::clicked, this, [this]() {
-        const QString path = QFileDialog::getSaveFileName(this, tr("Save DMI image"),
-                                                          m_twoLocos ? QStringLiteral("dmi_two_locos.png") : QStringLiteral("dmi.png"),
-                                                          tr("PNG (*.png)"));
+        const QString name = m_count == 1 ? QStringLiteral("dmi.png")
+                           : m_count == 2 ? QStringLiteral("dmi_two_locos.png")
+                                          : QStringLiteral("dmi_%1_locos.png").arg(m_count);
+        const QString path = QFileDialog::getSaveFileName(this, tr("Save DMI image"), name, tr("PNG (*.png)"));
         if (!path.isEmpty()) saveImage(path);
     });
     connect(m_fieldsBtn, &QPushButton::toggled, this, [this](bool on) { setFieldsVisible(on); });
@@ -887,7 +855,7 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
     auto *tick = new QTimer(this);
     tick->setInterval(2000);
     connect(tick, &QTimer::timeout, this, [this]() {
-        m_view->advanceMessages();
+        for (int i = 0; i < m_count; ++i) m_panels[i].view->advanceMessages();
         refreshStatus();
     });
     tick->start();
@@ -901,10 +869,118 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
         if (m_following) showMoment(m);
     });
     // Remembered, like the colours: an operator reviewing an incident keeps
-    // reopening the window in the same mode.
+    // reopening the window in the same mode. dmi/panels (167) wins over the
+    // older dmi/twoLocos (160).
     if (settings.value(QStringLiteral("dmi/followCursor"), false).toBool()) m_follow->setChecked(true);
     else refreshStatus();
-    if (settings.value(QStringLiteral("dmi/twoLocos"), false).toBool()) m_twoBtn->setChecked(true);
+    const int panels = settings.contains(QStringLiteral("dmi/panels"))
+                           ? settings.value(QStringLiteral("dmi/panels")).toInt()
+                           : (settings.value(QStringLiteral("dmi/twoLocos"), false).toBool() ? 2 : 1);
+    if (panels > 1) setPanelCount(panels);
+}
+
+void DmiWindow::buildPanel(int i, bool annexure)
+{
+    static const char *const kSuffix[kMaxPanels] = { "", "B", "C", "D" };
+    const QString suffix = QLatin1String(kSuffix[i]);
+    Panel p;
+    p.column = new QWidget(this);
+    p.column->setObjectName(QStringLiteral("dmiPanel%1").arg(i));
+    auto *col = new QVBoxLayout(p.column);
+    col->setContentsMargins(0, 0, 0, 0);
+    p.source = new QComboBox(p.column);
+    p.source->setObjectName(QStringLiteral("dmiSource") + suffix);
+    p.source->setMinimumWidth(120);
+    p.source->setToolTip(tr("The loco this panel draws"));
+    auto *head = new QHBoxLayout;
+    head->addWidget(new QLabel(i == 0 ? tr("Loco / Ctrl:") : tr("%1 · Loco / Ctrl:").arg(QChar('A' + i)), p.column));
+    head->addWidget(p.source);
+    head->addStretch(1);
+    col->addLayout(head);
+    p.view = new DmiView(p.column);
+    if (i > 0) p.view->setObjectName(QStringLiteral("dmiView") + suffix);
+    p.view->setAnnexureColours(annexure);
+    col->addWidget(p.view);
+    p.status = new QLabel(p.column);
+    p.status->setObjectName(QStringLiteral("dmiStatus") + suffix);
+    p.status->setStyleSheet(UiColor::mutedStyle());
+    p.status->setWordWrap(true);
+    p.status->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    // Two lines kept free: a squeezed wrapped label spills over the panel.
+    p.status->setMinimumHeight(2 * p.status->fontMetrics().lineSpacing() + 4);
+    p.status->setMinimumWidth(160);                  // a wrapped label's own minimum is wide
+    col->addWidget(p.status);
+
+    p.fieldsPane = new QWidget(p.column);
+    p.fieldsPane->setObjectName(QStringLiteral("dmiFieldsPane") + suffix);
+    auto *paneLay = new QVBoxLayout(p.fieldsPane);
+    paneLay->setContentsMargins(0, 0, 0, 0);
+    p.fieldsTitle = new QLabel(p.fieldsPane);
+    p.fieldsTitle->setMinimumWidth(160);
+    paneLay->addWidget(p.fieldsTitle);
+    p.fields = new QTableWidget(0, 2, p.fieldsPane);
+    p.fields->setObjectName(QStringLiteral("dmiFieldsTable") + suffix);
+    p.fields->setHorizontalHeaderLabels({ tr("Field"), tr("Value") });
+    p.fields->verticalHeader()->hide();
+    p.fields->horizontalHeader()->setStretchLastSection(true);
+    p.fields->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    p.fields->setSelectionBehavior(QAbstractItemView::SelectRows);
+    p.fields->setAlternatingRowColors(true);
+    p.fields->setWordWrap(false);
+    p.fields->setMinimumHeight(140);
+    paneLay->addWidget(p.fields, 1);
+    p.fieldsPane->hide();
+    col->addWidget(p.fieldsPane, 1);
+    // Spare height goes to the fields when open, else below the panel
+    // (setFieldsVisible swaps the two stretches).
+    col->addStretch(1);
+
+    connect(p.source, &QComboBox::currentTextChanged, this, [this](const QString &) {
+        render();
+        refreshStatus();
+    });
+    m_panels << p;
+}
+
+// 1-3 panels in a row; 4 as a 2 x 2 grid. Each column (panel + its fields)
+// stretches equally.
+void DmiWindow::layoutPanels()
+{
+    for (const Panel &p : m_panels) m_grid->removeWidget(p.column);
+    const int cols = m_count == 4 ? 2 : m_count;
+    for (int c = 0; c < kMaxPanels; ++c) m_grid->setColumnStretch(c, c < cols ? 1 : 0);
+    for (int r = 0; r < 2; ++r) m_grid->setRowStretch(r, r < (m_count == 4 ? 2 : 1) ? 1 : 0);
+    for (int i = 0; i < m_panels.size(); ++i) {
+        const Panel &p = m_panels[i];
+        if (i < m_count) {
+            m_grid->addWidget(p.column, i / cols, i % cols);
+            p.column->show();
+        } else {
+            p.column->hide();
+        }
+    }
+}
+
+DmiView *DmiWindow::panelView(int i) const
+{
+    return i >= 0 && i < m_panels.size() ? m_panels[i].view : nullptr;
+}
+
+QString DmiWindow::panelSource(int i) const
+{
+    return i >= 0 && i < m_panels.size() ? m_panels[i].source->currentText() : QString();
+}
+
+void DmiWindow::setPanelSource(int i, const QString &key)
+{
+    if (i < 0 || i >= m_panels.size()) return;
+    addSource(key);
+    m_panels[i].source->setCurrentText(key);
+}
+
+QString DmiWindow::panelStatus(int i) const
+{
+    return i >= 0 && i < m_panels.size() ? m_panels[i].status->text() : QString();
 }
 
 DmiWindow *DmiWindow::showFollowing(QWidget *owner, MessageDispatcher *dispatcher)
@@ -928,63 +1004,76 @@ DmiWindow *DmiWindow::showFollowing(QWidget *owner, MessageDispatcher *dispatche
 void DmiWindow::addSource(const QString &key)
 {
     if (key.isEmpty()) return;
-    if (m_source->findText(key) < 0) m_source->addItem(key);
-    if (m_sourceB->findText(key) < 0) {
-        m_sourceB->addItem(key);
-        if (m_twoLocos && m_sourceB->currentText() == m_source->currentText()) pickOtherB();
+    for (int i = 0; i < m_panels.size(); ++i) {
+        QComboBox *box = m_panels[i].source;
+        if (box->findText(key) >= 0) continue;
+        box->addItem(key);
+        if (i == 0 || i >= m_count) continue;
+        // A newly seen loco: a panel that was sharing another's loco takes it.
+        for (int j = 0; j < i; ++j) {
+            if (m_panels[j].source->currentText() == box->currentText()) { pickOther(i); break; }
+        }
     }
 }
 
-void DmiWindow::setTwoLocos(bool on)
+void DmiWindow::setPanelCount(int n)
 {
-    if (m_twoBtn->isChecked() != on) {
-        m_twoBtn->setChecked(on);          // comes back here through toggled
+    n = qBound(1, n, int(kMaxPanels));
+    if (m_countBox->currentIndex() != n - 1) {
+        m_countBox->setCurrentIndex(n - 1);      // comes back here through the combo
         return;
     }
-    if (m_twoLocos == on) return;
-    m_twoLocos = on;
+    if (m_count == n) return;
+    const int oldCols = m_count == 4 ? 2 : m_count, oldRows = m_count == 4 ? 2 : 1;
+    const int newCols = n == 4 ? 2 : n,             newRows = n == 4 ? 2 : 1;
+    const int panelW = m_panels[0].column->width(), panelH = m_panels[0].column->height();
+    m_count = n;
     QSettings s(Settings::iniPath(), QSettings::IniFormat);
-    s.setValue(QStringLiteral("dmi/twoLocos"), on);
-    m_columnB->setVisible(on);
-    m_sourceB->setVisible(on);
-    m_sourceBLabel->setVisible(on);
-    // Widen by a panel rather than halving the one already there.
+    s.setValue(QStringLiteral("dmi/panels"), n);
+    s.setValue(QStringLiteral("dmi/twoLocos"), n >= 2);      // read by DLConsole before 167
+    layoutPanels();
+    // Grow by whole panels rather than shrinking the ones already there; as
+    // far as the screen allows.
     if (!isMaximized() && !isFullScreen()) {
-        const int panel = m_view->width();
-        resize(on ? width() + panel : qMax(minimumSizeHint().width(), width() - m_viewB->width()), height());
+        int w = width() + (newCols - oldCols) * panelW;
+        int h = height() + (newRows - oldRows) * panelH;
+        if (const QScreen *scr = screen()) {
+            const QRect room = scr->availableGeometry();
+            w = qMin(w, room.width() - 40);
+            h = qMin(h, room.height() - 60);
+        }
+        resize(qMax(w, minimumSizeHint().width()), qMax(h, minimumSizeHint().height()));
     }
-    if (on && (m_sourceB->currentText().isEmpty() || m_sourceB->currentText() == m_source->currentText())) {
-        pickOtherB();
+    for (int i = 1; i < m_count; ++i) {
+        const QString k = m_panels[i].source->currentText();
+        bool clash = k.isEmpty();
+        for (int j = 0; j < i && !clash; ++j) clash = m_panels[j].source->currentText() == k;
+        if (clash) pickOther(i);
     }
     render();
     refreshStatus();
 }
 
-void DmiWindow::pickOtherB()
+void DmiWindow::pickOther(int i)
 {
-    // At a moment: a loco other than A that has a frame then; else any other.
-    const QString a = m_source->currentText();
+    // At a moment: a loco no other panel shows that has a frame then; else
+    // any such loco. None free: the panel keeps what it has.
+    QSet<QString> taken;
+    for (int j = 0; j < m_count; ++j) {
+        if (j != i) taken.insert(m_panels[j].source->currentText());
+    }
+    QComboBox *box = m_panels[i].source;
     QString want;
     if (m_following && m_moment.valid) {
         for (const DmiFrameAt &f : m_moment.frames) {
-            if (f.key != a) { want = f.key; break; }
+            if (!taken.contains(f.key) && box->findText(f.key) >= 0) { want = f.key; break; }
         }
     }
-    for (int i = 0; want.isEmpty() && i < m_sourceB->count(); ++i) {
-        if (m_sourceB->itemText(i) != a) want = m_sourceB->itemText(i);
+    for (int k = 0; want.isEmpty() && k < box->count(); ++k) {
+        if (!taken.contains(box->itemText(k))) want = box->itemText(k);
     }
-    if (!want.isEmpty()) m_sourceB->setCurrentText(want);
+    if (!want.isEmpty()) box->setCurrentText(want);
 }
-
-QString DmiWindow::selectedSourceB() const { return m_sourceB->currentText(); }
-
-void DmiWindow::setSelectedSourceB(const QString &key)
-{
-    addSource(key);
-    m_sourceB->setCurrentText(key);
-}
-
-QString DmiWindow::statusTextB() const { return m_statusB->text(); }
 
 void DmiWindow::observeLine(const QString &sourceKey, const QString &line)
 {
@@ -996,10 +1085,13 @@ void DmiWindow::observeLine(const QString &sourceKey, const QString &line)
     addSource(key);
     // Following, a live frame is remembered for when following stops but
     // does not replace the moment on screen.
-    if (!m_following && (m_source->currentText() == key
-                         || (m_twoLocos && m_sourceB->currentText() == key))) {
-        render();
-        refreshStatus();
+    if (m_following) return;
+    for (int i = 0; i < m_count; ++i) {
+        if (m_panels[i].source->currentText() == key) {
+            render();
+            refreshStatus();
+            return;
+        }
     }
 }
 
@@ -1013,18 +1105,26 @@ void DmiWindow::setSelectedSource(const QString &key)
 
 bool DmiWindow::saveImage(const QString &path) const
 {
-    if (!m_twoLocos) return m_view->grab().save(path, "PNG");
-    // Both panels, A on the left, as on screen.
-    const QPixmap a = m_view->grab();
-    const QPixmap b = m_viewB->grab();
-    QPixmap both(a.width() + b.width(), qMax(a.height(), b.height()));
-    both.setDevicePixelRatio(a.devicePixelRatio());
-    both.fill(Qt::black);
-    QPainter p(&both);
-    p.drawPixmap(0, 0, a);
-    p.drawPixmap(qRound(a.width() / a.devicePixelRatio()), 0, b);
+    if (m_count == 1) return m_view->grab().save(path, "PNG");
+    // The panels as on screen: in a row, or 2 x 2.
+    const int cols = m_count == 4 ? 2 : m_count, rows = m_count == 4 ? 2 : 1;
+    QVector<QPixmap> shots;
+    int cellW = 0, cellH = 0;
+    for (int i = 0; i < m_count; ++i) {
+        shots << m_panels[i].view->grab();
+        cellW = qMax(cellW, shots.last().width());
+        cellH = qMax(cellH, shots.last().height());
+    }
+    const qreal dpr = shots.first().devicePixelRatio();
+    QPixmap all(cellW * cols, cellH * rows);
+    all.setDevicePixelRatio(dpr);
+    all.fill(Qt::black);
+    QPainter p(&all);
+    for (int i = 0; i < shots.size(); ++i) {
+        p.drawPixmap(QPointF((i % cols) * cellW / dpr, (i / cols) * cellH / dpr), shots[i]);
+    }
     p.end();
-    return both.save(path, "PNG");
+    return all.save(path, "PNG");
 }
 
 QString DmiWindow::statusText() const { return m_status->text(); }
@@ -1062,15 +1162,19 @@ void DmiWindow::showMoment(const DmiMoment &moment)
     if (!moment.preferredKey.isEmpty() && moment.frameFor(moment.preferredKey)) want = moment.preferredKey;
     else if (!moment.frameFor(want) && !moment.frames.isEmpty()) want = moment.frames.first().key;
     {
-        // Panel B follows below, once: no render per combo change.
-        const QSignalBlocker blockA(m_source);
-        const QSignalBlocker blockB(m_sourceB);
+        // The other panels follow below, once: no render per combo change.
+        QVector<QSignalBlocker *> blockers;
+        for (const Panel &p : m_panels) blockers << new QSignalBlocker(p.source);
         if (!want.isEmpty()) m_source->setCurrentText(want);
-        // B stays on its loco if that has a frame at this moment and is not A.
-        if (m_twoLocos) {
-            const QString b = m_sourceB->currentText();
-            if (b.isEmpty() || b == m_source->currentText() || !moment.frameFor(b)) pickOtherB();
+        // Each other panel stays on its loco if that has a frame at this
+        // moment and no panel before it shows the same loco.
+        for (int i = 1; i < m_count; ++i) {
+            const QString k = m_panels[i].source->currentText();
+            bool move = k.isEmpty() || !moment.frameFor(k);
+            for (int j = 0; j < i && !move; ++j) move = m_panels[j].source->currentText() == k;
+            if (move) pickOther(i);
         }
+        qDeleteAll(blockers);
     }
     render();
     refreshStatus();
@@ -1094,9 +1198,10 @@ CaptureLine DmiWindow::drawPanel(DmiView *view, const QString &key)
 
 void DmiWindow::render()
 {
-    m_shown = drawPanel(m_view, m_source->currentText());
-    refreshFields();
-    if (m_twoLocos) drawPanel(m_viewB, m_sourceB->currentText());
+    for (int i = 0; i < m_count; ++i) {
+        m_panels[i].shown = drawPanel(m_panels[i].view, m_panels[i].source->currentText());
+        refreshFields(i);
+    }
     if (!m_following) return;
     setWindowTitle(m_moment.valid
                        ? tr("DMI (LP-OCIP) \u2014 at %1").arg(QDateTime::fromMSecsSinceEpoch(m_moment.atMs).toString(QStringLiteral("HH:mm:ss")))
@@ -1106,11 +1211,9 @@ void DmiWindow::render()
 void DmiWindow::refreshStatus()
 {
     const QString style = m_following ? UiColor::accentStyle() : UiColor::mutedStyle();
-    m_status->setStyleSheet(style);
-    m_status->setText(statusFor(m_view, m_source->currentText()));
-    if (m_twoLocos) {
-        m_statusB->setStyleSheet(style);
-        m_statusB->setText(statusFor(m_viewB, m_sourceB->currentText()));
+    for (int i = 0; i < m_count; ++i) {
+        m_panels[i].status->setStyleSheet(style);
+        m_panels[i].status->setText(statusFor(m_panels[i].view, m_panels[i].source->currentText()));
     }
 }
 
@@ -1147,50 +1250,68 @@ QString DmiWindow::statusFor(DmiView *view, const QString &key)
         .arg(key).arg(age / 1000);
 }
 
-// ---- Session 92: the decoded fields beside the panel ---------------------------------------------
+// ---- Session 92 / 167: the decoded fields, under each panel ----------------------------------------
 
 void DmiWindow::setFieldsVisible(bool on)
 {
     if (m_fieldsBtn->isChecked() != on) { m_fieldsBtn->setChecked(on); return; }   // back via toggled
-    m_fieldsBtn->setText(on ? tr("Fields \u25C2") : tr("Fields \u25B8"));
-    m_fieldsPane->setVisible(on);
-    // Widen the window by the pane rather than squeezing the panel.
-    if (on && !isMaximized() && !isFullScreen()) resize(width() + m_fieldsPane->minimumWidth(), height());
-    refreshFields();
+    if (m_fieldsOn == on) return;
+    m_fieldsOn = on;
+    m_fieldsBtn->setText(on ? tr("Fields \u25B4") : tr("Fields \u25BE"));
+    // Grow the window by the tables rather than squeezing the panels.
+    const int rows = m_count == 4 ? 2 : 1;
+    const int extra = rows * 220 + (on ? m_fieldNotes->sizeHint().height() : 0);
+    for (const Panel &p : m_panels) {                // hidden columns keep theirs ready
+        p.fieldsPane->setVisible(on);
+        auto *col = static_cast<QVBoxLayout *>(p.column->layout());
+        col->setStretch(col->count() - 1, on ? 0 : 1);
+    }
+    m_fieldNotes->setVisible(on);
+    if (on && !isMaximized() && !isFullScreen()) {
+        int h = height() + extra;
+        if (const QScreen *scr = screen()) h = qMin(h, scr->availableGeometry().height() - 60);
+        resize(width(), h);
+    }
+    for (int i = 0; i < m_count; ++i) refreshFields(i);
 }
 
-bool DmiWindow::fieldsVisible() const { return m_fieldsPane->isVisible(); }
+bool DmiWindow::fieldsVisible() const { return m_fieldsOn; }
 
-void DmiWindow::refreshFields()
+void DmiWindow::refreshFields(int i)
 {
-    if (!m_fieldsPane->isVisible()) return;             // cost nothing while closed
-    m_fields->setRowCount(0);
-    if (!m_shown.valid || m_shown.type != CapType::Dmi) {
-        m_fieldsTitle->setText(tr("No @dmi frame on the panel."));
+    Panel &p = m_panels[i];
+    if (!m_fieldsOn) return;                             // cost nothing while closed
+    p.fields->setRowCount(0);
+    if (!p.shown.valid || p.shown.type != CapType::Dmi) {
+        p.fieldsTitle->setText(tr("No @dmi frame on the panel."));
         return;
     }
-    m_fieldsTitle->setText(tr("<b>@dmi %1</b> \u00B7 %2").arg(m_shown.key(),
-                                                               m_shown.rtc.isValid() ? m_shown.rtc.toString(QStringLiteral("dd-MMM-yyyy HH:mm:ss"))
+    p.fieldsTitle->setText(tr("<b>@dmi %1</b> \u00B7 %2").arg(p.shown.key(),
+                                                               p.shown.rtc.isValid() ? p.shown.rtc.toString(QStringLiteral("dd-MMM-yyyy HH:mm:ss"))
                                                                                      : tr("no RTC")));
-    const QVector<FieldRow> rows = CaptureDecoder::describe(m_shown, nullptr, 0, nullptr);
-    m_fields->setRowCount(rows.size());
-    for (int i = 0; i < rows.size(); ++i) {
-        m_fields->setItem(i, 0, new QTableWidgetItem(rows[i].field));
-        m_fields->setItem(i, 1, new QTableWidgetItem(rows[i].value));
+    const QVector<FieldRow> rows = CaptureDecoder::describe(p.shown, nullptr, 0, nullptr);
+    p.fields->setRowCount(rows.size());
+    for (int r = 0; r < rows.size(); ++r) {
+        p.fields->setItem(r, 0, new QTableWidgetItem(rows[r].field));
+        p.fields->setItem(r, 1, new QTableWidgetItem(rows[r].value));
     }
-    m_fields->resizeColumnToContents(0);
+    p.fields->resizeColumnToContents(0);
 }
 
-QStringList DmiWindow::fieldNames() const
+QStringList DmiWindow::fieldNames(int panel) const
 {
     QStringList out;
-    for (int i = 0; i < m_fields->rowCount(); ++i) out << m_fields->item(i, 0)->text();
+    if (panel < 0 || panel >= m_panels.size()) return out;
+    const QTableWidget *t = m_panels[panel].fields;
+    for (int i = 0; i < t->rowCount(); ++i) out << t->item(i, 0)->text();
     return out;
 }
 
-QString DmiWindow::fieldValue(const QString &name) const
+QString DmiWindow::fieldValue(const QString &name, int panel) const
 {
-    for (int i = 0; i < m_fields->rowCount(); ++i)
-        if (m_fields->item(i, 0)->text() == name) return m_fields->item(i, 1)->text();
+    if (panel < 0 || panel >= m_panels.size()) return QString();
+    const QTableWidget *t = m_panels[panel].fields;
+    for (int i = 0; i < t->rowCount(); ++i)
+        if (t->item(i, 0)->text() == name) return t->item(i, 1)->text();
     return QString();
 }

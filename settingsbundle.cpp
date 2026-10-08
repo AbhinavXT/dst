@@ -59,7 +59,7 @@ QStringList iniKeys(Section s)
                  QStringLiteral("ui/find_mode"), QStringLiteral("ui/find_scan_limit"),
                  QStringLiteral("ui/find_wrap"),
                  QStringLiteral("dmi/annexureColours"), QStringLiteral("dmi/followCursor"),
-                 QStringLiteral("dmi/twoLocos"),
+                 QStringLiteral("dmi/twoLocos"), QStringLiteral("dmi/panels"),
                  QStringLiteral("ui/offline_warn_seconds"), QStringLiteral("ui/offline_err_seconds"),
                  QStringLiteral("ui/two_loco_warn_apart_km") };
     case Section::Serial:
@@ -367,7 +367,8 @@ QString Bundle::summary(Section s) const
         if (ini.value(QStringLiteral("ui/show_utc")).toVariant().toString() == QLatin1String("true"))
             parts << QObject::tr("UTC times");
         if (ini.contains(QStringLiteral("ui/find_mode"))) parts << QObject::tr("Find");
-        if (ini.contains(QStringLiteral("dmi/annexureColours")) || ini.contains(QStringLiteral("dmi/twoLocos")))
+        if (ini.contains(QStringLiteral("dmi/annexureColours")) || ini.contains(QStringLiteral("dmi/twoLocos"))
+            || ini.contains(QStringLiteral("dmi/panels")))
             parts << QObject::tr("DMI");
         return parts.isEmpty() ? QObject::tr("%1 options").arg(ini.size()) : parts.join(QStringLiteral(", "));
     }

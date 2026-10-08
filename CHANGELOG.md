@@ -11,6 +11,68 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-167"></a>
+## Session 167 — DMI window: up to four locos, fields under each panel
+
+The DMI window compared two locos (160) and had one Fields table, for
+panel A, at the right. Now:
+
+- **Panels: 1 / 2 / 3 / 4 locos** (a picker in the top bar; it replaces
+  the "Two locos" tick box). One to three sit in a row; four make a
+  2 × 2 grid (A B over C D).
+- **Each panel has its own loco picker** above it ("B · Loco / Ctrl:"),
+  its own status line, and starts on a loco no other panel shows. A
+  newly seen loco goes to a panel that was sharing one.
+- **Following the cursor**, every panel is drawn at the same moment: A on
+  the loco pointed at, each other panel staying on its loco if that has
+  a frame then, else moving to one that has.
+- **Fields ▾ puts a decoded-fields table under each panel**, for the
+  frame that panel draws. The "Where each region comes from" notes
+  appear once, under all the panels.
+- The panels keep their 4:3 shape. When the window is too short for
+  them and their tables, the panel area scrolls rather than squashing
+  them. The spare height goes to the tables, or below the panels when
+  Fields is closed. Four panels need 806 px of width; a narrower window
+  scrolls sideways.
+- **Save image** saves the panels as laid out: in a row, or the 2 × 2 grid.
+- The count is remembered (`dmi/panels`) and carried by File ▸ Export
+  settings. A settings file from before this patch with "Two locos" on
+  opens two panels; this patch also still writes `dmi/twoLocos` for
+  older builds.
+
+A status line wrapped onto two lines used to spill up over the soft
+keys when the panel was squeezed. It now always keeps room for two lines.
+
+### Files
+
+`dmipanel.{h,cpp}`, `settingsbundle.cpp`; tests `test_session167.cpp`
+(new), `tests.pro`.
+
+### Tests
+
+- `session167`: real @dmi frames from
+  `replay/loco_{1,2}_1_27062026_140226.cap`. `replay/` holds @dmi from
+  two locos only, so panels C and D are fed real loco-1 / loco-2 frames
+  from other moments, re-tagged `@dmi_3_1` / `@dmi_4_1` (bytes
+  unchanged). The checks: the picker; the 2 × 2 geometry; each panel on
+  a different loco, drawing that loco's frame with its own status; each
+  Fields table under its own panel and showing that panel's
+  `train_speed`; the notes shown once; at a moment, a panel on A's loco
+  moves to a free loco; the 2 × 2 image; three panels in a row with D
+  hidden; Fields off hides the tables; the grid fits 1366 px, and a
+  narrower window scrolls rather than clipping; the count remembered;
+  an older `dmi/twoLocos` opens two panels.
+- `session160` (two locos), `session92` (Fields), `session83`,
+  `session84`, `session165`, `settingsbundle` pass unchanged.
+
+Not tested: four *real* locos at one moment (no such capture).
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**219 suites / 6214 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit passed; headless smoke 500 datagrams, alive.
+
+---
+
 <a id="session-166"></a>
 ## Session 166 — DMI: a cross over the antenna when there is no radio
 
