@@ -51,6 +51,8 @@ bool expected(const QString &id, const CaptureLine &cap, const QVector<FieldRow>
     if (id == QLatin1String("trip"))      return rowValue(rows, QStringLiteral("LOCO_MODE")).startsWith(QLatin1String("7 "));
     if (id == QLatin1String("sysfail"))   return rowValue(rows, QStringLiteral("LOCO_MODE")).startsWith(QLatin1String("12 "));
     if (id == QLatin1String("isolation")) return rowValue(rows, QStringLiteral("LOCO_MODE")).startsWith(QLatin1String("13 "));
+    if (id == QLatin1String("nokeys")) return cap.typeToken == QLatin1String("nmshlth")    // session 179
+                                              && rowValue(rows, QStringLiteral("REMAINING_KEY_NUMBERS")).startsWith(QLatin1String("0 "));
     if (id == QLatin1String("crc"))  return (cap.type == CapType::Dmi || cap.typeToken == QLatin1String("rfid"))
                                             && cap.crcChecked && !cap.crcOk;
     return false;

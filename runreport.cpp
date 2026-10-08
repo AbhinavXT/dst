@@ -78,6 +78,8 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
     bool haveFirst = false;
     bool inMissionStart = false;
     bool selfSosOpen = false;
+    bool noKeysOpen = false;
+    QString keySet;
 
     for (int i = 0; i < n; ++i) {
         const LogEntryPtr e = model->entryAt(i);
@@ -93,6 +95,10 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
         }
         prevMs = e->epochMs;
         prevType = type.isEmpty() ? QStringLiteral("text") : type;
+
+        // Session 179: key loads, counted without decoding.
+        if (type == QLatin1String("auth_keys1") && (s.keyLoads.isEmpty() || e->epochMs - s.keyLoads.last() > 5000))
+            s.keyLoads << e->epochMs;
 
         // Only the types this report reads are decoded.
         const bool wanted = type == QLatin1String("lsrp") || type == QLatin1String("arp")
@@ -195,6 +201,18 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
                         s.selfSos.last().toMs = e->epochMs;
                         selfSosOpen = false;
                     }
+                } else if (f == QLatin1String("CURRENT_RUNNING_KEY")) {
+                    if (keySet.isEmpty()) keySet = v;
+                    else if (v != keySet) { s.keySets << Change{ e->epochMs, i, keySet, v }; keySet = v; }
+                } else if (f == QLatin1String("REMAINING_KEY_NUMBERS")) {
+                    const int left = v.section(QLatin1Char(' '), 0, 0).toInt();
+                    s.minRemainingKeys = s.minRemainingKeys < 0 ? left : qMin(s.minRemainingKeys, left);
+                    if (left == 0) {
+                        if (noKeysOpen) s.noKeys.last().toMs = e->epochMs;
+                        else { s.noKeys << Episode{ e->epochMs, e->epochMs, QStringLiteral("no keys"), 0.0, i }; noKeysOpen = true; }
+                    } else {
+                        noKeysOpen = false;
+                    }
                 } else if (f == QLatin1String("COLLISION_DETECTION")) {
                     if (s.collisionDetections.isEmpty() || e->epochMs - s.collisionDetections.last().ms > 5000
                         || s.collisionDetections.last().to != v)
@@ -233,6 +251,10 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
     if (selfSosOpen && !s.selfSos.isEmpty()) {
         s.selfSos.last().toMs = s.lastMs;
         s.selfSos.last().what += QStringLiteral(" (no end)");
+    }
+    for (Episode &k : s.noKeys) {
+        for (const Episode &m : s.missionStarts)
+            if (qAbs(k.fromMs - m.fromMs) <= 60000) { k.what += QStringLiteral(" (at a start of mission)"); break; }
     }
     s.distinctTags = tags.size();
     if (options.hasWindow) s.rows = included;
@@ -434,6 +456,25 @@ QString toHtml(const Summary &s, const Options &options)
         for (int i = 0; i < s.collisionDetections.size() && i < cap; ++i)
             h += QStringLiteral("<tr><td>%1</td><td>%2</td></tr>").arg(timeText(s.collisionDetections.at(i).ms), esc(s.collisionDetections.at(i).to));
         h += QStringLiteral("</table>") + more(s.collisionDetections.size());
+    }
+
+    // ---- session keys (session 179) -----------------------------------------------------------
+    if (!s.keySets.isEmpty() || !s.noKeys.isEmpty() || s.minRemainingKeys >= 0 || !s.keyLoads.isEmpty()) {
+        int atStart = 0;
+        for (const Episode &k : s.noKeys) atStart += k.what.endsWith(QLatin1String("(at a start of mission)")) ? 1 : 0;
+        h += QStringLiteral("<h2>Session keys (NMS)</h2><p>Fewest key sets left: %1. No keys in %2, %3 of them "
+                            "within a minute of a start of mission. %4 (@auth_keys). %5 of running key set.</p>")
+                 .arg(s.minRemainingKeys < 0 ? QStringLiteral("not reported") : QString::number(s.minRemainingKeys))
+                 .arg(countOf(s.noKeys.size(), "spell", "spells")).arg(atStart)
+                 .arg(countOf(s.keyLoads.size(), "key load", "key loads"))
+                 .arg(countOf(s.keySets.size(), "change", "changes"));
+        if (!s.noKeys.isEmpty()) {
+            h += QStringLiteral("<table><tr><th>From</th><th>To</th><th></th></tr>");
+            for (int i = 0; i < s.noKeys.size() && i < cap; ++i)
+                h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td></tr>")
+                         .arg(timeText(s.noKeys.at(i).fromMs), timeText(s.noKeys.at(i).toMs), esc(s.noKeys.at(i).what));
+            h += QStringLiteral("</table>") + more(s.noKeys.size());
+        }
     }
 
     // ---- speed -------------------------------------------------------------------------------

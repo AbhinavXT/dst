@@ -11,6 +11,54 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-179"></a>
+## Session 179 — Session keys
+
+Feature 9. NMS health reports the running key set (`CURRENT_RUNNING_KEY`)
+and the key sets left (`REMAINING_KEY_NUMBERS`), and the loco logs its key
+loads (@auth_keys1/2). In Abhinav's 2026-10-08 logs, around **every
+restart** the NMS reports key set 30 with **"0 (No keys)" for a few
+seconds**, and then key set 20 with 10 sets left. So "No keys" is the boot
+state there, not keys running out.
+
+- **Run summary**, a "Session keys" section: the fewest key sets left;
+  the no-keys spells, each marked "(at a start of mission)" when it falls
+  within a minute of one; the key loads; the changes of running key set.
+- **Lanes**: no-keys spells along the top of the Link lane (accent
+  colour), key loads as ticks (ok colour), named on hover.
+- **A ready-made watch, "No session keys"**:
+  `@nmshlth field:REMAINING_KEY_NUMBERS=0`. Its description says a hit
+  next to a restart is the boot. (`~No keys` would split at the space
+  into two terms, so the watch tests the number.)
+- The section counts "4 spells", not "spell(s)", per session143's rule
+  for the run report.
+
+### Files
+
+`runreport.{h,cpp}`, `laneband.cpp`, `watchrules.{h,cpp}`; tests
+`test_session179.cpp` (new), `test_session161.cpp` (the new rule's
+decoder-side definition), `tests.pro`.
+
+### Tests
+
+- `session179`, on the 10:52 excerpt, against `schema/engine.py`:
+  - four no-keys spells (10:52:20, 10:52:46–48, 10:56:28–30,
+    11:08:37–38), each within a minute of a start of mission;
+  - fewest left 0; seven key-set changes, the first 30 → 20 at 10:52:45;
+  - key loads at 10:52:36, 10:52:44 and 11:08:53;
+  - the summary sentence;
+  - the watch matches exactly the 9 frames reporting 0;
+  - the Link lane on hover.
+- `session161rules`: the new watch matches exactly the frames the decoder
+  says (21 across the replay corpus).
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**231 suites / 6403 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit passed; headless smoke alive. A first run failed
+`session143` on the "(s)" wording, fixed above.
+
+---
+
 <a id="session-178"></a>
 ## Session 178 — The loco's own SoS and collision detections
 

@@ -181,6 +181,7 @@ bool LaneBand::hasContent() const
 {
     return !m_sum.firstMode.isEmpty() || !m_sum.modeChanges.isEmpty() || !m_sum.missionStarts.isEmpty()
         || !m_sum.brakes.isEmpty() || !m_sum.selfSos.isEmpty() || !m_sum.collisionDetections.isEmpty()
+        || !m_sum.noKeys.isEmpty() || !m_sum.keyLoads.isEmpty()
         || !m_sum.emergencies.isEmpty()
         || !m_sum.overspeed.isEmpty() || !m_sum.tagReads.isEmpty() || !m_sum.faults.isEmpty()
         || !m_custom.isEmpty();
@@ -328,6 +329,13 @@ void LaneBand::paintEvent(QPaintEvent *)
         bar(2, t.ms, qMax(until, t.ms + 1), colourFor(QStringLiteral("tag ") + t.to), t.to);
     }
     for (const RunReport::Gap &g : m_sum.gaps) bar(3, g.fromMs, g.toMs, UiColor::warning(), tr("gap"));
+    // Session 179: no session keys (top half of the Link lane), key loads (ticks).
+    for (const RunReport::Episode &k : m_sum.noKeys) {
+        const QRect r = track(3);
+        const int x1 = xFor(k.fromMs, r), x2 = qMax(xFor(k.toMs, r), x1 + 3);
+        p.fillRect(QRect(x1, r.top(), x2 - x1, r.height() / 2), UiColor::accent());
+    }
+    for (qint64 ms : m_sum.keyLoads) tick(3, ms, UiColor::ok(), QString());
     for (const RunReport::FaultEvent &f : m_sum.faults) tick(4, f.ms, f.raised ? UiColor::error() : UiColor::ok(), QString());
 
     // Custom lanes (session 164).
@@ -413,6 +421,12 @@ QString LaneBand::describeAt(const QPoint &pos) const
                 .arg(at->to, hm(at->ms), i < m_sum.tagReads.size() ? hm(until) : tr("now"));
         }
         case 3:
+            for (qint64 k : m_sum.keyLoads)
+                if (qAbs(k - ms) <= slack) return tr("Session keys loaded (@auth_keys) at %1").arg(hm(k));
+            for (const RunReport::Episode &k : m_sum.noKeys)
+                if (ms >= k.fromMs - slack && ms <= k.toMs + slack)
+                    return tr("No session keys (NMS), %1 – %2%3").arg(hm(k.fromMs), hm(k.toMs),
+                        k.what.endsWith(QLatin1String("(at a start of mission)")) ? tr(", at a start of mission") : QString());
             for (const RunReport::Gap &g : m_sum.gaps)
                 if (ms >= g.fromMs - slack && ms <= g.toMs + slack)
                     return tr("No traffic %1 – %2 (%3 s)").arg(hm(g.fromMs), hm(g.toMs)).arg((g.toMs - g.fromMs) / 1000);

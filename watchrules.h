@@ -15,6 +15,7 @@
 //    SoS                any @lsos frame (the two-loco view's SoS events)
 //    TSR acted on       TSR_STATUS 2 — TSR entries act only then
 //    Trip, System failure, Isolation   LOCO_MODE 7, 12, 13 (locoMode enum)
+//    No session keys    @nmshlth REMAINING_KEY_NUMBERS "No keys" (session 179)
 //    CRC failed         an @dmi or @rfid frame whose CRC did not match
 //                       (not @ccsys / @dlsys: every recorded frame fails)
 //

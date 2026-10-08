@@ -26,6 +26,13 @@ const QVector<WatchRule> &all()
         { QStringLiteral("isolation"), QStringLiteral("Isolation mode"),
           QStringLiteral("field:LOCO_MODE=13"),
           QStringLiteral("LOCO_MODE 13 (Isolation)") },
+        // Session 179: NMS REMAINING_KEY_NUMBERS reads "0 (No keys)". Seen
+        // for a few seconds at every restart in Abhinav's 2026-10-08 logs
+        // (the loco boots on key set 30 with none left), so a hit next to a
+        // start of mission is the boot, not keys running out.
+        { QStringLiteral("nokeys"), QStringLiteral("No session keys"),
+          QStringLiteral("@nmshlth field:REMAINING_KEY_NUMBERS=0"),
+          QStringLiteral("NMS health reports 0 key sets left. At a restart this is the boot state for a few seconds") },
         // @dmi and @rfid only: their CRC recipes are confirmed against real
         // frames. Every recorded @ccsys / @dlsys frame fails its check (see
         // CHANGELOG, Packet Maker round trip), so there it would fire on

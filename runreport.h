@@ -18,6 +18,8 @@
 //    emergency status              LSRP EMERGENCY_STATUS != 0, as episodes
 //    brakes (175)                  DMI EB/FSB, each with its reasons
 //    self SoS (178)                NMS LOCO_SELF_SOS start..end; COLLISION_DETECTION
+//    session keys (179)            NMS CURRENT_RUNNING_KEY / REMAINING_KEY_NUMBERS;
+//                                  @auth_keys1 loads
 //    RFID tags                     LSRP LAST_RFID_TAG, each change
 //    speed                         DMI (or LSRP) speed; above-permitted
 //                                  episodes from DMI speed_limit_permissible
@@ -132,6 +134,15 @@ struct Summary {
     QVector<Episode>    selfSos;
     // NMS COLLISION_DETECTION ("loco 2, code 1"); repeats within 5 s folded.
     QVector<Change>     collisionDetections;   // to = the value
+    // Session 179: session keys. NMS CURRENT_RUNNING_KEY changes (from/to
+    // its text); spells of REMAINING_KEY_NUMBERS 0 ("No keys"), each marked
+    // " (at a start of mission)" within 60 s of one -- the loco reports no
+    // keys for a few seconds while it boots; the lowest count seen; the
+    // key loads (@auth_keys1, repeats within 5 s folded).
+    QVector<Change>     keySets;
+    QVector<Episode>    noKeys;
+    int                 minRemainingKeys = -1;
+    QVector<qint64>     keyLoads;
     QMap<QString, int>  rejectClauses;     // "31.16.1 PKT_DIR" -> frames
     int                 slrpFrames = 0;
     // Session 170: received ARPs (arprecv) judged by the same rules: the
