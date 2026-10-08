@@ -494,6 +494,13 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                                     "loco's mode, with the faults raised at each System_Failure"));
     connect(actFaultTimeline, &QAction::triggered, this, &MainWindow::onActionFaultTimeline);
 
+    // Session 176: the DIO inputs and outputs, under the mode.
+    QAction *actCabIo = monitorMenu->addAction(tr("&Cab inputs and outputs…"));
+    actCabIo->setObjectName(QStringLiteral("actCabIo"));
+    actCabIo->setToolTip(tr("The current tab's DIO logs as a timeline: every input / output that changes "
+                            "(DMI buttons, cab forward / reverse, horn, traction cut-off, brake relays), under the mode"));
+    connect(actCabIo, &QAction::triggered, this, &MainWindow::onActionCabIo);
+
     // Session 97: one incident, read in one pass.
     QAction *actIncidentReport = monitorMenu->addAction(tr("&Incident report…"));
     actIncidentReport->setShortcut(QKeySequence("Ctrl+Alt+I"));

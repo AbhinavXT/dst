@@ -11,6 +11,63 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-176"></a>
+## Session 176 — Cab inputs and outputs on a timeline
+
+Feature 6. The DIO logs (IOA, over serial) record what the driver did and
+what the unit drove: 69,200 @dip1 frames in 81_1, with DMI buttons
+pressed, the cab switched forward / reverse, the horn, traction cut off.
+**Tools ▸ Monitor ▸ Cab inputs and outputs…** draws them on the fault
+timeline's chart (174), under the loco's mode:
+
+- **One row per signal that changes in the tab.** Inputs come from
+  @dip1 / @dip2 ("DIP1 cab1_reverse"); outputs from @dop1 / @dop2 by pin
+  (the `output=` bit, "DOP1 pin 2"). A signal that never changes has no
+  row.
+- **A bar wherever the signal reads other than its usual value** (the
+  value it holds most of the time), saying what it read ("reads 0
+  (usually 1)"). That reads the same for normally-open and
+  normally-closed contacts and for active-low feedback: a button press,
+  the cab in reverse, traction cut off, a brake relay dropping. Which
+  value is "pressed" is not interpreted.
+- Hover, click to jump, Save image, scrolling as on the fault timeline.
+- The chart's label column now fits the longest row name (170–260 px),
+  on the fault timeline too.
+
+On the fixture: the horn at 10:13:07; the cab switched to reverse three
+times; traction cut off six times, with PVEF and the LE relay; the EB,
+FSB, NB and SIFA/VEB relays dropping once at the 10:17 restart.
+
+### Fixture
+
+`replay/2026-10-08/loco_1_1_08102026_101300.cap` (new, 4,903 lines,
+0.85 MB): 81_1 from 10:13:00 to 10:17:30, every packet type, capture lines
+unchanged.
+
+### Files
+
+`iotimeline.{h,cpp}`, `iotimelinewindow.{h,cpp}` (new, in `dlcore.pri`),
+`faulttimelinewindow.{h,cpp}` (label width), `mainwindow.h`,
+`mainwindow_menus.cpp`, `mainwindow_tools.cpp`; tests `test_session176.cpp`
+(new), `tests.pro`.
+
+### Tests
+
+- `session176`, against `schema/engine.py` with the same rule:
+  - 42 changing signals and 126 bars;
+  - cab1_reverse 3 bars reading 1 (usually 0);
+  - traction_cutoff_fb 6 bars reading 0 (usually 1);
+  - the EB relay once, the horn twice;
+  - outputs by pin, and no row for a constant signal.
+- The window: hover a bar, and it fits a laptop.
+- `session174` passes with the wider labels.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**228 suites / 6369 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-175"></a>
 ## Session 175 — Brake reasons beside every EB / FSB
 

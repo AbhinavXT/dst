@@ -20,9 +20,20 @@
 #include <QVBoxLayout>
 
 namespace {
-const int kLabelW = 170, kRight = 12, kTop = 6, kModeH = 22, kRowH = 18, kRowGap = 3, kAxisH = 22;
+const int kRight = 12, kTop = 6, kModeH = 22, kRowH = 18, kRowGap = 3, kAxisH = 22;
 QString hms(qint64 ms) { return QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss")); }
 }  // namespace
+
+// The label column fits the longest row name, within 170..260 px.
+int FaultTimelineCanvas::labelW() const
+{
+    QFont small = font();
+    small.setPointSizeF(qMax(7.5, font().pointSizeF() - 1.0));
+    const QFontMetrics fm(small);
+    int w = 0;
+    for (const QString &r : m_t.rows) w = qMax(w, fm.horizontalAdvance(r));
+    return qBound(170, w + 16, 260);
+}
 
 FaultTimelineCanvas::FaultTimelineCanvas(QWidget *parent) : QWidget(parent)
 {
@@ -43,9 +54,9 @@ QSize FaultTimelineCanvas::sizeHint() const
 
 QRect FaultTimelineCanvas::rowRect(int row) const
 {
-    const int w = width() - kLabelW - kRight;
-    if (row < 0) return QRect(kLabelW, kTop, w, kModeH);
-    return QRect(kLabelW, kTop + kModeH + 8 + row * (kRowH + kRowGap), w, kRowH);
+    const int w = width() - labelW() - kRight;
+    if (row < 0) return QRect(labelW(), kTop, w, kModeH);
+    return QRect(labelW(), kTop + kModeH + 8 + row * (kRowH + kRowGap), w, kRowH);
 }
 
 int FaultTimelineCanvas::xAtMs(qint64 ms) const
@@ -64,7 +75,7 @@ qint64 FaultTimelineCanvas::msAtX(int x) const
 
 QString FaultTimelineCanvas::describeAt(const QPoint &pos) const
 {
-    if (pos.x() < kLabelW || m_t.toMs <= m_t.fromMs) return QString();
+    if (pos.x() < labelW() || m_t.toMs <= m_t.fromMs) return QString();
     const qint64 ms = msAtX(pos.x());
     const qint64 slack = (m_t.toMs - m_t.fromMs) * 3 / qMax(1, rowRect(-1).width());
     if (rowRect(-1).adjusted(0, -2, 0, 2).contains(pos)) {
@@ -105,7 +116,7 @@ void FaultTimelineCanvas::paintEvent(QPaintEvent *)
     // Mode band.
     const QRect band = rowRect(-1);
     p.setPen(UiColor::muted());
-    p.drawText(QRect(4, band.top(), kLabelW - 10, band.height()), Qt::AlignRight | Qt::AlignVCenter, tr("MODE"));
+    p.drawText(QRect(4, band.top(), labelW() - 10, band.height()), Qt::AlignRight | Qt::AlignVCenter, tr("MODE"));
     for (const FaultTimeline::ModeSpan &m : m_t.modes) {
         const int x1 = xAtMs(m.fromMs), x2 = qMax(xAtMs(m.toMs), x1 + 1);
         const QRect r(x1, band.top(), x2 - x1, band.height());
@@ -121,8 +132,8 @@ void FaultTimelineCanvas::paintEvent(QPaintEvent *)
     for (int i = 0; i < m_t.rows.size(); ++i) {
         const QRect r = rowRect(i);
         p.setPen(ink);
-        p.drawText(QRect(4, r.top(), kLabelW - 10, r.height()), Qt::AlignRight | Qt::AlignVCenter,
-                   fm.elidedText(m_t.rows.at(i), Qt::ElideRight, kLabelW - 10));
+        p.drawText(QRect(4, r.top(), labelW() - 10, r.height()), Qt::AlignRight | Qt::AlignVCenter,
+                   fm.elidedText(m_t.rows.at(i), Qt::ElideRight, labelW() - 10));
         QColor track = UiColor::muted();
         track.setAlpha(30);
         p.fillRect(r, track);
@@ -153,7 +164,7 @@ void FaultTimelineCanvas::paintEvent(QPaintEvent *)
 
 void FaultTimelineCanvas::mousePressEvent(QMouseEvent *e)
 {
-    if (e->button() == Qt::LeftButton && e->pos().x() >= kLabelW && m_t.toMs > m_t.fromMs) emit timeClicked(msAtX(e->pos().x()));
+    if (e->button() == Qt::LeftButton && e->pos().x() >= labelW() && m_t.toMs > m_t.fromMs) emit timeClicked(msAtX(e->pos().x()));
 }
 
 bool FaultTimelineCanvas::event(QEvent *e)

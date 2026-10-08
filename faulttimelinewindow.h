@@ -35,6 +35,7 @@ protected:
 
 private:
     qint64 msAtX(int x) const;
+    int    labelW() const;
     FaultTimeline::Timeline m_t;
 };
 
