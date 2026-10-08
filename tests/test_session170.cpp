@@ -15,7 +15,7 @@
 // =============================================================================
 //  Session 170 — a received ARP carrying the loco's own ID is rejected: not
 //  shown as another loco on the Live Loco Console, counted by the run report.
-//  Real frames: replay/loco_2_1_08102026_162008.cap, the first two minutes of
+//  Real frames: replay/2026-10-08/loco_2_1_08102026_162008.cap, the first two minutes of
 //  Abhinav's 81_2 capture of 2026-10-08. Loco 2 hears its own ARP (44 times;
 //  the first, line 13, before its own first ARP on line 17) and loco 1's
 //  (19 times, from 16:21:19).
@@ -26,7 +26,7 @@ namespace {
 QStringList lines170()
 {
     QStringList out;
-    QFile f(QStringLiteral(DL_SRC_DIR "/replay/loco_2_1_08102026_162008.cap"));
+    QFile f(QStringLiteral(DL_SRC_DIR "/replay/2026-10-08/loco_2_1_08102026_162008.cap"));
     if (!f.open(QIODevice::ReadOnly)) return out;
     while (!f.atEnd()) {
         const QString l = QString::fromLatin1(f.readLine()).trimmed();

@@ -144,7 +144,8 @@ private slots:
     void onShowNotificationLog();
     void onActionPlotField();     // Tools → Plot field over time…
     void onActionSpeedDistance(); // Tools → Monitor → Speed vs distance… (session 81)
-    void onActionRunReport();     // Tools → Monitor → Run summary report… (session 81)
+    void onActionRunReport();
+    void onActionMissionReport();     // Tools → Monitor → Run summary report… (session 81)
     void onActionIncidentReport(); // Tools → Monitor → Incident report… (session 97)
     void onActionTwoLocoView();    // Tools → Monitor → Two-loco view… (session 98)
     void onActionTrackDiagram();   // Tools → Monitor → Track diagram… (session 99)

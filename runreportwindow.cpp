@@ -1,5 +1,6 @@
 #include "runreportwindow.h"
 
+#include "logmodel.h"
 #include "statusline.h"
 #include "windowgeometry.h"
 
@@ -16,14 +17,17 @@
 #include <QUrl>
 #include <QVBoxLayout>
 
-RunReportWindow::RunReportWindow(LogModel *model, const QString &tabKey, const QString &tabName, QWidget *parent)
+RunReportWindow::RunReportWindow(LogModel *model, const QString &tabKey, const QString &tabName, QWidget *parent,
+                                 Kind kind)
     : QWidget(parent, Qt::Window)
     , m_model(model)
     , m_tabKey(tabKey)
     , m_tabName(tabName)
+    , m_kind(kind)
 {
     setAttribute(Qt::WA_DeleteOnClose);
-    setWindowTitle(tr("Run summary — %1").arg(tabName.isEmpty() ? tabKey : tabName));
+    setWindowTitle((kind == Kind::Missions ? tr("Mission report — %1") : tr("Run summary — %1"))
+                       .arg(tabName.isEmpty() ? tabKey : tabName));
     WindowGeometry::makeResizableWindow(this);
     resize(820, 760);
 
@@ -60,9 +64,11 @@ RunReportWindow::RunReportWindow(LogModel *model, const QString &tabKey, const Q
         m_status->ok(tr("Copied as text"));
     });
     connect(save, &QPushButton::clicked, this, [this]() {
-        const QString stamp = QDateTime::fromMSecsSinceEpoch(m_summary.firstMs).toString(QStringLiteral("yyyyMMdd_HHmm"));
-        const QString path = QFileDialog::getSaveFileName(this, tr("Save run summary"),
-            QStringLiteral("run_summary_%1_%2.html").arg(m_tabKey, stamp), tr("HTML (*.html)"));
+        const qint64 firstMs = m_kind == Kind::Missions ? (m_missions.isEmpty() ? 0 : m_missions.first().fromMs) : m_summary.firstMs;
+        const QString stamp = QDateTime::fromMSecsSinceEpoch(firstMs).toString(QStringLiteral("yyyyMMdd_HHmm"));
+        const QString path = QFileDialog::getSaveFileName(this, m_kind == Kind::Missions ? tr("Save mission report") : tr("Save run summary"),
+            QStringLiteral("%1_%2_%3.html").arg(m_kind == Kind::Missions ? QStringLiteral("mission_report") : QStringLiteral("run_summary"),
+                                                 m_tabKey, stamp), tr("HTML (*.html)"));
         if (path.isEmpty()) return;
         if (!saveHtml(path)) { m_status->fail(tr("Could not write %1").arg(path)); return; }
         m_status->ok(tr("Saved %1").arg(path));
@@ -74,11 +80,25 @@ RunReportWindow::RunReportWindow(LogModel *model, const QString &tabKey, const Q
 void RunReportWindow::rebuild()
 {
     QApplication::setOverrideCursor(Qt::WaitCursor);
-    m_summary = RunReport::summarise(m_model, m_tabKey, m_tabName);
-    m_html = RunReport::toHtml(m_summary);
+    if (m_kind == Kind::Missions) {
+        Missions::Options mo;
+        mo.tabFull = m_model && m_model->count() >= m_model->capacity();
+        mo.tabRows = m_model ? m_model->count() : 0;
+        m_missions = Missions::split(m_model, mo);
+        m_html = Missions::toHtml(m_missions, m_tabKey, m_tabName, mo);
+    } else {
+        m_summary = RunReport::summarise(m_model, m_tabKey, m_tabName);
+        m_html = RunReport::toHtml(m_summary);
+    }
     QApplication::restoreOverrideCursor();
     m_view->setHtml(m_html);
-    m_status->state(tr("%1 rows read").arg(m_summary.rows));
+    if (m_kind == Kind::Missions) {
+        int n = 0;
+        for (const Missions::Mission &m : m_missions) n += m.index > 0 ? 1 : 0;
+        m_status->state(tr("%1 mission(s) in %2 rows").arg(n).arg(m_model ? m_model->count() : 0));
+    } else {
+        m_status->state(tr("%1 rows read").arg(m_summary.rows));
+    }
 }
 
 bool RunReportWindow::saveHtml(const QString &path) const

@@ -471,6 +471,15 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                                 "silences, clock skew, faults, reject conditions"));
     connect(actRunReport, &QAction::triggered, this, &MainWindow::onActionRunReport);
 
+    // Session 171: the day split into missions (start of mission to the next).
+    QAction *actMissionReport = monitorMenu->addAction(tr("&Mission report…"));
+    actMissionReport->setObjectName(QStringLiteral("actMissionReport"));
+    actMissionReport->setShortcut(QKeySequence("Ctrl+Alt+M"));
+    actMissionReport->setToolTip(tr("Every mission in the current tab, start of mission to the next: start-up "
+                                    "phases, modes, System_Failure / Trip, EB/FSB, speed, tags, radio, faults; "
+                                    "saved as one HTML file"));
+    connect(actMissionReport, &QAction::triggered, this, &MainWindow::onActionMissionReport);
+
     // Session 97: one incident, read in one pass.
     QAction *actIncidentReport = monitorMenu->addAction(tr("&Incident report…"));
     actIncidentReport->setShortcut(QKeySequence("Ctrl+Alt+I"));

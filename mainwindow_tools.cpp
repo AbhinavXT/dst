@@ -463,6 +463,20 @@ void MainWindow::onActionRunReport()
     w->raise();
 }
 
+void MainWindow::onActionMissionReport()
+{
+    const QString key = currentTabKey();
+    LogModel *model = key.isEmpty() ? nullptr : m_dispatcher->modelForKey(key);
+    if (!model || model->count() == 0) {
+        notify(NoteLevel::Info, tr("Select a tab with messages first."));
+        return;
+    }
+    QString name = m_tabs.value(key).friendlyName;
+    auto *w = new RunReportWindow(model, key, name.isEmpty() ? key : name, this, RunReportWindow::Kind::Missions);
+    w->show();
+    w->raise();
+}
+
 void MainWindow::onActionIncidentReport()
 {
     const QString key = currentTabKey();

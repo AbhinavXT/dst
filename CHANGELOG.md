@@ -11,6 +11,91 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-171"></a>
+## Session 171 — Missions, and the full mission report
+
+Abhinav's request (feature 1 of 11 drawn from the 2026-10-08 logs): split a
+day's log into missions and give a full mission report. **A mission starts
+at a start of mission** (session 168: the first ARP in Stand_By with no
+direction, tag or location after any other) **and ends at the next one**
+(his rule). The last one runs to the end of the log, and traffic before
+the first start is shown as "before the first start of mission".
+
+**Tools ▸ Monitor ▸ Mission report…** (Ctrl+Alt+M) opens the report for
+the current tab, with Rebuild, Copy and Save HTML (one file that prints
+to PDF from a browser):
+
+- **Summary table**, one row per mission: start, end, length, time from
+  start to Staff_Responsible, highest mode, mode at the end,
+  System_Failure / Trip / EB / FSB, highest speed, tags read, time without
+  radio, NMS faults raised.
+- **A section per mission**:
+  - start-up phases: Stand_By (ARP), "System Self Test In Progress" and
+    "Select Train Config" (DMI alarm messages), the first
+    Staff_Responsible / On_Sight / Limited / Full_Supervision, any
+    System_Failure;
+  - the mode changes and the time spent in each mode;
+  - the EB/FSB episodes;
+  - speed and located span;
+  - the RFID tags in order;
+  - the NMS faults raised.
+- **Where the modes come from.** The DMI is logged in bursts (in 81_1, a
+  42-minute stretch had 36 @dmi frames) and is silent through a
+  System_Failure restart. So a mission's modes are the DMI's `loco_mode`
+  while it sends, and the loco's own ARP `LOCO_MODE` once the DMI has been
+  silent for more than 3 s. Taking both at once would flicker at every
+  change, because the ARP lags. Each mission says which it used.
+- **A tab that has dropped its oldest rows** (its row capacity, 200,000 by
+  default) is named in the report header, with the time it now starts:
+  missions before that are not in it.
+- Observed over the 81_1 day: most missions end in System_Failure seconds
+  before the next start of mission.
+
+The run summary window shows this report too (`RunReportWindow::Kind::Missions`),
+so Save, Copy and Rebuild behave the same.
+
+### Fixture
+
+`replay/2026-10-08/loco_1_1_08102026_105200.cap` (new, 4,348 lines,
+0.96 MB): 81_1 from 10:52:00 to 11:13:00 loco time, capture lines
+unchanged, without the DIO, analog and LINFO lines (80% of the volume,
+read by none of this). It sits in a subfolder: the older corpus suites
+take "the first loco_1_1 capture" in `replay/`, and a 2026-10-08 name
+sorts first. The 170 fixture moved there too. The validators read
+`replay/*.cap` only, so they no longer see these two files. All 11 passed
+over them before the move.
+
+### Files
+
+`missionreport.{h,cpp}` (new, in `dlcore.pri`), `runreportwindow.{h,cpp}`,
+`mainwindow.h`, `mainwindow_menus.cpp`, `mainwindow_tools.cpp`; tests
+`test_session171.cpp` (new), `test_contrastaudit.cpp` (the mission report's
+HTML may carry colour literals, like the other standalone reports),
+`test_session170.cpp` (fixture path), `tests.pro`.
+
+### Tests
+
+- `session171`, against `schema/engine.py`'s reading of the fixture with the
+  same rule:
+  - before the first start: Limited_Supervision, then Stand_By, then
+    System_Failure at 10:52:36, one EB, self test from 10:52:21;
+  - mission 1: 10:52:51 to 10:56:29, no @dmi, modes from the ARP,
+    System_Failure at 10:56:27;
+  - mission 2: train config from 10:56:34, Staff_Responsible at 11:00:50
+    (start-up 4 min 21 s), its 15 tags in order, 4 EB, 110 km/h,
+    System_Failure at 11:08:52 (ARP, DMI silent);
+  - mission 3: from 11:08:56 to the end of the log, Staff_Responsible 14 s
+    after the start, then On_Sight and Full_Supervision.
+- The HTML (summary, sections, start-up time, mode source, verdict-free
+  wording); the window builds it and saves it.
+- Opt-in, not in the gate: `DL_MISSION_LOG=<log> DL_SHOTS=<dir>` writes
+  the whole log's report. On 81_1: 9 missions in the 200,000 rows the
+  tab keeps (13:11 onward).
+
+**Gate**: run together with 172, below.
+
+---
+
 <a id="session-170"></a>
 ## Session 170 — Received ARP from the loco's own ID: rejected
 

@@ -83,6 +83,7 @@ SOURCES += \
     $$PWD/speeddistance.cpp \
     $$PWD/clockskewalarm.cpp \
     $$PWD/runreport.cpp \
+    $$PWD/missionreport.cpp \
     $$PWD/runreportwindow.cpp \
     $$PWD/incidentreport.cpp \
     $$PWD/incidentreportdialog.cpp \
@@ -205,6 +206,7 @@ HEADERS += \
     $$PWD/speeddistance.h \
     $$PWD/clockskewalarm.h \
     $$PWD/runreport.h \
+    $$PWD/missionreport.h \
     $$PWD/runreportwindow.h \
     $$PWD/incidentreport.h \
     $$PWD/incidentreportdialog.h \
