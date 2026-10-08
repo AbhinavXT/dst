@@ -11,6 +11,44 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-182"></a>
+## Session 182 — Linux CI: the Loco Console fits a laptop again
+
+From patch 169 to 181, the **Linux** CI job failed two width checks:
+
+- `session150`: minimum 1158 px with the big numbers shown;
+- `session169`: 1262 px while following the cursor.
+
+The limit is 1100. Windows and Qt 6 passed, and the Mac measured 1057 and
+1090. Linux renders fonts about 8% wider, which the Mac gate cannot see.
+The failures went unnoticed for twelve patches.
+
+- **Cause:** the **readouts row** (1,037 px on the Mac). Its CRC and seq
+  chips grow with their counts ("✓ CRC 2593/2593", "seq 4567 · gaps
+  120"), and 169 added "Follow cursor" to that row.
+- **Fix:** the rate, CRC and seq readouts may now shrink (minimums 60 /
+  90 / 90 px). Their text is cut short only on a narrow window, and the
+  tooltip carries it in full, as the clock and mission chip already do.
+  The row's minimum is 820 px on the Mac, and the console's is 990 px,
+  set now by the actions row.
+- The Follow checkbox loses its "⏱" glyph: on Linux a fallback emoji font
+  can be wide. The tooltip says what it does. The mission chip's minimum
+  goes from 120 to 100 px.
+- **For next time:** `LocoConsoleWindow::minimumWidths()` lists each
+  part's minimum, and `session150` / `session169` put it in their failure
+  messages, so a CI failure says what is too wide.
+
+### Files
+
+`lococonsolewindow.{h,cpp}`; tests `test_session150.cpp`,
+`test_session169.cpp` (failure messages).
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**233 suites / 6422 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit passed; headless smoke alive. Linux: see this push's CI.
+
+---
+
 <a id="session-181"></a>
 ## Session 181 — Level crossings approached, and the horn
 

@@ -138,7 +138,7 @@ TEST_SUITE(session169)
             CHECK(false, "fixture: an RFID frame before the second moment");
         }
 
-        CHECK(w.minimumSizeHint().width() <= 1100, QByteArray("following, the long clock text does not widen it (minimum ")
+        CHECK(w.minimumSizeHint().width() <= 1100, QByteArray("following, the long clock text does not widen it [") + w.minimumWidths().toUtf8() + "] (minimum "
                                                         + QByteArray::number(w.minimumSizeHint().width()) + ")");
         if (!qgetenv("DL_SHOTS").isEmpty()) w.grab().save(QString::fromLocal8Bit(qgetenv("DL_SHOTS")) + QStringLiteral("/console_follow.png"));
 

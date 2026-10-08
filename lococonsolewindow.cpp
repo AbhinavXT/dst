@@ -26,6 +26,7 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QLayout>
 #include <QMessageBox>
 #include <QScrollArea>
 #include <QTabWidget>
@@ -185,6 +186,12 @@ void LocoConsoleWindow::buildUi()
     m_lblRate = new QLabel(tr("-- pkt/s"), central);
     m_lblCrc  = new QLabel(tr("CRC --"), central);
     m_lblSeq  = new QLabel(tr("seq --"), central);
+    // Session 182: the readouts row set the console's minimum width (1,037 px
+    // on the Mac, past 1,100 on Linux CI): the chips grow with their counts.
+    // They may be cut short on a narrow window; the tooltip has the text.
+    m_lblRate->setMinimumWidth(60);
+    m_lblCrc->setMinimumWidth(90);
+    m_lblSeq->setMinimumWidth(90);
     // Session 124: the readouts in the mono face, CRC and seq as chips.
     UiStyle::makeMono(m_lblRtc);
     UiStyle::makeMono(m_lblRate);
@@ -209,7 +216,7 @@ void LocoConsoleWindow::buildUi()
     m_lblMission = new QLabel(tr("start of mission --"), central);
     m_lblMission->setObjectName(QStringLiteral("locoMissionChip"));
     UiStyle::makeChip(m_lblMission, UiStyle::Tone::Neutral);
-    m_lblMission->setMinimumWidth(120);              // may be cut short at a laptop's width; the tooltip has it all
+    m_lblMission->setMinimumWidth(100);              // may be cut short at a laptop's width; the tooltip has it all
     top->addWidget(m_lblMission);
     top->addStretch(1);
     m_btnRecord = new QPushButton(tr("\u25CF Record"), central);
@@ -222,7 +229,9 @@ void LocoConsoleWindow::buildUi()
     btnFind->setToolTip(tr("Find a field on this tab (Ctrl+F)"));
     top->addWidget(btnFind);
     // Session 169: time travel and a snapshot, as on the DMI window.
-    m_chkFollow = new QCheckBox(tr("\u23F1 Follow cursor"), central);
+    // No glyph in the label: on Linux a fallback emoji font made it wide
+    // enough to push the console past a laptop's width (session 182).
+    m_chkFollow = new QCheckBox(tr("Follow cursor"), central);
     m_chkFollow->setObjectName(QStringLiteral("locoFollowCursor"));
     m_chkFollow->setToolTip(tr("Show every packet as it was at the row selected in any tab, or at a replay "
                                "window's cursor: each type's latest frame at or before that moment. "
@@ -1005,6 +1014,8 @@ void LocoConsoleWindow::refreshHeader(const LocoState &st, qint64 nowMs)
     }
 
     m_lblSeq->setText(tr("seq %1 \u00B7 gaps %2").arg(st.lastSeq).arg(st.seqGaps));
+    m_lblSeq->setToolTip(m_lblSeq->text());
+    m_lblCrc->setToolTip(m_lblCrc->text());
     UiStyle::setTone(m_lblSeq, st.seqGaps ? UiStyle::Tone::Warn : UiStyle::Tone::Neutral);
 
     const qint64 age = (newestSeen > 0) ? (nowMs - newestSeen) : -1;
@@ -1322,6 +1333,23 @@ void LocoConsoleWindow::onOpenReplay()
     ReplayWindow *w = new ReplayWindow(paths, nullptr);
     w->setAttribute(Qt::WA_DeleteOnClose);
     w->show();
+}
+
+QString LocoConsoleWindow::minimumWidths() const
+{
+    QStringList parts;
+    auto *root = centralWidget() ? centralWidget()->layout() : nullptr;
+    for (int i = 0; root && i < root->count(); ++i) {
+        QLayoutItem *it = root->itemAt(i);
+        const QString what = it->widget() ? QString::fromLatin1(it->widget()->metaObject()->className())
+                                            + (it->widget()->objectName().isEmpty() ? QString() : QLatin1Char('#') + it->widget()->objectName())
+                                          : QStringLiteral("row %1").arg(i);
+        if (it->widget() && !it->widget()->isVisible()) continue;
+        parts << QStringLiteral("%1 %2").arg(what).arg(it->minimumSize().width());
+    }
+    for (QWidget *x : { static_cast<QWidget *>(m_chkFollow), static_cast<QWidget *>(m_lblMission), static_cast<QWidget *>(m_lblRtc) })
+        if (x) parts << QStringLiteral("%1 %2").arg(x->metaObject()->className()).arg(x->minimumSizeHint().width());
+    return parts.join(QStringLiteral(", "));
 }
 
 // ============================ following the cursor (session 169) ============================

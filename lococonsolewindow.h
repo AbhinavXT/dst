@@ -96,6 +96,9 @@ public:
     QTableWidget *tableForLabel(const QString &label) const;
     QTabWidget   *tabs() const { return m_tabs; }
     QLabel       *missionChip() const { return m_lblMission; }
+    // Session 182: each part's minimum width, for a width check's failure
+    // message (the Linux CI renders fonts wider than the Mac).
+    QString minimumWidths() const;
 
     // Session 169: follow the cursor, as the DMI window does (84): every
     // packet tab, the big numbers and the cab view show each type's latest
