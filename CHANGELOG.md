@@ -11,6 +11,53 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-178"></a>
+## Session 178 — The loco's own SoS and collision detections
+
+Feature 8. NMS health carries the loco's own SoS (`LOCO_SELF_SOS`: Manual
+SoS, Manual SoS end, Unusual stop start, Unusual stop end) and
+`COLLISION_DETECTION` ("513 (loco 2, code 1)"). 81_1 has 94 of them over
+the day; nothing showed them as spells.
+
+- **Episodes:** a start (Manual SoS / Unusual stop start) runs to its end.
+  Repeats of either (the NMS sends each twice, a second apart) are folded.
+  A start that is never ended runs to the end of the log, marked "(no end)".
+- **Collision detections** become marks; repeats of the same value within
+  5 s are folded.
+- **Run summary:** a "Loco's own SoS" section (from, to, what) and a
+  "Collision detection" section.
+- **Lanes:** own-SoS spells along the top half of the Safety lane (accent
+  colour), collision detections as ticks (error colour), each named on
+  hover. EB/FSB (175) stay along the bottom.
+
+On 81_1 at 11:03:34 the NMS reports a collision detection for loco 2, the
+same second loco 2's SoS began as heard on its received ARPs (172), and
+the four EBs follow (175).
+
+### Files
+
+`runreport.{h,cpp}`, `laneband.cpp`; tests `test_session178.cpp` (new),
+`tests.pro`.
+
+### Tests
+
+- `session178`, against `schema/engine.py`:
+  - on the 10:13 excerpt, one unusual stop, 10:13:36–10:13:59 (start and
+    end each sent twice, folded), and no collision detection;
+  - on the 10:52 excerpt, an unusual stop from 11:08:14 with no end, so it
+    runs to 11:13:00 and says "(no end)", and one collision detection,
+    loco 2, at 11:03:34 (two frames folded);
+  - the run summary section;
+  - the Safety lane names both on hover.
+- `session164`, `session168`, `session175`, `session97` (lanes, reports)
+  pass unchanged.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**230 suites / 6390 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-177"></a>
 ## Session 177 — GPS health (Radio and GPS health)
 

@@ -17,6 +17,7 @@
 //                                  or location, as episodes
 //    emergency status              LSRP EMERGENCY_STATUS != 0, as episodes
 //    brakes (175)                  DMI EB/FSB, each with its reasons
+//    self SoS (178)                NMS LOCO_SELF_SOS start..end; COLLISION_DETECTION
 //    RFID tags                     LSRP LAST_RFID_TAG, each change
 //    speed                         DMI (or LSRP) speed; above-permitted
 //                                  episodes from DMI speed_limit_permissible
@@ -125,6 +126,12 @@ struct Summary {
     int                 skewComparisons = 0;
     QVector<FaultEvent> faults;
     QVector<BrakeEvent> brakes;            // session 175: EB/FSB with reasons
+    // Session 178: the loco's own SoS, from NMS LOCO_SELF_SOS: a start
+    // (1 Manual SoS / 3 Unusual stop start) to its end (2 / 4); repeats of
+    // either are folded; a start never ended runs to the end (what ends "(no end)").
+    QVector<Episode>    selfSos;
+    // NMS COLLISION_DETECTION ("loco 2, code 1"); repeats within 5 s folded.
+    QVector<Change>     collisionDetections;   // to = the value
     QMap<QString, int>  rejectClauses;     // "31.16.1 PKT_DIR" -> frames
     int                 slrpFrames = 0;
     // Session 170: received ARPs (arprecv) judged by the same rules: the

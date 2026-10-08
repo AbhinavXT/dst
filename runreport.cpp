@@ -77,6 +77,7 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
     int included = 0;
     bool haveFirst = false;
     bool inMissionStart = false;
+    bool selfSosOpen = false;
 
     for (int i = 0; i < n; ++i) {
         const LogEntryPtr e = model->entryAt(i);
@@ -96,7 +97,7 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
         // Only the types this report reads are decoded.
         const bool wanted = type == QLatin1String("lsrp") || type == QLatin1String("arp")
                          || type == QLatin1String("slrp") || type == QLatin1String("nmsflt")
-                         || type == QLatin1String("arprecv");
+                         || type == QLatin1String("arprecv") || type == QLatin1String("nmshlth");
         if (!wanted) continue;
         const CaptureLine cap = CaptureDecoder::parseLine(e->text);
         if (!cap.valid || cap.bytes.isEmpty()) continue;
@@ -174,6 +175,32 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
             for (const RejectRules::Finding &f : kavachRejectRules().evaluate(judged, type)) {
                 s.rejectClauses[QStringLiteral("%1  %2").arg(f.rule.clause, f.rule.field)] += 1;
             }
+        } else if (type == QLatin1String("nmshlth")) {
+            // Session 178: event fields come as display rows only.
+            for (const FieldRow &r : rows) {
+                const QString f = r.field.trimmed();
+                const QString v = r.value.trimmed();
+                if (f == QLatin1String("LOCO_SELF_SOS")) {
+                    const int code = v.section(QLatin1Char(' '), 0, 0).toInt();
+                    const bool start = code == 1 || code == 3, end = code == 2 || code == 4;
+                    const QString what = v.section(QLatin1Char('('), 1).section(QLatin1Char(')'), 0, 0);
+                    if (start && !selfSosOpen) {
+                        Episode ep;
+                        ep.fromMs = ep.toMs = e->epochMs;
+                        ep.row = i;
+                        ep.what = what.endsWith(QLatin1String(" start")) ? what.left(what.size() - 6) : what;
+                        s.selfSos << ep;
+                        selfSosOpen = true;
+                    } else if (end && selfSosOpen) {
+                        s.selfSos.last().toMs = e->epochMs;
+                        selfSosOpen = false;
+                    }
+                } else if (f == QLatin1String("COLLISION_DETECTION")) {
+                    if (s.collisionDetections.isEmpty() || e->epochMs - s.collisionDetections.last().ms > 5000
+                        || s.collisionDetections.last().to != v)
+                        s.collisionDetections << Change{ e->epochMs, i, QString(), v };
+                }
+            }
         } else if (type == QLatin1String("arprecv")) {
             // Session 170: another loco's ARP, unless it carries this
             // loco's own ID (rejectrules.xml, clause "DLConsole").
@@ -202,6 +229,10 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
             activeFaults = now;
             faultsSeen = true;
         }
+    }
+    if (selfSosOpen && !s.selfSos.isEmpty()) {
+        s.selfSos.last().toMs = s.lastMs;
+        s.selfSos.last().what += QStringLiteral(" (no end)");
     }
     s.distinctTags = tags.size();
     if (options.hasWindow) s.rows = included;
@@ -386,6 +417,23 @@ QString toHtml(const Summary &s, const Options &options)
                      .arg(timeText(b.fromMs), timeText(b.toMs), esc(b.type), esc(b.reasonsText()));
         }
         h += QStringLiteral("</table>") + more(s.brakes.size());
+    }
+
+    // ---- self SoS and collision detection (session 178) -----------------------------------------
+    h += QStringLiteral("<h2>Loco's own SoS (NMS LOCO_SELF_SOS): %1</h2>").arg(countOf(s.selfSos.size(), "episode", "episodes"));
+    if (!s.selfSos.isEmpty()) {
+        h += QStringLiteral("<table><tr><th>From</th><th>To</th><th>What</th></tr>");
+        for (int i = 0; i < s.selfSos.size() && i < cap; ++i) {
+            const Episode &e = s.selfSos.at(i);
+            h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td></tr>").arg(timeText(e.fromMs), timeText(e.toMs), esc(e.what));
+        }
+        h += QStringLiteral("</table>") + more(s.selfSos.size());
+    }
+    if (!s.collisionDetections.isEmpty()) {
+        h += QStringLiteral("<h2>Collision detection (NMS): %1</h2><table><tr><th>Time</th><th>Value</th></tr>").arg(s.collisionDetections.size());
+        for (int i = 0; i < s.collisionDetections.size() && i < cap; ++i)
+            h += QStringLiteral("<tr><td>%1</td><td>%2</td></tr>").arg(timeText(s.collisionDetections.at(i).ms), esc(s.collisionDetections.at(i).to));
+        h += QStringLiteral("</table>") + more(s.collisionDetections.size());
     }
 
     // ---- speed -------------------------------------------------------------------------------
