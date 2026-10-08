@@ -180,6 +180,11 @@ void BigNumberPanel::rebuild()
         valueFont.setPointSizeF(QApplication::font().pointSizeF() * 3.0);
         tile.value->setFont(valueFont);
         tile.value->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        // Session 182: a long value ("4 (Full_Supervision)" at three times the
+        // font) set the tile's minimum, and held the Loco Console at 1,242 px
+        // on Linux. It may be cut short on a narrow window; the tooltip holds
+        // it (set with every value).
+        tile.value->setMinimumWidth(80);
         layout->addWidget(tile.value);
 
         tile.spark = new Sparkline(tile.frame);

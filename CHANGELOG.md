@@ -11,6 +11,35 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-183"></a>
+## Session 183 — Linux CI: a long big-number value no longer widens the console
+
+182's diagnostics did their job. With 182 the Linux CI passed `session150`
+but still failed `session169`, and the failure message named the part:
+`BigNumberPanel 1242` while following the cursor. The mode tile's value,
+"4 (Full_Supervision)" at three times the font, set its tile's minimum
+width. That is the same failure session 151 fixed for the detail line,
+this time on the value. It doesn't depend on following: any long mode
+name, live, does it.
+
+- The tile's value may now shrink to 80 px. It takes its full width when
+  there is room, and on a narrow window it is cut short, with the full
+  value in the tooltip (set with every value since 79). On the Mac the
+  panel's minimum goes from 1,074 to 503 px with this value.
+- `session169` now checks the width **with the big numbers shown**, so
+  the Mac gate catches this case too. Before, it depended on what the
+  settings file held.
+
+### Files
+
+`bignumberpanel.cpp`; tests `test_session169.cpp`.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**233 suites / 6422 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit passed; headless smoke alive. Linux: see this push's CI.
+
+---
+
 <a id="session-182"></a>
 ## Session 182 — Linux CI: the Loco Console fits a laptop again
 

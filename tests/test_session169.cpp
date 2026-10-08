@@ -138,8 +138,17 @@ TEST_SUITE(session169)
             CHECK(false, "fixture: an RFID frame before the second moment");
         }
 
+        // With the big numbers shown (182): the mode tile's long value set the
+        // minimum on Linux before it could shrink.
+        QPushButton *bigBtn = nullptr;
+        for (QPushButton *b : w.findChildren<QPushButton *>()) if (b->text() == QStringLiteral("Big numbers")) bigBtn = b;
+        const bool bigShown = bigBtn && bigBtn->isChecked();
+        if (bigBtn) bigBtn->setChecked(true);
+        QMetaObject::invokeMethod(&w, "onRefreshTick");
+        QCoreApplication::processEvents();
         CHECK(w.minimumSizeHint().width() <= 1100, QByteArray("following, the long clock text does not widen it [") + w.minimumWidths().toUtf8() + "] (minimum "
                                                         + QByteArray::number(w.minimumSizeHint().width()) + ")");
+        if (bigBtn) bigBtn->setChecked(bigShown);
         if (!qgetenv("DL_SHOTS").isEmpty()) w.grab().save(QString::fromLocal8Bit(qgetenv("DL_SHOTS")) + QStringLiteral("/console_follow.png"));
 
         QPushButton *big = nullptr;
