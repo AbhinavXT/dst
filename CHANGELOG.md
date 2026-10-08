@@ -11,6 +11,46 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-163"></a>
+## Session 163 — session156 on CI: Windows fixed; the Linux flake made to say where it stops
+
+### 1. Windows: the by-path check runs on Unix only
+
+- **Cause.** `session156` "udev's by-path links give each device its
+  socket" builds a fake `/dev/serial/by-path` with `QFile::link`. On
+  Windows that makes `.lnk` shortcuts, not symlinks, so the reader found
+  nothing. The console itself reads by-path on Linux only
+  (`SerialScan::platformLocations`), so the check now runs on Unix only.
+  This was the Windows CI failure since patch 156.
+
+### 2. Linux: "then it is open, as before" — not fixed, instrumented
+
+- Failed once on Linux CI (patch 162 run): the terminal still said
+  "Opening /dev/pts/0…" with Cancel after 3 s. It passed on the 157, 158
+  and 161 runs. **Not reproduced here**: 30 runs, six at a time under
+  load, never stuck in Opening.
+- From reading the code, one path would leave the window in Opening for
+  good: the link closed while opening (its `finishOpen` drops the result,
+  so no `openFinished` reaches the window). Nothing found closes it in
+  this test, so that is **not confirmed** as the cause.
+- The check now also prints the link's own state (open / opening) and the
+  time since Open, so the next failure says whether the open never
+  finished or the window missed it.
+- On macOS the same check fails differently (the pty's DTR/RTS ENOTTY
+  overwrites the status; the link itself is open, as the new text shows).
+  Mac-only; left as it is.
+
+### Files
+
+`tests/test_session156.cpp`.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**215 suites / 6152 checks, 1 failed** (the macOS-only one above, now
+reading "… · link open · 3000 ms since Open"); menu audit 168 checks,
+passed; headless smoke 500 datagrams, alive.
+
+---
+
 <a id="session-162"></a>
 ## Session 162 — session160 on Windows CI: the widen check follows the screen
 

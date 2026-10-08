@@ -275,6 +275,10 @@ TEST_SUITE(session156)
         CHECK(planFor(SerialScan::planReconnects({ moved }, renamed), 0) == QLatin1String("/dev/ttyUSB3"),
               "a path-named port comes back as a path");
     }
+#ifdef Q_OS_UNIX
+    // Unix only (session 163): the console reads /dev/serial/by-path on
+    // Linux alone, and on Windows QFile::link makes .lnk shortcuts, not the
+    // symlinks udev makes, so this failed there on CI.
     {
         // /dev/serial/by-path: the link names are the sockets.
         QTemporaryDir dir;
@@ -290,6 +294,7 @@ TEST_SUITE(session156)
                   && locs.size() == 2,
               "udev's by-path links give each device its socket; a dangling link is skipped");
     }
+#endif
     CHECK(SerialManager::captureTypeOf(kDop1) == QLatin1String("dop1")
               && SerialManager::captureTypeOf(kHlth) == QLatin1String("nmshlth")
               && SerialManager::captureTypeOf("@analog_top_1_1 2026-06-27T14:02:26 1 00") == QLatin1String("analog_top")
@@ -599,9 +604,14 @@ TEST_SUITE(session156)
         openBtn->click();
         CHECK(t.elapsed() < 100 && w->statusText().contains(QLatin1String("Opening")) && openBtn->text() == QLatin1String("Cancel"),
               QByteArray("Open returns at once and says Opening, with Cancel (") + QByteArray::number(t.elapsed()) + " ms)");
-        CHECK(waitFor([&]() { return w->statusText().contains(QLatin1String("open,")); }, 3000)
-                  && openBtn->text() == QLatin1String("Close") && w->receivedText().contains(QLatin1String("opened")),
-              QByteArray("then it is open, as before (") + w->statusText().toUtf8() + " / " + openBtn->text().toUtf8() + ")");
+        const bool nowOpen = waitFor([&]() { return w->statusText().contains(QLatin1String("open,")); }, 3000);
+        // Session 163: failed once on Linux CI still "Opening" after 3 s, and
+        // not reproduced here. The link's own state, and how long, say where.
+        SerialLink *lk = mgr.link(a.path);
+        CHECK(nowOpen && openBtn->text() == QLatin1String("Close") && w->receivedText().contains(QLatin1String("opened")),
+              QByteArray("then it is open, as before (") + w->statusText().toUtf8() + " / " + openBtn->text().toUtf8()
+                  + " · link " + (lk && lk->isOpen() ? "open" : "not open") + (lk && lk->isOpening() ? ", opening" : "")
+                  + " · " + QByteArray::number(t.elapsed()) + " ms since Open)");
         openBtn->click();
         CHECK(!mgr.link(a.path)->isOpen(), "Close closes");
         cfg.portName = QStringLiteral("/dev/no-such-port-156");
