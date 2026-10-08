@@ -95,7 +95,7 @@ TEST_SUITE(session173)
     w.setAttribute(Qt::WA_DeleteOnClose, false);
     w.resize(1000, 640);
     w.show();
-    CHECK(w.summary() == text && w.canvas()->strips().size() == 5, "the window: the summary over five strips");
+    CHECK(w.summary() == text && w.canvas()->strips().size() == 8, "the window: the summary over its strips (8 since 177: GPS)");
     if (!qgetenv("DL_SHOTS").isEmpty()) w.grab().save(QString::fromLocal8Bit(qgetenv("DL_SHOTS")) + QStringLiteral("/radio_health.png"));
     const QString tip = w.canvas()->describeAt(at173("11:00:00"));
     CHECK(tip.contains(QStringLiteral("DMI signal: 0 bars")) && tip.contains(QStringLiteral("no radio hole announced"))

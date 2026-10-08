@@ -5,6 +5,7 @@
 #include "logmodel.h"
 
 #include <QDateTime>
+#include <QMap>
 #include <QObject>
 #include <QStringList>
 #include <algorithm>
@@ -26,16 +27,20 @@ double leadingNumber(const QString &text)
 // Spells of a condition sampled over time: a sample with it on extends the
 // open spell (or opens one); a sample with it off, or a silence longer than
 // kSpellGapMs, closes it.
+//
+// Several trackers may share one output list (radio-not-OK, GPS problems),
+// so each extends ITS OWN span, by index -- not the list's last one.
 struct SpanTracker {
     QVector<Span> *out = nullptr;
     bool open = false;
+    int  index = -1;
     qint64 lastMs = 0;
     void observe(bool on, qint64 ms, const QString &what)
     {
         if (open && ms - lastMs > kSpellGapMs) open = false;
         if (on) {
-            if (!open) { out->append(Span{ ms, ms, what, false }); open = true; }
-            else out->last().toMs = ms;
+            if (!open) { out->append(Span{ ms, ms, what, false }); index = out->size() - 1; open = true; }
+            else (*out)[index].toMs = ms;
         } else {
             open = false;
         }
@@ -115,6 +120,47 @@ Report build(const LogModel *model, qint64 fromMs, qint64 toMs)
         }
     }
 
+    // ---- GPS (session 177) -----------------------------------------------------------------
+    {
+        const QStringList fields{ QStringLiteral("gps1_sat_in_view"), QStringLiteral("gps2_sat_in_view"),
+                                  QStringLiteral("gps1_cno_max"), QStringLiteral("gps2_cno_max"),
+                                  QStringLiteral("gps1_link_status"), QStringLiteral("gps2_link_status"),
+                                  QStringLiteral("active_gps"), QStringLiteral("gps1_view"), QStringLiteral("gps2_view") };
+        const QVector<RowFields> rows = collectRowFields(model, QStringLiteral("ccsys"), fields, 200000, fromMs, toMs);
+        if (!rows.isEmpty()) {
+            Series s1{ QStringLiteral("GPS-1"), QStringLiteral("sats"), {}, {} }, s2{ QStringLiteral("GPS-2"), QStringLiteral("sats"), {}, {} };
+            Series c1{ QStringLiteral("GPS-1"), QStringLiteral("dB-Hz"), {}, {} }, c2{ QStringLiteral("GPS-2"), QStringLiteral("dB-Hz"), {}, {} };
+            SpanTracker l1{ &r.gpsProblems }, l2{ &r.gpsProblems }, act{ &r.gpsProblems };
+            QMap<QString, int> view1, view2;
+            for (const RowFields &f : rows) {
+                auto add = [&](Series &s, const char *field) {
+                    if (!f.has(QLatin1String(field))) return;
+                    s.ms << f.epochMs;
+                    s.v << double(f.raw.value(QLatin1String(field)));
+                };
+                add(s1, "gps1_sat_in_view"); add(s2, "gps2_sat_in_view");
+                add(c1, "gps1_cno_max"); add(c2, "gps2_cno_max");
+                const QString ls1 = f.display.value(QStringLiteral("gps1_link_status"));
+                const QString ls2 = f.display.value(QStringLiteral("gps2_link_status"));
+                const QString active = f.display.value(QStringLiteral("active_gps"));
+                l1.observe(!ls1.isEmpty() && ls1 != QLatin1String("link ok / PPS ok"), f.epochMs, QStringLiteral("GPS-1 ") + ls1);
+                l2.observe(!ls2.isEmpty() && ls2 != QLatin1String("link ok / PPS ok"), f.epochMs, QStringLiteral("GPS-2 ") + ls2);
+                act.observe(!active.isEmpty() && active != QLatin1String("Both GPS"), f.epochMs, QStringLiteral("active: ") + active);
+                if (f.display.contains(QStringLiteral("gps1_view"))) view1[f.display.value(QStringLiteral("gps1_view"))] += 1;
+                if (f.display.contains(QStringLiteral("gps2_view"))) view2[f.display.value(QStringLiteral("gps2_view"))] += 1;
+            }
+            r.gpsSats = { s1, s2 };
+            r.gpsCno = { c1, c2 };
+            auto counts = [](const QMap<QString, int> &m) {
+                QStringList parts;
+                for (auto it = m.cbegin(); it != m.cend(); ++it) parts << QStringLiteral("%1 ×%2").arg(it.key()).arg(it.value());
+                return parts.join(QStringLiteral(", "));
+            };
+            r.gpsViews = QObject::tr("GPS-1 view: %1; GPS-2 view: %2").arg(counts(view1), counts(view2));
+            std::sort(r.gpsProblems.begin(), r.gpsProblems.end(), [](const Span &a, const Span &b) { return a.fromMs < b.fromMs; });
+        }
+    }
+
     // ---- NMS health -----------------------------------------------------------------------
     // Its fields are events with meanings (eid): they come as display rows
     // ("3  (Radio Fail)") and not in the numeric map collectRowFields() keys
@@ -165,6 +211,7 @@ Report build(const LogModel *model, qint64 fromMs, qint64 toMs)
     for (const qint64 ms : r.signal.ms) extend(ms);
     for (const Series &s : r.temperatures) for (const qint64 ms : s.ms) extend(ms);
     for (const Series &s : r.gsm) for (const qint64 ms : s.ms) extend(ms);
+    for (const Series &s : r.gpsSats) for (const qint64 ms : s.ms) extend(ms);
     matchAnnouncements(r);
     return r;
 }
@@ -200,6 +247,11 @@ QString summaryText(const Report &r)
                      .arg(r.announcedSpells).arg(kRadioHoleLeadMs / 1000).arg(r.noRadio.size() - r.announcedSpells);
     }
     if (!r.radioFail.isEmpty()) parts << QObject::tr("A radio reported not OK in %1 spell(s).").arg(r.radioFail.size());
+    if (!r.gpsSats.isEmpty()) {
+        parts << (r.gpsProblems.isEmpty() ? QObject::tr("GPS link and PPS OK, both GPS active throughout.")
+                                          : QObject::tr("GPS: %1 spell(s) with a link / PPS failure or not both GPS active.").arg(r.gpsProblems.size()));
+        parts << r.gpsViews + QLatin1Char('.');
+    }
     return parts.join(QLatin1Char(' '));
 }
 

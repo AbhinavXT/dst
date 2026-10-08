@@ -22,8 +22,10 @@ namespace {
 const int kLeft = 112, kRight = 12, kTop = 8, kBottom = 26, kGap = 10;
 
 // Strip heights, as shares of the plot height.
-const double kShare[5] = { 0.26, 0.10, 0.24, 0.16, 0.24 };
-const char *kTitle[5] = { "DMI signal", "Radio not OK", "Temperature", "Fwd power", "GSM RSSI" };
+// Session 177: GPS satellites, C/N0 and problems below the radio strips.
+const double kShare[8] = { 0.17, 0.07, 0.15, 0.10, 0.14, 0.13, 0.13, 0.07 };
+const char *kTitle[8] = { "DMI signal", "Radio not OK", "Temperature", "Fwd power", "GSM RSSI",
+                          "GPS satellites", "GPS C/N0", "GPS problem" };
 
 QString hms(qint64 ms) { return QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss")); }
 
@@ -54,7 +56,7 @@ void RadioHealthCanvas::setReport(const RadioHealth::Report &r)
 QVector<QRect> RadioHealthCanvas::strips() const
 {
     QVector<QRect> out;
-    const int h = height() - kTop - kBottom - 4 * kGap;
+    const int h = height() - kTop - kBottom - 7 * kGap;
     int y = kTop;
     for (double share : kShare) {
         const int sh = qMax(16, int(h * share));
@@ -103,6 +105,10 @@ QString RadioHealthCanvas::describeAt(qint64 ms) const
     series(m_r.temperatures, tr("Temperature"));
     series(m_r.power, tr("Forward power"));
     series(m_r.gsm, tr("GSM"));
+    series(m_r.gpsSats, tr("GPS satellites"));
+    series(m_r.gpsCno, tr("GPS C/N0"));
+    for (const RadioHealth::Span &s : m_r.gpsProblems)
+        if (ms >= s.fromMs && ms <= s.toMs) lines << tr("%1, %2 to %3").arg(s.what, hms(s.fromMs), hms(s.toMs));
     return lines.join(QLatin1Char('\n'));
 }
 
@@ -211,6 +217,9 @@ void RadioHealthCanvas::paintEvent(QPaintEvent *)
     if (rangeOf(m_r.temperatures, &lo, &hi)) drawSeries(st[2], m_r.temperatures, lo, hi);
     if (rangeOf(m_r.power, &lo, &hi)) drawSeries(st[3], m_r.power, lo, hi);
     if (rangeOf(m_r.gsm, &lo, &hi)) drawSeries(st[4], m_r.gsm, lo, hi);
+    if (rangeOf(m_r.gpsSats, &lo, &hi)) drawSeries(st[5], m_r.gpsSats, qMin(lo, 0.0), hi);
+    if (rangeOf(m_r.gpsCno, &lo, &hi)) drawSeries(st[6], m_r.gpsCno, lo, hi);
+    for (const RadioHealth::Span &sp : m_r.gpsProblems) p.fillRect(spanRect(st[7], sp.fromMs, sp.toMs), UiColor::warning());
 
     // Time axis.
     p.setPen(UiColor::muted());
@@ -255,9 +264,9 @@ RadioHealthWindow::RadioHealthWindow(LogModel *model, const QString &tabKey, con
     , m_tabKey(tabKey)
 {
     setAttribute(Qt::WA_DeleteOnClose);
-    setWindowTitle(tr("Radio health — %1").arg(tabName.isEmpty() ? tabKey : tabName));
+    setWindowTitle(tr("Radio and GPS health — %1").arg(tabName.isEmpty() ? tabKey : tabName));
     WindowGeometry::makeResizableWindow(this);
-    resize(1000, 640);
+    resize(1000, 700);
 
     m_summary = new QLabel(this);
     m_summary->setObjectName(QStringLiteral("radioHealthSummary"));

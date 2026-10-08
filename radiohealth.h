@@ -11,6 +11,9 @@
 //             power; active_radio
 //    @nmshlth RADIO_1/2_HEALTH (3 = Radio Fail)
 //    @dlsys   GSM-1 / GSM-2 RSSI (99 = not known)
+//    @ccsys   GPS-1 / GPS-2 (session 177): satellites in view, C/N0 max,
+//             link / PPS status, which GPS is active, the view letter (A/V)
+//             as reported -- counted, not interpreted
 //
 //  THE QUESTION IT ANSWERS: was a loss of radio a radio hole the loco had
 //  been told of, or not? Each no-radio spell (signal_strength 0) is matched
@@ -51,9 +54,14 @@ struct Report {
     QVector<Series> temperatures;            // radio 1, radio 2, PA 1, PA 2 (°C)
     QVector<Series> power;                   // forward power, radio 1 / 2 (W)
     QVector<Series> gsm;                     // GSM-1 / GSM-2 RSSI
+    // Session 177: GPS (@ccsys).
+    QVector<Series> gpsSats;                 // satellites in view, GPS-1 / GPS-2
+    QVector<Series> gpsCno;                  // C/N0 max, GPS-1 / GPS-2 (dB-Hz)
+    QVector<Span>   gpsProblems;             // link / PPS not ok; not both GPS active
+    QString         gpsViews;                // "GPS-1 view: V 226; GPS-2 view: V 219, A 6, ..." as reported
     qint64 noRadioTotalMs = 0, longestNoRadioMs = 0;
     int    announcedSpells = 0;
-    bool   any() const { return !signal.isEmpty() || !temperatures.isEmpty() || !gsm.isEmpty(); }
+    bool   any() const { return !signal.isEmpty() || !temperatures.isEmpty() || !gsm.isEmpty() || !gpsSats.isEmpty(); }
 };
 
 Report build(const LogModel *model, qint64 fromMs = 0, qint64 toMs = 0);

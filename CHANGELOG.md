@@ -11,6 +11,51 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-177"></a>
+## Session 177 — GPS health (Radio and GPS health)
+
+Feature 7. CCSYS carries both GPS receivers' state in every frame:
+satellites in view, C/N0, link / PPS status, which GPS is active, and a
+view letter. The radio window (173) becomes **Radio and GPS health**, with
+three more strips on the same time axis:
+
+- **GPS satellites** and **GPS C/N0** (max, dB-Hz), GPS-1 and GPS-2.
+- **GPS problem**: spells where a GPS link or PPS is not ok, or not both
+  GPS are active.
+- The header counts the **view letter as reported**: GPS-1 "V" in all
+  226 frames of the excerpt, and GPS-2 V 219, A 6, No Data 1. In NMEA, V
+  usually means "void", but these frames read V with 11–12 satellites in
+  view, so the console counts it and does not interpret it. Worth
+  checking against the firmware.
+
+**Fixed in 173's code:** several span trackers share one output list
+(radio not OK: two CCSYS radios, no active radio, two NMS radios; now the
+three GPS ones). Each extended the list's *last* span, which could be
+another tracker's. The radio spells in 173's fixture are one frame long,
+so it did not show there. Each tracker now extends its own span.
+
+### Files
+
+`radiohealth.{h,cpp}`, `radiohealthwindow.{h,cpp}`, `mainwindow_menus.cpp`
+(menu text); tests `test_session177.cpp` (new), `test_session173.cpp`
+(8 strips), `tests.pro`.
+
+### Tests
+
+- `session177`, on the 81_1 excerpt, against `schema/engine.py`:
+  - satellites and C/N0 from all 226 @ccsys; GPS-1 sees 0–12;
+  - 6 problem spells, all at the two restarts;
+  - each spell keeps its own end: GPS-2 link+PPS to 11:09:04, only GPS-1
+    active to 11:09:00. Before the fix these two swapped;
+  - the view counts, the summary, the window's 8 strips, the hover text,
+    and it fits a laptop.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**229 suites / 6381 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-176"></a>
 ## Session 176 — Cab inputs and outputs on a timeline
 

@@ -20,8 +20,8 @@ class RadioHealthCanvas : public QWidget
 public:
     explicit RadioHealthCanvas(QWidget *parent = nullptr);
     void setReport(const RadioHealth::Report &r);
-    QSize sizeHint() const override { return QSize(900, 520); }
-    QSize minimumSizeHint() const override { return QSize(480, 360); }
+    QSize sizeHint() const override { return QSize(900, 620); }
+    QSize minimumSizeHint() const override { return QSize(480, 440); }
     // For the tests: the strip rectangles, and the text a hover at `ms` shows.
     QVector<QRect> strips() const;
     QString describeAt(qint64 ms) const;

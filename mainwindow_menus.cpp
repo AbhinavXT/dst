@@ -481,10 +481,10 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     connect(actMissionReport, &QAction::triggered, this, &MainWindow::onActionMissionReport);
 
     // Session 173: the radio and GSM links over time.
-    QAction *actRadioHealth = monitorMenu->addAction(tr("Radio &health…"));
+    QAction *actRadioHealth = monitorMenu->addAction(tr("Radio and GPS &health…"));
     actRadioHealth->setObjectName(QStringLiteral("actRadioHealth"));
     actRadioHealth->setToolTip(tr("The current tab's radio over time: DMI signal bars, no-radio spells against "
-                                  "the radio holes announced, radios not OK, temperatures, power, GSM RSSI"));
+                                  "the radio holes announced, radios not OK, temperatures, power, GSM RSSI, GPS satellites / C/N0 / link"));
     connect(actRadioHealth, &QAction::triggered, this, &MainWindow::onActionRadioHealth);
 
     // Session 174: every fault as a bar, under the mode.
