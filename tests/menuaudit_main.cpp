@@ -36,6 +36,7 @@
 #include <QElapsedTimer>
 #include "logmodel.h"
 #include "dmipanel.h"
+#include "laneband.h"
 #include "dmitimetravel.h"
 #include "capturedecoder.h"
 #include <QDateTime>
@@ -373,6 +374,29 @@ int main(int argc, char **argv) {
         CHECK(themes == ThemeUtil::all().size(), "View > Theme lists every theme");
         CHECK(ticked == 1, "exactly one theme is ticked");
         CHECK(hasToggle, "and Toggle Dark/Light is there");
+    }
+
+    // ---- session 164: a custom lane added on one tab is on every tab, and saved --
+    {
+        QSettings ini(Settings::iniPath(), QSettings::IniFormat);
+        const QVariant savedLanes = ini.value(QStringLiteral("ui/customLanes"));
+        const QList<LaneBand *> bands = w.findChildren<LaneBand *>();
+        CHECK(bands.size() >= 2, "fixture: a lane band per tab");
+        if (bands.size() >= 2) {
+            const CustomLane speed{ QStringLiteral("lsrp"), QStringLiteral("TRAIN_SPEED") };
+            emit bands.first()->addLaneRequested(speed);
+            bool everywhere = true;
+            for (LaneBand *b : bands) everywhere = everywhere && b->customLanes().contains(speed);
+            QSettings again(Settings::iniPath(), QSettings::IniFormat);
+            CHECK(everywhere && again.value(QStringLiteral("ui/customLanes")).toStringList().contains(speed.key()),
+                  "Add lane on one tab: every tab's band has it, and it is saved (ui/customLanes)");
+            emit bands.last()->removeLaneRequested(speed);
+            bool gone = true;
+            for (LaneBand *b : bands) gone = gone && !b->customLanes().contains(speed);
+            CHECK(gone, "Remove lane on another tab: gone from every band");
+        }
+        if (savedLanes.isValid()) ini.setValue(QStringLiteral("ui/customLanes"), savedLanes);
+        else ini.remove(QStringLiteral("ui/customLanes"));
     }
 
     // ---- session 158: the rail icons follow a theme change ----------------------

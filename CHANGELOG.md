@@ -11,6 +11,72 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-164"></a>
+## Session 164 — Lanes: RFID as spans; custom lanes from any packet field
+
+### 1. RFID, like Mode
+
+- The RFID lane drew a 2 px tick per tag read, with the number beside it,
+  and read as "a little line". Now each tag is a **span from its read to
+  the next read**, named and coloured per tag, as the Mode lane holds a
+  mode until the next change: the last tag read is where the loco last
+  knew it was. The last tag's span runs to the end of the window.
+- Hover: "RFID tag 18, read at 17:05:51; the last tag read until 17:07:02".
+
+### 2. Custom lanes
+
+- **Right-click the lanes ▸ Add lane ▸ packet ▸ field** (the packets and
+  fields this tab carries, as in Plot field over time). **Right-click a
+  custom lane ▸ Remove lane.**
+- One list for all tabs (decided with Abhinav), saved as `ui/customLanes`.
+  A tab whose traffic does not carry that packet does not show the lane.
+  The band grows a lane per custom lane; the label column widens to the
+  field name (up to 150 px).
+- **Drawn by what the values are** (decided with Abhinav):
+  - names (enums, flags: "6 (On_Sight)") → named spans, like Mode;
+  - a measured number, with a unit ("15 km/h", "1200 m"), or a bare number
+    taking more than 8 values → a small line graph, its value on hover.
+    A special value among the numbers ("unidentified") is a gap in the
+    line, not a reason to draw the lane as spans;
+  - bare numbers with few values (flags, counters, statuses) → spans.
+  A speed that stays at a few values is still a graph: the first rule
+  ("more than 8 distinct values") drew a 0–15 km/h run as spans, and was
+  replaced by the unit rule.
+- The lane band only covers the newest 15 minutes (or 20,000 rows), as
+  before, so a custom lane costs one field's decode over that window.
+- MainWindow owns the list and hands it to every tab's band (the bands
+  only ask), per the ownership convention.
+
+### Files
+
+`laneband.{h,cpp}`, `mainwindow.h`, `mainwindow_shell.cpp`,
+`mainwindow_tabs.cpp`; tests `test_session164.cpp` (new),
+`menuaudit_main.cpp`, `tests.pro`.
+
+### Tests
+
+- `session164`, real run `replay/loco_1_1_27062026_170217.cap` (7 tag
+  reads, 6 mode changes in the window): between two reads the RFID lane
+  is the first tag's span and is painted; the last span runs to the end;
+  Add lane offers lsrp TRAIN_SPEED and LOCO_MODE; TRAIN_SPEED is a graph,
+  LOCO_MODE spans, a packet the tab lacks is not shown; hovers give the
+  value; right-click finds the custom lane; removing restores five lanes.
+  Checked by eye on a screenshot.
+- Menu audit: a lane added from one tab's band is on every tab's band and
+  saved; removed from another tab, gone from all.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**216 suites / 6169 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit **171 checks, passed**; headless smoke 500 datagrams,
+alive.
+
+### Not tested
+
+The right-click menu itself was not clicked in a test (its two choices
+are, through `addableFields` / `customLaneAt` and the signals).
+
+---
+
 <a id="session-163"></a>
 ## Session 163 — session156 on CI: Windows fixed; the Linux flake made to say where it stops
 

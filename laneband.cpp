@@ -1,25 +1,39 @@
 #include "laneband.h"
 
+#include "fieldplot.h"
 #include "logmodel.h"
+#include "capturedecoder.h"
 #include "uicolors.h"
 #include "uistyle.h"
 
 #include <QDateTime>
+#include <QContextMenuEvent>
 #include <QHelpEvent>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
+#include <QRegularExpression>
+#include <QSet>
+#include <QtMath>
 #include <QTimer>
 #include <QToolTip>
 
 namespace {
 const int kLaneH   = 16;
 const int kLaneGap = 4;
-const int kLabelW  = 64;
+const int kLabelW  = 64;      // the five fixed lanes' names fit in this
+const int kLabelMaxW = 150;   // a custom lane's field name, up to this
 const int kPad     = 6;
 const char *kLanes[] = { "Mode", "Safety", "RFID", "Link", "Faults" };
-const int kLaneCount = 5;
 
 QString hm(qint64 ms) { return QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss")); }
+
+const QRegularExpression &numberRx()
+{
+    static const QRegularExpression rx(QStringLiteral("^(-?\\d+(?:\\.\\d+)?)\\s*([A-Za-z/%\u00B0]*)$"));
+    return rx;
+}
 }  // namespace
 
 LaneBand::LaneBand(QWidget *parent) : QWidget(parent)
@@ -78,34 +92,117 @@ void LaneBand::rebuildNow()
     m_sum = RunReport::summarise(m_model, m_key, m_name, o);
     m_from = qMax(from, m_sum.firstMs > 0 ? m_sum.firstMs : from);
     m_to = newest;
+    buildCustom();
     setVisible(hasContent());
     updateGeometry();
     update();
 }
 
+void LaneBand::setCustomLanes(const QVector<CustomLane> &lanes)
+{
+    if (lanes == m_customDefs) return;
+    m_customDefs = lanes;
+    m_dirty = true;
+    rebuildNow();
+}
+
+void LaneBand::buildCustom()
+{
+    m_custom.clear();
+    if (!m_model || m_customDefs.isEmpty()) return;
+    for (const CustomLane &def : m_customDefs) {
+        bool capped = false;
+        const QVector<RowFields> rows = collectRowFields(m_model, def.type, { def.field }, kMaxRows,
+                                                         m_from, m_to, &capped);
+        LaneData d;
+        d.def = def;
+        int numeric = 0, withUnit = 0;
+        QSet<QString> distinct;
+        for (const RowFields &r : rows) {
+            if (!r.has(def.field)) continue;
+            const QString shown = r.display.value(def.field).trimmed();
+            // A number, with a unit or not ("57 km/h", "1200 m", "3"), is a
+            // number. A name ("7 (Trip)", "unidentified") is not.
+            const QRegularExpressionMatch m = numberRx().match(shown);
+            const bool isNumber = m.hasMatch();
+            d.ms << r.epochMs;
+            d.value << (isNumber ? m.captured(1).toDouble() : qQNaN());
+            d.label << shown;
+            if (isNumber) {
+                ++numeric;
+                if (!m.captured(2).isEmpty()) ++withUnit;
+                distinct.insert(m.captured(1));
+            }
+        }
+        if (d.ms.isEmpty()) continue;           // this tab does not carry it
+        // A graph when nearly all values are numbers AND they are a measured
+        // quantity (a unit: km/h, m) or take many values; the odd special
+        // value ("unidentified") is a gap in the line. A speed that stays at
+        // 0 and 15 km/h is still a speed. Bare numbers with few values
+        // (flags, counters, statuses) are spans.
+        const bool mostlyNumbers = numeric * 10 >= d.ms.size() * 9;
+        d.graph = mostlyNumbers && (withUnit * 10 >= numeric * 9 || distinct.size() > kMaxSpanValues);
+        bool first = true;
+        for (double v : d.value) {
+            if (qIsNaN(v)) continue;
+            if (first) { d.lo = d.hi = v; first = false; }
+            d.lo = qMin(d.lo, v);
+            d.hi = qMax(d.hi, v);
+        }
+        m_custom << d;
+    }
+}
+
+int LaneBand::labelWidth() const
+{
+    // Wide enough for the longest custom lane's name (up to a limit), so
+    // "TRAIN_SPEED" is not "TRAIN…". Every lane shares it: one time axis.
+    QFont small = font();
+    small.setPointSizeF(qMax(7.5, font().pointSizeF() - 1.5));
+    const QFontMetrics fm(small);
+    int w = kLabelW;
+    for (const LaneData &d : m_custom) w = qMax(w, fm.horizontalAdvance(d.def.field) + 10);
+    return qMin(w, kLabelMaxW);
+}
+
+QVector<CustomLane> LaneBand::shownCustomLanes() const
+{
+    QVector<CustomLane> out;
+    for (const LaneData &d : m_custom) out << d.def;
+    return out;
+}
+
+bool LaneBand::customLaneIsGraph(int i) const
+{
+    return i >= 0 && i < m_custom.size() && m_custom.at(i).graph;
+}
+
 bool LaneBand::hasContent() const
 {
     return !m_sum.firstMode.isEmpty() || !m_sum.modeChanges.isEmpty() || !m_sum.emergencies.isEmpty()
-        || !m_sum.overspeed.isEmpty() || !m_sum.tagReads.isEmpty() || !m_sum.faults.isEmpty();
+        || !m_sum.overspeed.isEmpty() || !m_sum.tagReads.isEmpty() || !m_sum.faults.isEmpty()
+        || !m_custom.isEmpty();
 }
 
 QStringList LaneBand::laneNames() const
 {
     QStringList out;
     for (const char *l : kLanes) out << QString::fromLatin1(l);
+    for (const LaneData &d : m_custom) out << d.def.field;
     return out;
 }
 
 QSize LaneBand::sizeHint() const
 {
-    return QSize(400, kPad * 2 + kLaneCount * kLaneH + (kLaneCount - 1) * kLaneGap);
+    const int n = laneCount();
+    return QSize(400, kPad * 2 + n * kLaneH + (n - 1) * kLaneGap);
 }
 
 QSize LaneBand::minimumSizeHint() const { return QSize(120, sizeHint().height()); }
 
 QRect LaneBand::track(int lane) const
 {
-    const int x = kPad + kLabelW;
+    const int x = kPad + labelWidth();
     return QRect(x, kPad + lane * (kLaneH + kLaneGap), width() - x - kPad, kLaneH);
 }
 
@@ -138,11 +235,13 @@ void LaneBand::paintEvent(QPaintEvent *)
     p.setFont(small);
     const QFontMetrics fm(small);
 
-    for (int lane = 0; lane < kLaneCount; ++lane) {
+    for (int lane = 0; lane < laneCount(); ++lane) {
         const QRect r = track(lane);
         p.setPen(UiColor::muted());
-        p.drawText(QRect(kPad, r.top(), kLabelW - 6, r.height()), Qt::AlignLeft | Qt::AlignVCenter,
-                   QString::fromLatin1(kLanes[lane]).toUpper());
+        const QString name = lane < kFixedLanes ? QString::fromLatin1(kLanes[lane]).toUpper()
+                                                : m_custom.at(lane - kFixedLanes).def.field;
+        p.drawText(QRect(kPad, r.top(), labelWidth() - 6, r.height()), Qt::AlignLeft | Qt::AlignVCenter,
+                   fm.elidedText(name, Qt::ElideRight, labelWidth() - 6));
         p.setPen(Qt::NoPen);
         p.setBrush(trackBg);
         p.drawRoundedRect(r, 4, 4);
@@ -172,15 +271,16 @@ void LaneBand::paintEvent(QPaintEvent *)
         }
     };
 
-    // Mode: one segment per mode, named; a colour per mode name (stable).
+    // A colour per name (stable), for Mode, RFID and custom span lanes.
+    auto colourFor = [](const QString &m) {
+        uint h = qHash(m);
+        QColor c = UiColor::series(int(h % uint(qMax(1, UiColor::seriesCount()))));
+        return c;
+    };
+    // Mode: one segment per mode, named.
     {
         QString mode = m_sum.firstMode;
         qint64 at = m_from;
-        auto colourFor = [](const QString &m) {
-            uint h = qHash(m);
-            QColor c = UiColor::series(int(h % uint(qMax(1, UiColor::seriesCount()))));
-            return c;
-        };
         // "7 (Trip)" reads as "Trip", as on the inspector's tile.
         auto named = [](const QString &m) {
             const int open = m.indexOf(QLatin1Char('(')), close = m.lastIndexOf(QLatin1Char(')'));
@@ -195,15 +295,52 @@ void LaneBand::paintEvent(QPaintEvent *)
     }
     for (const RunReport::Episode &e : m_sum.emergencies) bar(1, e.fromMs, qMax(e.toMs, e.fromMs + 1), UiColor::error(), tr("EMERGENCY"));
     for (const RunReport::Episode &e : m_sum.overspeed) bar(1, e.fromMs, qMax(e.toMs, e.fromMs + 1), UiColor::warning(), tr("overspeed"));
-    for (const RunReport::Change &t : m_sum.tagReads) tick(2, t.ms, UiColor::ok(), t.to);
+    // RFID (session 164): the last tag read holds until the next read, as
+    // the mode holds until the next change -- a span per tag, named.
+    for (int i = 0; i < m_sum.tagReads.size(); ++i) {
+        const RunReport::Change &t = m_sum.tagReads.at(i);
+        const qint64 until = i + 1 < m_sum.tagReads.size() ? m_sum.tagReads.at(i + 1).ms : m_to;
+        bar(2, t.ms, qMax(until, t.ms + 1), colourFor(QStringLiteral("tag ") + t.to), t.to);
+    }
     for (const RunReport::Gap &g : m_sum.gaps) bar(3, g.fromMs, g.toMs, UiColor::warning(), tr("gap"));
     for (const RunReport::FaultEvent &f : m_sum.faults) tick(4, f.ms, f.raised ? UiColor::error() : UiColor::ok(), QString());
+
+    // Custom lanes (session 164).
+    for (int i = 0; i < m_custom.size(); ++i) {
+        const LaneData &d = m_custom.at(i);
+        const int lane = kFixedLanes + i;
+        if (!d.graph) {
+            int j = 0;
+            while (j < d.ms.size()) {
+                int k = j;
+                while (k + 1 < d.ms.size() && d.label.at(k + 1) == d.label.at(j)) ++k;
+                const qint64 until = k + 1 < d.ms.size() ? d.ms.at(k + 1) : m_to;
+                bar(lane, d.ms.at(j), qMax(until, d.ms.at(j) + 1),
+                    colourFor(d.def.field + d.label.at(j)), d.label.at(j));
+                j = k + 1;
+            }
+            continue;
+        }
+        const QRect r = track(lane).adjusted(0, 2, 0, -2);
+        const double span = d.hi > d.lo ? d.hi - d.lo : 1.0;
+        QPainterPath path;
+        bool pen = false;                        // a special value lifts the pen
+        for (int j = 0; j < d.ms.size(); ++j) {
+            if (qIsNaN(d.value.at(j))) { pen = false; continue; }
+            const QPointF pt(xFor(d.ms.at(j), r), r.bottom() - (d.value.at(j) - d.lo) / span * r.height());
+            if (!pen) path.moveTo(pt); else path.lineTo(pt);
+            pen = true;
+        }
+        p.setPen(QPen(UiColor::accent(), 1.5));
+        p.setBrush(Qt::NoBrush);
+        p.drawPath(path);
+    }
 
 }
 
 QString LaneBand::describeAt(const QPoint &pos) const
 {
-    for (int lane = 0; lane < kLaneCount; ++lane) {
+    for (int lane = 0; lane < laneCount(); ++lane) {
         const QRect r = track(lane);
         if (!r.adjusted(0, -kLaneGap / 2, 0, kLaneGap / 2).contains(pos)) continue;
         const qint64 ms = msFor(pos.x(), r);
@@ -221,10 +358,19 @@ QString LaneBand::describeAt(const QPoint &pos) const
                 if (ms >= e.fromMs - slack && ms <= e.toMs + slack)
                     return tr("Overspeed %1 – %2, worst %3 km/h over").arg(hm(e.fromMs), hm(e.toMs)).arg(e.worst, 0, 'f', 0);
             return QString();
-        case 2:
-            for (const RunReport::Change &t : m_sum.tagReads)
-                if (qAbs(t.ms - ms) <= slack) return tr("RFID tag %1 at %2").arg(t.to, hm(t.ms));
-            return QString();
+        case 2: {
+            // The span under the point: the last tag read at or before it.
+            const RunReport::Change *at = nullptr;
+            int i = 0;
+            for (; i < m_sum.tagReads.size(); ++i) {
+                if (m_sum.tagReads.at(i).ms > ms + slack) break;
+                at = &m_sum.tagReads.at(i);
+            }
+            if (!at) return QString();
+            const qint64 until = i < m_sum.tagReads.size() ? m_sum.tagReads.at(i).ms : m_to;
+            return tr("RFID tag %1, read at %2; the last tag read until %3")
+                .arg(at->to, hm(at->ms), i < m_sum.tagReads.size() ? hm(until) : tr("now"));
+        }
         case 3:
             for (const RunReport::Gap &g : m_sum.gaps)
                 if (ms >= g.fromMs - slack && ms <= g.toMs + slack)
@@ -234,6 +380,13 @@ QString LaneBand::describeAt(const QPoint &pos) const
             for (const RunReport::FaultEvent &f : m_sum.faults)
                 if (qAbs(f.ms - ms) <= slack) return tr("%1 at %2: %3").arg(f.raised ? tr("Fault") : tr("Cleared"), hm(f.ms), f.text);
             return QString();
+        default: {
+            const LaneData &d = m_custom.at(lane - kFixedLanes);
+            int j = -1;                          // the last sample at or before
+            for (int k = 0; k < d.ms.size() && d.ms.at(k) <= ms + slack; ++k) j = k;
+            if (j < 0) return tr("@%1 %2: no value yet at %3").arg(d.def.type, d.def.field, hm(ms));
+            return tr("@%1 %2 = %3 at %4").arg(d.def.type, d.def.field, d.label.at(j), hm(d.ms.at(j)));
+        }
         }
     }
     return QString();
@@ -250,8 +403,63 @@ bool LaneBand::event(QEvent *e)
     return QWidget::event(e);
 }
 
+QHash<QString, QStringList> LaneBand::addableFields() const
+{
+    QHash<QString, QStringList> out;
+    if (!m_model) return out;
+    const FieldCatalogue cat = discoverFieldCatalogue(m_model, kavachSchema());
+    for (const QString &type : cat.types) out.insert(type, cat.fields.value(type));
+    return out;
+}
+
+int LaneBand::customLaneAt(const QPoint &pos) const
+{
+    for (int i = 0; i < m_custom.size(); ++i) {
+        QRect r = track(kFixedLanes + i);
+        r.setLeft(0);                            // the label counts too
+        if (r.adjusted(0, -kLaneGap / 2, 0, kLaneGap / 2).contains(pos)) return i;
+    }
+    return -1;
+}
+
+void LaneBand::contextMenuEvent(QContextMenuEvent *e)
+{
+    QMenu menu(this);
+    QMenu *add = menu.addMenu(tr("Add lane"));
+    add->setObjectName(QStringLiteral("laneAddMenu"));
+    const QHash<QString, QStringList> fields = addableFields();
+    QStringList types = fields.keys();
+    types.sort();
+    for (const QString &type : types) {
+        QMenu *sub = add->addMenu(type);
+        for (const QString &field : fields.value(type)) {
+            QAction *a = sub->addAction(field);
+            const CustomLane lane{ type, field };
+            a->setData(lane.key());
+            a->setCheckable(true);
+            a->setChecked(m_customDefs.contains(lane));
+            a->setEnabled(!m_customDefs.contains(lane));
+        }
+    }
+    if (types.isEmpty()) add->addAction(tr("(no decodable packets in this tab)"))->setEnabled(false);
+    QAction *remove = nullptr;
+    const int under = customLaneAt(e->pos());
+    if (under >= 0) {
+        const CustomLane &d = m_custom.at(under).def;
+        remove = menu.addAction(tr("Remove lane \u201C%1 \u25B8 %2\u201D").arg(d.type, d.field));
+    }
+    // Emitted after the menu has closed: the owner rebuilds every band, and
+    // this menu's actions must not be freed while one is delivering.
+    QAction *chosen = menu.exec(e->globalPos());
+    if (!chosen) return;
+    if (chosen == remove) { emit removeLaneRequested(m_custom.at(under).def); return; }
+    const QStringList parts = chosen->data().toString().split(QLatin1Char('\t'));
+    if (parts.size() == 2) emit addLaneRequested(CustomLane{ parts.at(0), parts.at(1) });
+}
+
 void LaneBand::mousePressEvent(QMouseEvent *e)
 {
+    if (e->button() != Qt::LeftButton) return;
     const QRect r = track(0);
     if (e->pos().x() < r.left()) return;
     emit timeClicked(msFor(e->pos().x(), r));

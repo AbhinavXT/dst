@@ -39,6 +39,7 @@
 #include "logentry.h"
 #include "logwriter.h"
 #include "messagedispatcher.h"
+#include "laneband.h"
 #include "namemap.h"
 #include "rawbytespanel.h"
 #include "theme.h"
@@ -526,6 +527,9 @@ private:
     // Session 119: each source's count and when, for its rate.
     QHash<QString, QPair<int, qint64>> m_sourceRates;
     bool m_lanesOn = true;                    // View > Lanes over the log (session 121)
+    // Session 164: custom lanes, the same for every tab (ui/customLanes).
+    QVector<CustomLane> m_customLanes;
+    void setCustomLanes(const QVector<CustomLane> &lanes);
     // Session 118: the frame — top strip, rail, log header.
     class QToolBar *m_strip = nullptr;
     class QToolBar *m_rail = nullptr;

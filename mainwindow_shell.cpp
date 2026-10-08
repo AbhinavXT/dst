@@ -252,6 +252,12 @@ void MainWindow::buildShell()
     {
         QSettings ini(Settings::iniPath(), QSettings::IniFormat);
         m_lanesOn = ini.value(QStringLiteral("ui/laneBand"), true).toBool();
+        // Session 164: "type<TAB>field" per custom lane.
+        for (const QString &k : ini.value(QStringLiteral("ui/customLanes")).toStringList()) {
+            const QStringList parts = k.split(QLatin1Char('\t'));
+            if (parts.size() == 2 && !parts.at(0).isEmpty() && !parts.at(1).isEmpty())
+                m_customLanes << CustomLane{ parts.at(0), parts.at(1) };
+        }
     }
     for (QAction *top : menuBar()->actions()) {
         if (!top->menu() || top->text().remove(QLatin1Char('&')) != QLatin1String("View")) continue;
@@ -259,7 +265,8 @@ void MainWindow::buildShell()
         lanes->setObjectName(QStringLiteral("actLaneBand"));
         lanes->setCheckable(true);
         lanes->setChecked(m_lanesOn);
-        lanes->setToolTip(tr("Mode, safety, RFID, link and fault lanes above each tab's log"));
+        lanes->setToolTip(tr("Mode, safety, RFID, link and fault lanes above each tab's log; "
+                             "right-click them to add a lane for any packet field"));
         connect(lanes, &QAction::toggled, this, [this](bool on) {
             m_lanesOn = on;
             QSettings ini(Settings::iniPath(), QSettings::IniFormat);
@@ -297,4 +304,15 @@ void MainWindow::refreshHeader()
     if (!friendly.isEmpty() && friendly != shown) meta = friendly + QStringLiteral(" · ") + meta;
     else if (shown != key) meta = key + QStringLiteral(" · ") + meta;
     m_headerMeta->setText(meta);
+}
+
+void MainWindow::setCustomLanes(const QVector<CustomLane> &lanes)
+{
+    m_customLanes = lanes;
+    QStringList keys;
+    for (const CustomLane &l : lanes) keys << l.key();
+    QSettings ini(Settings::iniPath(), QSettings::IniFormat);
+    ini.setValue(QStringLiteral("ui/customLanes"), keys);
+    for (auto it = m_tabs.begin(); it != m_tabs.end(); ++it)
+        if (it->lanes) it->lanes->setCustomLanes(lanes);
 }

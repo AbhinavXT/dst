@@ -247,7 +247,20 @@ void MainWindow::buildOrShowTab(const QString &tabKey,
     // Session 121: lanes over the log — mode, safety, RFID, link, faults.
     auto *lanes = new LaneBand;
     lanes->setEnabled2(m_lanesOn);
+    lanes->setCustomLanes(m_customLanes);
     lanes->setModel(model, tabKey, friendlyName);
+    // Session 164: added or removed on any tab, for every tab.
+    connect(lanes, &LaneBand::addLaneRequested, this, [this](const CustomLane &lane) {
+        if (m_customLanes.contains(lane)) return;
+        QVector<CustomLane> next = m_customLanes;
+        next << lane;
+        setCustomLanes(next);
+    });
+    connect(lanes, &LaneBand::removeLaneRequested, this, [this](const CustomLane &lane) {
+        QVector<CustomLane> next = m_customLanes;
+        next.removeAll(lane);
+        setCustomLanes(next);
+    });
     connect(lanes, &LaneBand::timeClicked,
             this, [this, tabKey](qint64 ms) { jumpToEntry(tabKey, ms); });
     connect(ribbon, &TimelineRibbon::rangeSelected,
