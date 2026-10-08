@@ -1947,6 +1947,18 @@ DmiMoment ReplayWindow::dmiMomentAt(int index) const
         if (r.tMs < m.atMs - kDmiLookbackMs) continue;
         m.frames.append(DmiFrameAt{ m_keys.at(k), r.line, r.tMs });
     }
+    // Session 169: every type, each source's latest at or before the cursor
+    // (the Live Loco Console follows too). Newest first, back to the lookback.
+    QSet<QPair<int, int>> seen;
+    for (int i = index; i >= 0; --i) {
+        const ReplayRec &r = m_recs.at(i);
+        if (r.tMs < m.atMs - kDmiLookbackMs) break;
+        if (!r.line.valid || r.keyIndex < 0 || r.keyIndex >= m_keys.size()) continue;
+        const QPair<int, int> id(int(r.line.type), r.keyIndex);
+        if (seen.contains(id)) continue;
+        seen.insert(id);
+        m.latest.append(DmiFrameAt{ m_keys.at(r.keyIndex), r.line, r.tMs });
+    }
     return m;
 }
 

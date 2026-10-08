@@ -32,6 +32,7 @@
 #include <QVector>
 
 #include "capturedecoder.h"
+#include "dmitimetravel.h"
 #include "livefields.h"
 #include "logentry.h"
 
@@ -95,6 +96,18 @@ public:
     QTableWidget *tableForLabel(const QString &label) const;
     QTabWidget   *tabs() const { return m_tabs; }
     QLabel       *missionChip() const { return m_lblMission; }
+
+    // Session 169: follow the cursor, as the DMI window does (84): every
+    // packet tab, the big numbers and the cab view show each type's latest
+    // frame AT OR BEFORE the moment picked in a tab or a replay window,
+    // instead of the live one. The Link tab and the rates stay live.
+    void setFollowCursor(bool on);
+    bool followCursor() const { return m_following; }
+    void showMoment(const DmiMoment &moment);
+    // Save snapshot: .png the window as shown; .txt / .csv every packet
+    // type's decoded fields for the selected loco (live, or at the moment).
+    bool saveSnapshot(const QString &path);
+    QString snapshotText(bool csv);
 
 private:
 
@@ -168,6 +181,12 @@ private:
     QLabel       *m_lblCrc    = nullptr;
     QLabel       *m_lblSeq    = nullptr;
     QLabel       *m_lblMission = nullptr;     // session 168
+    // Session 169: following the cursor.
+    QCheckBox    *m_chkFollow = nullptr;
+    bool          m_following = false;
+    DmiMoment     m_moment;
+    QHash<int, qint64> m_momentFrameMs;      // type -> its frame's time, at the moment
+    LocoState     momentView(const LocoState &live);
     QTabWidget   *m_tabs      = nullptr;
     QTableWidget *m_linkTable = nullptr;
     QMap<int, QTableWidget*>  m_typeTables;   // (int)CapType -> field table

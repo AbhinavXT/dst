@@ -129,6 +129,13 @@ LocoConsoleWindow::LocoConsoleWindow(MessageDispatcher *dispatcher, QWidget *par
     m_refresh->setInterval(kRefreshMs);
     connect(m_refresh, &QTimer::timeout, this, &LocoConsoleWindow::onRefreshTick);
     m_refresh->start();
+
+    // Session 169: follow the cursor, remembered like the DMI window's.
+    connect(DmiTimeTravel::instance(), &DmiTimeTravel::momentChanged, this, [this](const DmiMoment &m) {
+        if (m_following) showMoment(m);
+    });
+    if (QSettings(Settings::iniPath(), QSettings::IniFormat).value(QStringLiteral("lococonsole/followCursor"), false).toBool())
+        m_chkFollow->setChecked(true);
 }
 
 LocoConsoleWindow::~LocoConsoleWindow()
@@ -174,6 +181,7 @@ void LocoConsoleWindow::buildUi()
     top->addWidget(m_selector);
     top->addSpacing(16);
     m_lblRtc  = new QLabel(tr("RTC --"), central);
+    m_lblRtc->setMinimumWidth(150);          // the moment's origin can be long (169); the tooltip has it all
     m_lblRate = new QLabel(tr("-- pkt/s"), central);
     m_lblCrc  = new QLabel(tr("CRC --"), central);
     m_lblSeq  = new QLabel(tr("seq --"), central);
@@ -201,7 +209,7 @@ void LocoConsoleWindow::buildUi()
     m_lblMission = new QLabel(tr("start of mission --"), central);
     m_lblMission->setObjectName(QStringLiteral("locoMissionChip"));
     UiStyle::makeChip(m_lblMission, UiStyle::Tone::Neutral);
-    m_lblMission->setMinimumWidth(140);              // may be cut short at a laptop's width; the tooltip has it all
+    m_lblMission->setMinimumWidth(120);              // may be cut short at a laptop's width; the tooltip has it all
     top->addWidget(m_lblMission);
     top->addStretch(1);
     m_btnRecord = new QPushButton(tr("\u25CF Record"), central);
@@ -213,6 +221,33 @@ void LocoConsoleWindow::buildUi()
     QPushButton *btnFind = new QPushButton(tr("Find\u2026"), central);
     btnFind->setToolTip(tr("Find a field on this tab (Ctrl+F)"));
     top->addWidget(btnFind);
+    // Session 169: time travel and a snapshot, as on the DMI window.
+    m_chkFollow = new QCheckBox(tr("\u23F1 Follow cursor"), central);
+    m_chkFollow->setObjectName(QStringLiteral("locoFollowCursor"));
+    m_chkFollow->setToolTip(tr("Show every packet as it was at the row selected in any tab, or at a replay "
+                               "window's cursor: each type's latest frame at or before that moment. "
+                               "Off: the live frames. The Link tab stays live."));
+    QPushButton *btnSnapshot = new QPushButton(tr("Snapshot\u2026"), central);
+    btnSnapshot->setObjectName(QStringLiteral("locoSnapshot"));
+    btnSnapshot->setToolTip(tr("Save what the console shows: an image of the window, or every packet's "
+                               "decoded fields for this loco (RFID, SLRP, ...) as text or CSV"));
+    top->addWidget(btnSnapshot);
+    // Follow on the readouts row, by the clock it changes: neither row has
+    // room for both at a laptop's width (session 150).
+    const int rtcAt = readouts->indexOf(m_lblRtc);
+    readouts->insertWidget(rtcAt + 1, m_chkFollow);
+    readouts->insertSpacing(rtcAt + 1, 12);
+    connect(m_chkFollow, &QCheckBox::toggled, this, [this](bool on) { setFollowCursor(on); });
+    connect(btnSnapshot, &QPushButton::clicked, this, [this]() {
+        const QString stamp = (m_following && m_moment.valid
+                                   ? QDateTime::fromMSecsSinceEpoch(m_moment.atMs) : QDateTime::currentDateTime())
+                                  .toString(QStringLiteral("yyyyMMdd_HHmmss"));
+        const QString path = QFileDialog::getSaveFileName(
+            this, tr("Save snapshot"), QStringLiteral("loco_%1_%2.txt").arg(m_selectedKey, stamp),
+            tr("Text, every packet's fields (*.txt);;CSV, every packet's fields (*.csv);;Image of the window (*.png)"));
+        if (!path.isEmpty() && !saveSnapshot(path))
+            QMessageBox::warning(this, tr("Save snapshot"), tr("Could not write %1.").arg(QDir::toNativeSeparators(path)));
+    });
 
     // Big numbers and change highlighting: both remembered.
     QSettings consoleSettings(Settings::iniPath(), QSettings::IniFormat);
@@ -474,17 +509,31 @@ void LocoConsoleWindow::onRefreshTick()
     }
 
     if (m_selectedKey.isEmpty() || !m_states.contains(m_selectedKey)) { return; }
-    const LocoState &st = m_states[m_selectedKey];
+    const LocoState &live = m_states[m_selectedKey];
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    // Following (session 169): the packets as they stood at the moment.
+    const LocoState st = m_following ? momentView(live) : live;
 
-    refreshHeader(st, nowMs);
-    refreshLink(st, nowMs);              // ages tick every refresh
+    refreshHeader(live, nowMs);
+    if (m_following) {
+        m_lblRtc->setText(m_moment.valid
+            ? tr("\u23F1 At %1 \u00B7 %2").arg(QDateTime::fromMSecsSinceEpoch(m_moment.atMs).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")),
+                                               m_moment.origin)
+            : tr("\u23F1 Following: select a row in any tab, or move a replay cursor"));
+        m_lblRtc->setToolTip(m_lblRtc->text());
+    } else {
+        m_lblRtc->setToolTip(QString());
+    }
+    refreshLink(live, nowMs);            // ages tick every refresh
     if (m_dirty) {
         refreshTypeTables(st, nowMs);
         m_dirty = false;
     }
-    refreshBigNumbers(st, nowMs);
-    refreshCabAndLights(st, nowMs);
+    // Ages on the tiles and the cab view count from the moment when
+    // following; change marks keep the wall clock (they fade in real time).
+    const qint64 viewMs = m_following && m_moment.valid ? m_moment.atMs : nowMs;
+    refreshBigNumbers(st, viewMs);
+    refreshCabAndLights(st, viewMs);
     // Change marks every tick (they fade), then the find's tint on top, so
     // a match found by Find is never hidden by a change mark.
     highlightChanges(nowMs);
@@ -977,12 +1026,19 @@ void LocoConsoleWindow::refreshTypeTables(const LocoState &st, qint64 nowMs)
 
         if (!st.latest.contains(t)) {
             tbl->setRowCount(1);
-            tbl->setItem(0, 0, new QTableWidgetItem(tr("(no data yet)")));
+            tbl->setItem(0, 0, new QTableWidgetItem(m_following ? tr("(none in the %1 min before this moment)").arg(kDmiLookbackMs / 60000)
+                                                                : tr("(no data yet)")));
             tbl->setItem(0, 1, new QTableWidgetItem(QString()));
             continue;
         }
 
-        const QVector<FieldRow> rows = CaptureDecoder::describe(st.latest[t], nullptr, 0, nullptr, m_keys);
+        QVector<FieldRow> rows = CaptureDecoder::describe(st.latest[t], nullptr, 0, nullptr, m_keys);
+        if (m_following && m_moment.valid && m_momentFrameMs.contains(t)) {
+            const qint64 fms = m_momentFrameMs.value(t);
+            rows.prepend({ tr("\u23F1 frame"),
+                           tr("%1, %2 s before the moment").arg(QDateTime::fromMSecsSinceEpoch(fms).toString(QStringLiteral("HH:mm:ss.zzz")))
+                               .arg(QString::number((m_moment.atMs - fms) / 1000.0, 'f', 1)) });
+        }
         // Change tracking: compare with this table's previous values. The
         // first frame of a type marks nothing (there is no "before").
         {
@@ -1221,6 +1277,117 @@ void LocoConsoleWindow::onOpenReplay()
     ReplayWindow *w = new ReplayWindow(paths, nullptr);
     w->setAttribute(Qt::WA_DeleteOnClose);
     w->show();
+}
+
+// ============================ following the cursor (session 169) ============================
+
+void LocoConsoleWindow::setFollowCursor(bool on)
+{
+    if (m_chkFollow->isChecked() != on) { m_chkFollow->setChecked(on); return; }   // back via toggled
+    if (m_following == on) return;
+    m_following = on;
+    QSettings(Settings::iniPath(), QSettings::IniFormat).setValue(QStringLiteral("lococonsole/followCursor"), on);
+    auto *tt = DmiTimeTravel::instance();
+    if (on) {
+        tt->follow(this);                  // may deliver the last pointed-at moment
+        showMoment(tt->last());
+    } else {
+        tt->unfollow(this);
+        m_moment = DmiMoment();
+        m_momentFrameMs.clear();
+    }
+    m_lastValues.clear();                  // live vs then: not "changes"
+    m_changedAt.clear();
+    m_dirty = true;
+    onRefreshTick();
+}
+
+void LocoConsoleWindow::showMoment(const DmiMoment &moment)
+{
+    m_moment = moment;
+    // Locos the console has not heard live (a replay's) get an entry, so
+    // they can be picked.
+    for (const DmiFrameAt &f : moment.latest) {
+        if (!m_states.contains(f.key)) {
+            LocoState &st = m_states[f.key];
+            st.locoId = f.cap.locoId;
+            st.ctrlId = f.cap.ctrlId;
+        }
+        if (m_selector->findText(f.key) < 0) m_selector->addItem(f.key);
+    }
+    // The loco pointed at, when it had anything then.
+    if (!moment.preferredKey.isEmpty() && !moment.latestFor(moment.preferredKey).isEmpty())
+        m_selector->setCurrentText(moment.preferredKey);
+    else if (m_selectedKey.isEmpty() && !moment.latest.isEmpty())
+        m_selector->setCurrentText(moment.latest.first().key);
+    m_dirty = true;
+    onRefreshTick();
+}
+
+LocoConsoleWindow::LocoState LocoConsoleWindow::momentView(const LocoState &live)
+{
+    LocoState view;
+    view.locoId = live.locoId;
+    view.ctrlId = live.ctrlId;
+    view.link = live.link;
+    m_momentFrameMs.clear();
+    if (!m_moment.valid) return view;
+    view.rtc = QDateTime::fromMSecsSinceEpoch(m_moment.atMs);
+    for (const DmiFrameAt &f : m_moment.latestFor(m_selectedKey)) {
+        view.latest[int(f.cap.type)] = f.cap;
+        m_momentFrameMs.insert(int(f.cap.type), f.frameMs);
+        // A tile reads the freshest source: freshness at the moment.
+        view.link[int(f.cap.type)].lastSeenMs = f.frameMs;
+    }
+    return view;
+}
+
+QString LocoConsoleWindow::snapshotText(bool csv)
+{
+    auto cell = [](QString v) {
+        v.replace(QLatin1Char('"'), QStringLiteral("\"\""));
+        return QLatin1Char('"') + v + QLatin1Char('"');
+    };
+    const LocoState live = m_states.value(m_selectedKey);
+    const LocoState st = m_following ? momentView(live) : live;
+    const QString when = m_following
+        ? (m_moment.valid ? tr("at %1 (%2), each packet's latest frame at or before it")
+                                .arg(QDateTime::fromMSecsSinceEpoch(m_moment.atMs).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz")), m_moment.origin)
+                          : tr("following the cursor, no moment picked"))
+        : tr("live, %1").arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")));
+    QString out;
+    QTextStream ts(&out);
+    if (csv) ts << "packet,field,value\n";
+    else ts << tr("Loco console snapshot: loco/ctrl %1, %2").arg(m_selectedKey, when) << "\n";
+    for (auto it = m_typeTables.constBegin(); it != m_typeTables.constEnd(); ++it) {
+        const int t = it.key();
+        const QString label = QString::fromLatin1(CaptureDecoder::typeLabel(CapType(t)));
+        if (!st.latest.contains(t)) continue;
+        const QVector<FieldRow> rows = CaptureDecoder::describe(st.latest[t], nullptr, 0, nullptr, m_keys);
+        if (!csv) ts << "\n== @" << label << " ==\n";
+        if (m_following && m_momentFrameMs.contains(t)) {
+            const QString age = tr("%1, %2 s before the moment")
+                .arg(QDateTime::fromMSecsSinceEpoch(m_momentFrameMs.value(t)).toString(QStringLiteral("HH:mm:ss.zzz")))
+                .arg(QString::number((m_moment.atMs - m_momentFrameMs.value(t)) / 1000.0, 'f', 1));
+            if (csv) ts << cell(label) << ',' << cell(tr("frame time")) << ',' << cell(age) << '\n';
+            else ts << tr("frame") << ": " << age << '\n';
+        }
+        for (const FieldRow &r : rows) {
+            if (csv) ts << cell(label) << ',' << cell(r.field.trimmed()) << ',' << cell(r.value) << '\n';
+            else ts << r.field << " = " << r.value << '\n';
+        }
+    }
+    ts.flush();
+    return out;
+}
+
+bool LocoConsoleWindow::saveSnapshot(const QString &path)
+{
+    if (path.endsWith(QLatin1String(".png"), Qt::CaseInsensitive)) return grab().save(path, "PNG");
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+    const QByteArray bytes = snapshotText(path.endsWith(QLatin1String(".csv"), Qt::CaseInsensitive)).toUtf8();
+    return f.write(bytes) == bytes.size();
 }
 
 void LocoConsoleWindow::closeEvent(QCloseEvent *event)

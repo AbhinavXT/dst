@@ -20,6 +20,15 @@ const DmiFrameAt *DmiMoment::frameFor(const QString &key) const
     return nullptr;
 }
 
+QVector<DmiFrameAt> DmiMoment::latestFor(const QString &key) const
+{
+    QVector<DmiFrameAt> out;
+    for (const DmiFrameAt &f : latest) {
+        if (f.key == key) out << f;
+    }
+    return out;
+}
+
 QStringList DmiMoment::keys() const
 {
     QStringList out;
@@ -38,6 +47,14 @@ QString dmiKeyOfText(const QString &text)
     int end = text.indexOf(QLatin1Char(' '), prefix.size());
     if (end < 0) end = text.size();
     return text.mid(prefix.size(), end - prefix.size());
+}
+
+QString captureTagOfText(const QString &text)
+{
+    if (!text.startsWith(QLatin1Char('@'))) return QString();
+    int end = text.indexOf(QLatin1Char(' '), 1);
+    if (end < 0) end = text.size();
+    return text.mid(1, end - 1);
 }
 
 int logModelRowAfter(const LogModel *model, qint64 ms)
@@ -113,7 +130,8 @@ DmiMoment dmiMomentFromModels(const QVector<const LogModel *> &models,
             const LogEntry *e = model->entryPtrAt(r);
             if (!e) continue;
             if (e->epochMs < floorMs) break;
-            const QString key = dmiKeyOfText(e->text);
+            // Every packet type (session 169): keyed by its tag, "slrp_1_1".
+            const QString key = captureTagOfText(e->text);
             if (key.isEmpty() || seen.contains(key)) continue;
             seen.insert(key);
             auto it = best.find(key);
@@ -132,8 +150,10 @@ DmiMoment dmiMomentFromModels(const QVector<const LogModel *> &models,
 
     for (auto it = best.constBegin(); it != best.constEnd(); ++it) {
         const CaptureLine cap = CaptureDecoder::parseLine(it->text);
-        if (!cap.valid || cap.type != CapType::Dmi) continue;
-        m.frames.append(DmiFrameAt{ it.key(), cap, it->ms });
+        if (!cap.valid) continue;
+        const QString loco = cap.key().isEmpty() ? it.key().section(QLatin1Char('_'), 1) : cap.key();
+        m.latest.append(DmiFrameAt{ loco, cap, it->ms });
+        if (cap.type == CapType::Dmi) m.frames.append(DmiFrameAt{ loco, cap, it->ms });
     }
     std::sort(m.frames.begin(), m.frames.end(),
               [](const DmiFrameAt &a, const DmiFrameAt &b) { return a.key < b.key; });

@@ -57,8 +57,12 @@ struct DmiMoment {
     QString origin;                    // "Loco 1 · row 1,234" / "Replay loco_1_1_…cap"
     QString preferredKey;              // loco of the clicked row / the replay's active source
     QVector<DmiFrameAt> frames;        // one per loco, sorted by key
+    // Session 169: every packet type, each loco's latest at or before the
+    // moment (the Live Loco Console follows the cursor too). @dmi included.
+    QVector<DmiFrameAt> latest;
 
     const DmiFrameAt *frameFor(const QString &key) const;
+    QVector<DmiFrameAt> latestFor(const QString &key) const;
     QStringList keys() const;
 };
 
@@ -67,6 +71,8 @@ constexpr qint64 kDmiStaleMs    = 3000;             // older than this is drawn 
 
 // "@dmi_1_1 2026-…" -> "1_1"; empty for anything that is not an @dmi line.
 QString dmiKeyOfText(const QString &text);
+// "@slrp_1_1 2026-…" -> "slrp_1_1"; empty for anything that is not a capture line.
+QString captureTagOfText(const QString &text);
 // First source row whose epochMs is after `ms` (binary search; rows are in
 // arrival order). rowCount() when none is.
 int logModelRowAfter(const LogModel *model, qint64 ms);

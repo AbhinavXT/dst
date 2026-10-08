@@ -11,6 +11,76 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-169"></a>
+## Session 169 — Live Loco Console: follow the cursor, save a snapshot
+
+The DMI window could show the panel as it stood at any row or replay
+cursor (84). The Live Loco Console showed only the latest live frame
+of each packet. Now it can follow the cursor too, and save what it shows.
+
+- **⏱ Follow cursor** (on the clock row, remembered as
+  `lococonsole/followCursor`). Ticked, every packet tab (RFID, SLRP,
+  LSRP, ARP, DMI, NMS, DIO, ...), the big numbers and the cab view show
+  each type's **latest frame at or before the moment**. The moment is
+  the row selected in any tab, or a replay window's cursor. The same
+  rule and the same 10-minute look-back apply as on the DMI. Each tab's
+  first row says how old its frame was then ("⏱ frame 14:18:58.000, 4.0 s
+  before the moment"), and a type with nothing in the look-back says
+  so. The clock readout shows the moment and where it came from. The
+  tiles' ages count from the moment. The Link tab and the rates stay
+  live. The loco pointed at is selected, including one the console
+  never heard live (a replay's).
+- **Snapshot…** (actions row) saves one of three things: an image of the
+  window (.png); every packet's decoded fields for the selected loco as
+  text (.txt, a section per packet, headed with the loco and the
+  moment); or the same as CSV (`packet,field,value`, plus each packet's
+  frame time when following). This works live or at a moment.
+- Underneath: the time-travel moment (`DmiMoment`) now also carries
+  every packet type's latest frame per loco (`latest`), from tabs
+  (`dmiMomentFromModels`) and replay windows (`dmiMomentAt`). The DMI
+  window's frames are unchanged. Nothing is computed unless a window
+  follows.
+
+The two new controls sit on different rows: neither row had room for
+both at a laptop's width (session 150). The clock readout and the
+start-of-mission chip (168) can shrink; their tooltips hold the full text.
+
+### Files
+
+`dmitimetravel.{h,cpp}`, `replaywindow.cpp`, `lococonsolewindow.{h,cpp}`;
+tests `test_session169.cpp` (new), `tests.pro`.
+
+### Tests
+
+- `session169`, over `replay/loco_1_1_27062026_140226.cap` as a tab and
+  as a replay:
+  - the moment holds the latest of each type, at or before it,
+    brute-force checked against the tab's rows;
+  - the DMI's frames are unchanged;
+  - the console follows a tab row: the SLRP tab is that frame field for
+    field, with its age row; a later row moves the RFID tab to that
+    moment's tag frame;
+  - the tiles' ages count from the moment;
+  - .txt, .csv and .png snapshots, with their content checked;
+  - unticking goes live again and is remembered;
+  - a replay's moment has each type once, and the console shows a loco
+    it never heard live;
+  - the console's minimum width stays ≤ 1100 while following.
+- `session84` (DMI time travel), `session150`, `session168`, `session82`,
+  `session124` pass.
+
+Not built, from the request's third part: a *drawing* of RFID / SLRP
+data beside its fields (the way the DMI draws @dmi). The Track diagram
+(131) already draws the tags and MA. A new picture needs its scope agreed.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 11/11; `dltests`
+**221 suites / 6270 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit passed; headless smoke 500 datagrams, alive. (A first
+Qt 5 run crashed in `session82` on stale test objects built against the
+old `lococonsolewindow.h`; recompiled, it passes.)
+
+---
+
 <a id="session-168"></a>
 ## Session 168 — Start of mission, from ARP
 
