@@ -89,8 +89,11 @@ def _sigAspect(v):
 def _absKm(v):  return f"{v} m ({v/1000.0:.3f} km)"      # DMI abs_loco_loc
 def _decel(v):  return f"DC {v//100}.{v%100:02d}"        # DMI deceleration_constant
 
+def _dm(v):     return f"{v/10.0:.1f} m"                 # @sos distances, decimetres
+def _x100(v):   return f"{v/100.0:.2f}"                  # @sos sensor_speed x 100
+
 FORMATTERS = { "sigInfo": _sigInfo, "sigAspect": _sigAspect,
-               "absKm": _absKm, "decel": _decel }
+               "absKm": _absKm, "decel": _decel, "dm": _dm, "x100": _x100 }
 
 # Float/double counterparts, referenced the same way (format="name") from a
 # field whose type= is float or double. Separate registry because the integer

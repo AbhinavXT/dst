@@ -104,6 +104,7 @@
 #include "incidentreportwindow.h"
 #include "speeddistance.h"
 #include "twolocowindow.h"
+#include "soswindow.h"
 #include "trackdiagramwindow.h"
 #include "workspacesnapshot.h"
 #include "tabtags.h"
@@ -556,6 +557,17 @@ void MainWindow::onActionIncidentReport()
 void MainWindow::onActionTwoLocoView()
 {
     auto *w = new TwoLocoWindow(m_dispatcher, this);
+    w->show();
+    w->raise();
+}
+
+void MainWindow::onActionSosWindow()
+{
+    auto *w = new SosWindow(m_dispatcher, this);
+    // Prefer the tab in view when it carries @sos.
+    const QString key = currentTabKey();
+    if (!key.isEmpty() && SosLog::hasSos(m_dispatcher->modelForKey(key))) w->setSource(key);
+    connect(w, &SosWindow::jumpRequested, this, [this](const QString &tabKey, qint64 ms) { jumpToEntry(tabKey, ms); });
     w->show();
     w->raise();
 }

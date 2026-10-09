@@ -452,6 +452,9 @@ CapType typeFromToken(const QString &token)
     if (token == "linfo")   return CapType::Linfo;
     if (token == "uba")     return CapType::UBA;
     if (token == "lsos")    return CapType::Lsos;
+    if (token == "sos")     return CapType::Sos;
+    if (token == "sossrc")  return CapType::SosSrc;
+    if (token == "sosev")   return CapType::SosEv;
     if (token == "speed")   return CapType::Speed;
     if (token == "analog_top")    return CapType::AnalogTop;
     if (token == "analog_bottom") return CapType::AnalogBottom;
@@ -498,6 +501,9 @@ const char *typeLabel(CapType t)
     case CapType::Random:   return "random num";
     case CapType::UBA:      return "uba";
     case CapType::Lsos:     return "lsos";
+    case CapType::Sos:      return "sos";
+    case CapType::SosSrc:   return "sos source";
+    case CapType::SosEv:    return "sos event";
     case CapType::Speed:    return "speed";
     case CapType::AnalogTop:    return "analog top";
     case CapType::AnalogBottom: return "analog bottom";
@@ -528,6 +534,9 @@ CapDir directionFor(CapType t)
     case CapType::DlSys:    return CapDir::In;    // controller self-status (sensed)
     case CapType::Aep:      return CapDir::In;    // station emergency -> onboard
     case CapType::UBA:      return CapDir::Out;   // curve computed onboard, logged out
+    case CapType::Sos:
+    case CapType::SosSrc:
+    case CapType::SosEv:    return CapDir::Out;   // the loco's own SoS state, logged out
     case CapType::Speed:                          // tachometer pulses, sensed
     case CapType::AnalogTop:
     case CapType::AnalogBottom: return CapDir::In; // analog (pressure) inputs, sensed
@@ -1492,6 +1501,10 @@ QVector<FieldRow> describe(const CaptureLine &c, const QHash<int, qint64> *tagLo
     case CapType::UBA:   r += schemaRows(b, QStringLiteral("uba"),   nullptr, -1, rawValues); break;
     // @lsos LOCO_SOS: flat LE struct, no header/CRC (session 98).
     case CapType::Lsos:  r += schemaRows(b, QStringLiteral("lsos"),  nullptr, -1, rawValues); break;
+    // @sos / @sossrc / @sosev: flat LE, written byte by byte (session 184).
+    case CapType::Sos:    r += schemaRows(b, QStringLiteral("sos"),    nullptr, -1, rawValues); break;
+    case CapType::SosSrc: r += schemaRows(b, QStringLiteral("sossrc"), nullptr, -1, rawValues); break;
+    case CapType::SosEv:  r += schemaRows(b, QStringLiteral("sosev"),  nullptr, -1, rawValues); break;
     // @speed / @analog_*: flat LE structs, decoded from byte 0 (session 67).
     // @analog_* is six floats with no CRC; the schema shows them %g.
     case CapType::Speed: r += schemaRows(b, QStringLiteral("speed"), nullptr, -1, rawValues); break;

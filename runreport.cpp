@@ -1,5 +1,7 @@
 #include "runreport.h"
 
+#include "soslog.h"
+
 #include "capturedecoder.h"
 #include "fieldplot.h"
 #include "frameclock.h"
@@ -259,6 +261,12 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
     s.distinctTags = tags.size();
     if (options.hasWindow) s.rows = included;
     s.brakes = options.hasWindow ? brakeEvents(model, options.fromMs, options.toMs) : brakeEvents(model);
+    {
+        const SosLog::Timeline sos = options.hasWindow ? SosLog::extract(model, options.fromMs, options.toMs)
+                                                       : SosLog::extract(model);
+        s.sosThreats = SosLog::spellEpisodes(sos);
+        s.sosDecisions = SosLog::brakeChanges(sos);
+    }
     s.tagCheck = options.hasWindow ? TagCheck::build(model, options.fromMs, options.toMs) : TagCheck::build(model);
     s.lcApproaches = options.hasWindow ? LcCheck::build(model, options.fromMs, options.toMs) : LcCheck::build(model);
 
@@ -452,6 +460,25 @@ QString toHtml(const Summary &s, const Options &options)
             h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td></tr>").arg(timeText(e.fromMs), timeText(e.toMs), esc(e.what));
         }
         h += QStringLiteral("</table>") + more(s.selfSos.size());
+    }
+    // Session 184: only when the log has @sos, so other reports read as before.
+    if (!s.sosThreats.isEmpty() || !s.sosDecisions.isEmpty()) {
+        h += QStringLiteral("<h2>SoS threats (firmware, @sos): %1</h2>").arg(countOf(s.sosThreats.size(), "threat", "threats"));
+        if (!s.sosThreats.isEmpty()) {
+            h += QStringLiteral("<table><tr><th>From</th><th>To</th><th>Threat, and how it ended</th></tr>");
+            for (int i = 0; i < s.sosThreats.size() && i < cap; ++i) {
+                const Episode &e = s.sosThreats.at(i);
+                h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td></tr>").arg(timeText(e.fromMs), timeText(e.toMs), esc(e.what));
+            }
+            h += QStringLiteral("</table>") + more(s.sosThreats.size());
+        }
+        h += QStringLiteral("<h2>SoS brake decisions (firmware, @sosev): %1</h2>").arg(countOf(s.sosDecisions.size(), "decision", "decisions"));
+        if (!s.sosDecisions.isEmpty()) {
+            h += QStringLiteral("<table><tr><th>Time</th><th>Decision</th></tr>");
+            for (int i = 0; i < s.sosDecisions.size() && i < cap; ++i)
+                h += QStringLiteral("<tr><td>%1</td><td>%2</td></tr>").arg(timeText(s.sosDecisions.at(i).ms), esc(s.sosDecisions.at(i).to));
+            h += QStringLiteral("</table>") + more(s.sosDecisions.size());
+        }
     }
     if (!s.collisionDetections.isEmpty()) {
         h += QStringLiteral("<h2>Collision detection (NMS): %1</h2><table><tr><th>Time</th><th>Value</th></tr>").arg(s.collisionDetections.size());

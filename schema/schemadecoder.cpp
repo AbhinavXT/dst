@@ -56,6 +56,9 @@ quint32 Decoder::Cursor::take(int n)
 
 static qint64 toSigned(quint32 v, int n)
 {
+    // Session 184: 32 bits too (engine.to_signed always did). No field was
+    // signed and 32 bits wide before the @sos packets' int32 distances.
+    if (n == 32) { return qint64(qint32(v)); }
     if (n < 32 && (v & (1u << (n - 1)))) { return qint64(v) - (qint64(1) << n); }
     return qint64(v);
 }
@@ -223,6 +226,10 @@ QString Decoder::composite(const QString &name, qint64 v)
         return QStringLiteral("%1 m (%2 km)").arg(v).arg(v / 1000.0, 0, 'f', 3);
     if (name == "decel")                              // DMI deceleration_constant
         return QStringLiteral("DC %1.%2").arg(v / 100).arg(v % 100, 2, 10, QChar('0'));
+    if (name == "dm")                                 // @sos distances, decimetres
+        return QStringLiteral("%1 m").arg(double(v) / 10.0, 0, 'f', 1);
+    if (name == "x100")                               // @sos sensor_speed x 100
+        return QString::number(double(v) / 100.0, 'f', 2);
     return QString::number(v);
 }
 

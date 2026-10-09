@@ -27,6 +27,13 @@ const int kLabelMaxW = 150;   // a custom lane's field name, up to this
 const int kPad     = 6;
 const char *kLanes[] = { "Mode", "Safety", "RFID", "Link", "Faults" };
 
+// Session 184: a firmware SoS spell that is a collision (SosLog::Spell::what()).
+bool isCollisionSpell(const QString &what)
+{
+    return what.startsWith(QLatin1String("Head-on")) || what.startsWith(QLatin1String("Rear-end"))
+        || what.startsWith(QLatin1String("Station head-on")) || what.startsWith(QLatin1String("Station rear-end"));
+}
+
 QString hm(qint64 ms) { return QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss")); }
 
 const QRegularExpression &numberRx()
@@ -181,6 +188,7 @@ bool LaneBand::hasContent() const
 {
     return !m_sum.firstMode.isEmpty() || !m_sum.modeChanges.isEmpty() || !m_sum.missionStarts.isEmpty()
         || !m_sum.brakes.isEmpty() || !m_sum.selfSos.isEmpty() || !m_sum.collisionDetections.isEmpty()
+        || !m_sum.sosThreats.isEmpty() || !m_sum.sosDecisions.isEmpty()
         || !m_sum.noKeys.isEmpty() || !m_sum.keyLoads.isEmpty()
         || !m_sum.emergencies.isEmpty()
         || !m_sum.overspeed.isEmpty() || !m_sum.tagReads.isEmpty() || !m_sum.faults.isEmpty()
@@ -315,6 +323,18 @@ void LaneBand::paintEvent(QPaintEvent *)
         p.fillRect(QRect(x1, r.top(), x2 - x1, r.height() / 2), UiColor::accent());
     }
     for (const RunReport::Change &c : m_sum.collisionDetections) tick(1, c.ms, UiColor::error(), QString());
+    // Session 184: the firmware's SoS threats (@sos), between the own-SoS half
+    // and the brake strip: collisions in the error colour, SoS in the warning
+    // colour; its brake decisions as ticks (applied: error, not applied: muted).
+    for (const RunReport::Episode &e : m_sum.sosThreats) {
+        const QRect r = track(1);
+        const int x1 = xFor(e.fromMs, r), x2 = qMax(xFor(e.toMs, r), x1 + 3);
+        const int y = r.top() + r.height() / 2 + 1;
+        p.fillRect(QRect(x1, y, x2 - x1, qMax(2, r.bottom() - 5 - y)),
+                   isCollisionSpell(e.what) ? UiColor::error() : UiColor::warning());
+    }
+    for (const RunReport::Change &c : m_sum.sosDecisions)
+        tick(1, c.ms, c.from == QLatin1String("applied") ? UiColor::error() : UiColor::muted(), QString());
     // Session 175: EB / FSB applications, along the bottom of the Safety lane.
     for (const RunReport::BrakeEvent &b : m_sum.brakes) {
         const QRect r = track(1);
@@ -398,6 +418,11 @@ QString LaneBand::describeAt(const QPoint &pos) const
         case 1:
             for (const RunReport::Change &c : m_sum.collisionDetections)
                 if (qAbs(c.ms - ms) <= slack) return tr("Collision detection (NMS) at %1: %2").arg(hm(c.ms), c.to);
+            for (const RunReport::Change &c : m_sum.sosDecisions)
+                if (qAbs(c.ms - ms) <= slack) return tr("SoS decision at %1: %2").arg(hm(c.ms), c.to);
+            for (const RunReport::Episode &e : m_sum.sosThreats)
+                if (ms >= e.fromMs - slack && ms <= e.toMs + slack)
+                    return tr("SoS (firmware): %1, %2 – %3").arg(e.what, hm(e.fromMs), hm(e.toMs));
             for (const RunReport::Episode &e : m_sum.selfSos)
                 if (ms >= e.fromMs - slack && ms <= e.toMs + slack)
                     return tr("Own SoS (NMS): %1, %2 – %3").arg(e.what, hm(e.fromMs), hm(e.toMs));

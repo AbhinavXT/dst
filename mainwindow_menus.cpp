@@ -516,6 +516,15 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                               "collision/head-on/rear-end events (@lsos)"));
     connect(actTwoLoco, &QAction::triggered, this, &MainWindow::onActionTwoLocoView);
 
+    // Session 184: the firmware's SoS table and decisions (@sos / @sossrc / @sosev).
+    QAction *actSos = monitorMenu->addAction(tr("S&oS…"));
+    actSos->setObjectName(QStringLiteral("actSos"));
+    actSos->setShortcut(QKeySequence("Ctrl+Alt+O"));
+    actSos->setToolTip(tr("What the loco's SoS logic knew and decided, moment by moment: every loco in its SoS "
+                          "table with the checks run on it, the target it picked, and each decision in words "
+                          "(@sos / @sossrc / @sosev)"));
+    connect(actSos, &QAction::triggered, this, &MainWindow::onActionSosWindow);
+
     // Session 99: the track, by absolute location.
     QAction *actTrackDiagram = monitorMenu->addAction(tr("Trac&k diagram…"));
     actTrackDiagram->setShortcut(QKeySequence("Ctrl+Alt+K"));

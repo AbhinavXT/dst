@@ -121,6 +121,7 @@ SOURCES += \
     test_session179.cpp \
     test_session180.cpp \
     test_session181.cpp \
+    test_session184.cpp \
     test_undolog.cpp \
     test_workspacesnapshot.cpp \
     test_settingsbundle.cpp \

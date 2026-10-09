@@ -97,6 +97,8 @@ SOURCES += \
     $$PWD/incidentreportdialog.cpp \
     $$PWD/incidentreportwindow.cpp \
     $$PWD/twolocoview.cpp \
+    $$PWD/soslog.cpp \
+    $$PWD/soswindow.cpp \
     $$PWD/twolocowindow.cpp \
     $$PWD/trackdiagram.cpp \
     $$PWD/trackdiagramwindow.cpp \
@@ -228,6 +230,8 @@ HEADERS += \
     $$PWD/incidentreportdialog.h \
     $$PWD/incidentreportwindow.h \
     $$PWD/twolocoview.h \
+    $$PWD/soslog.h \
+    $$PWD/soswindow.h \
     $$PWD/twolocowindow.h \
     $$PWD/trackdiagram.h \
     $$PWD/trackdiagramwindow.h \

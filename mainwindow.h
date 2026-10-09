@@ -151,6 +151,7 @@ private slots:
     void onActionCabIo();     // Tools → Monitor → Run summary report… (session 81)
     void onActionIncidentReport(); // Tools → Monitor → Incident report… (session 97)
     void onActionTwoLocoView();    // Tools → Monitor → Two-loco view… (session 98)
+    void onActionSosWindow();      // Tools → Monitor → SoS… (session 184)
     void onActionTrackDiagram();   // Tools → Monitor → Track diagram… (session 99)
     void onActionReloadSchema();  // Tools → Reload schema… (Ctrl+Shift+R)
     void onActionLoadTestCases(); // Tools → Test cases → Load…

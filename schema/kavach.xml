@@ -471,6 +471,69 @@
       <map v="0" label="fault"/>
       <map v="1" label="OK"/>
     </enum>
+    <!-- ===== @sos / @sossrc / @sosev (session 184) =====================
+         SOS_handoff/01_SOS_LOGGING_PACKETS.md, layout version 1. -->
+    <enum name="sosWhy">
+      <map v="0" label="%v (periodic, 1 s)"/>
+      <map v="1" label="%v (after an ARP)"/>
+      <map v="2" label="%v (after an AEP)"/>
+      <map v="3" label="%v (after DEST_LOCO_SOS)"/>
+      <map default="true" label="%v"/>
+    </enum>
+    <enum name="sosDir">
+      <map v="0" label="%v (Undefined)"/>
+      <map v="1" label="%v (Nominal)"/>
+      <map v="2" label="%v (Reverse)"/>
+      <map default="true" label="%v"/>
+    </enum>
+    <enum name="sosSect">
+      <map v="0" label="%v (Station section)"/>
+      <map v="1" label="%v (Absolute block)"/>
+      <map v="2" label="%v (Auto block)"/>
+      <map v="3" label="%v (Reserved)"/>
+      <map v="255" label="%v (direction undefined)"/>
+      <map default="true" label="%v"/>
+    </enum>
+    <enum name="sosThreat">
+      <map v="0"  label="%v (none)"/>
+      <map v="1"  label="%v (Head-on)"/>
+      <map v="2"  label="%v (Rear-end)"/>
+      <map v="3"  label="%v (Unusual stop)"/>
+      <map v="4"  label="%v (Manual SoS)"/>
+      <map v="5"  label="%v (Train parted)"/>
+      <map v="6"  label="%v (Station general SoS)"/>
+      <map v="7"  label="%v (DEST_LOCO_SOS general)"/>
+      <map v="8"  label="%v (Station head-on)"/>
+      <map v="9"  label="%v (Station rear-end)"/>
+      <map v="10" label="%v (SPAD)"/>
+      <map v="11" label="%v (Shunting limit)"/>
+      <map default="true" label="%v"/>
+    </enum>
+    <enum name="sosEvent">
+      <map v="1"  label="%v (source added)"/>
+      <map v="2"  label="%v (source evicted)"/>
+      <map v="3"  label="%v (source dropped, table full)"/>
+      <map v="4"  label="%v (quiet source released)"/>
+      <map v="5"  label="%v (source timed out)"/>
+      <map v="6"  label="%v (ARP rejected)"/>
+      <map v="7"  label="%v (threat start)"/>
+      <map v="8"  label="%v (threat end)"/>
+      <map v="9"  label="%v (target removed: source passed)"/>
+      <map v="10" label="%v (emergency brake applied)"/>
+      <map v="11" label="%v (brake not applied)"/>
+      <map v="12" label="%v (station added)"/>
+      <map v="13" label="%v (station evicted)"/>
+      <map v="14" label="%v (station dropped, table full)"/>
+      <map v="15" label="%v (quiet station released)"/>
+      <map v="16" label="%v (station SoS start)"/>
+      <map v="17" label="%v (station SoS end)"/>
+      <map v="18" label="%v (DEST_LOCO_SOS changed)"/>
+      <map v="19" label="%v (table reset)"/>
+      <map v="20" label="%v (own unusual-stoppage alarm)"/>
+      <map v="21" label="%v (own unusual-stoppage alarm ended)"/>
+      <map v="22" label="%v (own unusual-stoppage alarm acknowledged)"/>
+      <map default="true" label="%v"/>
+    </enum>
     <enum name="dmiUnmapped">
       <map default="true" label="%v (unmapped)"/>
     </enum>
@@ -717,6 +780,66 @@
       <flag name="EB will be Applied in XX s"/>
       <flag name="BIU Isolated"/>
       <flag name="Train Type Selected"/>
+    </flagtable>
+    <!-- @sos / @sossrc bit words (session 184), bit 0 first. -->
+    <flagtable name="sosLp">
+      <flag name="is_access_sos_recvd"/>
+      <flag name="is_unusual_stop_recvd"/>
+      <flag name="is_train_parted_recvd"/>
+      <flag name="is_head_on_collision_recvd"/>
+      <flag name="is_rear_end_collision_recvd"/>
+      <flag name="is_add_em_sos_recvd"/>
+      <flag name="is_dest_loco_sos_recvd"/>
+      <flag name="is_stn_head_on_collision_recvd"/>
+      <flag name="is_stn_rear_end_collision_recvd"/>
+      <flag name="is_stn_shuntig_sos_recvd"/>
+    </flagtable>
+    <flagtable name="sosDmi">
+      <flag name="SOS - Self Loco Manual"/>
+      <flag name="SOS - Self Loco Stopped in Block Section"/>
+      <flag name="SOS - Self Loco Train Parted"/>
+      <flag name="SOS - Other Loco Manual"/>
+      <flag name="SOS - Other Loco Stopped in Block Section"/>
+      <flag name="SOS - Other Loco Train Parted"/>
+      <flag name="SOS - Station (All Locos)"/>
+      <flag name="SOS - Station (This Loco)"/>
+      <flag name="Head-on collision with loco"/>
+      <flag name="Rear-end collision with loco"/>
+      <flag name="Brake applied - station general SoS"/>
+      <flag name="Ack block stop, SoS generates in XX s"/>
+    </flagtable>
+    <flagtable name="sosSelf">
+      <flag name="unusual_stoppage_sos_alarm"/>
+      <flag name="unusual_sos_acknowledged"/>
+      <flag name="standstill"/>
+      <flag name="in block section"/>
+    </flagtable>
+    <flagtable name="sosStn">
+      <flag name="additional emergency SoS"/>
+      <flag name="last gen_sos_call"/>
+      <flag name="closest station"/>
+    </flagtable>
+    <flagtable name="sosThreatBits">
+      <flag name="manual SoS"/>
+      <flag name="unusual stop"/>
+      <flag name="head-on"/>
+      <flag name="rear-end"/>
+      <flag name="train parted"/>
+    </flagtable>
+    <flagtable name="sosEval">
+      <flag name="adjusted (raw position or direction changed)"/>
+      <flag name="adjacent line infringing"/>
+      <flag name="adjacency from RFID tag"/>
+      <flag name="adjacency from profile"/>
+      <flag name="no adjacency info (fail-open)"/>
+      <flag name="collision allowed by station check (firmware)"/>
+      <flag name="target removed (source passed)"/>
+      <flag name="manual SoS would be processed"/>
+      <flag name="unusual stop would be processed"/>
+      <flag name="same TIN"/>
+      <flag name="within SoS trigger distance"/>
+      <flag name="within collision trigger distance"/>
+      <flag name="collision allowed by station check (this loco's station)"/>
     </flagtable>
   </flagtables>
 
@@ -1709,6 +1832,104 @@
     <field name="is_train_parted_recvd"       bits="8"/>
     <field name="sos_distance"                bits="32"/>
     <field name="collision_distance"          bits="32"/>
+  </packet>
+
+  <!-- ===================================================================
+       @sos / @sossrc / @sosev (session 184): the firmware's SoS state, as
+       SOS_handoff/01_SOS_LOGGING_PACKETS.md asks LKAVACH to log it. Written
+       byte by byte, little-endian, by SOS_LogPut*: no struct padding.
+       Version 1. Validated against sos_oracle.py by validate_sos.py.
+
+       NO REAL CAPTURE YET. schema/fixtures/sos_synthetic_loco{1,2}.log are
+       made by tests/sosgen, which runs the README's logging code itself on a
+       scripted scenario: they prove this layout, not the firmware.
+
+       Supersedes LOCO_SOS (@lsos) above, whose layout was never logged.
+       =================================================================== -->
+  <packet name="SOS_SNAPSHOT" match="captype==sos" wire="lsb-first" trailer_bytes="0">
+    <field name="version"                 bits="8"/>
+    <field name="why"                     bits="8"  enum="sosWhy"/>
+    <field name="snap_id"                 bits="32"/>
+    <field name="tick_ms"                 bits="32" unit="ms"/>
+    <field name="own_abs_loc"             bits="32" signed="true" format="dm"/>
+    <field name="own_dir"                 bits="8"  enum="sosDir"/>
+    <field name="own_mode"                bits="8"  enum="locoMode"/>
+    <field name="own_tin"                 bits="16"/>
+    <field name="own_train_length"        bits="16" unit="m"/>
+    <field name="own_speed"               bits="16" format="x100"/>
+    <field name="own_ma"                  bits="32" signed="true" unit="m"/>
+    <field name="own_station_id"          bits="16"/>
+    <field name="own_rfid_tag_id"         bits="16"/>
+    <field name="rear_tag_found"          bits="8"/>
+    <field name="rear_sect_type"          bits="8"  enum="sosSect"/>
+    <field name="own_emergency_status"    bits="8"  enum="emergencyStatus"/>
+    <field name="access_req_recvd_stn_id" bits="16"/>
+    <field name="n_src_slots"             bits="8"/>
+    <field name="src_in_use_mask"         bits="16" hex="4"/>
+    <field name="src_active_mask"         bits="16" hex="4"/>
+    <field name="agg_threat"              bits="8"  enum="sosThreat"/>
+    <field name="agg_station_won"         bits="8"/>
+    <field name="collision_loco_id"       bits="32"/>
+    <field name="agg_station_id"          bits="16"/>
+    <field name="collision_distance"      bits="32" signed="true" format="dm"/>
+    <field name="sos_distance"            bits="32" signed="true" format="dm"/>
+    <field name="sos_station_id"          bits="16"/>
+    <flags name="lp_flags"  table="sosLp"   bits="10" pad="6"/>
+    <flags name="dmi_bits"  table="sosDmi"  bits="12" pad="4"/>
+    <field name="last_dest_loco_sos"      bits="8"  enum="sosType"/>
+    <flags name="self_flags" table="sosSelf" bits="4" pad="4"/>
+    <field name="n_stn_slots"             bits="8"/>
+    <!-- stn_* names: the raw-value map is keyed by field name, and plain
+         "distance" / "sos_distance" would overwrite the snapshot's own. -->
+    <repeat name="station" count="n_stn_slots" cmin="0" cmax="3" expand="true">
+      <field name="stn_in_use"       bits="8"/>
+      <field name="stn_flags"        bits="8"  hex="2"/>
+      <field name="stn_id"           bits="16"/>
+      <field name="stn_age"          bits="32" unit="ms"/>
+      <field name="stn_abs_loc"      bits="32" unit="m"/>
+      <field name="stn_distance"     bits="32" signed="true" format="dm"/>
+      <field name="stn_sos_distance" bits="32" signed="true" format="dm"/>
+    </repeat>
+  </packet>
+
+  <packet name="SOS_SOURCE" match="captype==sossrc" wire="lsb-first" trailer_bytes="0">
+    <field name="version"                bits="8"/>
+    <field name="snap_id"                bits="32"/>
+    <field name="slot_index"             bits="8"/>
+    <field name="source_loco_id"         bits="32"/>
+    <field name="age"                    bits="32" unit="ms"/>
+    <field name="last_frame_no"          bits="32"/>
+    <field name="last_emergency_sts"     bits="8"  enum="emergencyStatus"/>
+    <field name="other_mode"             bits="8"  enum="locoMode"/>
+    <field name="other_speed"            bits="16"/>
+    <field name="raw_abs_loc"            bits="32" signed="true" unit="m"/>
+    <field name="raw_dir"                bits="8"  enum="sosDir"/>
+    <field name="last_rfid_id"           bits="16"/>
+    <field name="approaching_station_id" bits="16"/>
+    <field name="abs_loc"                bits="32" signed="true" unit="m"/>
+    <field name="movement_dir"           bits="8"  enum="sosDir"/>
+    <field name="tin"                    bits="16"/>
+    <field name="train_length"           bits="16" unit="m"/>
+    <field name="distance"               bits="32" signed="true" format="dm"/>
+    <field name="sos_distance"           bits="32" signed="true" format="dm"/>
+    <field name="collision_distance"     bits="32" signed="true" format="dm"/>
+    <flags name="threat_flags"  table="sosThreatBits" bits="5" pad="3"/>
+    <flags name="closest_flags" table="sosThreatBits" bits="5" pad="3"/>
+    <flags name="eval_flags"    table="sosEval"       bits="13" pad="3"/>
+  </packet>
+
+  <packet name="SOS_EVENT" match="captype==sosev" wire="lsb-first" trailer_bytes="0">
+    <field name="version"     bits="8"/>
+    <field name="tick_ms"     bits="32" unit="ms"/>
+    <field name="snap_id"     bits="32"/>
+    <field name="event"       bits="8"  enum="sosEvent"/>
+    <field name="aux1"        bits="8"/>
+    <field name="aux2"        bits="8"/>
+    <field name="id"          bits="32"/>
+    <field name="distance"    bits="32" signed="true" format="dm"/>
+    <field name="own_abs_loc" bits="32" signed="true" format="dm"/>
+    <field name="own_speed"   bits="16" format="x100"/>
+    <field name="own_mode"    bits="8"  enum="locoMode"/>
   </packet>
 
   <!-- ===================================================================

@@ -11,6 +11,125 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-184"></a>
+## Session 184 — SoS, phase A: the firmware's SoS table, decoded, in a window
+
+The first of four phases (A–D), asked for by Abhinav after reading LKAVACH
+v1.2.9's `sos_manager.c` / `sos_table_manager.c`. Today no LKAVACH build
+logs its SoS state; `SOS_handoff/01_SOS_LOGGING_PACKETS.md` (given to him,
+not in this repository) asks for three capture lines and gives the C code
+that writes them:
+
+- **`@sos`** — one snapshot: own loco, the target `SOS_RecomputeAggregates`
+  picked, the `loco_params` flags and DMI bits, both station slots.
+- **`@sossrc`** — one line per in-use source slot, right after its `@sos`
+  (same `snap_id`): position as the ARP gave it and as `SOSWithAdjustment`
+  left it, distances, threats, and every check re-run with the firmware's
+  own functions (same TIN, ranges, adjacent line and where that answer came
+  from, station check, would-process, passed).
+- **`@sosev`** — one decision: a threat starting or ending *and why*, a
+  brake applied or **not** applied *and why*, slots added, evicted, dropped,
+  timed out, the table reset, DEST_LOCO_SOS changing, the own unusual-stop
+  alarm.
+
+Version 1, little-endian, written byte by byte (no struct padding). This
+build reads them; `@lsos` (session 98's guessed layout, never logged) is
+left as it was.
+
+**What the operator sees:** **Tools ▸ Monitor ▸ SoS…** (Ctrl+Alt+O).
+
+- A loco log picker, a slider over the snapshots, **◀ / ▶ Decision** to the
+  previous / next decision, and **Follow the log** (the DMI's time travel:
+  the snapshot at or before the row picked in any tab or replay).
+- The **SoS table** at that moment: one row per tracked loco, then the
+  stations. The target is bold and says "◎ target". Threat, closest of its
+  kind, gap (the real one: the firmware zeroes its own `distance` once a
+  source is passed, and the hover says what it read), SoS and collision
+  distance, then the nine checks as ✓ / – / ! with the why on hover
+  ("ARP said 13480 m nominal; after SOSWithAdjustment 13500 m reverse"),
+  then position, direction, TIN, the source's last ARP status and age.
+  "!" marks a check that disagrees with itself: adjacency failing open,
+  or the station check answering with another loco's station (bug #5).
+- **Every decision in words**, those after the cursor muted, the current
+  one selected; double-click shows that moment in the tab's log.
+- **The Safety lane** draws the firmware's threats between the own-SoS half
+  and the brake strip (collisions in the error colour, SoS in the warning
+  colour) and its brake decisions as ticks; hover names them. The **run
+  summary** gets "SoS threats (firmware, @sos)" and "SoS brake decisions
+  (firmware, @sosev)" sections — only when the log has `@sos`, so other
+  reports read as before.
+
+### No real capture yet: synthetic frames from the real logging code
+
+`tests/sosgen/` holds the README's `sos_log.h` / `sos_log_impl.c` byte for
+byte, stubs for the few firmware names they read, and a scripted two-loco
+scenario (manual SoS passed, an unusual stop on an adjacent line behind an
+adjustment tag, a head-on, a rear-end, a train parted 4 km away, a station
+general SoS, DEST_LOCO_SOS, a Non-Leading reset), at the field's trigger
+distances (SoS 3000 m, collision 1000 m, cancel 500 m). Each log starts with
+loco 1's **real** `@linfo` frame of 2026-10-08, re-tagged and re-timed, so
+the views read those distances from the log as they will from a real one.
+`make_fixture.sh` writes
+`schema/fixtures/sos_synthetic_loco{1,2}.log`. They prove the layout and the
+views, **not the firmware**: the decisions are scripted the way v1.2.9 reads,
+with bugs #1, #2, #6, #8 and #10 of README 02 in on purpose so the window has
+them to show. The `LB_*` brake codes are placeholders (21–24): the real
+values aren't in hand.
+
+### Also
+
+- **The C++ schema engine now sign-extends 32-bit `signed="true"` fields**
+  (`toSigned` handled only < 32 bits; `engine.to_signed` always did). No
+  field was signed and 32 bits wide before; `@sos`'s int32 distances are.
+- Two new schema formatters, in both engines: `dm` (decimetres → "1234.5 m")
+  and `x100` (value / 100).
+- Station entries in `@sos` are named `stn_*`: the raw-value map is keyed by
+  field name, and plain `sos_distance` overwrote the snapshot's own (the
+  decoder-vs-schema parity test caught it).
+- `CapType::Sos / SosSrc / SosEv`. They are not added to the Loco
+  Console's tabs or link rows: the SoS window is their view, and those
+  layouts have pinned width checks.
+
+### Files
+
+New: `soslog.{h,cpp}`, `soswindow.{h,cpp}`, `schema/sos_oracle.py`,
+`schema/validate_sos.py`, `schema/fixtures/sos_synthetic_loco{1,2}.log`,
+`tests/sosgen/{sosgen.c,sos_log.h,sos_log_impl.c,firmware_stubs.h,make_fixture.sh}`,
+`tests/sosfixture.h`, `tests/test_session184.cpp`.
+Changed: `capturedecoder.{h,cpp}`, `schema/kavach.xml`, `schema/engine.py`,
+`schema/schemadecoder.cpp`, `runreport.{h,cpp}`, `laneband.cpp`,
+`mainwindow.h`, `mainwindow_menus.cpp`, `mainwindow_tools.cpp`, `dlcore.pri`,
+`tests/tests.pro`, `tests/screenshot_main.cpp` (`SHOT_WINDOW=sos`,
+`SHOT_AT=HH:mm:ss`), `CLAUDE.md` (12 validators).
+
+### Tests
+
+- `validate_sos.py` (12th validator): every fixture frame decoded by the XML
+  engine and compared field by field with `sos_oracle.py` (struct.unpack at
+  the README's offsets), plus sizes, each `@sossrc` following its `@sos`
+  (popcount of the in-use mask), events naming a snapshot already sent.
+  1534/1534. A wrong width in the schema (own_tin 8 bits) drops it to 941.
+- `session184` (66 checks): SosLog's decode agrees with the schema's on all
+  1272 frames of loco 1; 462 snapshots, 33 events, 777 sources, none
+  orphaned; the target and its words at 10:00:30, 10:01:40, 10:02:32,
+  10:04:20; loco 3's adjustment and adjacency; the seven spells with their
+  times and end reasons; the four brake decisions; event words; another
+  layout version not read; the window (opens on the `@sos` tab, the table at
+  10:01:40, the hover texts, the current decision, Decision ▶, Follow the
+  log, fits 1100 × 700, no orphan widgets); a log without `@sos` says so;
+  the run summary and the Safety lane.
+
+**Not tested:** a real LKAVACH capture (none exists); the README's C code
+inside the firmware (only against stubs here); Windows / Linux rendering
+(see this push's CI).
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators **12/12**; `dltests`
+**234 suites / 6488 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit passed; headless smoke alive. Linux / Windows: see this
+push's CI.
+
+---
+
 <a id="session-183"></a>
 ## Session 183 — Linux CI: a long big-number value no longer widens the console
 

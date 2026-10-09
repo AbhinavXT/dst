@@ -18,6 +18,7 @@
 //    emergency status              LSRP EMERGENCY_STATUS != 0, as episodes
 //    brakes (175)                  DMI EB/FSB, each with its reasons
 //    self SoS (178)                NMS LOCO_SELF_SOS start..end; COLLISION_DETECTION
+//    SoS decisions (184)           @sos / @sosev: threats as spells, brake decisions
 //    session keys (179)            NMS CURRENT_RUNNING_KEY / REMAINING_KEY_NUMBERS;
 //                                  @auth_keys1 loads
 //    RFID tag check (180)          tagcheck.h: main / duplicate read, NMS
@@ -149,6 +150,11 @@ struct Summary {
     QVector<Episode>    noKeys;
     int                 minRemainingKeys = -1;
     QVector<qint64>     keyLoads;
+    // Session 184: the firmware's SoS decisions (@sos / @sosev, soslog.h):
+    // each threat from one source as a spell (what names it and how it
+    // ended), and each brake applied / not applied. Empty without @sos.
+    QVector<Episode>    sosThreats;
+    QVector<Change>     sosDecisions;      // from = "applied" / "not applied", to = in words
     // Session 180: the RFID tag check (tagcheck.h).
     TagCheck::Report    tagCheck;
     // Session 181: level crossings approached, and the horn (lccheck.h).
