@@ -276,7 +276,7 @@ TEST_SUITE(session158vcccrc)
     answerNextBox(&first, QMessageBox::No);
     CHECK(!window.sendNow(true), "No: nothing sent");
     CHECK(first.seen, "the confirmation box appeared");
-    CHECK(first.format == Qt::RichText && first.text.contains(QStringLiteral("<b>vcc_crc 0xF6134AC1</b>")),
+    CHECK(first.format == Qt::RichText && first.text.contains(QStringLiteral("<b>vcc_crc 0x9263FCA8</b>")),
           "vcc_crc and its value are in the question itself, in bold");
     CHECK(first.text.contains(QStringLiteral("x-large")), "set large");
     CHECK(first.text.contains(QStringLiteral("must match this loco's VCC build")), "with why it matters");
@@ -293,7 +293,7 @@ TEST_SUITE(session158vcccrc)
     window.sendNow(true);
     CHECK(changed.text.contains(QStringLiteral("<b>vcc_crc 0x0BADCAFE</b>")), "the new value, in the question");
     CHECK(changed.text.contains(QStringLiteral("<b>Changed</b> since the last send")) &&
-              changed.text.contains(QStringLiteral("0xF6134AC1")),
+              changed.text.contains(QStringLiteral("0x9263FCA8")),
           "marked as changed, with the value it was");
     CHECK(!changed.text.contains(QStringLiteral("default value")), "no longer the default");
 

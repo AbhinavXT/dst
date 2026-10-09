@@ -50,7 +50,7 @@ TEST_SUITE(session159)
     CHECK(keys.contains(QStringLiteral("loco_unit_id")) && keys.contains(QStringLiteral("vcc_crc")),
           "loco_unit_id and vcc_crc");
     const int vccRow = keys.indexOf(QStringLiteral("vcc_crc"));
-    CHECK(dialog.valueAt(vccRow, false) == QStringLiteral("0xF6134AC1") &&
+    CHECK(dialog.valueAt(vccRow, false) == QStringLiteral("0x9263FCA8") &&
               dialog.valueAt(vccRow, true) == QStringLiteral("0x0BADCAFE"),
           "values formatted as the editor shows them (hex), A beside B");
     CHECK(dialog.summary().startsWith(QStringLiteral("2 of ")) && dialog.summary().contains(QStringLiteral("differ")),
@@ -69,7 +69,7 @@ TEST_SUITE(session159)
     dialog.setPair(QStringLiteral("Loco 9"), QStringLiteral("Loco 7"));
     const QString text = dialog.asText();
     CHECK(text.startsWith(QStringLiteral("Field\tGroup\tLoco 9\tLoco 7")) &&
-              text.contains(QStringLiteral("vcc_crc\t")) && text.contains(QStringLiteral("0x0BADCAFE\t0xF6134AC1")),
+              text.contains(QStringLiteral("vcc_crc\t")) && text.contains(QStringLiteral("0x0BADCAFE\t0x9263FCA8")),
           "Copy: tab-separated, headed by the two names, swapped order respected");
 
     // Reachable from the window: Manage ▸ Compare configurations…

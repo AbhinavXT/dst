@@ -3,7 +3,7 @@
  "source": "loco_config_v12.cpp",
  "source_sha256": "1e09cd21de284db063757352de155db1e197f6ed47287010dfeaa58c42b1e2c1",
  "body_bytes": 371,
- "loco_info_crc": "0x6C7D3D3D",
+ "loco_info_crc": "0xC30842EC",
  "values": {
   "loco_ip_set_id": 1,
   "source_loco_version": 2,
@@ -123,7 +123,7 @@
   "is_ecap_used": 0,
   "max_vital_fails": 3,
   "init_state_machine_atf": 0,
-  "vcc_crc": 4128459457,
+  "vcc_crc": 2456026280,
   "static_brake_params.train_config_number": 1,
   "static_brake_params.train_class": 1,
   "static_brake_params.train_desc": "LOCO_TCAS_BRAKING",

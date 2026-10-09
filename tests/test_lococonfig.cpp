@@ -328,7 +328,7 @@ TEST_SUITE(lococonfig)
         record.target = QStringLiteral("10.1.2.3:50011");
         record.body = golden;
         record.crc = LocoInfo::crc32(golden.left(golden.size() - 4));
-        record.vccCrc = 0xF6134AC1u;
+        record.vccCrc = 0x9263FCA8u;
         CHECK(history.append(record) && history.append(record), "two sends appended");
         QFile file(history.filePath());
         file.open(QIODevice::WriteOnly | QIODevice::Append);
@@ -337,7 +337,7 @@ TEST_SUITE(lococonfig)
         int skipped = 0;
         const QList<LocoInfo::SendRecord> all = history.readAll(&skipped);
         CHECK(all.size() == 2 && skipped == 1, "a torn last line costs that line only");
-        CHECK(all.first().body == golden && all.first().vccCrc == 0xF6134AC1u, "the exact bytes and vcc_crc come back");
+        CHECK(all.first().body == golden && all.first().vccCrc == 0x9263FCA8u, "the exact bytes and vcc_crc come back");
 
         LocoConfigHistoryDialog dialog(history.filePath(), &layout);
         CHECK(dialog.visibleRowCount() == 2, "the History dialog lists them");
