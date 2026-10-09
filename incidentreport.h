@@ -81,6 +81,7 @@ struct KeyMoment {
     bool       hasDmi = false;
     QString    dmiKey;       // the loco the frame belongs to ("1_1")
     QByteArray dmiPng;       // rendered DmiView, PNG bytes; empty if !hasDmi
+    qint64     dmiFrameMs = 0;   // session 191: when that @dmi frame arrived
     // Session 186: the SoS state then (@sos), when the tab has it: the
     // SoS window's strip as a PNG, and what the loco was reacting to.
     bool        hasSos = false;
@@ -116,6 +117,11 @@ Summary build(LogModel *tabModel, const QString &tabKey, const QString &tabName,
               qint64 atMs, const Options &options = Options());
 
 QString toHtml(const Summary &s, const Options &options = Options());
+
+// Session 191: the tab's own latest @dmi at or before `ms`, rendered (the
+// incident pack's key moments; the mission report uses it too). No @dmi that
+// early: hasDmi false. Read-only on the model.
+KeyMoment dmiMomentAt(const LogModel *model, qint64 ms, const QString &label);
 
 }  // namespace IncidentReport
 

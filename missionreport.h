@@ -25,9 +25,11 @@
 //    tags          RFID tags read (@rfid unique), in order
 //    radio         time the DMI showed no radio (signal_strength 0)
 //    faults        NMS faults raised in it
+//    DMI (191)     the DMI panel at the key moments, rendered (addDmiMoments)
 //  Like the run summary, it reports what was OBSERVED and passes no verdict.
 // =============================================================================
 
+#include "incidentreport.h"
 #include "runreport.h"
 
 #include <QMap>
@@ -72,6 +74,11 @@ struct Mission {
     int     arpModeFrames = 0;         // ARPs whose mode was taken (the DMI silent)
     QStringList faultsRaised;          // "subsystem / module: fault", first raise each
 
+    // Session 191: the DMI as the loco pilot saw it at the mission's key
+    // moments (addDmiMoments(); empty until it runs), in time order.
+    QVector<IncidentReport::KeyMoment> dmiMoments;
+    bool    dmiMomentsCapped = false;
+
     qint64 durationMs() const { return toMs - fromMs; }
     // Start of mission to the first Staff_Responsible (0 = not reached).
     qint64 startUpMs() const { return firstSrMs ? firstSrMs - fromMs : 0; }
@@ -87,6 +94,13 @@ struct Options {
 };
 
 QVector<Mission> split(const LogModel *model, const Options &options = Options());
+
+// Session 191: render each mission's DMI at its key moments: the start, the
+// first Staff_Responsible / On_Sight / Limited / Full_Supervision,
+// System_Failure, each EB / FSB, the end; then the other mode changes, while
+// there is room. At most `maxPerMission` per mission (the first ones kept
+// before mode changes; `dmiMomentsCapped` says when some were left out).
+void addDmiMoments(const LogModel *model, QVector<Mission> *missions, int maxPerMission = 8);
 
 QString toHtml(const QVector<Mission> &missions, const QString &tabKey, const QString &tabName,
                const Options &options = Options());

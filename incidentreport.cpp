@@ -98,6 +98,7 @@ KeyMoment keyMomentAt(LogModel *model, qint64 ms, const QString &label)
     const DmiFrameAt &f = moment.frames.first();
     km.hasDmi = true;
     km.dmiKey = f.key;
+    km.dmiFrameMs = f.frameMs;
     km.dmiPng = renderDmi(f.cap);
     return km;
 }
@@ -191,6 +192,12 @@ Summary build(LogModel *tabModel, const QString &tabKey, const QString &tabName,
         }
     }
     return s;
+}
+
+KeyMoment dmiMomentAt(const LogModel *model, qint64 ms, const QString &label)
+{
+    // keyMomentAt only reads the model; it predates const here.
+    return model ? keyMomentAt(const_cast<LogModel *>(model), ms, label) : KeyMoment{ ms, label };
 }
 
 QString toHtml(const Summary &s, const Options &options)

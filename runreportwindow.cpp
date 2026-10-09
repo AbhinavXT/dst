@@ -85,6 +85,7 @@ void RunReportWindow::rebuild()
         mo.tabFull = m_model && m_model->count() >= m_model->capacity();
         mo.tabRows = m_model ? m_model->count() : 0;
         m_missions = Missions::split(m_model, mo);
+        Missions::addDmiMoments(m_model, &m_missions);   // session 191
         m_html = Missions::toHtml(m_missions, m_tabKey, m_tabName, mo);
     } else {
         m_summary = RunReport::summarise(m_model, m_tabKey, m_tabName);

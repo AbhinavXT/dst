@@ -1,5 +1,7 @@
 #include "missionreport.h"
 
+#include <algorithm>
+
 #include "capturedecoder.h"
 #include "fieldplot.h"
 #include "logmodel.h"
@@ -267,6 +269,46 @@ QVector<Mission> split(const LogModel *model, const Options &options)
     return out;
 }
 
+void addDmiMoments(const LogModel *model, QVector<Mission> *missions, int maxPerMission)
+{
+    if (!model || !missions) return;
+    struct Pick { qint64 ms; int priority; QString label; };
+    for (Mission &m : *missions) {
+        QVector<Pick> picks;
+        picks << Pick{ m.fromMs, 0, m.index ? QStringLiteral("Start of mission") : QStringLiteral("Log start") };
+        const struct { qint64 ms; const char *label; } firsts[] = {
+            { m.firstSrMs, "First Staff_Responsible" }, { m.firstOsMs, "First On_Sight" },
+            { m.firstLsMs, "First Limited_Supervision" }, { m.firstFsMs, "First Full_Supervision" },
+            { m.systemFailureMs, "System_Failure" } };
+        for (const auto &f : firsts)
+            if (f.ms) picks << Pick{ f.ms, 1, QLatin1String(f.label) };
+        for (const RunReport::BrakeEvent &b : m.brakes)
+            picks << Pick{ b.fromMs, 1, QStringLiteral("Brake: %1 applied").arg(b.type) };
+        picks << Pick{ m.toMs, 2, m.endsWithLog ? QStringLiteral("Log end") : QStringLiteral("Mission end") };
+        for (const RunReport::Change &c : m.modes)
+            picks << Pick{ c.ms, 3, QStringLiteral("Mode: %1 \u2192 %2").arg(modeName(c.from), modeName(c.to)) };
+
+        // One panel per instant: the higher-priority label wins.
+        std::stable_sort(picks.begin(), picks.end(), [](const Pick &a, const Pick &b) { return a.priority < b.priority; });
+        QVector<Pick> kept;
+        for (const Pick &p : picks) {
+            bool dup = false;
+            for (const Pick &k : kept) dup = dup || k.ms == p.ms;
+            if (dup) continue;
+            if (kept.size() >= maxPerMission) { m.dmiMomentsCapped = true; continue; }
+            kept << p;
+        }
+        std::sort(kept.begin(), kept.end(), [](const Pick &a, const Pick &b) { return a.ms < b.ms; });
+        m.dmiMoments.clear();
+        for (const Pick &p : kept) {
+            IncidentReport::KeyMoment km = IncidentReport::dmiMomentAt(model, p.ms, p.label);
+            // A frame from before this mission is another mission's screen: not shown.
+            if (km.hasDmi && km.dmiFrameMs < m.fromMs) { km.hasDmi = false; km.dmiPng.clear(); }
+            m.dmiMoments << km;
+        }
+    }
+}
+
 QString toHtml(const QVector<Mission> &missions, const QString &tabKey, const QString &tabName, const Options &options)
 {
     const QString title = tabName.isEmpty() ? tabKey : tabName;
@@ -277,7 +319,8 @@ QString toHtml(const QVector<Mission> &missions, const QString &tabKey, const QS
                         "h3{font-size:10.5pt;margin:12px 0 4px 0}"
                         "table{border-collapse:collapse}td,th{padding:2px 10px 2px 0;text-align:left;vertical-align:top}"
                         "th{border-bottom:1px solid #bbb}.muted{color:#666}.num{text-align:right}"
-                        ".flag{color:#a40000;font-weight:bold}</style></head><body>")
+                        ".flag{color:#a40000;font-weight:bold}table.moments td{padding:0 16px 12px 0}"
+                        "img.panel{max-width:420px;border:1px solid #ccc}</style></head><body>")
              .arg(esc(title));
     h += QStringLiteral("<h1>Mission report — %1</h1>").arg(esc(title));
     const QString by = QStringLiteral("%1 %2").arg(QCoreApplication::applicationName(),
@@ -367,6 +410,37 @@ QString toHtml(const QVector<Mission> &missions, const QString &tabKey, const QS
                 for (int i = 0; i < m.modes.size() && i < cap; ++i) {
                     const RunReport::Change &c = m.modes.at(i);
                     h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td></tr>").arg(timeText(c.ms), esc(c.from), esc(c.to));
+                }
+                h += QStringLiteral("</table>");
+            }
+        }
+        // Session 191: the DMI at the key moments, two to a row, as in the incident pack.
+        if (!m.dmiMoments.isEmpty()) {
+            int shown = 0;
+            for (const IncidentReport::KeyMoment &km : m.dmiMoments) shown += km.hasDmi ? 1 : 0;
+            h += QStringLiteral("<h3>DMI at key moments (%1)</h3>").arg(m.dmiMoments.size());
+            if (m.dmiMomentsCapped)
+                h += QStringLiteral("<p class=\"muted\">Up to %1 per mission: the start, the first of each mode, "
+                                    "brakes and the end first; some mode changes are left out.</p>").arg(m.dmiMoments.size());
+            if (shown == 0) {
+                h += QStringLiteral("<p class=\"muted\">No @dmi in this tab at or before these moments.</p>");
+            } else {
+                h += QStringLiteral("<table class=\"moments\">");
+                for (int i = 0; i < m.dmiMoments.size(); ++i) {
+                    const IncidentReport::KeyMoment &km = m.dmiMoments.at(i);
+                    if (i % 2 == 0) h += QStringLiteral("<tr>");
+                    h += QStringLiteral("<td valign=\"top\"><b>%1</b> \u2014 %2").arg(esc(km.label), timeText(km.ms));
+                    if (km.hasDmi) {
+                        h += QStringLiteral("<p><img class=\"panel\" width=\"420\" src=\"data:image/png;base64,%1\"></p>")
+                                 .arg(QString::fromLatin1(km.dmiPng.toBase64()));
+                        if (km.ms - km.dmiFrameMs > 3000)
+                            h += QStringLiteral("<p class=\"muted\">The DMI's last frame before this, %1 earlier (%2).</p>")
+                                     .arg(durationText(km.ms - km.dmiFrameMs), timeText(km.dmiFrameMs));
+                    } else {
+                        h += QStringLiteral("<p class=\"muted\">No @dmi in this mission at or before this time.</p>");
+                    }
+                    h += QStringLiteral("</td>");
+                    if (i % 2 == 1 || i == m.dmiMoments.size() - 1) h += QStringLiteral("</tr>");
                 }
                 h += QStringLiteral("</table>");
             }

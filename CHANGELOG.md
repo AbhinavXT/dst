@@ -11,6 +11,54 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-191"></a>
+## Session 191 — the mission report shows the DMI at each mission's key moments
+
+Asked for by Abhinav. Each mission in the mission report (Ctrl+Alt+M) now
+has a **"DMI at key moments"** section: the DMI panel as the loco pilot saw
+it, rendered from the tab's own latest `@dmi` at or before each moment, two
+to a row, as in the incident pack.
+
+- **The moments**, at most 8 per mission:
+  - first: the start of mission (or "Log start"), the first
+    Staff_Responsible / On_Sight / Limited / Full_Supervision,
+    System_Failure, each EB / FSB application, and the mission's end;
+  - then the other mode changes, while there is room.
+  One panel per instant, in time order. When some were left out, the
+  section says so.
+- **Never another mission's screen.** A DMI frame from before the mission
+  started is not shown: "No @dmi in this mission at or before this time".
+  In `replay/2026-10-08/loco_1_1_08102026_105200.cap`, mission 3 has no
+  `@dmi`, and its moments say so instead of showing mission 2's last screen.
+- A frame more than 3 s older than its moment carries a caption with its
+  age ("The DMI's last frame before this, 12.0 s earlier (11:00:38)").
+- `Missions::split()` stays cheap; the panels are rendered by the new
+  `Missions::addDmiMoments()`, which the mission report window calls. The
+  fault and cab-I/O timelines, which also split, don't pay for them.
+- The incident pack's renderer is shared: `IncidentReport::dmiMomentAt()`,
+  and `KeyMoment::dmiFrameMs` (when the frame arrived).
+
+### Files
+
+`missionreport.{h,cpp}`, `incidentreport.{h,cpp}`, `runreportwindow.cpp`;
+tests `test_session191.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session191`, real frames (session 171's fixture): no panels until
+`addDmiMoments` runs; mission 2's moments start with the start of mission
+(10:56:29) and include the first Staff_Responsible at 11:00:50, rendered
+from mission 2's own frame; in time order; mission 3 lists its moments with
+no panel; the HTML has each section, the embedded panels, the labels, and
+mission 3's "No @dmi in this mission". `session97`, `session133`,
+`session171`, `session175` pass unchanged.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 12/12; `dltests`
+**240 suites / 6575 checks, 1 failed** (the `session156` pty check);
+menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-190"></a>
 ## Session 190 — the mode lane shows SR while the loco has no direction or location
 
