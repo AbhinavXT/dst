@@ -15,7 +15,7 @@ namespace {
 
 constexpr int kLabelW  = 112;   // lane names
 constexpr int kTopH    = 18;    // station pins
-constexpr int kBottomH = 40;    // scale + legend
+constexpr int kBottomH = 46;    // scale + legend
 constexpr int kPad     = 6;
 constexpr int kBarH    = 10;
 

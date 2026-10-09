@@ -11,6 +11,68 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-187"></a>
+## Session 187 — SoS, phase D: two logs, what one loco sent and what the other did with it
+
+The last phase. The SoS window gets a second tab under the table:
+**Decisions | Two logs**.
+
+**Two logs.** Pick the other loco's log (any other tab with `@sos`). Every
+change of the emergency status it broadcast — its own `@sos`
+`own_emergency_status`, which is what its ARP carries — is one row,
+followed into this loco's log (`SosLog::relay`):
+
+- **Sent:** when the other loco's log shows the change, and from / to.
+- **Heard here:** the first `@sossrc` in this log whose ARP status for that
+  loco shows the new value, and how long after. If none does within 20 s,
+  it says why: "not within 20 s" (the loco was in the table but no ARP
+  showed it), or "loco N not in this loco's SoS table" (out of range,
+  rejected, table full).
+- **Acted on here:** the first decision about that loco after it (a threat
+  starting or ending, the target removed, a brake not applied, a timeout,
+  an eviction), how long after, and the decision in words; or "no decision
+  about it".
+- A summary line counts them. **The delays use the two locos' own RTCs**,
+  and say so; a "heard" before "sent" is shown with a minus sign in the
+  warning colour, not hidden.
+- Double-click a time: that moment in that loco's log (and, for this log,
+  the window moves there too).
+
+On the synthetic pair: loco 2's pilot presses SoS at 10:00:09; loco 1 hears
+it at 10:00:10 (+1.0 s) and starts the manual SoS (810 m) the same second.
+Loco 2 releases it at 10:01:52; loco 1 hears that at once, with no decision
+about it, since it had already ended that threat as passed at 10:01:46. The
+other way, loco 1's head-on and rear-end statuses come after loco 2's log
+ends, and the tab says it was not in loco 2's table.
+
+**Also:** the strip's bottom margin is 6 px taller (the km labels touched
+the legend at small heights).
+
+### Files
+
+New: `sosrelay.{h,cpp}`, `tests/test_session187.cpp`. Changed:
+`soswindow.{h,cpp}`, `sosstrip.cpp`, `dlcore.pri`, `tests/tests.pro`,
+`tests/screenshot_main.cpp` (`SHOT_TWOLOGS=1`).
+
+### Tests
+
+`session187` (21 checks): `relay()` both ways on the synthetic pair (sent,
+heard, acted, the decision's words; not tracked); a receiver clock 3 s
+behind reads "heard before sent"; the window's tab: the picker offers only
+the other `@sos` log, two rows with their cells, "no decision about it",
+the summary, double-click to each log and the window following, the view
+from loco 2's side, fits 1100 × 700, no orphan widgets.
+
+**Not tested:** two real `@sos` logs from two locos (none exist), so not the
+real ARP period or RTC offsets; Windows / Linux rendering (see this push's CI).
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 12/12; `dltests`
+**237 suites / 6550 checks, 1 failed** (the `session156` pty check:
+macOS-only here, intermittent on Linux CI, see 186); menu audit passed;
+headless smoke alive.
+
+---
+
 <a id="session-186"></a>
 ## Session 186 — SoS, phase C: the two-loco view and the incident pack read @sos
 

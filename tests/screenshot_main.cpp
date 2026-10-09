@@ -229,6 +229,8 @@ int main(int argc, char **argv)
                     w->setAttribute(Qt::WA_DeleteOnClose, false);
                     const QString at = qEnvironmentVariableIsEmpty("SHOT_AT") ? QStringLiteral("10:01:40") : qEnvironmentVariable("SHOT_AT");
                     w->showMoment(QDateTime::fromString(QStringLiteral("2026-10-09T") + at, Qt::ISODate).toMSecsSinceEpoch());
+                    // SHOT_TWOLOGS=1: the Two logs tab (session 187).
+                    if (qEnvironmentVariableIsSet("SHOT_TWOLOGS")) w->lowerTabs()->setCurrentIndex(1);
                     win = w;
                 }
             }

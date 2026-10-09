@@ -1,6 +1,7 @@
 #include "soswindow.h"
 
 #include "dmitimetravel.h"
+#include "sosrelay.h"
 #include "sosstrip.h"
 #include "logmodel.h"
 #include "messagedispatcher.h"
@@ -18,6 +19,7 @@
 #include <QScrollArea>
 #include <QSlider>
 #include <QSplitter>
+#include <QTabWidget>
 #include <QTableWidget>
 #include <QTimer>
 #include <QVBoxLayout>
@@ -179,7 +181,13 @@ SosWindow::SosWindow(MessageDispatcher *dispatcher, QWidget *parent)
     m_split = new QSplitter(Qt::Vertical, this);
     m_split->addWidget(upper);
     m_split->addWidget(m_sources);
-    m_split->addWidget(m_events);
+    // Session 187: the decisions, and what another loco sent and this one did with it.
+    m_relay = new SosRelayPanel(m_dispatcher, this);
+    m_lowerTabs = new QTabWidget(this);
+    m_lowerTabs->addTab(m_events, tr("Decisions"));
+    m_lowerTabs->addTab(m_relay, tr("Two logs"));
+    m_lowerTabs->setTabToolTip(1, tr("What another loco sent (its log's broadcast emergency status), when this loco heard it, and what it decided"));
+    m_split->addWidget(m_lowerTabs);
     m_split->setStretchFactor(0, 3);
     m_split->setStretchFactor(1, 2);
     m_split->setStretchFactor(2, 2);
@@ -201,6 +209,10 @@ SosWindow::SosWindow(MessageDispatcher *dispatcher, QWidget *parent)
     connect(m_prevEvent, &QPushButton::clicked, this, [this]() { stepEvent(-1); });
     connect(m_nextEvent, &QPushButton::clicked, this, [this]() { stepEvent(+1); });
     connect(m_follow, &QCheckBox::toggled, this, &SosWindow::setFollowLog);
+    connect(m_relay, &SosRelayPanel::jumpRequested, this, [this](const QString &key, qint64 ms) {
+        if (key == m_key) showMoment(ms);
+        emit jumpRequested(key, ms);
+    });
     connect(m_events, &QTableWidget::cellDoubleClicked, this, [this](int row, int) {
         if (row < 0 || row >= m_t.events.size()) return;
         const qint64 ms = m_t.events.at(row).epochMs;
@@ -277,6 +289,7 @@ void SosWindow::rebuild()
     const LogModel *model = (m_dispatcher && !m_key.isEmpty()) ? m_dispatcher->modelForKey(m_key) : nullptr;
     m_t = SosLog::extract(model);
     m_strip->setConfig(SosStrip::configFromLog(model));
+    m_relay->setReceiver(m_key, m_t);
     m_slider->blockSignals(true);
     m_slider->setRange(0, qMax(0, m_t.snaps.size() - 1));
     m_slider->setValue(qMax(0, m_t.snaps.size() - 1));

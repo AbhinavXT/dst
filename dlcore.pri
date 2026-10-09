@@ -100,6 +100,7 @@ SOURCES += \
     $$PWD/soslog.cpp \
     $$PWD/soswindow.cpp \
     $$PWD/sosstrip.cpp \
+    $$PWD/sosrelay.cpp \
     $$PWD/twolocowindow.cpp \
     $$PWD/trackdiagram.cpp \
     $$PWD/trackdiagramwindow.cpp \
@@ -234,6 +235,7 @@ HEADERS += \
     $$PWD/soslog.h \
     $$PWD/soswindow.h \
     $$PWD/sosstrip.h \
+    $$PWD/sosrelay.h \
     $$PWD/twolocowindow.h \
     $$PWD/trackdiagram.h \
     $$PWD/trackdiagramwindow.h \

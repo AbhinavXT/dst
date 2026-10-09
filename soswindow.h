@@ -2,7 +2,7 @@
 #define SOSWINDOW_H
 
 // =============================================================================
-//  SoS window (sessions 184, 185) — Tools ▸ Monitor ▸ SoS…
+//  SoS window (sessions 184, 185, 187) — Tools ▸ Monitor ▸ SoS…
 //  -----------------------------------------------------------------------------
 //  What the loco's SoS logic knew and decided, moment by moment, from
 //  @sos / @sossrc / @sosev (soslog.h):
@@ -26,6 +26,10 @@
 //    events     every decision, in words; the ones at or before the cursor
 //               plain, the rest muted; double-click jumps the log there
 //
+//    two logs   (187) a second tab beside the decisions: what another loco
+//               sent (its log's broadcast emergency status), when this loco
+//               heard it and what it decided about it (sosrelay.h)
+//
 //  It reports what the loco logged. No verdicts.
 // =============================================================================
 
@@ -41,7 +45,9 @@ class QPushButton;
 class QSlider;
 class QSplitter;
 class QTableWidget;
+class SosRelayPanel;
 class SosStrip;
+class QTabWidget;
 class StatusLine;
 
 class SosWindow : public QWidget
@@ -69,6 +75,8 @@ public:
     QTableWidget *sourceTable() const { return m_sources; }
     SosStrip     *strip() const { return m_strip; }
     QLabel       *decision() const { return m_decision; }
+    SosRelayPanel *relay() const { return m_relay; }
+    QTabWidget   *lowerTabs() const { return m_lowerTabs; }
     QTableWidget *eventTable() const { return m_events; }
     QCheckBox    *followBox() const { return m_follow; }
     StatusLine   *status() const { return m_status; }
@@ -107,6 +115,8 @@ private:
     QSplitter    *m_split = nullptr;
     SosStrip     *m_strip = nullptr;      // session 185
     QLabel       *m_decision = nullptr;   // session 185
+    SosRelayPanel *m_relay = nullptr;     // session 187
+    QTabWidget   *m_lowerTabs = nullptr;  // session 187: Decisions | Two logs
     QTableWidget *m_sources = nullptr;
     QTableWidget *m_events = nullptr;
     StatusLine   *m_status = nullptr;
