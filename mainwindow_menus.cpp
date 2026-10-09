@@ -513,7 +513,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     QAction *actTwoLoco = monitorMenu->addAction(tr("&Two-loco view…"));
     actTwoLoco->setShortcut(QKeySequence("Ctrl+Alt+T"));
     actTwoLoco->setToolTip(tr("Two tabs' location and speed over time, the gap between them, and SoS/"
-                              "collision/head-on/rear-end events (@lsos)"));
+                              "collision/head-on/rear-end events (@sos, else @lsos), and each loco as the other's SoS table had it"));
     connect(actTwoLoco, &QAction::triggered, this, &MainWindow::onActionTwoLocoView);
 
     // Session 184: the firmware's SoS table and decisions (@sos / @sossrc / @sosev).

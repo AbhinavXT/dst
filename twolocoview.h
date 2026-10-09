@@ -28,6 +28,13 @@
 //    general track alignment. The gap is still computed and shown; the
 //    warning is the operator's cue to read it with that in mind.
 //
+//  SESSION 186: @sos
+//    A log with @sos (soslog.h) gives the events from the firmware's own
+//    threat spells, a trace when it has no @dmi/@lsrp, and bByA / aByB:
+//    where each loco's SoS table had the other — drawn dashed beside the
+//    other's own trace, so a difference between the two (an adjustment
+//    tag, a stale ARP) shows as daylight between the lines.
+//
 //  SoS / COLLISION-TARGET / HEAD-ON / REAR-END
 //    All already on the wire in ONE packet, @lsos (LOCO_SOS, schema), per
 //    loco: is_access_sos_recvd / is_unusual_stop_recvd / is_train_parted_recvd
@@ -74,7 +81,9 @@ Events heardEvents(const LogModel *model, qint64 locoId, qint64 fromMs = 0, qint
 // Trip / System_Failure episodes from a trace's modes, into `events`.
 void addModeEvents(const SpeedDistance::Trace &trace, Events *events);
 
-// @lsos in `model`, windowed if fromMs/toMs > 0 (both, like collectRowFields).
+// The SoS events in `model`, windowed if fromMs/toMs > 0 (both, like
+// collectRowFields). Session 186: from @sos (the firmware's own threat
+// spells, soslog.h) when the log has it; else from @lsos, as before.
 Events extractEvents(const LogModel *model, qint64 fromMs = 0, qint64 toMs = 0);
 
 struct GapSample {
@@ -100,7 +109,16 @@ struct Pair {
     double minLocM = 0.0, maxLocM = 1.0;   // over both locos
     double apartM = 0.0;                   // nearest points of the two known ranges; 0 if they overlap
     int    unknownA = 0, unknownB = 0;     // samples at 0 m
+
+    // Session 186: where each loco's own SoS table (@sossrc) had the other:
+    // bByA from A's log (B's position after SOSWithAdjustment, as A used
+    // it), aByB from B's. gapM = other - own, as in `gap`. Empty without @sos.
+    QVector<GapSample> bByA, aByB;
 };
+
+// Session 186: a tab's trace from @sos (own_abs_loc, sensor_speed taken as
+// m/s), for a log with @sos but neither @dmi nor @lsrp. Source "sos".
+SpeedDistance::Trace sosTrace(const LogModel *model, qint64 fromMs = 0, qint64 toMs = 0);
 
 Pair build(const LogModel *modelA, const QString &keyA,
           const LogModel *modelB, const QString &keyB,

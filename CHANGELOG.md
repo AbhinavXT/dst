@@ -11,6 +11,76 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-186"></a>
+## Session 186 — SoS, phase C: the two-loco view and the incident pack read @sos
+
+Phase C: the views that already existed now use the firmware's SoS log
+(184) when a tab has it.
+
+**Two-loco view.**
+- **Events** come from the firmware's own threat spells (manual SoS,
+  unusual stop, train parted and station SoS as "SoS"; head-on; rear-end),
+  instead of `@lsos`, whenever the log has `@sos`. `@lsos` stays the
+  fallback; logs without `@sos` read exactly as before.
+- **A loco with `@sos` but no `@dmi` / `@lsrp`** gets its trace from `@sos`:
+  own location every second, and `sensor_speed` taken as **m/s** (× 3.6 for
+  km/h). That unit is read from v1.2.9's brake manager, which compares it
+  with `sos_speed_limit * KMPH_TO_MPS`; it is not confirmed by a frame.
+- **Each loco as the other's SoS table had it**: from A's `@sossrc` rows for
+  B (and B's for A), dashed in that loco's colour beside its own trace,
+  with a legend entry. Where `SOSWithAdjustment` moved it, or the ARP was
+  stale, the two lines part. The empty-state text now says "@dmi, @lsrp or
+  @sos". The menu tooltip says so too.
+
+**Incident pack.**
+- Each firmware SoS threat that **starts** in the window and each **brake
+  decision** (applied or not) becomes a key moment ("SoS: Unusual stop from
+  loco 3 started", "SoS: Emergency brake applied: …").
+- **Every key moment** carries, beside its DMI panel, the SoS window's strip
+  at that moment and "what the loco is reacting to" as a list.
+- After the brakes: "SoS threats (firmware, @sos)" and "SoS brake decisions
+  (firmware, @sosev)" for the window.
+
+**Run summary (windowed: the lanes, the incident pack).** A threat that
+started before the window and is still on in it is now listed: the window
+is read 10 minutes back and the spells overlapping it are kept. Before, a
+window caught only that spell's end and dropped it.
+
+### Files
+
+`twolocoview.{h,cpp}`, `twolocowindow.cpp`, `incidentreport.{h,cpp}`,
+`runreport.cpp`, `mainwindow_menus.cpp` (tooltip); tests
+`test_session186.cpp` (new), `tests.pro`, `screenshot_main.cpp`
+(`SHOT_WINDOW=twolocosos`).
+
+### Tests
+
+`session186` (19 checks), on both synthetic logs: both traces from `@sos`
+(281 and 131 samples; 10 000 m, 72 km/h at the start); loco 1's events from
+its spells (5 SoS, 1 head-on from 10:02:30, 1 rear-end), none for loco 2;
+loco 2 in loco 1's table from 10:00:02 at 11 010 m (970 m ahead) until it
+was released, and loco 1 in loco 2's; the gap and plausibility; the window
+shows and draws the pair. The incident pack around 10:01:31 (±20 s): the
+unusual stop and its brake as key moments, every moment with a strip and
+lines, the target's line in the HTML, and 2 threats (the manual SoS from
+before the window, still on, and the unusual stop) and 1 decision.
+`session97`, `session98`, `session133`, `session172` pass unchanged.
+
+**Not tested:** a real `@sos` capture; the m/s reading of `sensor_speed`
+against a real one; Windows / Linux rendering (see this push's CI).
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 12/12; `dltests`
+**236 suites / 6529 checks, 1 failed** (the `session156` pty check, see
+below); menu audit passed; headless smoke alive.
+
+**CI note.** Patch 184's Linux job failed one check, `session156` "then it
+is open, as before", with the macOS message ("Inappropriate ioctl for
+device · link open"). Session 163 recorded it as intermittent on Linux; 183
+passed it. Nothing in 184–186 touches the serial code. Not fixed here
+(scope), and reported.
+
+---
+
 <a id="session-185"></a>
 ## Session 185 — SoS, phase B: the track strip, and what the loco is reacting to
 

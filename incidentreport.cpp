@@ -1,5 +1,8 @@
 #include "incidentreport.h"
 
+#include "soslog.h"
+#include "sosstrip.h"
+
 #include "capturedecoder.h"
 #include "dmipanel.h"
 #include "dmitimetravel.h"
@@ -60,6 +63,16 @@ QByteArray renderDmi(const CaptureLine &cap)
     view.resize(view.sizeHint());
     view.setState(dmiStateFromCapture(cap));
     return toPng(&view);
+}
+
+// Session 186: the SoS window's strip for one snapshot.
+QByteArray renderSosStrip(const SosLog::Snapshot &snap, const SosStrip::Config &cfg)
+{
+    SosStrip strip;
+    strip.resize(760, 200);
+    strip.setConfig(cfg);
+    strip.setSnapshot(&snap);
+    return toPng(&strip);
 }
 
 QByteArray renderSpeedPlot(const SpeedDistance::Trace &trace)
@@ -142,11 +155,28 @@ Summary build(LogModel *tabModel, const QString &tabKey, const QString &tabName,
     for (const RunReport::Episode &m : s.run.missionStarts) {
         moments << keyMomentAt(tabModel, m.fromMs, QStringLiteral("Start of mission (ARP)"));
     }
+    // Session 186: the firmware's SoS threats starting here, and its brake decisions.
+    const SosLog::Timeline sos = SosLog::extract(tabModel, s.fromMs, s.toMs);
+    for (const SosLog::Spell &sp : SosLog::spells(sos))
+        if (sp.fromMs >= s.fromMs && sp.fromMs <= s.toMs)
+            moments << keyMomentAt(tabModel, sp.fromMs, QStringLiteral("SoS: %1 started").arg(sp.what()));
+    for (const SosLog::Event &e : SosLog::brakeDecisions(sos))
+        moments << keyMomentAt(tabModel, e.epochMs, QStringLiteral("SoS: %1").arg(SosLog::eventText(e)));
     moments << keyMomentAt(tabModel, s.toMs, QStringLiteral("Window end"));
-    std::sort(moments.begin(), moments.end(), [](const KeyMoment &a, const KeyMoment &b) { return a.ms < b.ms; });
+    std::stable_sort(moments.begin(), moments.end(), [](const KeyMoment &a, const KeyMoment &b) { return a.ms < b.ms; });
     if (moments.size() > options.maxDmiMoments) {
         moments.resize(options.maxDmiMoments);
         s.keyMomentsCapped = true;
+    }
+    if (!sos.snaps.isEmpty()) {
+        const SosStrip::Config cfg = SosStrip::configFromLog(tabModel);
+        for (KeyMoment &km : moments) {
+            const int i = sos.snapAtOrBefore(km.ms);
+            if (i < 0) continue;
+            km.hasSos = true;
+            km.sosPng = renderSosStrip(sos.snaps.at(i), cfg);
+            km.sosLines = SosLog::decisionLines(sos.snaps.at(i));
+        }
     }
     s.keyMoments = moments;
 
@@ -173,7 +203,7 @@ QString toHtml(const Summary &s, const Options &options)
                         "h3{font-size:10.5pt;margin-top:12px;margin-bottom:4px}"
                         "table{border-collapse:collapse}td,th{padding:2px 10px 2px 0;text-align:left;vertical-align:top}"
                         "th{border-bottom:1px solid #bbb}.muted{color:#666}.num{text-align:right}"
-                        "table.moments td{padding:0 16px 12px 0}"
+                        "table.moments td{padding:0 16px 12px 0}ul.sos{margin:2px 0 0 16px;padding:0;max-width:440px}"
                         "img.panel{max-width:440px;border:1px solid #ccc}img.plot{max-width:760px;border:1px solid #ccc}"
                         "pre{font-size:8.5pt;white-space:pre-wrap;word-break:break-all;background:#f6f6f6;padding:8px;border:1px solid #ddd}"
                         "</style></head><body>")
@@ -217,6 +247,13 @@ QString toHtml(const Summary &s, const Options &options)
         h += QStringLiteral("<td valign=\"top\"><h3>%1 — %2</h3>").arg(esc(km.label), timeText(km.ms));
         if (km.hasDmi) h += embed(km.dmiPng, "panel");
         else h += QStringLiteral("<p class=\"muted\">No @dmi for this tab at or before this time.</p>");
+        // Session 186: the SoS state then.
+        if (km.hasSos) {
+            h += embed(km.sosPng, "panel");
+            h += QStringLiteral("<ul class=\"sos\">");
+            for (const QString &line : km.sosLines) h += QStringLiteral("<li>%1</li>").arg(esc(line));
+            h += QStringLiteral("</ul>");
+        }
         h += QStringLiteral("</td>");
         if (i % 2 == 1 || i == s.keyMoments.size() - 1) h += QStringLiteral("</tr>");
     }
@@ -278,6 +315,26 @@ QString toHtml(const Summary &s, const Options &options)
                      .arg(timeText(e.fromMs), timeText(e.toMs), esc(e.what), esc(why));
         }
         h += QStringLiteral("</table>") + more(s.brakeEpisodes.size());
+    }
+
+    // ---- the firmware's SoS threats and decisions (session 186) -------------------------------------
+    if (!s.run.sosThreats.isEmpty() || !s.run.sosDecisions.isEmpty()) {
+        h += QStringLiteral("<h2>SoS threats (firmware, @sos): %1</h2>").arg(countOf(s.run.sosThreats.size(), "threat", "threats"));
+        if (!s.run.sosThreats.isEmpty()) {
+            h += QStringLiteral("<table><tr><th>From</th><th>To</th><th>Threat, and how it ended</th></tr>");
+            for (int i = 0; i < s.run.sosThreats.size() && i < cap; ++i) {
+                const RunReport::Episode &e = s.run.sosThreats.at(i);
+                h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td></tr>").arg(timeText(e.fromMs), timeText(e.toMs), esc(e.what));
+            }
+            h += QStringLiteral("</table>") + more(s.run.sosThreats.size());
+        }
+        h += QStringLiteral("<h2>SoS brake decisions (firmware, @sosev): %1</h2>").arg(countOf(s.run.sosDecisions.size(), "decision", "decisions"));
+        if (!s.run.sosDecisions.isEmpty()) {
+            h += QStringLiteral("<table><tr><th>Time</th><th>Decision</th></tr>");
+            for (int i = 0; i < s.run.sosDecisions.size() && i < cap; ++i)
+                h += QStringLiteral("<tr><td>%1</td><td>%2</td></tr>").arg(timeText(s.run.sosDecisions.at(i).ms), esc(s.run.sosDecisions.at(i).to));
+            h += QStringLiteral("</table>") + more(s.run.sosDecisions.size());
+        }
     }
 
     // ---- reject findings --------------------------------------------------------------------------------

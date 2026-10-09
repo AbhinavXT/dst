@@ -262,10 +262,16 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
     if (options.hasWindow) s.rows = included;
     s.brakes = options.hasWindow ? brakeEvents(model, options.fromMs, options.toMs) : brakeEvents(model);
     {
-        const SosLog::Timeline sos = options.hasWindow ? SosLog::extract(model, options.fromMs, options.toMs)
-                                                       : SosLog::extract(model);
-        s.sosThreats = SosLog::spellEpisodes(sos);
-        s.sosDecisions = SosLog::brakeChanges(sos);
+        // Windowed: read 10 minutes back too, so a threat that started before
+        // the window and is still on in it is listed (its start, as logged).
+        constexpr qint64 kSosLookbackMs = 10 * 60 * 1000;
+        const SosLog::Timeline sos = options.hasWindow
+            ? SosLog::extract(model, options.fromMs - kSosLookbackMs, options.toMs)
+            : SosLog::extract(model);
+        for (const Episode &e : SosLog::spellEpisodes(sos))
+            if (!options.hasWindow || (e.toMs >= options.fromMs && e.fromMs <= options.toMs)) s.sosThreats << e;
+        for (const Change &c : SosLog::brakeChanges(sos))
+            if (!options.hasWindow || (c.ms >= options.fromMs && c.ms <= options.toMs)) s.sosDecisions << c;
     }
     s.tagCheck = options.hasWindow ? TagCheck::build(model, options.fromMs, options.toMs) : TagCheck::build(model);
     s.lcApproaches = options.hasWindow ? LcCheck::build(model, options.fromMs, options.toMs) : LcCheck::build(model);

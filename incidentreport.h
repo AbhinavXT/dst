@@ -39,6 +39,13 @@
 //    whole: the highest speed, the overspeed count and every other section
 //    are unchanged. The Speed/distance window itself is not touched.
 //
+//  SoS (session 186)
+//    With @sos in the tab: each threat that starts in the window and each
+//    brake decision (applied or not) is a key moment too, and every key
+//    moment carries the SoS strip and "what the loco is reacting to" at it,
+//    beside its DMI panel. The threats and decisions are listed after the
+//    brakes (RunReport's sosThreats / sosDecisions, windowed).
+//
 //  EVERYTHING ELSE
 //    Reuses RunReport::summarise() with a window (mode changes, emergencies,
 //    overspeed, tags, clock skew, faults, reject clauses) and
@@ -51,6 +58,7 @@
 #include "speeddistance.h"
 
 #include <QByteArray>
+#include <QStringList>
 #include <QString>
 #include <QVector>
 
@@ -73,6 +81,11 @@ struct KeyMoment {
     bool       hasDmi = false;
     QString    dmiKey;       // the loco the frame belongs to ("1_1")
     QByteArray dmiPng;       // rendered DmiView, PNG bytes; empty if !hasDmi
+    // Session 186: the SoS state then (@sos), when the tab has it: the
+    // SoS window's strip as a PNG, and what the loco was reacting to.
+    bool        hasSos = false;
+    QByteArray  sosPng;
+    QStringList sosLines;
 };
 
 struct RawFrame { qint64 ms = 0; QString text; };

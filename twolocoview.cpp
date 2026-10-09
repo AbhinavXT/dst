@@ -3,6 +3,7 @@
 #include "capturedecoder.h"
 #include "fieldplot.h"
 #include "logmodel.h"
+#include "soslog.h"
 
 #include <QSet>
 #include <algorithm>
@@ -45,10 +46,79 @@ bool knownSpan(const SpeedDistance::Trace &t, double *lo, double *hi, int *unkno
 
 }  // namespace
 
+namespace {
+
+// Session 186: the events from the firmware's own spells.
+Events sosEvents(const SosLog::Timeline &t)
+{
+    Events out;
+    for (const SosLog::Spell &sp : SosLog::spells(t)) {
+        RunReport::Episode e;
+        e.fromMs = sp.fromMs;
+        e.toMs = sp.toMs;
+        e.row = sp.row;
+        e.worst = sp.startDistM;
+        e.what = sp.what();
+        if (sp.threat == SosLog::HeadOn || sp.threat == SosLog::StationHeadOn) out.headOn << e;
+        else if (sp.threat == SosLog::RearEnd || sp.threat == SosLog::StationRearEnd) out.rearEnd << e;
+        else out.sos << e;
+    }
+    return out;
+}
+
+// Where `t`'s SoS table had loco `other`.
+QVector<GapSample> seenBy(const SosLog::Timeline &t, quint32 other)
+{
+    QVector<GapSample> out;
+    if (other == 0) return out;
+    for (const SosLog::Snapshot &s : t.snaps) {
+        const SosLog::Source *src = s.source(other);
+        if (!src) continue;
+        out << GapSample{ s.epochMs, double(src->locM) - s.ownLocM, s.ownLocM, double(src->locM) };
+    }
+    return out;
+}
+
+// A tab's trace: @dmi, else @lsrp (SpeedDistance::extract), else @sos.
+SpeedDistance::Trace traceOf(const LogModel *model, qint64 fromMs, qint64 toMs)
+{
+    SpeedDistance::Trace t = SpeedDistance::extract(model, 200000, fromMs, toMs);
+    if (t.isEmpty()) t = sosTrace(model, fromMs, toMs);
+    return t;
+}
+
+}  // namespace
+
+SpeedDistance::Trace sosTrace(const LogModel *model, qint64 fromMs, qint64 toMs)
+{
+    SpeedDistance::Trace t;
+    const SosLog::Timeline tl = SosLog::extract(model, fromMs, toMs);
+    bool first = true;
+    for (const SosLog::Snapshot &s : tl.snaps) {
+        if (s.why != 0) continue;            // the 1 s snapshots: one per second
+        SpeedDistance::Sample smp;
+        smp.row = s.row;
+        smp.epochMs = s.epochMs;
+        smp.locM = s.ownLocM;
+        smp.speedKmh = s.ownSpeed * 3.6;     // sensor_speed, taken as m/s
+        t.samples << smp;
+        t.maxSpeedKmh = qMax(t.maxSpeedKmh, smp.speedKmh);
+        if (first) { t.minLocM = t.maxLocM = smp.locM; first = false; }
+        t.minLocM = qMin(t.minLocM, smp.locM);
+        t.maxLocM = qMax(t.maxLocM, smp.locM);
+    }
+    if (!t.samples.isEmpty()) t.source = QStringLiteral("sos");
+    return t;
+}
+
 Events extractEvents(const LogModel *model, qint64 fromMs, qint64 toMs)
 {
     Events out;
     if (!model) return out;
+    {
+        const SosLog::Timeline t = SosLog::extract(model, fromMs, toMs);
+        if (!t.isEmpty()) return sosEvents(t);
+    }
     bool capped = false;
     const QVector<RowFields> rows = collectRowFields(model, QStringLiteral("lsos"),
         { QStringLiteral("is_access_sos_recvd"), QStringLiteral("is_unusual_stop_recvd"),
@@ -90,10 +160,12 @@ Pair build(const LogModel *modelA, const QString &keyA,
     Pair p;
     p.keyA = keyA;
     p.keyB = keyB;
-    p.a = SpeedDistance::extract(modelA, 200000, fromMs, toMs);
-    p.b = SpeedDistance::extract(modelB, 200000, fromMs, toMs);
+    p.a = traceOf(modelA, fromMs, toMs);
+    p.b = traceOf(modelB, fromMs, toMs);
     p.eventsA = extractEvents(modelA, fromMs, toMs);
     p.eventsB = extractEvents(modelB, fromMs, toMs);
+    p.bByA = seenBy(SosLog::extract(modelA, fromMs, toMs), SosLog::locoOfKey(keyB));
+    p.aByB = seenBy(SosLog::extract(modelB, fromMs, toMs), SosLog::locoOfKey(keyA));
     addModeEvents(p.a, &p.eventsA);
     addModeEvents(p.b, &p.eventsB);
     finishPair(p, toleranceMs, warnApartM);
@@ -107,8 +179,9 @@ Pair buildHeard(const LogModel *modelA, const QString &keyA,
     Pair p;
     p.keyA = keyA;
     p.keyB = keyB;
-    p.a = SpeedDistance::extract(modelA, 200000, fromMs, toMs);
+    p.a = traceOf(modelA, fromMs, toMs);
     p.b = heardTrace(heardBy, heardId, fromMs, toMs);
+    p.bByA = seenBy(SosLog::extract(modelA, fromMs, toMs), quint32(heardId));
     p.eventsA = extractEvents(modelA, fromMs, toMs);
     p.eventsB = heardEvents(heardBy, heardId, fromMs, toMs);
     addModeEvents(p.a, &p.eventsA);
@@ -138,6 +211,16 @@ void finishPair(Pair &p, qint64 toleranceMs, double warnApartM)
     if (p.hasLocA && p.hasLocB) { p.minLocM = qMin(aLo, bLo); p.maxLocM = qMax(aHi, bHi); }
     else if (p.hasLocA)         { p.minLocM = aLo; p.maxLocM = aHi; }
     else if (p.hasLocB)         { p.minLocM = bLo; p.maxLocM = bHi; }
+    // Session 186: the other loco as each SoS table had it, in range too.
+    for (const QVector<GapSample> *v : { &p.bByA, &p.aByB }) {
+        for (const GapSample &g : *v) {
+            const double other = g.bLocM;     // seenBy(): bLocM is the other loco
+            if (other <= 0.0) continue;
+            if (!p.hasLocA && !p.hasLocB && p.minLocM == 0.0 && p.maxLocM == 1.0) { p.minLocM = p.maxLocM = other; }
+            p.minLocM = qMin(p.minLocM, other);
+            p.maxLocM = qMax(p.maxLocM, other);
+        }
+    }
 
     if (p.hasLocA && p.hasLocB && !rangesOverlap(aLo, aHi, bLo, bHi))
         p.apartM = qMax(bLo - aHi, aLo - bHi);

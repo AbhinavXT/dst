@@ -46,6 +46,8 @@ void TwoLocoCanvas::setPair(const TwoLocoView::Pair &pair)
     };
     for (const SpeedDistance::Sample &s : pair.a.samples) consider(s.epochMs);
     for (const SpeedDistance::Sample &s : pair.b.samples) consider(s.epochMs);
+    for (const TwoLocoView::GapSample &g : pair.bByA) consider(g.ms);
+    for (const TwoLocoView::GapSample &g : pair.aByB) consider(g.ms);
     if (m_maxMs <= m_minMs) m_maxMs = m_minMs + 1;
 
     // Known locations only (session 132): a 0 m sample is "not localised",
@@ -252,7 +254,7 @@ void TwoLocoCanvas::paintEvent(QPaintEvent *)
 
     if (m_pair.a.isEmpty() && m_pair.b.isEmpty()) {
         p.setPen(ink);
-        p.drawText(rect(), Qt::AlignCenter, tr("Pick two tabs with @dmi or @lsrp frames."));
+        p.drawText(rect(), Qt::AlignCenter, tr("Pick two tabs with @dmi, @lsrp or @sos frames."));
         return;
     }
 
@@ -276,6 +278,17 @@ void TwoLocoCanvas::paintEvent(QPaintEvent *)
         };
         swatch(colA, QStringLiteral("A  ") + m_pair.keyA);
         swatch(colB, QStringLiteral("B  ") + m_pair.keyB);
+        // Session 186: the dashed lines, when there are any.
+        if (!m_pair.bByA.isEmpty() || !m_pair.aByB.isEmpty()) {
+            p.setPen(QPen(ink, 1.5, Qt::DashLine));
+            p.drawLine(x, rowH / 2, x + 16, rowH / 2);
+            x += 22;
+            p.setPen(text);
+            const QString label = tr("as the other's SoS table had it");
+            const int w = fm.horizontalAdvance(label);
+            p.drawText(QRect(x, 0, w + 2, rowH), Qt::AlignLeft | Qt::AlignVCenter, label);
+            x += w + 18;
+        }
         const QString read = m_cursorMs >= 0 ? readoutAt(m_cursorMs) : tr("Point at the plot to read both locos at that moment");
         p.setPen(m_cursorMs >= 0 ? text : ink);
         p.drawText(QRect(x, 0, qMax(0, loc.right() - x), rowH), Qt::AlignRight | Qt::AlignVCenter,
@@ -333,6 +346,24 @@ void TwoLocoCanvas::paintEvent(QPaintEvent *)
         p.drawPath(locationPath(loc, m_pair.a, m_minMs, m_maxMs, m_minLocM, m_maxLocM));
         p.setPen(QPen(colB, 2));
         p.drawPath(locationPath(loc, m_pair.b, m_minMs, m_maxMs, m_minLocM, m_maxLocM));
+        // Session 186: each loco as the other's SoS table had it, dashed in its colour.
+        auto seen = [&](const QVector<TwoLocoView::GapSample> &v, const QColor &c) {
+            QPainterPath path;
+            bool started = false;
+            qint64 lastMs = 0;
+            for (const TwoLocoView::GapSample &g : v) {
+                const QPointF pt(xOf(g.ms), yOfLoc(loc, g.bLocM));
+                // A break of more than 5 s (released from the table): a new piece.
+                if (!started || g.ms - lastMs > 5000) path.moveTo(pt); else path.lineTo(pt);
+                started = true;
+                lastMs = g.ms;
+            }
+            p.setPen(QPen(c, 1.5, Qt::DashLine));
+            p.setBrush(Qt::NoBrush);
+            p.drawPath(path);
+        };
+        seen(m_pair.bByA, colB);
+        seen(m_pair.aByB, colA);
     } else {
         p.setPen(ink);
         p.drawText(loc, Qt::AlignCenter, tr("Neither loco localised: every frame reports 0 m"));

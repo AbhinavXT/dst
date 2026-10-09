@@ -203,7 +203,7 @@ int main(int argc, char **argv)
                 w->setAttribute(Qt::WA_DeleteOnClose, false);
                 win = w;
             }
-            if (which == QLatin1String("sos")) {
+            if (which == QLatin1String("sos") || which == QLatin1String("twolocosos")) {
                 // SYNTHETIC @sos (schema/fixtures, tests/sosgen): no LKAVACH
                 // build logs SoS yet. SHOT_AT=HH:mm:ss picks the moment.
                 for (int loco = 1; loco <= 2; ++loco) {
@@ -219,11 +219,18 @@ int main(int argc, char **argv)
                     }
                 }
                 disp.drainNow();
-                auto *w = new SosWindow(&disp);
-                w->setAttribute(Qt::WA_DeleteOnClose, false);
-                const QString at = qEnvironmentVariableIsEmpty("SHOT_AT") ? QStringLiteral("10:01:40") : qEnvironmentVariable("SHOT_AT");
-                w->showMoment(QDateTime::fromString(QStringLiteral("2026-10-09T") + at, Qt::ISODate).toMSecsSinceEpoch());
-                win = w;
+                if (which == QLatin1String("twolocosos")) {
+                    auto *w = new TwoLocoWindow(&disp);
+                    w->setAttribute(Qt::WA_DeleteOnClose, false);
+                    w->setSources(QStringLiteral("1_1"), QStringLiteral("2_1"));
+                    win = w;
+                } else {
+                    auto *w = new SosWindow(&disp);
+                    w->setAttribute(Qt::WA_DeleteOnClose, false);
+                    const QString at = qEnvironmentVariableIsEmpty("SHOT_AT") ? QStringLiteral("10:01:40") : qEnvironmentVariable("SHOT_AT");
+                    w->showMoment(QDateTime::fromString(QStringLiteral("2026-10-09T") + at, Qt::ISODate).toMSecsSinceEpoch());
+                    win = w;
+                }
             }
             if (which == QLatin1String("incident") || which == QLatin1String("incidentdlg")) {
                 // One real run, around its rear-end moment (15:13:10).
