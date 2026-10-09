@@ -181,6 +181,9 @@ void SosRelayPanel::rebuild()
           << tr("%1 acted on").arg(acted);
     if (untracked) parts << tr("%1 while it was not in the table").arg(untracked);
     if (early) parts << tr("%1 heard before sent: the clocks differ").arg(early);
+    bool byThreat = false;
+    for (const SosLog::Relay &r : m_relays) byThreat = byThreat || r.byThreat;
+    if (byThreat) parts << tr("heard = the threat it makes here (the minimal layout logs no ARP status)");
     m_summary->setText(parts.join(QStringLiteral(" · ")) + QStringLiteral(". ")
                        + tr("Delays use the two locos' own clocks."));
 }

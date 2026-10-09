@@ -314,8 +314,11 @@ void SosWindow::rebuild()
         return QStringLiteral("%1 %2").arg(n).arg(n == 1 ? one : many);
     };
     parts << count(m_t.snaps.size(), tr("snapshot"), tr("snapshots"))
-          << count(m_t.events.size(), tr("decision"), tr("decisions"))
+          << (m_t.eventsDerived ? count(m_t.events.size(), tr("change"), tr("changes"))
+                                : count(m_t.events.size(), tr("decision"), tr("decisions")))
           << count(SosLog::spells(m_t).size(), tr("threat"), tr("threats"));
+    if (m_t.minimal())
+        parts << tr("minimal layout: threats to the second, no reasons or checks");
     if (m_t.otherVersion > 0) parts << tr("%1 of another layout version, not read").arg(m_t.otherVersion);
     if (m_t.orphanSources > 0) parts << tr("%1 source lines without their snapshot").arg(m_t.orphanSources);
     if (m_t.otherVersion > 0 || m_t.orphanSources > 0) m_status->warn(parts.join(QStringLiteral(" · ")));
@@ -424,11 +427,17 @@ void SosWindow::fillSources()
                                       tr("As the ARP said: %1 m %2").arg(src.rawLocM).arg(SosLog::dirName(src.rawDir))));
         m_sources->setItem(r, kPosition + 1, cell(SosLog::dirName(src.dir)));
         m_sources->setItem(r, kPosition + 2, cell(QString::number(src.tin), tr("Length %1 m").arg(src.lengthM)));
-        auto *sts = cell(SosLog::emergencyName(src.emergency), tr("EMERGENCY_STATUS of the loco's last ARP, as received"));
+        auto *sts = cell(src.emergency < 0 ? QStringLiteral("\u2013") : SosLog::emergencyName(src.emergency),
+                         src.emergency < 0 ? tr("Not in the minimal layout (README 03)")
+                                           : tr("EMERGENCY_STATUS of the loco's last ARP, as received"));
         if (src.emergency) sts->setForeground(UiColor::warning());
         m_sources->setItem(r, kPosition + 3, sts);
         m_sources->setItem(r, kPosition + 4, cell(QStringLiteral("%1 s").arg(src.ageMs / 1000.0, 0, 'f', 1)));
-        const QVector<SosLog::Check> cs = SosLog::checks(src);
+        if (s.version == 2) {   // session 192: the minimal layout runs no checks
+            for (int c = kFirstCheck; c < kPosition; ++c)
+                m_sources->setItem(r, c, cell(QString(), tr("Not in the minimal layout (README 03)")));
+        }
+        const QVector<SosLog::Check> cs = s.version == 2 ? QVector<SosLog::Check>() : SosLog::checks(src);
         for (int i = 0; i < cs.size(); ++i) {
             const SosLog::Check &c = cs.at(i);
             auto *it = cell(c.warn ? QStringLiteral("!") : (c.on ? QStringLiteral("✓") : QStringLiteral("–")),

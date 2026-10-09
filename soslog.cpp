@@ -7,6 +7,7 @@
 #include <QMap>
 
 #include <algorithm>
+#include <cmath>
 #include <limits>
 
 namespace SosLog {
@@ -75,8 +76,112 @@ int threatOfBit(int bit)
 
 // ---- decoding ----------------------------------------------------------------------
 
+// Session 192: README 03's minimal layout. 37 B, 24 per loco, 13 per station.
+constexpr int kSnap2Fixed = 37;
+constexpr int kSrc2 = 24;
+constexpr int kStn2 = 13;
+
+namespace {
+
+// Closest of its kind, and the target, from the flags alone (the minimal
+// layout logs neither): the same picks SOS_RecomputeAggregates makes.
+void deriveV2(Snapshot &s)
+{
+    for (int bit : { int(BitManual), int(BitUnusual), int(BitHeadOn), int(BitRearEnd), int(BitParted) }) {
+        const bool collision = bit == BitHeadOn || bit == BitRearEnd;
+        int best = -1;
+        for (int i = 0; i < s.sources.size(); ++i) {
+            const Source &src = s.sources.at(i);
+            if (!(src.threats & bit)) continue;
+            const double d = collision ? src.collisionDistM : src.sosDistM;
+            if (best < 0) { best = i; continue; }
+            const double bd = collision ? s.sources.at(best).collisionDistM : s.sources.at(best).sosDistM;
+            if (d < bd) best = i;
+        }
+        if (best >= 0) s.sources[best].closest |= quint8(bit);
+    }
+    int bestStn = -1;
+    for (int i = 0; i < s.stations.size(); ++i)
+        if (s.stations.at(i).addEmSos() && (bestStn < 0 || s.stations.at(i).sosDistM < s.stations.at(bestStn).sosDistM)) bestStn = i;
+    if (bestStn >= 0) s.stations[bestStn].flags |= 0x04;
+
+    if (s.lp & LpHeadOn)            s.aggThreat = HeadOn;
+    else if (s.lp & LpRearEnd)      s.aggThreat = RearEnd;
+    else if (s.lp & LpAccessSos)    s.aggThreat = ManualSos;
+    else if (s.lp & LpUnusualStop)  s.aggThreat = UnusualStop;
+    else if (s.lp & LpTrainParted)  s.aggThreat = TrainParted;
+    else if ((s.lp & LpAddEmSos) && s.sosDistM > 0.0) {
+        // a station won: the loco flags were cleared, collision_loco_id 0
+        s.aggThreat = StationGeneral;
+        s.aggStationWon = true;
+        s.aggStation = s.sosStation;
+    } else {
+        s.aggThreat = ThreatNone;
+    }
+}
+
+bool decodeSnapshotV2(const QByteArray &b, Snapshot *out)
+{
+    if (b.size() < kSnap2Fixed) return false;
+    const int nSrc = u8(b, 35), nStn = u8(b, 36);
+    if (b.size() < kSnap2Fixed + kSrc2 * nSrc + kStn2 * nStn) return false;
+    Snapshot s;
+    s.version = 2;
+    s.tickMs = u32(b, 1);
+    s.ownLocM = dm(b, 5);
+    s.ownDir = u8(b, 9);
+    s.ownMode = u8(b, 10);
+    s.ownTin = u16(b, 11);
+    s.ownSpeed = u16(b, 13) / 100.0;
+    s.ownEmergency = u8(b, 15);
+    s.collisionLoco = u32(b, 16);
+    s.collisionDistM = dm(b, 20);
+    s.sosDistM = dm(b, 24);
+    s.sosStation = u16(b, 28);
+    s.lp = u16(b, 30);
+    s.dmi = u16(b, 32);
+    s.self = u8(b, 34) & 0x03;
+    s.nSourceSlots = nSrc;
+    int o = kSnap2Fixed;
+    for (int i = 0; i < nSrc; ++i, o += kSrc2) {
+        Source src;
+        src.slot = i;
+        src.locoId = u32(b, o);
+        src.ageMs = quint32(u16(b, o + 4)) * 100u;
+        src.locM = src.rawLocM = i32(b, o + 6);
+        src.dir = src.rawDir = u8(b, o + 10);
+        src.tin = u16(b, o + 11);
+        src.lengthM = u16(b, o + 13);
+        src.sosDistM = dm(b, o + 15);
+        src.collisionDistM = dm(b, o + 19);
+        src.threats = u8(b, o + 23);
+        src.emergency = -1;                       // not logged
+        src.distM = std::abs(double(src.locM) - s.ownLocM);
+        s.inUseMask |= quint16(1u << i);
+        if (src.threats) s.activeMask |= quint16(1u << i);
+        s.sources.append(src);
+    }
+    for (int i = 0; i < nStn; ++i, o += kStn2) {
+        Station st;
+        st.inUse = true;
+        st.id = u16(b, o);
+        st.flags = u8(b, o + 2) ? 0x01 : 0x00;
+        st.ageMs = quint32(u16(b, o + 3)) * 100u;
+        st.absLocM = u32(b, o + 5);
+        st.sosDistM = dm(b, o + 9);
+        st.distM = std::abs(double(st.absLocM) - s.ownLocM);
+        s.stations.append(st);
+    }
+    deriveV2(s);
+    *out = s;
+    return true;
+}
+
+}  // namespace
+
 bool decodeSnapshot(const QByteArray &b, Snapshot *out)
 {
+    if (!b.isEmpty() && u8(b, 0) == 2) return decodeSnapshotV2(b, out);
     if (b.size() < kSnapFixed || u8(b, 0) != kVersion) return false;
     const int nStations = u8(b, 64);
     if (b.size() < kSnapFixed + kStation * nStations) return false;
@@ -253,6 +358,8 @@ Timeline extract(const LogModel *model, qint64 fromMs, qint64 toMs)
             if (!decodeSnapshot(cap.bytes, &s)) { ++t.otherVersion; continue; }
             s.row = i;
             s.epochMs = e->epochMs;
+            if (s.version == 2) s.snapId = quint32(t.snaps.size() + 1);   // the layout has none
+            t.version = s.version;
             t.snaps.append(s);
         } else if (cap.type == CapType::SosSrc) {
             Source s;
@@ -271,7 +378,72 @@ Timeline extract(const LogModel *model, qint64 fromMs, qint64 toMs)
             t.events.append(ev);
         }
     }
+    // Session 192: the minimal layout logs no events: derive them.
+    if (t.events.isEmpty() && t.minimal()) {
+        t.events = deriveEvents(t.snaps);
+        t.eventsDerived = true;
+    }
     return t;
+}
+
+QVector<Event> deriveEvents(const QVector<Snapshot> &snaps)
+{
+    QVector<Event> out;
+    QHash<quint32, Source> prev;          // loco id -> its entry in the previous snapshot
+    QHash<int, Station> prevStn;
+    int prevStatus = -1;
+    for (const Snapshot &s : snaps) {
+        auto ev = [&](int code, int aux1, int aux2, quint32 id, double distM) {
+            Event e;
+            e.row = s.row;
+            e.epochMs = s.epochMs;
+            e.tickMs = s.tickMs;
+            e.snapId = s.snapId;
+            e.code = code;
+            e.aux1 = aux1;
+            e.aux2 = aux2;
+            e.id = id;
+            e.distM = distM;
+            e.ownLocM = s.ownLocM;
+            e.ownSpeed = s.ownSpeed;
+            e.ownMode = s.ownMode;
+            out.append(e);
+        };
+        if (prevStatus >= 0 && s.ownEmergency != prevStatus) ev(EvDerivedOwnStatus, prevStatus, s.ownEmergency, 0, 0.0);
+        prevStatus = s.ownEmergency;
+
+        QHash<quint32, Source> now;
+        for (const Source &src : s.sources) {
+            now.insert(src.locoId, src);
+            const auto it = prev.constFind(src.locoId);
+            const quint8 was = it == prev.constEnd() ? 0 : it->threats;
+            if (it == prev.constEnd()) ev(EvSrcAdded, 0, 0, src.locoId, src.distM);
+            for (int bit : { int(BitManual), int(BitUnusual), int(BitHeadOn), int(BitRearEnd), int(BitParted) }) {
+                const bool collision = bit == BitHeadOn || bit == BitRearEnd;
+                if ((src.threats & bit) && !(was & bit))
+                    ev(EvThreatStart, threatOfBit(bit), 0, src.locoId, collision ? src.collisionDistM : src.sosDistM);
+                else if (!(src.threats & bit) && (was & bit))
+                    ev(EvThreatEnd, threatOfBit(bit), 0, src.locoId, collision ? it->collisionDistM : it->sosDistM);
+            }
+        }
+        for (auto it = prev.constBegin(); it != prev.constEnd(); ++it)
+            if (!now.contains(it.key())) ev(EvDerivedSrcLeft, it->threats, 0, it.key(), it->distM);
+        prev = now;
+
+        QHash<int, Station> nowStn;
+        for (const Station &st : s.stations) {
+            nowStn.insert(st.id, st);
+            const auto it = prevStn.constFind(st.id);
+            const bool was = it != prevStn.constEnd() && it->addEmSos();
+            if (it == prevStn.constEnd()) ev(EvStnAdded, 0, 0, quint32(st.id), st.distM);
+            if (st.addEmSos() && !was) ev(EvStnSosStart, 0, 0, quint32(st.id), st.sosDistM);
+            else if (!st.addEmSos() && was) ev(EvStnSosEnd, 0, 0, quint32(st.id), it->sosDistM);
+        }
+        for (auto it = prevStn.constBegin(); it != prevStn.constEnd(); ++it)
+            if (!nowStn.contains(it.key())) ev(EvDerivedStnLeft, it->addEmSos() ? 1 : 0, 0, quint32(it.key()), it->distM);
+        prevStn = nowStn;
+    }
+    return out;
 }
 
 quint32 locoOfKey(const QString &key)
@@ -330,6 +502,7 @@ QString emergencyName(int status)
     case 4: return QStringLiteral("4 (Head-On Collision)");
     case 5: return QStringLiteral("5 (Rear-End Collision)");
     case 6: return QStringLiteral("6 (Parting SoS)");
+    case -1: return QStringLiteral("not logged");
     default: return QString::number(status);
     }
 }
@@ -343,6 +516,7 @@ QString endReasonText(int reason)
     case 4: return QStringLiteral("timeout");
     case 5: return QStringLiteral("station out of range");
     case 6: return QStringLiteral("the station cancelled it");
+    case 0: return QStringLiteral("reason not logged");     // session 192: the minimal layout
     default: return QStringLiteral("reason %1").arg(reason);
     }
 }
@@ -370,6 +544,8 @@ QString eventText(const Event &e)
     case EvThreatStart:
         return QStringLiteral("%1 from %2 started, %3").arg(threatName(e.aux1), loco, d);
     case EvThreatEnd:
+        if (e.aux2 == 0)   // session 192: derived, the reason is not logged
+            return QStringLiteral("%1 from %2 ended (reason not logged), at %3").arg(threatName(e.aux1), loco, d);
         return QStringLiteral("%1 from %2 ended: %3, at %4").arg(threatName(e.aux1), loco, endReasonText(e.aux2), d);
     case EvTargetRemoved:
         return QStringLiteral("Passed %1: SoS target distance removed (was %2)").arg(loco, d);
@@ -384,7 +560,15 @@ QString eventText(const Event &e)
     case EvStnDroppedFull:   return QStringLiteral("Station %1 not tracked: the station table is full").arg(e.id);
     case EvStnQuietReleased: return QStringLiteral("Station %1 released (no SoS, quiet for 5 s)").arg(e.id);
     case EvStnSosStart:      return QStringLiteral("Station general SoS from %1 started, %2").arg(stn, d);
-    case EvStnSosEnd:        return QStringLiteral("Station general SoS from %1 ended: %2").arg(stn, endReasonText(e.aux2));
+    case EvStnSosEnd:
+        if (e.aux2 == 0) return QStringLiteral("Station general SoS from %1 ended (reason not logged)").arg(stn);
+        return QStringLiteral("Station general SoS from %1 ended: %2").arg(stn, endReasonText(e.aux2));
+    case EvDerivedSrcLeft:
+        return QStringLiteral("Loco %1 left the SoS table%2").arg(e.id)
+            .arg(e.aux1 ? QStringLiteral(" with %1 on").arg(threatBitsText(quint8(e.aux1))) : QString());
+    case EvDerivedStnLeft:   return QStringLiteral("Station %1 left the SoS table").arg(e.id);
+    case EvDerivedOwnStatus:
+        return QStringLiteral("Own ARP status %1 \u2192 %2").arg(emergencyName(e.aux1), emergencyName(e.aux2));
     case EvDestLocoSos:
         return e.aux1 ? QStringLiteral("DEST_LOCO_SOS from %1: %2").arg(stn, sosTypeName(e.aux1))
                       : QStringLiteral("DEST_LOCO_SOS from %1 back to 0").arg(stn);
@@ -577,6 +761,12 @@ QVector<Spell> spells(const Timeline &t)
         case EvSrcEvicted:
             finishSource(e.id, 0x1F, e.epochMs, QStringLiteral("evicted from the table"));
             break;
+        case EvDerivedSrcLeft:
+            finishSource(e.id, quint8(e.aux1), e.epochMs, QStringLiteral("left the SoS table"));
+            break;
+        case EvDerivedStnLeft:
+            finish(key(StationGeneral, e.id, true), e.epochMs, e.distM, 0, QStringLiteral("left the SoS table"));
+            break;
         case EvStnSosStart: start(e, StationGeneral, e.id, true); break;
         case EvStnSosEnd:
             finish(key(StationGeneral, e.id, true), e.epochMs, e.distM, e.aux2, endReasonText(e.aux2));
@@ -661,14 +851,24 @@ QVector<Relay> relay(const Timeline &sender, const Timeline &receiver, quint32 s
         prev = s.ownEmergency;
 
         // The receiver's clock is its own RTC: look a little before too.
-        const qint64 from = r.sentMs - 5000, to = r.sentMs + kRelayWindowMs;
+        // With the minimal layout "heard" is a threat appearing or clearing, and
+        // the receiver may have cleared one before for its own reasons: from the send.
+        const qint64 from = receiver.minimal() ? r.sentMs : r.sentMs - 5000, to = r.sentMs + kRelayWindowMs;
         for (const Snapshot &rs : receiver.snaps) {
             if (rs.epochMs < from) continue;
             if (rs.epochMs > to) break;
             const Source *src = rs.source(senderId);
             if (!src) continue;
             r.tracked = true;
-            if (src->emergency == r.toStatus) {
+            bool heard = src->emergency == r.toStatus;
+            if (rs.version == 2) {
+                // No ARP status in the minimal layout: the threat it makes.
+                r.byThreat = true;
+                const quint8 sosBits = src->threats & (BitManual | BitUnusual | BitParted);
+                heard = (r.toStatus == 1 && (sosBits & BitUnusual)) || (r.toStatus == 2 && (sosBits & BitManual))
+                     || (r.toStatus == 6 && (sosBits & BitParted)) || (r.toStatus == 0 && sosBits == 0);
+            }
+            if (heard) {
                 r.heardMs = rs.epochMs;
                 r.heardRow = rs.row;
                 break;
@@ -680,7 +880,8 @@ QVector<Relay> relay(const Timeline &sender, const Timeline &receiver, quint32 s
             if (e.epochMs > actFrom + kRelayWindowMs) break;
             const bool aboutSender = e.id == senderId
                 && (e.code == EvThreatStart || e.code == EvThreatEnd || e.code == EvTargetRemoved
-                    || e.code == EvBrakeSkipped || e.code == EvSrcTimeout || e.code == EvSrcEvicted);
+                    || e.code == EvBrakeSkipped || e.code == EvSrcTimeout || e.code == EvSrcEvicted
+                    || e.code == EvDerivedSrcLeft);
             if (!aboutSender) continue;
             r.actedMs = e.epochMs;
             r.actedRow = e.row;

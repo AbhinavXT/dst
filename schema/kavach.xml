@@ -1848,48 +1848,93 @@
        =================================================================== -->
   <packet name="SOS_SNAPSHOT" match="captype==sos" wire="lsb-first" trailer_bytes="0">
     <field name="version"                 bits="8"/>
-    <field name="why"                     bits="8"  enum="sosWhy"/>
-    <field name="snap_id"                 bits="32"/>
-    <field name="tick_ms"                 bits="32" unit="ms"/>
-    <field name="own_abs_loc"             bits="32" signed="true" format="dm"/>
-    <field name="own_dir"                 bits="8"  enum="sosDir"/>
-    <field name="own_mode"                bits="8"  enum="locoMode"/>
-    <field name="own_tin"                 bits="16"/>
-    <field name="own_train_length"        bits="16" unit="m"/>
-    <field name="own_speed"               bits="16" format="x100"/>
-    <field name="own_ma"                  bits="32" signed="true" unit="m"/>
-    <field name="own_station_id"          bits="16"/>
-    <field name="own_rfid_tag_id"         bits="16"/>
-    <field name="rear_tag_found"          bits="8"/>
-    <field name="rear_sect_type"          bits="8"  enum="sosSect"/>
-    <field name="own_emergency_status"    bits="8"  enum="emergencyStatus"/>
-    <field name="access_req_recvd_stn_id" bits="16"/>
-    <field name="n_src_slots"             bits="8"/>
-    <field name="src_in_use_mask"         bits="16" hex="4"/>
-    <field name="src_active_mask"         bits="16" hex="4"/>
-    <field name="agg_threat"              bits="8"  enum="sosThreat"/>
-    <field name="agg_station_won"         bits="8"/>
-    <field name="collision_loco_id"       bits="32"/>
-    <field name="agg_station_id"          bits="16"/>
-    <field name="collision_distance"      bits="32" signed="true" format="dm"/>
-    <field name="sos_distance"            bits="32" signed="true" format="dm"/>
-    <field name="sos_station_id"          bits="16"/>
-    <flags name="lp_flags"  table="sosLp"   bits="10" pad="6"/>
-    <flags name="dmi_bits"  table="sosDmi"  bits="12" pad="4"/>
-    <field name="last_dest_loco_sos"      bits="8"  enum="sosType"/>
-    <flags name="self_flags" table="sosSelf" bits="4" pad="4"/>
-    <field name="n_stn_slots"             bits="8"/>
-    <!-- stn_* names: the raw-value map is keyed by field name, and plain
-         "distance" / "sos_distance" would overwrite the snapshot's own. -->
-    <repeat name="station" count="n_stn_slots" cmin="0" cmax="3" expand="true">
-      <field name="stn_in_use"       bits="8"/>
-      <field name="stn_flags"        bits="8"  hex="2"/>
-      <field name="stn_id"           bits="16"/>
-      <field name="stn_age"          bits="32" unit="ms"/>
-      <field name="stn_abs_loc"      bits="32" unit="m"/>
-      <field name="stn_distance"     bits="32" signed="true" format="dm"/>
-      <field name="stn_sos_distance" bits="32" signed="true" format="dm"/>
-    </repeat>
+    <!-- version 1: README 01, the full layout (with @sossrc / @sosev) -->
+    <when test="version == 1">
+      <field name="why"                     bits="8"  enum="sosWhy"/>
+      <field name="snap_id"                 bits="32"/>
+      <field name="tick_ms"                 bits="32" unit="ms"/>
+      <field name="own_abs_loc"             bits="32" signed="true" format="dm"/>
+      <field name="own_dir"                 bits="8"  enum="sosDir"/>
+      <field name="own_mode"                bits="8"  enum="locoMode"/>
+      <field name="own_tin"                 bits="16"/>
+      <field name="own_train_length"        bits="16" unit="m"/>
+      <field name="own_speed"               bits="16" format="x100"/>
+      <field name="own_ma"                  bits="32" signed="true" unit="m"/>
+      <field name="own_station_id"          bits="16"/>
+      <field name="own_rfid_tag_id"         bits="16"/>
+      <field name="rear_tag_found"          bits="8"/>
+      <field name="rear_sect_type"          bits="8"  enum="sosSect"/>
+      <field name="own_emergency_status"    bits="8"  enum="emergencyStatus"/>
+      <field name="access_req_recvd_stn_id" bits="16"/>
+      <field name="n_src_slots"             bits="8"/>
+      <field name="src_in_use_mask"         bits="16" hex="4"/>
+      <field name="src_active_mask"         bits="16" hex="4"/>
+      <field name="agg_threat"              bits="8"  enum="sosThreat"/>
+      <field name="agg_station_won"         bits="8"/>
+      <field name="collision_loco_id"       bits="32"/>
+      <field name="agg_station_id"          bits="16"/>
+      <field name="collision_distance"      bits="32" signed="true" format="dm"/>
+      <field name="sos_distance"            bits="32" signed="true" format="dm"/>
+      <field name="sos_station_id"          bits="16"/>
+      <flags name="lp_flags"  table="sosLp"   bits="10" pad="6"/>
+      <flags name="dmi_bits"  table="sosDmi"  bits="12" pad="4"/>
+      <field name="last_dest_loco_sos"      bits="8"  enum="sosType"/>
+      <flags name="self_flags" table="sosSelf" bits="4" pad="4"/>
+      <field name="n_stn_slots"             bits="8"/>
+      <!-- stn_* names: the raw-value map is keyed by field name, and plain
+           "distance" / "sos_distance" would overwrite the snapshot's own. -->
+      <repeat name="station" count="n_stn_slots" cmin="0" cmax="3" expand="true">
+        <field name="stn_in_use"       bits="8"/>
+        <field name="stn_flags"        bits="8"  hex="2"/>
+        <field name="stn_id"           bits="16"/>
+        <field name="stn_age"          bits="32" unit="ms"/>
+        <field name="stn_abs_loc"      bits="32" unit="m"/>
+        <field name="stn_distance"     bits="32" signed="true" format="dm"/>
+        <field name="stn_sos_distance" bits="32" signed="true" format="dm"/>
+      </repeat>
+    </when>
+    <!-- version 2 (session 192): README 03, the minimal layout. One line a
+         second carrying its own loco and station entries; no @sossrc, no
+         @sosev. Only what the firmware already holds: no reasons, no checks,
+         no ARP as received. -->
+    <when test="version == 2">
+      <field name="tick_ms"              bits="32" unit="ms"/>
+      <field name="own_abs_loc"          bits="32" signed="true" format="dm"/>
+      <field name="own_dir"              bits="8"  enum="sosDir"/>
+      <field name="own_mode"             bits="8"  enum="locoMode"/>
+      <field name="own_tin"              bits="16"/>
+      <field name="own_speed"            bits="16" format="x100"/>
+      <field name="own_emergency_status" bits="8"  enum="emergencyStatus"/>
+      <field name="collision_loco_id"    bits="32"/>
+      <field name="collision_distance"   bits="32" signed="true" format="dm"/>
+      <field name="sos_distance"         bits="32" signed="true" format="dm"/>
+      <field name="sos_station_id"       bits="16"/>
+      <flags name="lp_flags"  table="sosLp"   bits="10" pad="6"/>
+      <flags name="dmi_bits"  table="sosDmi"  bits="12" pad="4"/>
+      <flags name="self_flags" table="sosSelf" bits="2" pad="6"/>
+      <field name="n_src"                bits="8"/>
+      <field name="n_stn"                bits="8"/>
+      <repeat name="loco" count="n_src" cmin="0" cmax="16" expand="true">
+        <field name="src_loco_id"            bits="32"/>
+        <field name="src_age"                bits="16" unit="x 0.1 s"/>
+        <field name="src_abs_loc"            bits="32" signed="true" unit="m"/>
+        <field name="src_dir"                bits="8"  enum="sosDir"/>
+        <field name="src_tin"                bits="16"/>
+        <field name="src_train_length"       bits="16" unit="m"/>
+        <field name="src_sos_distance"       bits="32" signed="true" format="dm"/>
+        <field name="src_collision_distance" bits="32" signed="true" format="dm"/>
+        <!-- a plain byte: <flags> is not walked inside a <repeat>.
+             bit0 manual SoS, 1 unusual stop, 2 head-on, 3 rear-end, 4 train parted -->
+        <field name="src_threats"            bits="8"  hex="2"/>
+      </repeat>
+      <repeat name="station" count="n_stn" cmin="0" cmax="3" expand="true">
+        <field name="stn_id"           bits="16"/>
+        <field name="stn_add_em"       bits="8"/>
+        <field name="stn_age"          bits="16" unit="x 0.1 s"/>
+        <field name="stn_abs_loc"      bits="32" unit="m"/>
+        <field name="stn_sos_distance" bits="32" signed="true" format="dm"/>
+      </repeat>
+    </when>
   </packet>
 
   <packet name="SOS_SOURCE" match="captype==sossrc" wire="lsb-first" trailer_bytes="0">

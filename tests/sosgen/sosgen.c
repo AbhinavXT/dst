@@ -47,7 +47,35 @@
 
 uint16_t access_req_recvd_stn_id = 0U;
 
+#ifndef SOS_MINIMAL
+/* README 01: the full layout (version 1). */
 #include "sos_log_impl.c"
+#define gen_snapshot(why)               SOS_LogSnapshot(why)
+#define gen_event(e, a1, a2, id, d)     SOS_LogEvent((e), (a1), (a2), (id), (d))
+#define gen_note_dest(v)                SOS_LogNoteDestSos(v)
+#define gen_note_aggregate(t, w, id)    SOS_LogNoteAggregate((t), (w), (id))
+#define gen_threat_bits(s)              SOS_LogThreatBits(s)
+#else
+/* README 03: the minimal layout (version 2), its function byte for byte,
+ * called once a second at the end of the periodic maintenance only. */
+#define SOS_LogSnapshot sos_min_snapshot
+#include "sos_log_min.c"
+#undef SOS_LogSnapshot
+static void gen_snapshot(uint8_t why) { if (why == SOS_SNAP_PERIODIC) sos_min_snapshot(); }
+/* The minimal layout logs no events and keeps no aggregate note. */
+static void gen_event(uint8_t e, uint8_t a1, uint8_t a2, uint32_t id, double d)
+{
+    (void)e; (void)a1; (void)a2; (void)id; (void)d;
+}
+static void gen_note_dest(uint8_t v) { (void)v; }
+static void gen_note_aggregate(uint8_t t, uint8_t w, uint16_t id) { (void)t; (void)w; (void)id; }
+static uint8_t gen_threat_bits(const SOS_SourceRecord_t *s)
+{
+    return (uint8_t)((s->is_access_sos_recvd ? 1U : 0U) | (s->is_unusual_stop_recvd ? 2U : 0U)
+                   | (s->is_head_on_collision_recvd ? 4U : 0U) | (s->is_rear_end_collision_recvd ? 8U : 0U)
+                   | (s->is_train_parted_recvd ? 16U : 0U));
+}
+#endif
 
 LOCO_INIT_PARAMS loco_params;
 LOCO_INFO        loco_info;
@@ -273,7 +301,7 @@ static void recompute(void)
     loco_params.sos_station_id = closest;
     if (!any) loco_params.dmi_alarm_codes.brake_applied_station_general_sos = 0;
 
-    SOS_LogNoteAggregate(threat, stn_won, stn_id);
+    gen_note_aggregate(threat, stn_won, stn_id);
 }
 
 /* ---- the table ------------------------------------------------------------------- */
@@ -286,10 +314,10 @@ static SOS_SourceRecord_t *acquire(uint32_t id, double dist)
             memset(&g_sos_sources[i], 0, sizeof(g_sos_sources[i]));
             g_sos_sources[i].in_use = 1;
             g_sos_sources[i].source_loco_id = id;
-            SOS_LogEvent(SOS_EV_SRC_ADDED, 0U, 0U, id, dist);
+            gen_event(SOS_EV_SRC_ADDED, 0U, 0U, id, dist);
             return &g_sos_sources[i];
         }
-    SOS_LogEvent(SOS_EV_SRC_DROPPED_FULL, 0U, 0U, id, dist);
+    gen_event(SOS_EV_SRC_DROPPED_FULL, 0U, 0U, id, dist);
     return NULL;
 }
 
@@ -318,10 +346,10 @@ static void collisions(SOS_SourceRecord_t *s)
     if (rear) {
         s->collision_distance = rear_d;
         if (!s->is_rear_end_collision_recvd)
-            SOS_LogEvent(SOS_EV_THREAT_START, SOS_LOG_THREAT_REAR_END, 0U, s->source_loco_id, rear_d);
+            gen_event(SOS_EV_THREAT_START, SOS_LOG_THREAT_REAR_END, 0U, s->source_loco_id, rear_d);
         s->is_rear_end_collision_recvd = 1;
     } else if (s->is_rear_end_collision_recvd) {
-        SOS_LogEvent(SOS_EV_THREAT_END, SOS_LOG_THREAT_REAR_END, SOS_END_GEOMETRY, s->source_loco_id, s->collision_distance);
+        gen_event(SOS_EV_THREAT_END, SOS_LOG_THREAT_REAR_END, SOS_END_GEOMETRY, s->source_loco_id, s->collision_distance);
         s->is_rear_end_collision_recvd = 0;
         s->collision_distance = 0.0;
     }
@@ -331,14 +359,14 @@ static void collisions(SOS_SourceRecord_t *s)
     if (same_tin && s->movement_dir != loco_params.movement_dir && gap < loco_info.collision_trigger_distance) {
         s->collision_distance = gap;
         if (!s->is_head_on_collision_recvd) {
-            SOS_LogEvent(SOS_EV_THREAT_START, SOS_LOG_THREAT_HEAD_ON, 0U, s->source_loco_id, gap);
+            gen_event(SOS_EV_THREAT_START, SOS_LOG_THREAT_HEAD_ON, 0U, s->source_loco_id, gap);
             s->is_head_on_collision_recvd = 1;
             if (SOS_IsClosestActiveThreat(s, THREAT_HEAD_ON))
-                SOS_LogEvent(SOS_EV_BRAKE_APPLIED, SOS_LOG_THREAT_HEAD_ON, 0U, LB_SOS_STN_HEADON_COLLISION_DETECTED, gap);
+                gen_event(SOS_EV_BRAKE_APPLIED, SOS_LOG_THREAT_HEAD_ON, 0U, LB_SOS_STN_HEADON_COLLISION_DETECTED, gap);
         }
         s->is_head_on_collision_recvd = 1;
     } else if (s->is_head_on_collision_recvd) {
-        SOS_LogEvent(SOS_EV_THREAT_END, SOS_LOG_THREAT_HEAD_ON, SOS_END_GEOMETRY, s->source_loco_id, s->collision_distance);
+        gen_event(SOS_EV_THREAT_END, SOS_LOG_THREAT_HEAD_ON, SOS_END_GEOMETRY, s->source_loco_id, s->collision_distance);
         s->is_head_on_collision_recvd = 0;
         s->collision_distance = 0.0;
     }
@@ -347,9 +375,9 @@ static void collisions(SOS_SourceRecord_t *s)
 static void brake_or_skip(SOS_SourceRecord_t *s, SOS_ThreatType_t t, uint8_t threat, uint32_t lb, double d)
 {
     if (loco_params.sensor_speed > 0.001f && SOS_IsClosestActiveThreat(s, t))
-        SOS_LogEvent(SOS_EV_BRAKE_APPLIED, threat, 0U, lb, d);
+        gen_event(SOS_EV_BRAKE_APPLIED, threat, 0U, lb, d);
     else
-        SOS_LogEvent(SOS_EV_BRAKE_SKIPPED, threat,
+        gen_event(SOS_EV_BRAKE_SKIPPED, threat,
                      loco_params.sensor_speed > 0.001f ? SOS_SKIP_NOT_CLOSEST : SOS_SKIP_STANDSTILL,
                      s->source_loco_id, d);
 }
@@ -389,10 +417,10 @@ static void process_arp(const Other *o, int t)
     if (sts == 6U) {
         s->sos_distance = dist;
         if (!s->is_train_parted_recvd)
-            SOS_LogEvent(SOS_EV_THREAT_START, SOS_LOG_THREAT_TRAIN_PARTED, 0U, s->source_loco_id, dist);
+            gen_event(SOS_EV_THREAT_START, SOS_LOG_THREAT_TRAIN_PARTED, 0U, s->source_loco_id, dist);
         s->is_train_parted_recvd = 1;
     } else if (s->is_train_parted_recvd) {
-        SOS_LogEvent(SOS_EV_THREAT_END, SOS_LOG_THREAT_TRAIN_PARTED, SOS_END_STATUS_CLEARED, s->source_loco_id, s->sos_distance);
+        gen_event(SOS_EV_THREAT_END, SOS_LOG_THREAT_TRAIN_PARTED, SOS_END_STATUS_CLEARED, s->source_loco_id, s->sos_distance);
         s->is_train_parted_recvd = 0; s->sos_distance = 0.0;
     }
 
@@ -400,18 +428,18 @@ static void process_arp(const Other *o, int t)
         if (IsUnusualStopOfOtherLocoToBeProcessed((uint32_t)s->abs_loc, s->movement_dir, s->tin, s->train_length)) {
             s->sos_distance = dist;
             if (!s->is_unusual_stop_recvd) {
-                SOS_LogEvent(SOS_EV_THREAT_START, SOS_LOG_THREAT_UNUSUAL_STOP, 0U, s->source_loco_id, dist);
+                gen_event(SOS_EV_THREAT_START, SOS_LOG_THREAT_UNUSUAL_STOP, 0U, s->source_loco_id, dist);
                 s->is_unusual_stop_recvd = 1;
                 brake_or_skip(s, THREAT_UNUSUAL_STOP, SOS_LOG_THREAT_UNUSUAL_STOP, LB_BRAKE_UNUSUAL_STOP_DETECTED, dist);
             }
             s->is_unusual_stop_recvd = 1;
         } else {
             if (s->is_unusual_stop_recvd)
-                SOS_LogEvent(SOS_EV_THREAT_END, SOS_LOG_THREAT_UNUSUAL_STOP, SOS_END_NOT_PROCESSED, s->source_loco_id, s->sos_distance);
+                gen_event(SOS_EV_THREAT_END, SOS_LOG_THREAT_UNUSUAL_STOP, SOS_END_NOT_PROCESSED, s->source_loco_id, s->sos_distance);
             s->is_unusual_stop_recvd = 0; s->sos_distance = 0.0;
         }
     } else if (s->is_unusual_stop_recvd) {
-        SOS_LogEvent(SOS_EV_THREAT_END, SOS_LOG_THREAT_UNUSUAL_STOP, SOS_END_STATUS_CLEARED, s->source_loco_id, s->sos_distance);
+        gen_event(SOS_EV_THREAT_END, SOS_LOG_THREAT_UNUSUAL_STOP, SOS_END_STATUS_CLEARED, s->source_loco_id, s->sos_distance);
         s->is_unusual_stop_recvd = 0; s->sos_distance = 0.0;
     }
 
@@ -419,7 +447,7 @@ static void process_arp(const Other *o, int t)
         if (IsManualSOSToBeProcessed((uint32_t)s->abs_loc, s->movement_dir, s->train_length)) {
             if (!s->is_access_sos_recvd) {
                 s->sos_distance = dist;
-                SOS_LogEvent(SOS_EV_THREAT_START, SOS_LOG_THREAT_MANUAL_SOS, 0U, s->source_loco_id, dist);
+                gen_event(SOS_EV_THREAT_START, SOS_LOG_THREAT_MANUAL_SOS, 0U, s->source_loco_id, dist);
                 s->is_access_sos_recvd = 1;
                 brake_or_skip(s, THREAT_MANUAL_SOS, SOS_LOG_THREAT_MANUAL_SOS, LB_MANUAL_SOS_RECVD, dist);
             } else if (s->sos_distance > 0.0) {
@@ -428,21 +456,21 @@ static void process_arp(const Other *o, int t)
             s->is_access_sos_recvd = 1;
         } else {
             if (s->is_access_sos_recvd)
-                SOS_LogEvent(SOS_EV_THREAT_END, SOS_LOG_THREAT_MANUAL_SOS, SOS_END_NOT_PROCESSED, s->source_loco_id, s->sos_distance);
+                gen_event(SOS_EV_THREAT_END, SOS_LOG_THREAT_MANUAL_SOS, SOS_END_NOT_PROCESSED, s->source_loco_id, s->sos_distance);
             s->is_access_sos_recvd = 0; s->sos_distance = 0.0;
         }
     } else if (s->is_access_sos_recvd) {
-        SOS_LogEvent(SOS_EV_THREAT_END, SOS_LOG_THREAT_MANUAL_SOS, SOS_END_STATUS_CLEARED, s->source_loco_id, s->sos_distance);
+        gen_event(SOS_EV_THREAT_END, SOS_LOG_THREAT_MANUAL_SOS, SOS_END_STATUS_CLEARED, s->source_loco_id, s->sos_distance);
         s->is_access_sos_recvd = 0; s->sos_distance = 0.0;
     }
 
     if (s->sos_distance > 0.0 && IsSOSTargetDistanceRemove((uint32_t)s->abs_loc, s->movement_dir)) {
-        SOS_LogEvent(SOS_EV_TARGET_REMOVED, 0U, 0U, s->source_loco_id, s->sos_distance);
+        gen_event(SOS_EV_TARGET_REMOVED, 0U, 0U, s->source_loco_id, s->sos_distance);
         s->sos_distance = 0.0;
     }
 
     recompute();
-    if (sts != 0U || any_threat(s) || had) SOS_LogSnapshot(SOS_SNAP_AFTER_ARP);
+    if (sts != 0U || any_threat(s) || had) gen_snapshot(SOS_SNAP_AFTER_ARP);
 }
 
 static void process_aep(uint16_t id, uint32_t loc, uint8_t gen)
@@ -458,7 +486,7 @@ static void process_aep(uint16_t id, uint32_t loc, uint8_t gen)
                 s = &g_sos_stations[i];
                 memset(s, 0, sizeof(*s));
                 s->in_use = 1; s->station_id = id;
-                SOS_LogEvent(SOS_EV_STN_ADDED, 0U, 0U, id, dist);
+                gen_event(SOS_EV_STN_ADDED, 0U, 0U, id, dist);
             }
     }
     if (!s) return;
@@ -470,17 +498,17 @@ static void process_aep(uint16_t id, uint32_t loc, uint8_t gen)
     if (gen) {
         s->sos_distance = dist;
         if (!s->is_add_em_sos_recvd) {
-            SOS_LogEvent(SOS_EV_STN_SOS_START, 0U, 0U, id, dist);
+            gen_event(SOS_EV_STN_SOS_START, 0U, 0U, id, dist);
             loco_params.dmi_alarm_codes.brake_applied_station_general_sos = 1;
-            SOS_LogEvent(SOS_EV_BRAKE_APPLIED, SOS_LOG_THREAT_STATION_GENERAL, 0U, LB_BRAKE_STATION_GENERAL_SOS_RECEIVED, dist);
+            gen_event(SOS_EV_BRAKE_APPLIED, SOS_LOG_THREAT_STATION_GENERAL, 0U, LB_BRAKE_STATION_GENERAL_SOS_RECEIVED, dist);
         }
         s->is_add_em_sos_recvd = 1;
     } else if (s->is_add_em_sos_recvd) {
-        SOS_LogEvent(SOS_EV_STN_SOS_END, 0U, SOS_END_CANCELLED, id, s->sos_distance);
+        gen_event(SOS_EV_STN_SOS_END, 0U, SOS_END_CANCELLED, id, s->sos_distance);
         s->is_add_em_sos_recvd = 0; s->sos_distance = 0.0;
     }
     recompute();
-    SOS_LogSnapshot(SOS_SNAP_AFTER_AEP);
+    gen_snapshot(SOS_SNAP_AFTER_AEP);
 }
 
 /* SOS_Periodic_Maintenance, as it reads (simplified). */
@@ -490,7 +518,7 @@ static void periodic(void)
         uint8_t had = 0;
         for (int i = 0; i < MAX_SOS_SOURCE_LOCOS; i++) if (g_sos_sources[i].in_use) had = 1;
         for (int i = 0; i < MAX_SOS_STATIONS; i++) if (g_sos_stations[i].in_use) had = 1;
-        if (had) SOS_LogEvent(SOS_EV_TABLE_RESET, SOS_RESET_NON_LEADING, 0U, 0U, 0.0);
+        if (had) gen_event(SOS_EV_TABLE_RESET, SOS_RESET_NON_LEADING, 0U, 0U, 0.0);
         memset(g_sos_sources, 0, sizeof(g_sos_sources));
         memset(g_sos_stations, 0, sizeof(g_sos_stations));
         loco_params.is_dest_loco_sos_recvd = 0;
@@ -504,7 +532,7 @@ static void periodic(void)
             s->distance = gap_to(s->abs_loc);
             if (sos && IsSOSTargetDistanceRemove((uint32_t)s->abs_loc, s->movement_dir)) {
                 if (s->sos_distance > 0.0)
-                    SOS_LogEvent(SOS_EV_TARGET_REMOVED, 0U, 0U, s->source_loco_id, s->sos_distance);
+                    gen_event(SOS_EV_TARGET_REMOVED, 0U, 0U, s->source_loco_id, s->sos_distance);
                 s->distance = 0.0;
             }
             if (coll) collisions(s);
@@ -516,9 +544,9 @@ static void periodic(void)
         if (!s->in_use) continue;
         const uint32_t el = g_tick - s->last_update_ms;
         if (!any_threat(s)) {
-            if (el >= 5000U) { SOS_LogEvent(SOS_EV_SRC_QUIET_RELEASED, 0U, 0U, s->source_loco_id, s->distance); memset(s, 0, sizeof(*s)); }
+            if (el >= 5000U) { gen_event(SOS_EV_SRC_QUIET_RELEASED, 0U, 0U, s->source_loco_id, s->distance); memset(s, 0, sizeof(*s)); }
         } else if (el >= 10000U) {
-            SOS_LogEvent(SOS_EV_SRC_TIMEOUT, SOS_LogThreatBits(s), 0U, s->source_loco_id, s->distance);
+            gen_event(SOS_EV_SRC_TIMEOUT, gen_threat_bits(s), 0U, s->source_loco_id, s->distance);
             memset(s, 0, sizeof(*s));
         }
     }
@@ -527,12 +555,12 @@ static void periodic(void)
         if (!s->in_use) continue;
         if (s->is_add_em_sos_recvd) { s->distance = gap_to((int32_t)s->station_abs_loc); s->sos_distance = s->distance; }
         if (!s->is_add_em_sos_recvd && g_tick - s->last_update_ms >= 5000U) {
-            SOS_LogEvent(SOS_EV_STN_QUIET_RELEASED, 0U, 0U, s->station_id, s->distance);
+            gen_event(SOS_EV_STN_QUIET_RELEASED, 0U, 0U, s->station_id, s->distance);
             memset(s, 0, sizeof(*s));
         }
     }
     recompute();
-    SOS_LogSnapshot(SOS_SNAP_PERIODIC);
+    gen_snapshot(SOS_SNAP_PERIODIC);
 }
 
 /* The real @linfo frame's hex, from the capture make_fixture.sh hands in. */
@@ -579,8 +607,10 @@ static void reset_world(uint32_t loco, uint16_t tin)
     loco_info.sos_trigger_distance = 3000U;
     loco_info.sos_cancellation_distance = 500U;
     loco_info.collision_trigger_distance = 1000U;
+#ifndef SOS_MINIMAL
     s_sos_snap_id = 0U; s_last_dest_sos = 0U;
     s_agg_threat = 0U; s_agg_station_won = 0U; s_agg_station_id = 0U;
+#endif
 }
 
 /* ---- loco 1: the loco that sees it all ------------------------------------------ */
@@ -599,10 +629,10 @@ static void run_loco1(void)
         if (g_t == 155) {
             loco_params.dmi_alarm_codes.ack_block_stop_sos_generate = 1;
             loco_params.unusual_stoppage_sos_alarm = 1;
-            g_tick += 200U; SOS_LogEvent(SOS_EV_SELF_UNUSUAL_ALARM, 0U, 0U, 1U, 0.0);
+            g_tick += 200U; gen_event(SOS_EV_SELF_UNUSUAL_ALARM, 0U, 0U, 1U, 0.0);
         }
         if (g_t == 160) {
-            g_tick += 200U; SOS_LogEvent(SOS_EV_SELF_UNUSUAL_ACK, 0U, 0U, 1U, 0.0);
+            g_tick += 200U; gen_event(SOS_EV_SELF_UNUSUAL_ACK, 0U, 0U, 1U, 0.0);
             loco_params.unusual_sos_acknowledged = 1;
             loco_params.unusual_stoppage_sos_alarm = 0;
             loco_params.dmi_alarm_codes.ack_block_stop_sos_generate = 0;
@@ -625,8 +655,8 @@ static void run_loco1(void)
         if (g_t >= 240 && g_t < 270 && (g_t % 2) == 1) {
             loco_params.station_id = 4501U;
             const uint8_t d = (g_t >= 245 && g_t < 250) ? 8U : 0U;
-            SOS_LogNoteDestSos(d);
-            if (d) { loco_params.is_dest_loco_sos_recvd = 1; SOS_LogSnapshot(SOS_SNAP_AFTER_DEST_SOS); }
+            gen_note_dest(d);
+            if (d) { loco_params.is_dest_loco_sos_recvd = 1; gen_snapshot(SOS_SNAP_AFTER_DEST_SOS); }
         }
 
         g_tick = 500000U + (uint32_t)g_t * 1000U + 900U;

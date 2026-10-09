@@ -11,6 +11,92 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-192"></a>
+## Session 192 — the minimal SoS layout (README 03, @sos version 2)
+
+Abhinav wanted less code in the firmware than README 01's.
+`SOS_handoff/03_SOS_LOGGING_MINIMAL.md` gives it: one function pasted into
+`sos_table_manager.c`, one call at the end of `SOS_Periodic_Maintenance()`,
+and one line each in `utility.h` / `utility.c`. No struct changes and no
+event calls. It sends one `@sos` line a second, version **2**, carrying the
+own loco, the `loco_params` flags and DMI bits, and its in-use loco and
+station entries (37 B + 24 per loco + 13 per station, at most 255 B).
+DLConsole now reads it as well as version 1.
+
+**What the operator sees.** Everything the SoS work (184–187) built works
+on it: the SoS window (strip, table, decision panel, Two logs), the Safety
+lane, the run summary, the incident pack, the two-loco view. The status
+line says "minimal layout: threats to the second, no reasons or checks".
+
+- **Events are derived** by comparing one second's table with the next:
+  - loco added or "left the SoS table";
+  - a threat starting, or ending "(reason not logged)";
+  - station SoS on / off;
+  - "Own ARP status 0 (No Emergency) → 4 (Head-On Collision)".
+
+  The list says "changes", not "decisions".
+- **Worked out from the flags,** as `SOS_RecomputeAggregates` picks them:
+  the target (a station winning when the loco flags are clear) and each
+  loco's "closest of its kind".
+- **Not in this layout**, and said so on hover instead of guessed:
+  - the nine checks: the columns are blank;
+  - the ARP status as received: "–";
+  - the ARP's own position: no dashed ghost;
+  - brake decisions and end reasons;
+  - the own train length: the own loco is an arrow on the strip.
+- **Two logs** matches "heard" on the threat the sender's status makes
+  here (1 unusual stop, 2 manual SoS, 6 train parted; 0 none), from the send
+  time on. The summary says so.
+
+**Schema.** `SOS_SNAPSHOT` branches on its version byte (`<when test="version
+== 1">` / `== 2`), and version 2 has two `<repeat>`s (`loco[n] src_*`,
+`station[n] stn_*`). The threats byte in the repeat is a plain hex byte:
+`<flags>` is not walked inside a `<repeat>`, and the first draft misaligned
+every entry after the first.
+
+**Fixtures.** `tests/sosgen` builds twice: as before, and with
+`-DSOS_MINIMAL` around README 03's function, byte for byte
+(`tests/sosgen/sos_log_min.c`), on the same scenario. The result is
+`schema/fixtures/sos_minimal_loco{1,2}.log`. The full-layout fixtures are
+unchanged. `validate_sos.py` decodes both: every version-2 frame field by
+field, its size, 1946/1946. A wrong `src_tin` width drops it to 1548.
+
+### Files
+
+`soslog.{h,cpp}`, `soswindow.cpp`, `sosrelay.cpp`, `schema/kavach.xml`,
+`schema/sos_oracle.py`, `schema/validate_sos.py`,
+`schema/fixtures/sos_minimal_loco{1,2}.log` (new),
+`tests/sosgen/{sosgen.c,sos_log_min.c,make_fixture.sh}`;
+tests `test_session192.cpp` (new), `tests.pro`, `screenshot_main.cpp`
+(`SHOT_MINIMAL=1`).
+
+### Tests
+
+`session192` (25 checks), expected values from `sos_oracle.snapshot_v2`
+with the same compare-each-second rule:
+- the decoder agrees with the schema on all 281 version-2 frames;
+- the target at 10:00:30 (loco 2, manual SoS, 410 m) and loco 3's closest,
+  worked out; no ARP status, checks or raw position;
+- the station winning at 10:03:50;
+- the seven spells with the same times as the full layout, each "reason
+  not logged";
+- the derived words, and no brake decisions;
+- the window: status, blank checks with the why, "–" ARP status, closest
+  ✓, decision panel, Two logs "matched on the threat";
+- `relay()` on the pair;
+- the two-loco view and the run summary.
+
+`session184`–`session187` pass unchanged on the full layout.
+
+**Not tested:** README 03's function on the target (only against stubs);
+a real `@sos` capture of either layout.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 12/12; `dltests`
+**241 suites / 6600 checks, 1 failed** (the `session156` pty check);
+menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-191"></a>
 ## Session 191 — the mission report shows the DMI at each mission's key moments
 

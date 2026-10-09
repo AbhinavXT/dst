@@ -37,6 +37,29 @@ def snapshot(b):
     return f
 
 
+def snapshot_v2(b):
+    """@sos version 2 (README 03, the minimal layout): 37 B + 24 per loco + 13 per station."""
+    f = {}
+    (f["version"], f["tick_ms"], f["own_abs_loc_dm"], f["own_dir"], f["own_mode"], f["own_tin"],
+     f["own_speed_x100"], f["own_emergency_status"], f["collision_loco_id"], f["collision_distance_dm"],
+     f["sos_distance_dm"], f["sos_station_id"], f["lp_flags"], f["dmi_bits"], f["self_flags"],
+     f["n_src"], f["n_stn"]) = struct.unpack_from("<BIiBBHHBIiiHHHBBB", b, 0)
+    o = 37
+    locos = []
+    for _ in range(f["n_src"]):
+        locos.append(dict(zip(("loco_id", "age_ds", "abs_loc_m", "dir", "tin", "train_length_m",
+                               "sos_distance_dm", "collision_distance_dm", "threats"),
+                              struct.unpack_from("<IHiBHHiiB", b, o))))
+        o += 24
+    stations = []
+    for _ in range(f["n_stn"]):
+        stations.append(dict(zip(("station_id", "add_em", "age_ds", "abs_loc_m", "sos_distance_dm"),
+                                 struct.unpack_from("<HBHIi", b, o))))
+        o += 13
+    f["locos"], f["stations"], f["size"] = locos, stations, o
+    return f
+
+
 def source(b):
     """@sossrc: 56 B."""
     keys = ("version", "snap_id", "slot_index", "source_loco_id", "age_ms", "last_frame_no",

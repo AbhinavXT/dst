@@ -207,7 +207,11 @@ int main(int argc, char **argv)
                 // SYNTHETIC @sos (schema/fixtures, tests/sosgen): no LKAVACH
                 // build logs SoS yet. SHOT_AT=HH:mm:ss picks the moment.
                 for (int loco = 1; loco <= 2; ++loco) {
-                    QFile run(QStringLiteral(DL_SRC_DIR "/schema/fixtures/sos_synthetic_loco%1.log").arg(loco));
+                    // SHOT_MINIMAL=1: README 03's minimal layout (session 192).
+                    QFile run(QStringLiteral(DL_SRC_DIR "/schema/fixtures/%1_loco%2.log")
+                                  .arg(qEnvironmentVariableIsSet("SHOT_MINIMAL") ? QStringLiteral("sos_minimal")
+                                                                                 : QStringLiteral("sos_synthetic"))
+                                  .arg(loco));
                     if (!run.open(QIODevice::ReadOnly)) continue;
                     while (!run.atEnd()) {
                         const QByteArray l = run.readLine().trimmed();

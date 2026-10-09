@@ -57,7 +57,12 @@ enum EventCode {
     EvTargetRemoved = 9, EvBrakeApplied = 10, EvBrakeSkipped = 11, EvStnAdded = 12,
     EvStnEvicted = 13, EvStnDroppedFull = 14, EvStnQuietReleased = 15, EvStnSosStart = 16,
     EvStnSosEnd = 17, EvDestLocoSos = 18, EvTableReset = 19, EvSelfUnusualAlarm = 20,
-    EvSelfUnusualEnd = 21, EvSelfUnusualAck = 22
+    EvSelfUnusualEnd = 21, EvSelfUnusualAck = 22,
+    // Session 192: derived from consecutive version-2 snapshots (the minimal
+    // layout logs no events): a loco / station gone from the table (aux1 =
+    // the loco's threat bits then), and the own ARP status changing (aux1
+    // from, aux2 to).
+    EvDerivedSrcLeft = 100, EvDerivedStnLeft = 101, EvDerivedOwnStatus = 102
 };
 
 // @sossrc threat_flags / closest_flags bits.
@@ -117,6 +122,7 @@ struct Source {
 };
 
 struct Snapshot {
+    int     version = 1;          // 1: README 01 (full); 2: README 03 (minimal, session 192)
     int     row = -1;             // source row in the tab
     qint64  epochMs = 0;
     int     why = 0;              // 0 periodic, 1 after ARP, 2 after AEP, 3 after DEST_LOCO_SOS
@@ -160,6 +166,10 @@ struct Event {
 };
 
 // Byte decoders. False (and nothing written) for a short frame or another version.
+// decodeSnapshot reads version 1 (README 01) and version 2 (README 03, the
+// minimal layout, session 192: its loco and station entries are in it, and
+// what it does not carry — the ARP as received, the checks, the reasons —
+// is left at "not logged": Source::emergency -1, eval 0).
 bool decodeSnapshot(const QByteArray &b, Snapshot *out);
 bool decodeSource(const QByteArray &b, Source *out);
 bool decodeEvent(const QByteArray &b, Event *out);
@@ -168,6 +178,11 @@ bool decodeEvent(const QByteArray &b, Event *out);
 struct Timeline {
     QVector<Snapshot> snaps;
     QVector<Event>    events;
+    // Session 192: the layout read (the newest snapshot's), and whether the
+    // events were derived from the snapshots (version 2 logs none).
+    int  version = 0;
+    bool eventsDerived = false;
+    bool minimal() const { return version == 2; }
     int otherVersion = 0;     // frames of a layout version this build does not read
     int orphanSources = 0;    // @sossrc with no matching @sos before it
     bool isEmpty() const { return snaps.isEmpty() && events.isEmpty(); }
@@ -236,9 +251,17 @@ struct Relay {
     int     actedRow = -1;
     QString acted;                // eventText of that decision
     bool    tracked = false;      // the receiver had the sender in its table at all
+    bool    byThreat = false;     // session 192: matched on the threat (minimal layout)
 };
 constexpr qint64 kRelayWindowMs = 20000;
 QVector<Relay> relay(const Timeline &sender, const Timeline &receiver, quint32 senderId);
+// Session 192: with the minimal layout the receiver logs no ARP status, so
+// "heard" is the first snapshot whose threat for the sender matches the new
+// status (1 unusual stop, 2 manual SoS, 6 train parted; 0 none of them);
+// 3, 4 and 5 make no threat of their own there and are not matched.
+
+// Session 192: the events a run of version-2 snapshots implies.
+QVector<Event> deriveEvents(const QVector<Snapshot> &snaps);
 
 // The loco id a tab key names ("2_1" -> 2); 0 if none.
 quint32 locoOfKey(const QString &key);
