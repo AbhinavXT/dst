@@ -52,7 +52,9 @@ TEST_SUITE(session143)
     const QString html = RunReport::toHtml(s);
     CHECK(!maybePlural.match(html).hasMatch(),
           QByteArray("the run report has no \"(s)\" counts (") + maybePlural.match(html).captured(0).toUtf8() + ")");
-    CHECK(html.contains(QLatin1String("Loco mode (LSRP): 1 change</h2>")), "\"1 change\", singular");
+    // Since 190 the ARP's modes count while no LSRP is heard: SR, Stand_By,
+    // SR (a restart, 16:28:12-20), On_Sight (LSRP), SR (16:36:46, LSRP gone).
+    CHECK(html.contains(QLatin1String("Loco mode (LSRP, else ARP): 4 changes</h2>")), "4 changes, from LSRP and the ARP");
     CHECK(html.contains(QLatin1String("<table class=\"side\"><tr><td valign=\"top\"><table>")),
           "the span and the packet counts sit side by side");
 

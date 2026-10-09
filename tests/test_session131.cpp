@@ -89,7 +89,8 @@ TEST_SUITE(session131)
     bool eventAtZero = false;
     for (const TrackDiagram::EventMark &e : d.events) if (e.locM <= 0.0) eventAtZero = true;
     CHECK(!eventAtZero, "no event is pinned at 0 m");
-    CHECK(d.unpinnedEvents == 22, QByteArray("events raised while not localised are counted, not pinned (")
+    CHECK(d.unpinnedEvents == 25, QByteArray("events raised while not localised are counted, not pinned; 25 since 190 "
+                                         "(the ARP's mode changes while not localised) (")
                                       + QByteArray::number(d.unpinnedEvents) + ")");
 
     // ---- the canvas -----------------------------------------------------------------
@@ -172,7 +173,7 @@ TEST_SUITE(session131)
         const QString st = status ? status->text() : QString();
         CHECK(st.startsWith(QStringLiteral("6 RFID tags \u00B7 0 signals \u00B7 1 event")),
               QByteArray("the counts read as English (") + st.toUtf8() + ")");
-        CHECK(st.contains(QLatin1String("not localised (0 m): 352 of 826 frames, 22 events")),
+        CHECK(st.contains(QLatin1String("not localised (0 m): 352 of 826 frames, 25 events")),
               "the status says what was left off the rail");
         CHECK(status && !status->toolTip().isEmpty(), "and its tooltip says why");
         CHECK(status && status->fontMetrics().horizontalAdvance(st) < w.width() - 160,

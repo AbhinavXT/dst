@@ -279,7 +279,7 @@ QString toHtml(const Summary &s, const Options &options)
     }
 
     // ---- mode changes -----------------------------------------------------------------------------
-    h += QStringLiteral("<h2>Loco mode (LSRP): %1</h2>").arg(countOf(s.run.modeChanges.size(), "change", "changes"));
+    h += QStringLiteral("<h2>Loco mode (LSRP, else ARP): %1</h2>").arg(countOf(s.run.modeChanges.size(), "change", "changes"));
     if (!s.run.firstMode.isEmpty()) h += QStringLiteral("<p>At window start: %1</p>").arg(esc(s.run.firstMode));
     if (!s.run.modeChanges.isEmpty()) {
         h += QStringLiteral("<table><tr><th>Time</th><th>From</th><th>To</th></tr>");

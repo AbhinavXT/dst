@@ -11,6 +11,51 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-190"></a>
+## Session 190 — the mode lane shows SR while the loco has no direction or location
+
+Reported by Abhinav: DLConsole did not show SR mode when the direction and
+location are zero.
+
+**Cause.** A loco that is not localised (no direction, location 0) sends
+**no LSRP** at all, only ARPs, and the mode (lanes, run report, incident
+pack, track diagram events) was read from LSRP only. In Abhinav's
+2026-10-08 logs, loco 2's whole 16:20 excerpt (56 ARPs, SR, no LSRP) showed
+no mode, and loco 1's SR spells after a restart were missing too.
+
+**Fix.** The ARP's `LOCO_MODE` counts when no LSRP has been heard for 3 s.
+Where LSRP is heard it still decides, so the two cannot flap at a change.
+SR, Stand_By, System_Failure (and Limited_Supervision at 10:14:01 in loco
+1's log, which no LSRP carried) now appear as mode segments. The report
+headings read "Loco mode (LSRP, else ARP)".
+
+**What changes elsewhere:** more mode changes where a loco runs
+unlocalised. In `replay/loco_1_1_26062026_162418.cap` the run report now has
+4 changes (was 1: SR → Stand_By → SR at a restart 16:28:12–20, and On_Sight
+→ SR at 16:36:46 after its LSRPs stop), and the track diagram counts 25
+events it cannot place at 0 m (was 22: those three). Both re-counted with
+`schema/engine.py` under the same rule.
+
+### Files
+
+`runreport.{h,cpp}`, `incidentreport.cpp` (heading); tests
+`test_session190.cpp` (new), `test_session131.cpp`, `test_session143.cpp`,
+`tests.pro`.
+
+### Tests
+
+`session190`, real frames: loco 2 at 16:20 is SR from 16:20:09 with no
+change, and the mode lane names it; loco 1 at 10:13 has 7 mode changes,
+Stand_By → SR at 10:16:04 and 10:17:28, Limited_Supervision at 10:14:01,
+and On_Sight → Full_Supervision at 10:13:24 still from LSRP. `session131`
+and `session143` updated to the new counts.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 12/12; `dltests`
+**239 suites / 6563 checks, 1 failed** (the `session156` pty check);
+menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-189"></a>
 ## Session 189 — DMI: the speed in the dial can be read in a light theme
 

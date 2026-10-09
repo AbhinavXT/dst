@@ -12,7 +12,8 @@
 //  What it reads (from the tab's own rows; nothing live):
 //    span and packet counts        every row
 //    silences in the traffic       every row, gaps over a threshold
-//    loco mode changes             LSRP LOCO_MODE
+//    loco mode changes             LSRP LOCO_MODE; ARP's when no LSRP for 3 s
+//                                  (190: an unlocalised loco sends no LSRP)
 //    start of mission (168)        ARP in Stand_By with no direction, tag
 //                                  or location, as episodes
 //    emergency status              LSRP EMERGENCY_STATUS != 0, as episodes

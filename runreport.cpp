@@ -79,6 +79,8 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
     int included = 0;
     bool haveFirst = false;
     bool inMissionStart = false;
+    qint64 lastLsrpMs = 0;                          // session 190
+    constexpr qint64 kArpModeAfterMs = 3000;
     bool selfSosOpen = false;
     bool noKeysOpen = false;
     QString keySet;
@@ -119,6 +121,21 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
                 locoFrameMs = e->epochMs;
             }
         }
+        // Session 190: the mode from the ARP when no LSRP has been heard for 3 s.
+        // A loco that is not localised (no direction, no location) sends no
+        // LSRP at all, so SR, Stand_By and System_Failure there were only in
+        // its ARPs, and the mode lane never showed them. LSRP stays the
+        // source whenever it is there, so the two cannot flap at a change.
+        if (type == QLatin1String("arp") && (lastLsrpMs == 0 || e->epochMs - lastLsrpMs > kArpModeAfterMs)) {
+            for (const FieldRow &r : rows) {
+                if (r.field.trimmed() != QLatin1String("LOCO_MODE")) continue;
+                const QString modeText = r.value.trimmed();
+                if (mode.isEmpty()) s.firstMode = modeText;
+                else if (modeText != mode) s.modeChanges << Change{ e->epochMs, i, mode, modeText };
+                mode = modeText;
+                break;
+            }
+        }
         if (type == QLatin1String("arp")) {
             const bool som = CaptureDecoder::isStartOfMission(raw);
             if (som && !inMissionStart) {
@@ -136,6 +153,7 @@ Summary summarise(const LogModel *model, const QString &tabKey, const QString &t
             inMissionStart = som;
         }
         if (type == QLatin1String("lsrp")) {
+            lastLsrpMs = e->epochMs;
             QString modeText;
             QString emergencyText;
             for (const FieldRow &r : rows) {
@@ -405,7 +423,7 @@ QString toHtml(const Summary &s, const Options &options)
     }
 
     // ---- modes ---------------------------------------------------------------------------
-    h += QStringLiteral("<h2>Loco mode (LSRP): %1</h2>").arg(countOf(s.modeChanges.size(), "change", "changes"));
+    h += QStringLiteral("<h2>Loco mode (LSRP, else ARP): %1</h2>").arg(countOf(s.modeChanges.size(), "change", "changes"));
     if (s.firstMode.isEmpty()) {
         h += QStringLiteral("<p class=\"muted\">No LSRP frames in this tab.</p>");
     } else {
