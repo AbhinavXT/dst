@@ -1,6 +1,7 @@
 #include "soswindow.h"
 
 #include "dmitimetravel.h"
+#include "sosstrip.h"
 #include "logmodel.h"
 #include "messagedispatcher.h"
 #include "statusline.h"
@@ -14,6 +15,7 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSlider>
 #include <QSplitter>
 #include <QTableWidget>
@@ -155,11 +157,32 @@ SosWindow::SosWindow(MessageDispatcher *dispatcher, QWidget *parent)
     m_events->horizontalHeader()->setStretchLastSection(true);
     m_events->setToolTip(tr("Every SoS decision the loco logged. Double-click: show that moment in the log"));
 
+    // Session 185: the strip beside what the loco is reacting to, the table under them.
+    m_strip = new SosStrip(this);
+    m_decision = new QLabel(this);
+    m_decision->setWordWrap(true);
+    m_decision->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+    m_decision->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_decision->setContentsMargins(6, 4, 6, 4);
+    auto *decisionScroll = new QScrollArea(this);
+    decisionScroll->setWidget(m_decision);
+    decisionScroll->setWidgetResizable(true);
+    decisionScroll->setMinimumWidth(260);
+    decisionScroll->setToolTip(tr("What the loco is reacting to at this moment, from @sos"));
+    auto *upper = new QSplitter(Qt::Horizontal, this);
+    upper->addWidget(m_strip);
+    upper->addWidget(decisionScroll);
+    upper->setStretchFactor(0, 3);
+    upper->setStretchFactor(1, 1);
+    upper->setChildrenCollapsible(false);
+
     m_split = new QSplitter(Qt::Vertical, this);
+    m_split->addWidget(upper);
     m_split->addWidget(m_sources);
     m_split->addWidget(m_events);
     m_split->setStretchFactor(0, 3);
     m_split->setStretchFactor(1, 2);
+    m_split->setStretchFactor(2, 2);
     m_split->setChildrenCollapsible(false);
 
     m_status = new StatusLine;
@@ -253,6 +276,7 @@ void SosWindow::rebuild()
 {
     const LogModel *model = (m_dispatcher && !m_key.isEmpty()) ? m_dispatcher->modelForKey(m_key) : nullptr;
     m_t = SosLog::extract(model);
+    m_strip->setConfig(SosStrip::configFromLog(model));
     m_slider->blockSignals(true);
     m_slider->setRange(0, qMax(0, m_t.snaps.size() - 1));
     m_slider->setValue(qMax(0, m_t.snaps.size() - 1));
@@ -265,6 +289,7 @@ void SosWindow::rebuild()
     if (m_t.isEmpty()) {
         m_index = -1;
         fillSources();
+        fillDecision();
         m_readout->setText(tr("No @sos in this tab."));
         m_status->warn(tr("This log has no SoS lines (@sos / @sossrc / @sosev). LKAVACH logs them only "
                           "with the SoS logging added (SOS_handoff, README 01)."));
@@ -307,6 +332,26 @@ void SosWindow::setCurrentSnapshot(int index)
     }
     fillSources();
     markEvents();
+    fillDecision();
+}
+
+void SosWindow::fillDecision()
+{
+    if (m_index < 0 || m_index >= m_t.snaps.size()) {
+        m_strip->setSnapshot(nullptr);
+        m_decision->setText(tr("No snapshot."));
+        return;
+    }
+    const SosLog::Snapshot &s = m_t.snaps.at(m_index);
+    m_strip->setSnapshot(&s);
+    QString html = QStringLiteral("<b>%1</b>").arg(tr("What the loco is reacting to").toHtmlEscaped());
+    for (const QString &line : SosLog::decisionLines(s)) {
+        const bool observed = line.startsWith(QLatin1String("Observed:"));
+        html += QStringLiteral("<p style=\"margin:4px 0\">%1%2%3</p>")
+                    .arg(observed ? QStringLiteral("<span style=\"color:%1\">").arg(UiColor::warning().name()) : QString(),
+                         line.toHtmlEscaped(), observed ? QStringLiteral("</span>") : QString());
+    }
+    m_decision->setText(html);
 }
 
 void SosWindow::showMoment(qint64 ms)

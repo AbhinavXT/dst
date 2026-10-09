@@ -11,6 +11,60 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-185"></a>
+## Session 185 — SoS, phase B: the track strip, and what the loco is reacting to
+
+Phase B of the SoS window (184). Two panes above its table:
+
+- **The track strip** draws the snapshot along a straight line by absolute
+  location (increasing to the right, as the track diagram does), **one lane
+  per TIN**: the own loco's line in the middle, the others above and below
+  it, named. Each train is a bar of its length behind its front with an
+  arrow the way it is going: the own loco in the accent colour, the others
+  by threat (collision: error, SoS: warning, none: muted), each labelled
+  "Loco 2 · manual SoS · 990 m". The **target** is outlined and marked ◎.
+  Where `SOSWithAdjustment` moved a loco or turned it round, the ARP's own
+  position is drawn **dashed** beside it. Around the own loco's front, the
+  **SoS trigger** (warning) and **collision trigger** (error) distances are
+  shaded, read from the log's `@linfo`; a log without one says so in the
+  legend instead of guessing. Stations are pins on the top edge. Hover any
+  of them for the details.
+- **What the loco is reacting to**, beside it: `SosLog::decisionLines` —
+  the target and its distance (and why 0 m, when it is), the emergency
+  status the loco's own ARP broadcasts, the flags that set the SoS speed
+  limit, the other flags, the last DEST_LOCO_SOS, what the DMI shows, and
+  "Observed: …" (in the warning colour) when a flag and its DMI bit differ.
+
+The table now has the full width under them; the decisions stay at the
+bottom.
+
+### Files
+
+New: `sosstrip.{h,cpp}`, `tests/test_session185.cpp`. Changed:
+`soswindow.{h,cpp}`, `dlcore.pri`, `tests/tests.pro`.
+
+### Tests
+
+`session185` (22 checks), on the synthetic fixture whose `@linfo` is a real
+frame: the trigger distances from it (3000 / 1000 / 500 m); at 10:01:40 the
+lanes TIN 102 / 101 (own) / 103, the legend, loco 2 drawn as the target at
+990 m, loco 3's ARP position dashed (13480 m nominal), the own loco, the
+span; the decision panel's target and own status; at 10:02:32 loco 4 on the
+own lane, the target, head-on at 920 m with own status 4; at 10:03:50 the
+station's pin and the station as target, own status still 5; a strip with
+no `@linfo` and no snapshot; the window fits 1100 × 700 with the strip at
+least 150 px tall; no orphan widgets.
+
+**Not tested:** a real `@sos` capture (none exists); Windows / Linux
+rendering (see this push's CI).
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 12/12; `dltests`
+**235 suites / 6510 checks, 1 failed** (the macOS-only `session156` pty
+check); menu audit passed; headless smoke alive. Linux / Windows: see this
+push's CI.
+
+---
+
 <a id="session-184"></a>
 ## Session 184 — SoS, phase A: the firmware's SoS table, decoded, in a window
 
