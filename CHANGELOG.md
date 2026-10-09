@@ -11,6 +11,36 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-189"></a>
+## Session 189 — DMI: the speed in the dial can be read in a light theme
+
+Reported by Abhinav: in light mode the speed in the centre of the DMI dial
+could not be read. The hub at the dial's centre takes the pointer's colour:
+white in Annexure-B colours and in a dark theme, but the theme's **ink**
+(black) in a light theme; the digits were always black. Black on black.
+
+The digits are now black or white, whichever stands out from the hub's own
+colour (`qGray(hub) >= 128` → black, else white). Annexure-B colours and
+dark themes look exactly as before; only the light themes change (white
+digits on the dark hub). Nothing else on the panel is restyled.
+
+### Files
+
+`dmipanel.cpp`; tests `test_session189.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session189`: the DMI rendered at 800 × 600, speed 45; the pixels in the
+digits' band that differ from the hub's colour are counted. Light theme:
+the hub is dark and 25+ digit pixels stand out (0 before the fix, measured).
+Annexure-B and dark: light hub, digits stand out, as before.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 12/12; `dltests`
+**239 suites / 6563 checks, 1 failed** (the `session156` pty check);
+menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-188"></a>
 ## Session 188 — Loco Configuration: the default vcc_crc is 0x9263FCA8
 

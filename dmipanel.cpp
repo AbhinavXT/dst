@@ -510,7 +510,11 @@ void DmiView::paintEvent(QPaintEvent *)
         p.setBrush(ptr);
         p.drawPolygon(arm);
         p.drawEllipse(kDial, 26, 26);
-        text(QRectF(kDial.x() - 26, kDial.y() - 26, 52, 52), QString::number(s.speed), 20, true, QColor(0, 0, 0), Qt::AlignCenter);
+        // Session 189: the digits contrast with the hub. Annexure-B draws a white
+        // hub with black digits; in a light theme the hub takes the theme's ink
+        // (black), and black digits on it could not be read.
+        const QColor digits = qGray(ptr.rgb()) >= 128 ? QColor(0, 0, 0) : QColor(255, 255, 255);
+        text(QRectF(kDial.x() - 26, kDial.y() - 26, 52, 52), QString::number(s.speed), 20, true, digits, Qt::AlignCenter);
     }
     // B4 loco id, B5/B6 date and time
     text(QRectF(100, 2, 150, 24), s.locoId, 18.67, true, ink);
