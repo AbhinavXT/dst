@@ -11,6 +11,62 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-193"></a>
+## Session 193 — the review's findings on the SoS work, fixed
+
+A review of patches 184–192 (Abhinav asked for it, then for all of it to be
+fixed). Measured on his 2026-10-08 field log, 194,348 rows in the tab.
+
+1. **The SoS window froze about 3 s on a day's log.**
+   `SosStrip::configFromLog` decoded every `@linfo` in the tab (about
+   12,000) to use the newest one, on every rebuild: opening the window,
+   changing tab, building an incident pack. It now walks back from the end
+   and decodes only the newest. **2,866 ms → 3 ms**, same value (3000 m).
+2. **Opening the window from the menu built it twice.** `SosWindow::setSource`
+   now returns at once for the tab already shown.
+3. **Minimal layout: a threat already on when a log (or a window of it)
+   begins was reported as "started" at that first second.** Nothing was
+   observed starting there. The first snapshot now gives "Manual SoS from
+   loco 2 already on when the log starts, 410 m" (no "added"). Its spell
+   carries `onAtLogStart`, and the lanes and reports read "(already on when
+   the log starts)". This matters for the lanes and the incident pack, which
+   read a window of the log, not only for whole logs.
+4. **Minimal layout: DEST_LOCO_SOS said "from station 0".** That layout
+   doesn't log the station behind it. It now reads "Station DEST_LOCO_SOS
+   (general) from a station".
+5. **The lanes coloured collisions by matching the spell's words** with a
+   copy of the wording in `laneband.cpp`. That check is now
+   `SosLog::isCollisionText`, built from `threatName()` itself, with
+   `Spell::isCollision()` beside it, so the two cannot drift apart.
+
+Also measured and fine: the new ARP-mode rule (190) gives 65 mode changes
+over the day and none flips back within 10 s. `SosLog::extract` and
+`hasSos` take 7 / 6 ms on the day log; `addDmiMoments` 1.35 s for its 10
+missions. The firmware's `loco_manager.c:943` sets `sensor_speed` from
+km/h × KMPH_TO_MPS, so it is m/s, as the two-loco view's `@sos` trace
+assumed (186).
+
+### Files
+
+`sosstrip.cpp`, `soswindow.{h,cpp}`, `soslog.{h,cpp}`, `laneband.cpp`;
+tests `test_session193.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session193` (15 checks): the trigger distances from the newest `@linfo`, and
+"not known" without one; `setSource` on the shown tab keeps the moment; the
+minimal log read from 10:00:30 says loco 2's manual SoS was "already on when
+the log starts, 410 m", doesn't call loco 2 added (but does loco 4 later),
+and its spell and episode text say so, while the whole log marks nothing;
+DEST "from a station"; every threat's text is a collision exactly when the
+threat is. `session184`–`187` and `session192` pass unchanged.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators 12/12; `dltests`
+**242 suites / 6615 checks, 1 failed** (the `session156` pty check);
+menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-192"></a>
 ## Session 192 — the minimal SoS layout (README 03, @sos version 2)
 

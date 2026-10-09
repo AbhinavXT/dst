@@ -1,5 +1,7 @@
 #include "laneband.h"
 
+#include "soslog.h"
+
 #include "fieldplot.h"
 #include "logmodel.h"
 #include "capturedecoder.h"
@@ -26,13 +28,6 @@ const int kLabelW  = 64;      // the five fixed lanes' names fit in this
 const int kLabelMaxW = 150;   // a custom lane's field name, up to this
 const int kPad     = 6;
 const char *kLanes[] = { "Mode", "Safety", "RFID", "Link", "Faults" };
-
-// Session 184: a firmware SoS spell that is a collision (SosLog::Spell::what()).
-bool isCollisionSpell(const QString &what)
-{
-    return what.startsWith(QLatin1String("Head-on")) || what.startsWith(QLatin1String("Rear-end"))
-        || what.startsWith(QLatin1String("Station head-on")) || what.startsWith(QLatin1String("Station rear-end"));
-}
 
 QString hm(qint64 ms) { return QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss")); }
 
@@ -331,7 +326,7 @@ void LaneBand::paintEvent(QPaintEvent *)
         const int x1 = xFor(e.fromMs, r), x2 = qMax(xFor(e.toMs, r), x1 + 3);
         const int y = r.top() + r.height() / 2 + 1;
         p.fillRect(QRect(x1, y, x2 - x1, qMax(2, r.bottom() - 5 - y)),
-                   isCollisionSpell(e.what) ? UiColor::error() : UiColor::warning());
+                   SosLog::isCollisionText(e.what) ? UiColor::error() : UiColor::warning());
     }
     for (const RunReport::Change &c : m_sum.sosDecisions)
         tick(1, c.ms, c.from == QLatin1String("applied") ? UiColor::error() : UiColor::muted(), QString());

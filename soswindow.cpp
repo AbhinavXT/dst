@@ -272,6 +272,9 @@ void SosWindow::refreshPicker()
 
 void SosWindow::setSource(const QString &key)
 {
+    // The tab already shown is not read again (session 193: opening the
+    // window from the menu built it twice).
+    if (m_built && key == m_key) return;
     m_key = key;
     const int idx = m_picker->findData(key);
     if (idx >= 0 && idx != m_picker->currentIndex()) {
@@ -288,6 +291,7 @@ void SosWindow::rebuild()
 {
     const LogModel *model = (m_dispatcher && !m_key.isEmpty()) ? m_dispatcher->modelForKey(m_key) : nullptr;
     m_t = SosLog::extract(model);
+    m_built = true;
     m_strip->setConfig(SosStrip::configFromLog(model));
     m_relay->setReceiver(m_key, m_t);
     m_slider->blockSignals(true);

@@ -392,6 +392,7 @@ QVector<Event> deriveEvents(const QVector<Snapshot> &snaps)
     QHash<quint32, Source> prev;          // loco id -> its entry in the previous snapshot
     QHash<int, Station> prevStn;
     int prevStatus = -1;
+    bool first = true;
     for (const Snapshot &s : snaps) {
         auto ev = [&](int code, int aux1, int aux2, quint32 id, double distM) {
             Event e;
@@ -417,11 +418,13 @@ QVector<Event> deriveEvents(const QVector<Snapshot> &snaps)
             now.insert(src.locoId, src);
             const auto it = prev.constFind(src.locoId);
             const quint8 was = it == prev.constEnd() ? 0 : it->threats;
-            if (it == prev.constEnd()) ev(EvSrcAdded, 0, 0, src.locoId, src.distM);
+            // Session 193: in the first snapshot nothing "was added" or
+            // "started": it was already so when the log begins (aux2 1).
+            if (it == prev.constEnd() && !first) ev(EvSrcAdded, 0, 0, src.locoId, src.distM);
             for (int bit : { int(BitManual), int(BitUnusual), int(BitHeadOn), int(BitRearEnd), int(BitParted) }) {
                 const bool collision = bit == BitHeadOn || bit == BitRearEnd;
                 if ((src.threats & bit) && !(was & bit))
-                    ev(EvThreatStart, threatOfBit(bit), 0, src.locoId, collision ? src.collisionDistM : src.sosDistM);
+                    ev(EvThreatStart, threatOfBit(bit), first ? 1 : 0, src.locoId, collision ? src.collisionDistM : src.sosDistM);
                 else if (!(src.threats & bit) && (was & bit))
                     ev(EvThreatEnd, threatOfBit(bit), 0, src.locoId, collision ? it->collisionDistM : it->sosDistM);
             }
@@ -435,13 +438,14 @@ QVector<Event> deriveEvents(const QVector<Snapshot> &snaps)
             nowStn.insert(st.id, st);
             const auto it = prevStn.constFind(st.id);
             const bool was = it != prevStn.constEnd() && it->addEmSos();
-            if (it == prevStn.constEnd()) ev(EvStnAdded, 0, 0, quint32(st.id), st.distM);
-            if (st.addEmSos() && !was) ev(EvStnSosStart, 0, 0, quint32(st.id), st.sosDistM);
+            if (it == prevStn.constEnd() && !first) ev(EvStnAdded, 0, 0, quint32(st.id), st.distM);
+            if (st.addEmSos() && !was) ev(EvStnSosStart, 0, first ? 1 : 0, quint32(st.id), st.sosDistM);
             else if (!st.addEmSos() && was) ev(EvStnSosEnd, 0, 0, quint32(st.id), it->sosDistM);
         }
         for (auto it = prevStn.constBegin(); it != prevStn.constEnd(); ++it)
             if (!nowStn.contains(it.key())) ev(EvDerivedStnLeft, it->addEmSos() ? 1 : 0, 0, quint32(it.key()), it->distM);
         prevStn = nowStn;
+        first = false;
     }
     return out;
 }
@@ -542,6 +546,8 @@ QString eventText(const Event &e)
         return QStringLiteral("ARP from %1 rejected: %2").arg(loco,
             e.aux1 == 1 ? QStringLiteral("its own loco ID") : QStringLiteral("undefined direction"));
     case EvThreatStart:
+        if (e.aux2 == 1)   // session 193: derived, already on in the first snapshot
+            return QStringLiteral("%1 from %2 already on when the log starts, %3").arg(threatName(e.aux1), loco, d);
         return QStringLiteral("%1 from %2 started, %3").arg(threatName(e.aux1), loco, d);
     case EvThreatEnd:
         if (e.aux2 == 0)   // session 192: derived, the reason is not logged
@@ -559,7 +565,9 @@ QString eventText(const Event &e)
     case EvStnEvicted:       return QStringLiteral("Station %1 evicted for a nearer station").arg(e.id);
     case EvStnDroppedFull:   return QStringLiteral("Station %1 not tracked: the station table is full").arg(e.id);
     case EvStnQuietReleased: return QStringLiteral("Station %1 released (no SoS, quiet for 5 s)").arg(e.id);
-    case EvStnSosStart:      return QStringLiteral("Station general SoS from %1 started, %2").arg(stn, d);
+    case EvStnSosStart:
+        if (e.aux2 == 1) return QStringLiteral("Station general SoS from %1 already on when the log starts, %2").arg(stn, d);
+        return QStringLiteral("Station general SoS from %1 started, %2").arg(stn, d);
     case EvStnSosEnd:
         if (e.aux2 == 0) return QStringLiteral("Station general SoS from %1 ended (reason not logged)").arg(stn);
         return QStringLiteral("Station general SoS from %1 ended: %2").arg(stn, endReasonText(e.aux2));
@@ -686,8 +694,22 @@ QVector<Check> checks(const Source &src)
 
 QString Spell::what() const
 {
+    // The minimal layout does not log the station behind DEST_LOCO_SOS.
+    if (station && source == 0) return QStringLiteral("%1 from a station").arg(threatName(threat));
     return QStringLiteral("%1 from %2 %3").arg(threatName(threat),
         station ? QStringLiteral("station") : QStringLiteral("loco")).arg(source);
+}
+
+bool Spell::isCollision() const
+{
+    return threat == HeadOn || threat == RearEnd || threat == StationHeadOn || threat == StationRearEnd;
+}
+
+bool isCollisionText(const QString &what)
+{
+    for (int t : { int(HeadOn), int(RearEnd), int(StationHeadOn), int(StationRearEnd) })
+        if (what.startsWith(threatName(t) + QStringLiteral(" from "))) return true;
+    return false;
 }
 
 QVector<Spell> spells(const Timeline &t)
@@ -709,6 +731,7 @@ QVector<Spell> spells(const Timeline &t)
         s.station = station;
         s.startDistM = e.distM;
         s.open = true;
+        s.onAtLogStart = (e.code == EvThreatStart || e.code == EvStnSosStart) && e.aux2 == 1;
         open.insert(k, out.size());
         out.append(s);
     };
@@ -740,6 +763,7 @@ QVector<Spell> spells(const Timeline &t)
                 Event e; e.epochMs = s.epochMs; e.row = s.row;
                 destStation = s.ownStation;
                 start(e, DestGeneral, quint32(destStation), true);
+                if (si == 0 && t.minimal()) out.last().onAtLogStart = true;
             } else if (!on && destOn) {
                 finish(key(DestGeneral, quint32(destStation), true), s.epochMs, 0.0, 0,
                        QStringLiteral("is_dest_loco_sos_recvd cleared"));
@@ -813,8 +837,8 @@ QVector<RunReport::Episode> spellEpisodes(const Timeline &t)
         e.toMs = s.toMs;
         e.row = s.row;
         e.worst = s.startDistM;
-        e.what = s.what() + QStringLiteral(" — ") + (s.open ? QStringLiteral("(no end)")
-                                                               : QStringLiteral("ended: ") + s.endedBy);
+        e.what = s.what() + (s.onAtLogStart ? QStringLiteral(" (already on when the log starts)") : QString())
+               + QStringLiteral(" — ") + (s.open ? QStringLiteral("(no end)") : QStringLiteral("ended: ") + s.endedBy);
         out.append(e);
     }
     return out;

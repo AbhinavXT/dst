@@ -1,6 +1,8 @@
 #include "sosstrip.h"
 
+#include "capturedecoder.h"
 #include "fieldplot.h"
+#include "logmodel.h"
 #include "uicolors.h"
 
 #include <QHelpEvent>
@@ -34,15 +36,22 @@ QColor threatColor(quint8 threats)
 
 SosStrip::Config SosStrip::configFromLog(const LogModel *model)
 {
+    // The newest @linfo only, found from the end: decoding all of them (about
+    // 12,000 in a day's tab) took 2.9 s, to use the last (session 193).
     Config c;
-    const QVector<RowFields> rows = collectRowFields(model, QStringLiteral("linfo"),
-        { QStringLiteral("sos_trigger_distance"), QStringLiteral("collision_trigger_distance"),
-          QStringLiteral("sos_cancellation_distance") });
-    if (rows.isEmpty()) return c;
-    const RowFields &r = rows.last();
-    c.sosTriggerM = int(r.raw.value(QStringLiteral("sos_trigger_distance"), -1));
-    c.collisionTriggerM = int(r.raw.value(QStringLiteral("collision_trigger_distance"), -1));
-    c.cancelM = int(r.raw.value(QStringLiteral("sos_cancellation_distance"), -1));
+    if (!model) return c;
+    for (int i = model->count() - 1; i >= 0; --i) {
+        const LogEntryPtr e = model->entryAt(i);
+        if (!e || captureTypeOf(e->text) != QLatin1String("linfo")) continue;
+        const CaptureLine cap = CaptureDecoder::parseLine(e->text);
+        if (!cap.valid || cap.bytes.isEmpty()) continue;
+        QHash<QString, qint64> raw;
+        CaptureDecoder::describe(cap, nullptr, 0, &raw);
+        c.sosTriggerM = int(raw.value(QStringLiteral("sos_trigger_distance"), -1));
+        c.collisionTriggerM = int(raw.value(QStringLiteral("collision_trigger_distance"), -1));
+        c.cancelM = int(raw.value(QStringLiteral("sos_cancellation_distance"), -1));
+        break;
+    }
     return c;
 }
 

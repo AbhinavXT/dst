@@ -106,6 +106,7 @@ private:
     QString m_key;
     SosLog::Timeline m_t;
     int m_index = -1;
+    bool m_built = false;   // session 193: rebuild() has run for m_key
 
     QComboBox    *m_picker = nullptr;
     QSlider      *m_slider = nullptr;

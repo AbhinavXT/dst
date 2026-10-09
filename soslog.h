@@ -224,8 +224,15 @@ struct Spell {
     int     endReason = 0;        // SOS_END_*; 0 = closed by timeout/reset/evict, or open
     QString endedBy;              // words: "the source stopped sending it", "timeout", ...
     bool    open = false;
-    QString what() const;         // "Manual SoS from loco 2"
+    // Session 193: already on in the first snapshot of a minimal-layout log:
+    // its real start is before the log, not at fromMs.
+    bool    onAtLogStart = false;
+    QString what() const;         // "Manual SoS from loco 2"; "... from a station" when the id is not logged
+    bool    isCollision() const;  // head-on / rear-end (from a loco or a station)
 };
+// Session 193: is a spell's what() text a collision? The lanes colour by it;
+// decided here, beside threatName(), so the two cannot drift apart.
+bool isCollisionText(const QString &what);
 QVector<Spell> spells(const Timeline &t);
 // Brake decisions: @sosev 10 (applied) and 11 (not applied), in order.
 QVector<Event> brakeDecisions(const Timeline &t);
