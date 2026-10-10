@@ -107,7 +107,7 @@ TEST_SUITE(session198)
         TagBuilderWindow w(&d);
         w.resize(1100, 680);
         w.show();
-        CHECK(w.tabs()->count() == 4 && w.tabs()->tabText(3) == QLatin1String("Run"), "a Run tab");
+        CHECK(w.tabs()->count() == 5 && w.tabs()->tabText(3) == QLatin1String("Run"), "a Run tab");
         w.setRunSource(QStringLiteral("1_1"));
         CHECK(w.makeRouteFromRun() && w.route().tags.size() == run.tags.size() && w.isModified(),
               "Make a route from this run");

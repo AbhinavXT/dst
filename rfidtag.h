@@ -79,9 +79,22 @@ QString typeName(int type);       // "Normal", "LC gate", ...
 // --- routes ------------------------------------------------------------------
 enum Direction { DirUnset = 0, DirNominal = 1, DirReverse = 2 };
 
+// Session 203: a <rfid_data> row's own attributes, as the RFID simulator
+// reads them (it moves by abs_loc / next_rfid_abs_loc and picks the packet by
+// tag_type, whatever the tag says). Kept when a route.xml / Configuration1.xml
+// is read; an edited tag keeps the stale copy, so compare pageX / pageY with
+// the tag before trusting it.
+struct FileRow {
+    bool    present = false;
+    QString rfidId, tagName, pageX, pageY;
+    int     tagType = 0;
+    double  absLoc = 0, nextAbsLoc = 0;
+};
+
 struct Tag {
     QString    name;              // as the file had it ("904", "904D")
     QByteArray bytes;             // 16 bytes
+    FileRow    file;              // set for rows read from <rfid_data>
 };
 struct Signal {                   // tags_sim's signals sheet
     QString footTag, name, sigId;

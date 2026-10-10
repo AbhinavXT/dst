@@ -108,6 +108,7 @@ SOURCES += \
     $$PWD/rfidexport.cpp \
     $$PWD/rfidtag.cpp \
     $$PWD/routestrip.cpp \
+    $$PWD/simpreview.cpp \
     $$PWD/taglibrary.cpp \
     $$PWD/tagbuilderwindow.cpp \
     $$PWD/twolocowindow.cpp \
@@ -252,6 +253,7 @@ HEADERS += \
     $$PWD/rfidexport.h \
     $$PWD/rfidtag.h \
     $$PWD/routestrip.h \
+    $$PWD/simpreview.h \
     $$PWD/taglibrary.h \
     $$PWD/tagbuilderwindow.h \
     $$PWD/twolocowindow.h \

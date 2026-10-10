@@ -11,6 +11,100 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-203"></a>
+## Session 203 — what the RFID simulator would send: a preview
+
+Asked for by Abhinav after reading the RFID simulator (LocoTcasSimulator).
+For a route, it shows what the simulator would send to the loco unit's two
+RFID readers, tag by tag and tick by tick, without the simulator, the
+serial ports or a loco unit.
+
+**What the operator sees:** a **Simulator** tab in Tools ▸ RFID Tag Builder.
+- **Controls:** speed (km/h); **from** (the start tag); **Reader 1** /
+  **Reader 2**; the simulator's **missing tags** list; **Preview**.
+- **The table:** each send, with the time from the start, where the
+  simulated loco was, which reader, the tag, the location the tag itself
+  carries, and its row. Double-click a send to select its tag.
+- **The summary** gives:
+  - the pulses and metres a tick at that speed (60 km/h: 16746 pulses ×1000,
+    1.667 m);
+  - how many tags go out on each reader, the time taken, and where and why
+    it stops;
+  - whether the file's own locations or route.xml's were used;
+  - the tags **never sent on reader 1**;
+  - the **main tags never sent on reader 2**;
+  - above about 144 km/h, that a tick is longer than reader 2's 4 m window
+    and the simulator can step over it.
+
+**Ported from the simulator** (`LocoDialog::calculateNextDistance` /
+`sendingRfidData`), its arithmetic included:
+- 100 ms ticks; pulses = `UINT_32(0.1·v·30/(π·0.95)·1000)` with π = 3.1428571,
+  truncated; the distance moved follows from those pulses.
+- The row is the first whose `abs_loc … next_rfid_abs_loc` span holds the
+  location.
+- Reader 1 sends a tag on entering its row.
+- Reader 2 keeps the last main tag and the last duplicate entered, per tag
+  type. It sends the main at 20–24 m past the current row and the duplicate
+  at ≥ 24 m.
+- A missing tag leaves the row before it current.
+
+For a route opened from a route.xml / Configuration1.xml, the preview uses
+the **file's own rows** (abs_loc, next_rfid_abs_loc, tag_type, tag_name), as
+the simulator does, while they still hold the same tags. Otherwise it uses
+what route.xml would be written with. `RfidTag::Tag` now keeps each
+`<rfid_data>` row's attributes (`FileRow`) for this.
+
+**What it shows about the simulator:**
+- **The last tag of every route is never sent.** Its `next_rfid_abs_loc` is
+  its own location, so no span holds it. Nor does reader 2 send the main tag
+  before it, because the run ends 4 m later.
+- Reader 2 measures from the row the loco is in. With a duplicate 4 m after
+  its main, the main goes out on reader 2 about 24 m after the main tag, and
+  the duplicate about 28 m after.
+
+**Not modelled:** acceleration, braking, roll-back / reverse movement, the
+second speed sensor, and carrying on into the next station's main route
+after the last row.
+
+### Files
+
+New: `simpreview.{h,cpp}`, `tests/test_session203.cpp`. Changed:
+`rfidtag.{h,cpp}` (`FileRow`), `tagbuilderwindow.{h,cpp}`, `dlcore.pri`,
+`tests/tests.pro`, `tests/screenshot_main.cpp` (`SHOT_TAB=sim`),
+`docs/RFID_TAG_BUILDER.md`.
+
+### Tests
+
+`session203` (22 checks):
+- **The arithmetic:** 60 km/h gives 16746 pulses and 1.66663 m.
+- **On a built route:** the exact sequence on both readers, worked by hand
+  from the simulator's code:
+  `1:100 1:100D 2:100 2:100D 1:101 1:101D 2:101 2:101D 1:102`, with reader
+  2's distances.
+  - the last row never sent, and 102 never reaching reader 2;
+  - a reverse route;
+  - a missing tag;
+  - reader 2 off;
+  - 160 km/h;
+  - no direction.
+- **On the simulator's own first route** (built in): its file rows, its
+  first tag first, and its last tag never sent; an edited tag falls back to
+  route.xml's locations.
+- **The window:** the tab, the table, the summary, the controls following a
+  preview, the start row, double-click, no direction, the fit, and no orphan
+  widgets.
+
+**Not tested:** against the simulator itself. It was read, not run: it
+needs Linux, two serial ports and a loco unit.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2, with the local fixtures:
+validators **13/13**; `dltests` **252 suites / 6836 checks, 1 failed** (the
+`session156` pty check, as at 194); menu audit passed; headless smoke
+alive. (A run during which the Mac slept also failed a 156 stall check and
+`session150`; both passed when rerun alone, on both Qts.)
+
+---
+
 <a id="session-202"></a>
 ## Session 202 — the RFID simulator's Configuration1.xml in the tag library
 

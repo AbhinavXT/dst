@@ -38,12 +38,16 @@
 //    (session 201) Library…: tags_sim's KAV_CONFIG routes, built in and in a
 //                 folder (taglibrary.h); the route last opened is reopened
 //                 when the builder opens from the menu.
+//    (session 203) a Simulator tab: what the RFID simulator (LocoTcasSimulator)
+//                 would send for this route, at a speed, from a start tag, tick
+//                 by tick, on reader 1 and reader 2 (simpreview.h).
 //
 //  Nothing here is sent anywhere: it makes files.
 // =============================================================================
 
 #include "planrun.h"
 #include "rfidtag.h"
+#include "simpreview.h"
 
 #include <QWidget>
 
@@ -55,6 +59,8 @@ class UndoLog;
 class QFormLayout;
 class QLabel;
 class QLineEdit;
+class QCheckBox;
+class QDoubleSpinBox;
 class QPushButton;
 class QTableWidget;
 class StatusLine;
@@ -111,6 +117,11 @@ public:
     QString runSource() const { return m_runKey; }
     bool compareRun();                    // the route against the run's log
     bool makeRouteFromRun();              // replaces the route (asks first if changed)
+    // Simulator tab (session 203): fills the tab and returns what it showed.
+    SimPreview::Result previewSimulator(const SimPreview::Options &options);
+    SimPreview::Options simulatorOptions() const;   // as the tab's controls are set
+    QTableWidget *simTable() const { return m_simTable; }
+    QLabel *simSummary() const { return m_simSummary; }
     void selectRow(int row);
     // Session 200.
     QList<int> selectedRows() const;      // ascending
@@ -154,6 +165,7 @@ private:
     void changed(const QString &label, const RfidTag::Route &before, int row);
     void setModified(bool on);
     void refreshRunPicker();
+    void fillSimStart();
     int  currentRow() const;
     bool confirmDiscard();
 
@@ -186,6 +198,13 @@ private:
     QLabel *m_runSummary = nullptr;
     QString m_runKey;
     PlanRun::Result m_runResult;
+    QDoubleSpinBox *m_simSpeed = nullptr;
+    QComboBox *m_simStart = nullptr;
+    QCheckBox *m_simReader1 = nullptr;
+    QCheckBox *m_simReader2 = nullptr;
+    QLineEdit *m_simMissing = nullptr;
+    QTableWidget *m_simTable = nullptr;
+    QLabel *m_simSummary = nullptr;
     StatusLine *m_status = nullptr;
 };
 

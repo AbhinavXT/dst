@@ -256,8 +256,17 @@ QVector<Route> readXml(const QByteArray &xml, QString *err, QStringList *notes)
         r.dir = b.attribute(QStringLiteral("dir")).toInt();
         for (QDomElement e = b.firstChildElement(QStringLiteral("rfid_data")); !e.isNull();
              e = e.nextSiblingElement(QStringLiteral("rfid_data"))) {
-            const Tag t = tagFrom(e, QStringLiteral("rfid_id"), notes);
-            if (!t.bytes.isEmpty()) r.tags.append(t);
+            Tag t = tagFrom(e, QStringLiteral("rfid_id"), notes);
+            if (t.bytes.isEmpty()) continue;
+            t.file.present = true;
+            t.file.rfidId = e.attribute(QStringLiteral("rfid_id"));
+            t.file.tagName = e.attribute(QStringLiteral("tag_name"));
+            t.file.tagType = e.attribute(QStringLiteral("tag_type")).toInt();
+            t.file.absLoc = e.attribute(QStringLiteral("abs_loc")).toDouble();
+            t.file.nextAbsLoc = e.attribute(QStringLiteral("next_rfid_abs_loc")).toDouble();
+            t.file.pageX = e.attribute(QStringLiteral("page_x")).trimmed();
+            t.file.pageY = e.attribute(QStringLiteral("page_y")).trimmed();
+            r.tags.append(t);
         }
         out.append(r);
     }

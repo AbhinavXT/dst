@@ -13,7 +13,9 @@
 #include "uicolors.h"
 #include "windowgeometry.h"
 
+#include <QCheckBox>
 #include <QCloseEvent>
+#include <QDoubleSpinBox>
 #include <QDateTime>
 #include <QDir>
 #include <QDialogButtonBox>
@@ -258,6 +260,54 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     runLayout->addWidget(m_runSummary);
     runLayout->addWidget(m_runTable, 1);
     m_tabs->addTab(runPage, tr("Run"));
+
+    // ---- simulator preview -------------------------------------------------------------------
+    m_simSpeed = new QDoubleSpinBox(this);
+    m_simSpeed->setRange(1, 250);
+    m_simSpeed->setDecimals(0);
+    m_simSpeed->setValue(60);
+    m_simSpeed->setSuffix(tr(" km/h"));
+    m_simSpeed->setToolTip(tr("A constant speed, as set on the simulator's speed field"));
+    m_simStart = new QComboBox(this);
+    m_simStart->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    m_simStart->setMinimumContentsLength(8);
+    m_simStart->setToolTip(tr("The simulator's start tag: it starts at that row's abs_loc"));
+    m_simReader1 = new QCheckBox(tr("Reader 1"), this);
+    m_simReader2 = new QCheckBox(tr("Reader 2"), this);
+    m_simReader1->setChecked(true);
+    m_simReader2->setChecked(true);
+    m_simMissing = new QLineEdit(this);
+    m_simMissing->setPlaceholderText(tr("missing tags, e.g. 904,906D"));
+    m_simMissing->setToolTip(tr("The simulator's \"missing tag ids\": tags it does not send (the row before stays current)"));
+    auto *simBtn = new QPushButton(tr("Preview"), this);
+    simBtn->setToolTip(tr("What the RFID simulator would send for this route, tick by tick (100 ms), on each reader"));
+    m_simSummary = new QLabel(this);
+    m_simSummary->setWordWrap(true);
+    m_simTable = new QTableWidget(this);
+    m_simTable->setColumnCount(6);
+    m_simTable->setHorizontalHeaderLabels({ tr("Time (s)"), tr("At (m)"), tr("Reader"), tr("Tag"), tr("Tag's location"), tr("Row") });
+    m_simTable->verticalHeader()->hide();
+    m_simTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_simTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_simTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_simTable->horizontalHeader()->setStretchLastSection(true);
+    m_simTable->setToolTip(tr("Each tag the simulator would send: when, where the simulated loco was, on which reader. "
+                              "Double-click: select the tag"));
+    auto *simBar = new QHBoxLayout;
+    simBar->addWidget(m_simSpeed);
+    simBar->addWidget(new QLabel(tr("from"), this));
+    simBar->addWidget(m_simStart, 1);
+    simBar->addWidget(m_simReader1);
+    simBar->addWidget(m_simReader2);
+    simBar->addWidget(simBtn);
+    auto *simPage = new QWidget(this);
+    auto *simLayout = new QVBoxLayout(simPage);
+    simLayout->setContentsMargins(0, 0, 0, 0);
+    simLayout->addLayout(simBar);
+    simLayout->addWidget(m_simMissing);
+    simLayout->addWidget(m_simSummary);
+    simLayout->addWidget(m_simTable, 1);
+    m_tabs->addTab(simPage, tr("Simulator"));
     refreshRunPicker();
     m_strip = new RouteStrip(this);
 
@@ -379,6 +429,13 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
         m_runKey = m_runPicker->currentData().toString();
     });
     connect(compareBtn, &QPushButton::clicked, this, &TagBuilderWindow::compareRun);
+    connect(simBtn, &QPushButton::clicked, this, [this]() { previewSimulator(simulatorOptions()); });
+    connect(m_simTable, &QTableWidget::cellDoubleClicked, this, [this](int r) {
+        const int row = m_simTable->item(r, 5) ? m_simTable->item(r, 5)->data(Qt::UserRole).toInt() : -1;
+        if (row < 0) return;
+        m_tabs->setCurrentIndex(0);
+        selectRow(row);
+    });
     connect(fromRunBtn, &QPushButton::clicked, this, &TagBuilderWindow::makeRouteFromRun);
     connect(m_runTable, &QTableWidget::cellDoubleClicked, this, [this](int r) {
         const qint64 ms = m_runTable->item(r, 3) ? m_runTable->item(r, 3)->data(Qt::UserRole).toLongLong() : 0;
@@ -765,6 +822,7 @@ void TagBuilderWindow::setRoute(const RfidTag::Route &r)
 
 void TagBuilderWindow::refreshAll()
 {
+    fillSimStart();
     fillTable();
     fillSignals();
     fillChecks();
@@ -1220,6 +1278,79 @@ bool TagBuilderWindow::fixFileCrcs(const QString &inPath, const QString &outPath
     if (lines.isEmpty()) m_status->ok(tr("%1: every CRC-30 already matches; written unchanged").arg(QFileInfo(outPath).fileName()));
     else m_status->ok(tr("%1: CRC-30 fixed for %2 tags; nothing else changed").arg(QFileInfo(outPath).fileName()).arg(lines.size()));
     return true;
+}
+
+// ---- simulator preview -------------------------------------------------------------------------
+
+void TagBuilderWindow::fillSimStart()
+{
+    const int keep = m_simStart->currentIndex();
+    const QSignalBlocker block(m_simStart);
+    m_simStart->clear();
+    for (int i = 0; i < m_route.tags.size(); ++i)
+        m_simStart->addItem(QStringLiteral("%1  %2").arg(i + 1).arg(RfidTag::nameOf(m_route.tags.at(i).bytes)), i);
+    m_simStart->setCurrentIndex(keep >= 0 && keep < m_simStart->count() ? keep : 0);
+}
+
+SimPreview::Options TagBuilderWindow::simulatorOptions() const
+{
+    SimPreview::Options o;
+    o.speedKmh = m_simSpeed->value();
+    o.startRow = qMax(0, m_simStart->currentData().toInt());
+    o.reader1 = m_simReader1->isChecked();
+    o.reader2 = m_simReader2->isChecked();
+    for (const QString &m : m_simMissing->text().split(QLatin1Char(','), Qt::SkipEmptyParts)) o.missing << m.trimmed();
+    return o;
+}
+
+SimPreview::Result TagBuilderWindow::previewSimulator(const SimPreview::Options &o)
+{
+    // The controls show what was run, whoever asked for it.
+    m_simSpeed->setValue(o.speedKmh);
+    m_simStart->setCurrentIndex(qMax(0, m_simStart->findData(o.startRow)));
+    m_simReader1->setChecked(o.reader1);
+    m_simReader2->setChecked(o.reader2);
+    m_simMissing->setText(o.missing.join(QLatin1Char(',')));
+    const SimPreview::Result r = SimPreview::run(m_route, o);
+    m_tabs->setCurrentIndex(4);
+    if (!r.ok) {
+        m_simTable->setRowCount(0);
+        m_simSummary->setText(QString());
+        m_status->warn(tr("No preview: %1").arg(r.error));
+        return r;
+    }
+    m_simTable->setRowCount(r.events.size());
+    for (int i = 0; i < r.events.size(); ++i) {
+        const SimPreview::Event &e = r.events.at(i);
+        m_simTable->setItem(i, 0, cell(QString::number(e.timeS, 'f', 1)));
+        m_simTable->setItem(i, 1, cell(QString::number(e.distance, 'f', 1)));
+        m_simTable->setItem(i, 2, cell(QString::number(e.reader)));
+        m_simTable->setItem(i, 3, cell(e.tag));
+        m_simTable->setItem(i, 4, cell(QString::number(e.tagLoc)));
+        QTableWidgetItem *row = cell(QString::number(e.row + 1));
+        row->setData(Qt::UserRole, e.row);
+        m_simTable->setItem(i, 5, row);
+    }
+    int on1 = 0, on2 = 0;
+    for (const SimPreview::Event &e : r.events) (e.reader == 1 ? on1 : on2)++;
+    QString text = tr("At %1 km/h the simulator counts %2 pulses and moves %3 m every 100 ms. %4 tags on reader 1, "
+                      "%5 on reader 2, over %6 s; it stops at %7 m (%8). Locations: %9.")
+                       .arg(o.speedKmh).arg(r.pulsesPerTick).arg(r.metresPerTick, 0, 'f', 3).arg(on1).arg(on2)
+                       .arg(r.ticks / 10.0, 0, 'f', 1).arg(r.endDistance, 0, 'f', 1).arg(r.endReason)
+                       .arg(r.fromFileRows ? tr("the file's own abs_loc / next_rfid_abs_loc")
+                                           : tr("as route.xml would write them"));
+    if (!r.neverOnReader1.isEmpty())
+        text += tr(" Never sent on reader 1: %1.").arg(r.neverOnReader1.join(QStringLiteral(", ")));
+    if (!r.mainsMissedOnReader2.isEmpty())
+        text += tr(" Main tags not sent on reader 2: %1%2.")
+                    .arg(r.mainsMissedOnReader2.mid(0, 12).join(QStringLiteral(", ")))
+                    .arg(r.mainsMissedOnReader2.size() > 12 ? tr(" and %1 more").arg(r.mainsMissedOnReader2.size() - 12) : QString());
+    if (r.metresPerTick >= 4)
+        text += tr(" At this speed a tick is %1 m, more than reader 2's 4 m window (20-24 m past a tag): "
+                   "the simulator can step over it.").arg(r.metresPerTick, 0, 'f', 2);
+    m_simSummary->setText(text);
+    m_status->ok(tr("Simulator preview: %1 tags sent").arg(r.events.size()));
+    return r;
 }
 
 bool TagBuilderWindow::confirmDiscard()

@@ -111,6 +111,15 @@ Then (patch 201) the scenario library: tags_sim's KAV_CONFIG built in
 (`taglibrary.{h,cpp}`, Library… button), a library folder beside it, and
 the last route reopened from the menu (`reopenLast`).
 
+The RFID simulator (`~/Downloads/LocoTcasSimulator2.zip`, Qt 5 / Linux,
+`./LocoTcasSimulator ttyUSB0 ttyUSB1`): plays a Configuration1.xml route to
+a loco unit, tags over serial (`AA AA` len reader tag[16] `BB BB`, reader 1
+and 2), tacho pulses over UDP to the VCC IPs in `XML/Ipconfig1.xml`, brakes
+back from the unit. Patch 202: its `XML/Configuration1.xml` built in
+(`tag_scenarios/LocoTcasSimulator/`). Patch 203: the Simulator tab
+(`simpreview.{h,cpp}`), its tick loop ported from
+`LocoDialog::calculateNextDistance / sendingRfidData`.
+
 All four phases are built. Open threads, none started:
 - `Schema::Encoder::enumChoices` finds no enum in kavach.xml (they sit in
   `<enums>`), so Packet Maker and Field sweep never offer named choices.
