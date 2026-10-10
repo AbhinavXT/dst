@@ -1,0 +1,21 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tag_route name="2025-02-08 12_12_15.348" dir="1">
+    <tag name="566" page_x="faa7370257448d99" page_y="47b30f800880fa80" />
+    <tag name="566D" page_x="faa7370257488d99" page_y="95e5aefc8880fa80" />
+    <tag name="598" page_x="37b7370257da959b" page_y="6a4f607000000000" />
+    <tag name="598D" page_x="37b7370257de959b" page_y="ae3997c080000000" />
+    <tag name="600" page_x="fab737025b2a9619" page_y="6f9fd8080280fa80" />
+    <tag name="600D" page_x="fab737025b2e9619" page_y="abe92fb88280fa80" />
+    <tag name="786" page_x="fab737025d78c499" page_y="000000000a80fa80" />
+    <tag name="788" page_x="fab737026098c519" page_y="000000000280fa80" />
+    <tag name="790" page_x="07b737026160c599" page_y="000000000a80fa81" />
+    <tag name="792" page_x="07b737026480c619" page_y="0000000002810781" />
+    <tag name="794" page_x="07b737026548c699" page_y="000000000a810781" />
+    <tag name="796" page_x="07b737026868c719" page_y="0000000002810781" />
+    <tag name="798" page_x="07b737026930c799" page_y="000000000a810781" />
+    <tag name="800" page_x="07b737026c50c819" page_y="0000000002810781" />
+    <tag name="802" page_x="07b737026d18c899" page_y="000000000a810781" />
+    <tag name="804" page_x="07b737026f0cc919" page_y="0000000002810781" />
+    <tag name="2" page_x="07b737026fac0099" page_y="379015c80a010781" />
+    <tag name="2D" page_x="07b737026fb00099" page_y="e5c6b4b48a010781" />
+</tag_route>

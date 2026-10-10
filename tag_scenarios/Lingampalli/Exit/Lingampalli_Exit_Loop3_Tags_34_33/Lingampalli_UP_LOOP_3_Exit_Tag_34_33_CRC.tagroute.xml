@@ -1,0 +1,38 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tag_route name="Lingampalli_UP_LOOP_3_Exit_Tag_34_33_CRC" dir="2">
+    <tag name="981" page_x="0829a9828078f559" page_y="62c1bd9c15010781" />
+    <tag name="981D" page_x="0829a9828074f559" page_y="ab57786895010781" />
+    <tag name="985" page_x="07a9a9827d44f659" page_y="9d6aeb8805010781" />
+    <tag name="985D" page_x="07a9a9827d40f659" page_y="591c1c3885010781" />
+    <tag name="987" page_x="07a9a9827c2cf6d9" page_y="0b96779805010781" />
+    <tag name="987D" page_x="07a9a9827c28f6d9" page_y="cfe0802885010781" />
+    <tag name="989" page_x="07a9a9827b64f759" page_y="b687ef1415010781" />
+    <tag name="989D" page_x="07a9a9827b60f759" page_y="72f118a495010781" />
+    <tag name="991" page_x="07a9a98279b9f7d9" page_y="7d0f3af405010781" />
+    <tag name="991D" page_x="07a9a98279b5f7d9" page_y="b499ff0085010781" />
+    <tag name="1" page_x="07a9a98278e50059" page_y="067026e811010781" />
+    <tag name="1D" page_x="07a9a98278e10059" page_y="c206d15891010781" />
+    <tag name="3D" page_x="0798a98277cd00d9" page_y="121350c080010781" />
+    <tag name="3" page_x="0798a98277c900d9" page_y="d665a77000010781" />
+    <tag name="56" page_x="079b188276e80e19" page_y="f7dfae8818010781" />
+    <tag name="56D" page_x="079b188276e80e19" page_y="f538339498010781" />
+    <tag name="61D" page_x="079f1b0276500f59" page_y="3632bbd098010781" />
+    <tag name="61" page_x="079f1b0276500f59" page_y="34d526cc18010781" />
+    <tag name="40D" page_x="07a01f0275c50a19" page_y="32562a9888010781" />
+    <tag name="40" page_x="07a01f0275c10a19" page_y="f620dd2808010781" />
+    <tag name="39D" page_x="07a02002752809d9" page_y="8825f4b880010781" />
+    <tag name="39" page_x="07a02002752409d9" page_y="41b3314c00010781" />
+    <tag name="38" page_x="07a0200274110999" page_y="5f62ef7c00010781" />
+    <tag name="38D" page_x="07a02002740d0999" page_y="8d344e0080010781" />
+    <tag name="37" page_x="079fa00273170959" page_y="211b119010010781" />
+    <tag name="37D" page_x="079fa00273130959" page_y="e56de62090010781" />
+    <tag name="36" page_x="079f9f8272ef0919" page_y="baf2f11400010781" />
+    <tag name="35" page_x="07801f82729708d9" page_y="bcf7052c08010781" />
+    <tag name="34" page_x="07800002726f0899" page_y="21cfac5628010781" />
+    <tag name="33" page_x="07800002725b0859" page_y="2dd5837328010781" />
+    <tag name="32" page_x="0780000271000819" page_y="0c79237328010781" />
+    <signal foot_tag="981" name="S1640" sig_id="27" />
+    <signal foot_tag="989" name="S1626" sig_id="28" />
+    <signal foot_tag="1" name="S1" sig_id="3" />
+    <signal foot_tag="40" name="S45" sig_id="22" />
+</tag_route>

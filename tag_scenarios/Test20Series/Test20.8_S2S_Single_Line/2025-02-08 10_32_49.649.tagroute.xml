@@ -1,0 +1,32 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tag_route name="2025-02-08 10_32_49.649" dir="1">
+    <tag name="562" page_x="faa6270256b88c99" page_y="c23f8c8c1000fa80" />
+    <tag name="566" page_x="faa7370257448d99" page_y="000000000880fa80" />
+    <tag name="551" page_x="fab73702577e89d9" page_y="000000001280fa80" />
+    <tag name="789" page_x="fab737025864c559" page_y="000000000280fa80" />
+    <tag name="791" page_x="fab737025b84c5d9" page_y="000000001280fa80" />
+    <tag name="793" page_x="fab737025c4cc659" page_y="000000000280fa80" />
+    <tag name="795" page_x="07b737025f6cc6d9" page_y="000000001280fa81" />
+    <tag name="788" page_x="07b737026098c519" page_y="000000000280fa81" />
+    <tag name="790" page_x="07b737026160c599" page_y="000000000280fa81" />
+    <tag name="792" page_x="07b737026480c619" page_y="000000000280fa81" />
+    <tag name="794" page_x="07b737026548c699" page_y="000000000280fa81" />
+    <tag name="796" page_x="07b737026868c719" page_y="000000000280fa81" />
+    <tag name="798" page_x="07b737026930c799" page_y="000000000a80fa81" />
+    <tag name="800" page_x="07b737026c50c819" page_y="0000000002810781" />
+    <tag name="802" page_x="07b737026d18c899" page_y="000000000a810781" />
+    <tag name="804" page_x="07b737026f0cc919" page_y="0000000002810781" />
+    <tag name="2" page_x="07b737026fac0099" page_y="000000000a010781" />
+    <tag name="2D" page_x="07b737026fb00099" page_y="000000008a010781" />
+    <tag name="17" page_x="07b7370270c40459" page_y="0000000012010781" />
+    <tag name="4D" page_x="07b7190271970119" page_y="7b94c01090010781" />
+    <tag name="4" page_x="07b71902719b0119" page_y="b20205e410010781" />
+    <tag name="6D" page_x="07991a0273350199" page_y="4811640810010781" />
+    <tag name="6" page_x="07991a0273390199" page_y="83603ce010010781" />
+    <tag name="8" page_x="079a1a0274330219" page_y="9454c47400010781" />
+    <tag name="8D" page_x="079a1a0274370219" page_y="502233c480010781" />
+    <tag name="10" page_x="079a1a0275240299" page_y="78251a8000010781" />
+    <tag name="10D" page_x="079a1a0275280299" page_y="b1b3df7480010781" />
+    <tag name="12" page_x="079a1b0276320319" page_y="e8062a7008010781" />
+    <tag name="12D" page_x="079a1b0276360319" page_y="2c70ddc088010781" />
+</tag_route>

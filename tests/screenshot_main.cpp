@@ -38,6 +38,7 @@
 #include "soswindow.h"
 #include "readerdirwindow.h"
 #include "tagbuilderwindow.h"
+#include "taglibrary.h"
 #include <QTabWidget>
 #include "incidentreportwindow.h"
 #include "incidentreportdialog.h"
@@ -204,6 +205,13 @@ int main(int argc, char **argv)
                 disp.drainNow();
                 auto *w = new TwoLocoWindow(&disp);
                 w->setAttribute(Qt::WA_DeleteOnClose, false);
+                win = w;
+            }
+            if (which == QLatin1String("taglibrary")) {
+                // The built-in tag scenario library (tags_sim's KAV_CONFIG).
+                auto *w = new TagLibraryDialog;
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
+                if (!qEnvironmentVariableIsEmpty("SHOT_FILTER")) w->setFilter(qEnvironmentVariable("SHOT_FILTER"));
                 win = w;
             }
             if (which == QLatin1String("tagbuilder")) {

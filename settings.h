@@ -512,6 +512,22 @@ public:
     // the power going.
     static bool sessionRunning()             { QSettings s(iniPath(), QSettings::IniFormat); return s.value("session/running", false).toBool(); }
     static void setSessionRunning(bool on)   { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("session/running", on); s.sync(); }
+
+    // ---- RFID Tag Builder (session 201) --------------------------------
+    // The scenario library folder: <exe_dir>/tag_scenarios unless set. The
+    // copy built into the app is listed too, whether or not it exists.
+    static QString tagLibraryPath()
+    { QSettings s(iniPath(), QSettings::IniFormat); return s.value("tag_builder/library_path", QCoreApplication::applicationDirPath() + "/tag_scenarios").toString(); }
+    static void setTagLibraryPath(const QString &p)
+    { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("tag_builder/library_path", p); }
+    // The route open when the builder last opened one, reopened next time:
+    // its file (a library ":/" path or a file on disk) and route index in it.
+    static QString tagBuilderLastFile()
+    { QSettings s(iniPath(), QSettings::IniFormat); return s.value("tag_builder/last_file").toString(); }
+    static int tagBuilderLastRoute()
+    { QSettings s(iniPath(), QSettings::IniFormat); return s.value("tag_builder/last_route", 0).toInt(); }
+    static void setTagBuilderLast(const QString &file, int route)
+    { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("tag_builder/last_file", file); s.setValue("tag_builder/last_route", route); }
 };
 
 #endif // SETTINGS_H

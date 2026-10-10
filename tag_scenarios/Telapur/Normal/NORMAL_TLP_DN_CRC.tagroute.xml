@@ -1,0 +1,34 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tag_route name="NORMAL_TLP_DN_CRC" dir="1">
+    <tag name="142" page_x="faab2b025c6c2399" page_y="04c0f3e00a810700" />
+    <tag name="144" page_x="faab2b025c9c2419" page_y="6affa8e00280fa80" />
+    <tag name="146" page_x="faab2b025f7d2499" page_y="71d07aa80280fa80" />
+    <tag name="148" page_x="faab2b0260632519" page_y="4c22c6580a80fa80" />
+    <tag name="148D" page_x="faab2b0260672519" page_y="885431e88a80fa80" />
+    <tag name="150" page_x="faab2b0263692599" page_y="36f02b300280fa80" />
+    <tag name="150D" page_x="faab2b02636d2599" page_y="f286dc808280fa80" />
+    <tag name="550" page_x="faab2b0264598999" page_y="90acfa340a00fa80" />
+    <tag name="550D" page_x="faab2b02645d8999" page_y="54da0d848a00fa80" />
+    <tag name="552D" page_x="faab250264f88a19" page_y="a60b8a3c9000fa80" />
+    <tag name="552" page_x="faab250264fc8a19" page_y="627d7d8c1000fa80" />
+    <tag name="554D" page_x="faa5250265e88a99" page_y="a5450b948000fa80" />
+    <tag name="554" page_x="faa5250265ec8a99" page_y="6133fc240000fa80" />
+    <tag name="556" page_x="faa5250266ec8b19" page_y="91ce1dec0000fa80" />
+    <tag name="556D" page_x="faa5250266f08b19" page_y="4398bc908000fa80" />
+    <tag name="558" page_x="faa5260267e68b99" page_y="ef3499180800fa80" />
+    <tag name="558D" page_x="faa5260267ea8b99" page_y="26a25cec8800fa80" />
+    <tag name="560" page_x="faa6260268188c19" page_y="4635ba880000fa80" />
+    <tag name="560D" page_x="faa62602681c8c19" page_y="82434d388000fa80" />
+    <tag name="562D" page_x="faa627026a3c8c99" page_y="48e876c09000fa80" />
+    <tag name="562" page_x="faa627026a408c99" page_y="c23f8c8c1000fa80" />
+    <tag name="566" page_x="faa737026acc8d99" page_y="47b30f800880fa80" />
+    <tag name="566D" page_x="faa737026ad08d99" page_y="95e5aefc8880fa80" />
+    <tag name="598" page_x="37b737026b62959b" page_y="6a4f607000000000" />
+    <tag name="598D" page_x="37b737026b66959b" page_y="ae3997c080000000" />
+    <tag name="600" page_x="fab737026eb29619" page_y="6f9fd8080280fa80" />
+    <tag name="600D" page_x="fab737026eb69619" page_y="abe92fb88280fa80" />
+    <signal foot_tag="148" name="S2ID_TL" sig_id="17" />
+    <signal foot_tag="550" name="S2_TL" sig_id="2" />
+    <signal foot_tag="558" name="S3_TL" sig_id="7" />
+    <signal foot_tag="566" name="S6_TL" sig_id="14" />
+</tag_route>

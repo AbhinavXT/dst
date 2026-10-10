@@ -578,6 +578,7 @@ void MainWindow::onActionTagBuilder()
 {
     auto *w = new TagBuilderWindow(m_dispatcher, this);
     w->setRunSource(currentTabKey());
+    w->reopenLast();
     connect(w, &TagBuilderWindow::jumpRequested, this, [this](const QString &tabKey, qint64 ms) { jumpToEntry(tabKey, ms); });
     w->show();
     w->raise();

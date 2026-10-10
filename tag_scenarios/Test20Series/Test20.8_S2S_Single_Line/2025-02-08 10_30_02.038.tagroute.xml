@@ -1,0 +1,38 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tag_route name="2025-02-08 10_30_02.038" dir="2">
+    <tag name="11" page_x="079a998273f802d9" page_y="d0be553810010781" />
+    <tag name="11D" page_x="079a998273f402d9" page_y="192890cc90010781" />
+    <tag name="13" page_x="079b9a8272c60359" page_y="daf53a3800010781" />
+    <tag name="13D" page_x="079b9a8272c20359" page_y="1e83cd8880010781" />
+    <tag name="15D" page_x="079b9b82718503d9" page_y="9731472088010781" />
+    <tag name="15" page_x="079b9b82718103d9" page_y="5347b09008010781" />
+    <tag name="17" page_x="07b71b8270c40459" page_y="0000000012010781" />
+    <tag name="2" page_x="07b737026fac0099" page_y="000000000a810781" />
+    <tag name="804" page_x="07b737026f0cc919" page_y="0000000002810781" />
+    <tag name="802" page_x="07b737026d18c899" page_y="000000000a810781" />
+    <tag name="800" page_x="07b737026c50c819" page_y="0000000002810781" />
+    <tag name="798" page_x="07b737026930c799" page_y="000000000a80fa81" />
+    <tag name="796" page_x="07b737026868c719" page_y="000000000280fa81" />
+    <tag name="794" page_x="07b737026548c699" page_y="000000000280fa81" />
+    <tag name="792" page_x="07b737026480c619" page_y="000000000280fa81" />
+    <tag name="790" page_x="07b737026160c599" page_y="000000000280fa81" />
+    <tag name="788" page_x="07b737026098c519" page_y="000000000280fa81" />
+    <tag name="795" page_x="07b737025f6cc6d9" page_y="000000001280fa81" />
+    <tag name="793" page_x="fab737025c4cc659" page_y="000000000280fa80" />
+    <tag name="791" page_x="fab737025b84c5d9" page_y="000000001280fa80" />
+    <tag name="789" page_x="fab737025864c559" page_y="000000000280fa80" />
+    <tag name="551" page_x="fab73702577e89d9" page_y="000000001280fa80" />
+    <tag name="566" page_x="fab7370257448d99" page_y="000000000880fa80" />
+    <tag name="553D" page_x="faa4b70256ec8a59" page_y="000000008000fa80" />
+    <tag name="553" page_x="faa4b70256e88a59" page_y="000000000000fa80" />
+    <tag name="555D" page_x="faa5a48256068ad9" page_y="450c0ab08800fa80" />
+    <tag name="555" page_x="faa5a48256028ad9" page_y="817afd000800fa80" />
+    <tag name="557D" page_x="faa5a582550c8b59" page_y="11fad9988000fa80" />
+    <tag name="557" page_x="faa5a58255088b59" page_y="d58c2e280000fa80" />
+    <tag name="559" page_x="faa5a58254908bd9" page_y="c22090d00000fa80" />
+    <tag name="559D" page_x="faa5a582548c8bd9" page_y="0bb655248000fa80" />
+    <tag name="561" page_x="faa5a58254228c59" page_y="c8f745f00000fa80" />
+    <tag name="561D" page_x="faa5a582541e8c59" page_y="016180048000fa80" />
+    <tag name="563" page_x="faaaa58253288cd9" page_y="e9bade901200fa80" />
+    <tag name="563D" page_x="faaaa58253248cd9" page_y="3bec7fec9200fa80" />
+</tag_route>

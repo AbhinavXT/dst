@@ -4,6 +4,8 @@
 
 #include "rfidcheck.h"
 #include "rfidexport.h"
+#include "settings.h"
+#include "taglibrary.h"
 #include "messagedispatcher.h"
 #include "routestrip.h"
 #include "statusline.h"
@@ -81,6 +83,9 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     m_dir->addItem(tr("Reverse (dir 2, UP)"), RfidTag::DirReverse);
     m_dir->setToolTip(tr("The direction the loco runs this route in. The route.xml export needs it: it names "
                          "the route DN_ or UP_ and writes the REV route the other way"));
+    auto *libBtn = new QPushButton(tr("Library…"), this);
+    libBtn->setToolTip(tr("tags_sim's KAV_CONFIG routes, ready to open: built into DLConsole, and in the library "
+                          "folder (%1)").arg(QDir::toNativeSeparators(Settings::tagLibraryPath())));
     auto *newBtn = new QPushButton(tr("New"), this);
     auto *openBtn = new QPushButton(tr("Open…"), this);
     openBtn->setToolTip(tr("A DLConsole route (.tagroute.xml), a tags_sim route.xml, or a Configuration1.xml "
@@ -108,6 +113,7 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     bar->addWidget(m_routeName, 1);
     bar->addWidget(m_dir);
     bar->addSpacing(12);
+    bar->addWidget(libBtn);
     bar->addWidget(newBtn);
     bar->addWidget(openBtn);
     bar->addWidget(saveBtn);
@@ -388,6 +394,11 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     connect(delBtn, &QPushButton::clicked, this, &TagBuilderWindow::deleteTag);
     connect(upBtn, &QPushButton::clicked, this, [this]() { moveTag(-1); });
     connect(downBtn, &QPushButton::clicked, this, [this]() { moveTag(+1); });
+    connect(libBtn, &QPushButton::clicked, this, [this]() {
+        if (!confirmDiscard()) return;
+        TagLibraryDialog dlg(this);
+        if (dlg.exec() == QDialog::Accepted) loadFile(dlg.chosen().file, dlg.chosen().route);
+    });
     connect(newBtn, &QPushButton::clicked, this, [this]() {
         if (!confirmDiscard()) return;
         setRoute(RfidTag::Route());
@@ -487,7 +498,7 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
 
     setTag(blankTag(9));
     refreshAll();
-    m_status->state(tr("A new route. Build a tag on the right and Add it, or Open a route"));
+    m_status->state(tr("A new route. Build a tag on the right and Add it, or open one from the Library"));
 }
 
 // ---- tag editor --------------------------------------------------------------------------------
@@ -995,6 +1006,7 @@ bool TagBuilderWindow::loadFile(const QString &path, int routeIndex)
         return false;
     }
     setRoute(routes.at(pick));
+    Settings::setTagBuilderLast(path, pick);
     int bad = 0;
     for (const RfidTag::Tag &t : m_route.tags) bad += RfidTag::summary(t.bytes).crcOk ? 0 : 1;
     QString msg = tr("Opened %1 from %2: %3 tags, %4 signals")
@@ -1005,6 +1017,13 @@ bool TagBuilderWindow::loadFile(const QString &path, int routeIndex)
     if (bad || !notes.isEmpty()) m_status->warn(msg);
     else m_status->ok(msg);
     return true;
+}
+
+bool TagBuilderWindow::reopenLast()
+{
+    const QString last = Settings::tagBuilderLastFile();
+    if (last.isEmpty() || !QFile::exists(last)) return false;
+    return loadFile(last, Settings::tagBuilderLastRoute());
 }
 
 bool TagBuilderWindow::saveFile(const QString &path)

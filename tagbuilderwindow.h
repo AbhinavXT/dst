@@ -35,6 +35,9 @@
 //    (session 200) several rows can be selected: Set field… sets one field
 //                 on all of them (CRCs recomputed, refused whole if any tag
 //                 would not take it, one Undo step); Delete deletes them all.
+//    (session 201) Library…: tags_sim's KAV_CONFIG routes, built in and in a
+//                 folder (taglibrary.h); the route last opened is reopened
+//                 when the builder opens from the menu.
 //
 //  Nothing here is sent anywhere: it makes files.
 // =============================================================================
@@ -87,6 +90,9 @@ public:
     // A whole file's failing CRCs, written to `outPath`; *changes one line per tag.
     bool fixFileCrcs(const QString &inPath, const QString &outPath, QStringList *changes = nullptr);
     bool isModified() const { return m_modified; }
+    // Session 201: open the route last opened (Settings), if it is still
+    // there; false when there is none. MainWindow calls it on open.
+    bool reopenLast();
 
     // Route edits, on the selected row (append when none is selected).
     void addTag();

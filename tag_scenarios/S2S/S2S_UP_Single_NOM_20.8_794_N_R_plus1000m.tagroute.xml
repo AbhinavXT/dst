@@ -1,0 +1,38 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tag_route name="S2S_UP_Single_NOM_20.8_794_N_R_plus1000m" dir="1">
+    <tag name="2" page_x="07b72c025e2c0099" page_y="d5363b700a010781" />
+    <tag name="804" page_x="07b737025eccc919" page_y="bf01cfbc02810781" />
+    <tag name="802" page_x="07b737026160c899" page_y="d3993c4c0a810781" />
+    <tag name="800" page_x="07b737026228c819" page_y="656385dc02810781" />
+    <tag name="798" page_x="07b737026548c799" page_y="260864500a810781" />
+    <tag name="796" page_x="fab737026610c719" page_y="37e6ecd002810780" />
+    <tag name="794" page_x="983737026548c69c" page_y="cc0d535402848134" />
+    <tag name="792" page_x="fab737026480c619" page_y="c145b8b402810780" />
+    <tag name="790" page_x="fab737026160c599" page_y="de5eb46402810780" />
+    <tag name="788" page_x="fab737026098c519" page_y="8d6168bc02810780" />
+    <tag name="795" page_x="fab737025f6cc6d9" page_y="808225a41280fa80" />
+    <tag name="793" page_x="fab737025c4cc659" page_y="4b7f0da00280fa80" />
+    <tag name="791" page_x="fab737025b84c5d9" page_y="51e4ee541280fa80" />
+    <tag name="782" page_x="fab1b7025864c399" page_y="8d6f8f541080fa80" />
+    <tag name="566" page_x="faa7318257448d99" page_y="471d0a8c0800fa80" />
+    <tag name="562" page_x="faa6270256b88c99" page_y="c46cfa500000fa80" />
+    <tag name="560" page_x="faa6260254908c19" page_y="33635cac0000fa80" />
+    <tag name="558" page_x="faa52602545e8b99" page_y="9f8faeac0800fa80" />
+    <tag name="556" page_x="faa5250253648b19" page_y="ddd84a900000fa80" />
+    <tag name="554" page_x="faa5250252648a99" page_y="228110680000fa80" />
+    <tag name="552" page_x="faab250251748a19" page_y="1e2f85b00000fa80" />
+    <tag name="550" page_x="faab2b0250d18999" page_y="db68f0d00a00fa80" />
+    <tag name="150" page_x="faab2b024fe12599" page_y="3e8314940280fa80" />
+    <tag name="148" page_x="faab2b024cdb2519" page_y="f15ea5140a810700" />
+    <signal foot_tag="148" name="S2ID_TL" sig_id="17" />
+    <signal foot_tag="550" name="S2" sig_id="2" />
+    <signal foot_tag="558" name="S3" sig_id="7" />
+    <signal foot_tag="566" name="S50D" sig_id="14" />
+    <signal foot_tag="798" name="S94" sig_id="36" />
+    <signal foot_tag="802" name="S96" sig_id="37" />
+    <signal foot_tag="2" name="S50" sig_id="11" />
+    <signal foot_tag="12" name="S48" sig_id="16" />
+    <signal foot_tag="18" name="S43" sig_id="13" />
+    <signal foot_tag="900" name="S1629" sig_id="25" />
+    <signal foot_tag="904" name="S1637" sig_id="26" />
+</tag_route>

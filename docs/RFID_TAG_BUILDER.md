@@ -43,7 +43,10 @@ same commit as each patch.
   routes to DLConsole's own route file.
 - Fixtures: real KAV_CONFIG files are in `tests/fixtures/tags_sim/`, which
   is **git-ignored** (Abhinav, 2026-10-10: keep the real configuration out
-  of git). Tests use them when present and print a NOTE and skip when not;
+  of git). BUT since patch 201 (his later choice, "Both") the whole
+  KAV_CONFIG set is built into DLConsole as `tag_scenarios/` +
+  `tag_scenarios.qrc`, i.e. it IS in git now; regenerate it with
+  `scripts/tags_sim_library.py <KAV_CONFIG> tag_scenarios --qrc tag_scenarios.qrc`. Tests use them when present and print a NOTE and skip when not;
   window tests build their own routes from field values. Copy them from
   `~/Downloads/tags_sim.zip` (KAV_CONFIG/Hafizpet, KAV_CONFIG/S2S,
   KAV_CONFIG/S2S_Configuration1.xml, output/550_991_route.xml) to run the
@@ -104,6 +107,9 @@ the window's Run tab. The window now takes the `MessageDispatcher`.
 Extras Abhinav picked (2026-10-10), one patch each: **Fix all CRCs**
 (patch 199, done: `RfidTag::fixCrc`, `RfidExport::fixCrcs`), **Bulk edit
 fields** (patch 200, done: `TagBuilderWindow::setFieldOn`, multi-select).
+Then (patch 201) the scenario library: tags_sim's KAV_CONFIG built in
+(`taglibrary.{h,cpp}`, Library… button), a library folder beside it, and
+the last route reopened from the menu (`reopenLast`).
 
 All four phases are built. Open threads, none started:
 - `Schema::Encoder::enumChoices` finds no enum in kavach.xml (they sit in

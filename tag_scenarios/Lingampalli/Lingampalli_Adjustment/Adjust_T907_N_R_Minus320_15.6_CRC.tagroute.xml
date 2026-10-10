@@ -1,0 +1,32 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tag_route name="Adjust_T907_N_R_Minus320_15.6_CRC" dir="1">
+    <tag name="804" page_x="07b737026f0cc919" page_y="8ebf4ec402810781" />
+    <tag name="2" page_x="07b737026fac0099" page_y="dc636fe40a010781" />
+    <tag name="2D" page_x="07b737026fb00099" page_y="0e35ce988a010781" />
+    <tag name="4D" page_x="07b7190271970119" page_y="4bd06f5080010781" />
+    <tag name="4" page_x="07b71902719b0119" page_y="8246aaa400010781" />
+    <tag name="6D" page_x="07991a0273350199" page_y="7ab2565480010781" />
+    <tag name="6" page_x="07991a0273390199" page_y="b32493a000010781" />
+    <tag name="8" page_x="079a1a0274330219" page_y="9454c47400010781" />
+    <tag name="8D" page_x="079a1a0274370219" page_y="502233c480010781" />
+    <tag name="10" page_x="079a1a0275240299" page_y="78251a8000010781" />
+    <tag name="10D" page_x="079a1a0275280299" page_y="b1b3df7480010781" />
+    <tag name="12" page_x="079a1b0276320319" page_y="e8062a7008010781" />
+    <tag name="12D" page_x="079a1b0276360319" page_y="2c70ddc088010781" />
+    <tag name="14" page_x="079b1c0277450399" page_y="df8b689400010781" />
+    <tag name="14D" page_x="079b1c0277490399" page_y="161dad6080010781" />
+    <tag name="16D" page_x="079c1c0277ca0419" page_y="fd79e6b080010781" />
+    <tag name="16" page_x="079c1c0277ce0419" page_y="390f110000010781" />
+    <tag name="18" page_x="079c2a0278480499" page_y="5b66381109010781" />
+    <tag name="906" page_x="29aa2a027910e29b" page_y="941ef1d800000000" />
+    <tag name="907" page_x="902a2a027a60e2dc" page_y="c2127a8b0284813c" />
+    <tag name="898" page_x="07aa2a0277e0e099" page_y="f7d5478305010781" />
+    <tag name="900" page_x="07aa2a0276dce119" page_y="775d58b60d010781" />
+    <tag name="902" page_x="07aa2a02745ce199" page_y="fbd011bc05010781" />
+    <tag name="904" page_x="07aa2a027394e219" page_y="c92d0aa80d010781" />
+    <signal foot_tag="2" name="S50" sig_id="11" />
+    <signal foot_tag="12" name="S48" sig_id="16" />
+    <signal foot_tag="18" name="S43" sig_id="13" />
+    <signal foot_tag="900" name="S1629" sig_id="25" />
+    <signal foot_tag="904" name="S1637" sig_id="26" />
+</tag_route>

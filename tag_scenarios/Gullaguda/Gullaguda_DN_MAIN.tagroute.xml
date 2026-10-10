@@ -1,0 +1,46 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tag_route name="Gullaguda_DN_MAIN" dir="1">
+    <tag name="664" page_x="04303001eb2fa619" page_y="24ae686802810401" />
+    <tag name="666" page_x="04b03001ec0ba699" page_y="ddcef0fc0a810401" />
+    <tag name="666D" page_x="04b03001ec0fa699" page_y="19b8074c8a810401" />
+    <tag name="668" page_x="04b03001ef10a719" page_y="a330beb002810481" />
+    <tag name="668D" page_x="04b03001ef14a719" page_y="6746490082810481" />
+    <tag name="670" page_x="04b03001f00aa799" page_y="9edc74700a810481" />
+    <tag name="670D" page_x="04b03001f00ea799" page_y="5aaa83c08a810481" />
+    <tag name="672" page_x="02b03001f2f5a81a" page_y="881e2bf406d7004c" />
+    <tag name="672D" page_x="02b03001f2f9a81a" page_y="4188ee0086d7004c" />
+    <tag name="514" page_x="04b03001f3ef8099" page_y="4cf497740a010481" />
+    <tag name="514D" page_x="04b03001f3f38099" page_y="9ea236088a010481" />
+    <tag name="516D" page_x="04b01f01f4b28119" page_y="94dbe97890010481" />
+    <tag name="516" page_x="04b01f01f4b68119" page_y="50ad1ec810010481" />
+    <tag name="518D" page_x="049f2001f58c8199" page_y="bf41353890010481" />
+    <tag name="518" page_x="049f2001f5908199" page_y="6d17944410010481" />
+    <tag name="520D" page_x="04a02001f65d8219" page_y="e4368b2880010481" />
+    <tag name="520" page_x="04a02001f6618219" page_y="01e0e34400010481" />
+    <tag name="522" page_x="04a02001f75a8299" page_y="1160ac4800010481" />
+    <tag name="522D" page_x="04a02001f75e8299" page_y="d5165bf880010481" />
+    <tag name="524" page_x="04a02101f8548319" page_y="b6b850d408010481" />
+    <tag name="524D" page_x="04a02101f8588319" page_y="7f2e952088010481" />
+    <tag name="526D" page_x="04a12201f9928399" page_y="0a50734890010481" />
+    <tag name="526" page_x="04a12201f9968399" page_y="ce2684f810010481" />
+    <tag name="528" page_x="04a22d01fa108419" page_y="7b7c324c08810481" />
+    <tag name="528D" page_x="04a22d01fa148419" page_y="bf0ac5fc88810481" />
+    <tag name="548" page_x="2cad2d01faa6891b" page_y="f57b40a800000000" />
+    <tag name="548D" page_x="2cad2d01faaa891b" page_y="3ced855c80000000" />
+    <tag name="450" page_x="04ad2d01fad87099" page_y="02242b6802810481" />
+    <tag name="450D" page_x="04ad2d01fadc7099" page_y="c652dcd882810481" />
+    <tag name="452" page_x="04ad2d01fe677119" page_y="2e69aeec02810481" />
+    <tag name="452D" page_x="04ad2d01fe6b7119" page_y="e7ff6b1882810481" />
+    <tag name="454" page_x="2dad2d0200c6719c" page_y="36ffbb7c02884100" />
+    <tag name="456" page_x="04ad2d0203327219" page_y="bc75e03002810481" />
+    <tag name="458" page_x="04ad2d0203fa7299" page_y="c4d8cce802810481" />
+    <tag name="460" page_x="04ad2d02071a7319" page_y="c5119c1822810481" />
+    <tag name="461" page_x="04ad2d02072e7359" page_y="8d86fcdc22810481" />
+    <tag name="462" page_x="052d2d0207e27399" page_y="cf0d567c0a810481" />
+    <signal foot_tag="666" name="S1D" sig_id="1" />
+    <signal foot_tag="670" name="S1ID" sig_id="2" />
+    <signal foot_tag="514" name="S1" sig_id="3" />
+    <signal foot_tag="524" name="S3" sig_id="4" />
+    <signal foot_tag="528" name="S6" sig_id="5" />
+    <signal foot_tag="462" name="S7" sig_id="9" />
+</tag_route>

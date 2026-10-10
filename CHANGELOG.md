@@ -11,6 +11,105 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-201"></a>
+## Session 201 — RFID Tag Builder: tags_sim's scenarios built in
+
+Asked for by Abhinav: "load the rfid scenarios in the tag_sim into the
+dl console rfid generator by default so users do not need to start anew
+every time". His choice (asked, because it reverses session 195's
+"keep the real configuration out of git"): **both**. The scenarios are
+built into DLConsole, and a library folder on disk is listed beside them.
+**So tags_sim's KAV_CONFIG routes are now in git and in every
+DLConsole.exe.**
+
+**What the operator sees** in Tools ▸ RFID Tag Builder:
+- **Library…** (first on the bar) opens the tag scenario library, a tree
+  of every route:
+  - **Built in (536 routes)**: tags_sim's KAV_CONFIG, folder for folder
+    (Hafizpet, Lingampalli, S2S, Telapur, Gullaguda, T_L_H, Test20Series,
+    Test23Series, …).
+  - **Folder …**: `<exe dir>/tag_scenarios` unless **Library folder…**
+    names another (remembered). It is for a team's own or newer routes;
+    copy the folder beside the exe when deploying. "(not there)" when it
+    does not exist.
+  - Each tags_sim spreadsheet is one route, with its tags, its **signals**
+    and a **direction**. The direction is read from its first two
+    locations, as tags_sim read it.
+  - A route.xml or Configuration1.xml is a node holding its routes (the
+    KAV_CONFIG Configuration1.xml holds 145).
+  - Columns show tags, signals and direction. **Filter** matches any part
+    of a folder, file or route name. Double-click or **Open** to open a
+    route.
+- **The route last opened is reopened** when the builder opens from the
+  menu, whether it came from the library or from a file on disk. A file
+  that has since gone is skipped quietly.
+
+**How:**
+- `scripts/tags_sim_library.py KAV_CONFIG OUT --qrc FILE` builds the
+  library:
+  - each `.xlsx` becomes a `.tagroute.xml` (through `tags_sim_import.py`);
+  - each route.xml / Configuration1.xml that holds tags is copied as is;
+  - tags_sim's `.txt` exports, the `vdu_route.xml` files (no tags), scripts
+    and lock files are left out;
+  - names lose the characters Windows forbids (`23.11_N->N…` →
+    `23.11_N-N…`);
+  - it writes the resource list as well.
+- The library is in `tag_scenarios/` (3.6 MB): 163 routes from
+  spreadsheets and 41 XML files. It is compiled in through
+  `tag_scenarios.qrc`, which sits with `images.qrc` in `dlcore_link.pri`
+  (resources stay out of the static library).
+- `tags_sim_import.py` now also reads tags_sim's **older one-sheet
+  spreadsheets**: tags only, no signals, the header spelt two ways. There
+  were 7 in Test20Series that it refused before. All 163 spreadsheets
+  convert.
+
+### Files
+
+New: `taglibrary.{h,cpp}`, `scripts/tags_sim_library.py`, `tag_scenarios/`,
+`tag_scenarios.qrc`, `tests/test_session201.cpp`. Changed:
+`tagbuilderwindow.{h,cpp}`, `settings.h` (`tag_builder/library_path`,
+`last_file`, `last_route`), `mainwindow_tools.cpp` (reopens the last
+route), `dlcore.pri`, `dlcore_link.pri`, `scripts/tags_sim_import.py`,
+`tests/tests.pro`, `tests/screenshot_main.cpp` (`SHOT_WINDOW=taglibrary`,
+`SHOT_FILTER`), `docs/RFID_TAG_BUILDER.md`.
+
+### Tests
+
+`session201` (18 checks), run on the built-in library itself:
+- what is built in: the 163 spreadsheet routes, the 145 routes of the
+  Configuration1.xml, and the totals;
+- Hafizpet DN_MAIN: 42 tags, 9 signals, nominal;
+- the spreadsheet routes keep their signals;
+- the dialog:
+  - built in and a folder (a temporary one with a route of its own);
+  - every route listed;
+  - the folder nodes and the Configuration1.xml node;
+  - filter by folder (the count matches the scan);
+  - a folder cannot be opened;
+  - choosing a route gives its file and index;
+  - a folder route found by filter;
+  - clearing the filter;
+- open a built-in route;
+- remembered and reopened, including a route inside a Configuration1.xml
+  (its index);
+- a remembered file that has gone is skipped;
+- the bar fits.
+
+The settings the suite changes are put back at its end.
+
+**Not tested:** the library folder on a Windows install (the path is
+`applicationDirPath()`, as for `dlconsole.ini`).
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2, with the local fixtures:
+validators **13/13**; `dltests` **250 suites / 6809 checks, 1 failed** (the
+`session156` pty check, as at 194); menu audit passed; headless smoke
+alive. The project folder sits on an iCloud-synced Desktop. Regenerating
+`tag_scenarios/` left 194 sync copies ("name 2.xml") beside the files;
+they were removed before the commit. Regenerate with the folder closed in
+Finder, or outside iCloud.
+
+---
+
 <a id="session-200"></a>
 ## Session 200 — RFID Tag Builder: set a field on several tags at once
 

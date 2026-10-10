@@ -1,0 +1,37 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tag_route name="Exit_Loop4_Tags_47_46_CRC" dir="1">
+    <tag name="46" page_x="07800002725b0b99" page_y="0e917cdb28010781" />
+    <tag name="47" page_x="07800002726f0bd9" page_y="c6c4fb0228010781" />
+    <tag name="48" page_x="0780208272970c19" page_y="b49e068c08010781" />
+    <tag name="49" page_x="07a0a08272ef0c59" page_y="53016bf000010781" />
+    <tag name="50" page_x="07a0a08273170c99" page_y="923cbf9810010781" />
+    <tag name="51" page_x="07a0a08274110cd9" page_y="72b98b9400010781" />
+    <tag name="52" page_x="07a0a08275240d19" page_y="94e352c400010781" />
+    <tag name="53" page_x="07a09f0275c10d59" page_y="a19bc83408010781" />
+    <tag name="61" page_x="079f1b0276500f59" page_y="34d526cc18010781" />
+    <tag name="61D" page_x="079f1b0276500f59" page_y="3632bbd098010781" />
+    <tag name="14" page_x="079b1c0277450399" page_y="df8b689400010781" />
+    <tag name="14D" page_x="079b1c0277490399" page_y="161dad6080010781" />
+    <tag name="16D" page_x="079c1c0277ca0419" page_y="fd79e6b080010781" />
+    <tag name="16" page_x="079c1c0277ce0419" page_y="390f110000010781" />
+    <tag name="18" page_x="079c2a0278480499" page_y="dba4df0c09010781" />
+    <tag name="18D" page_x="079c2a02784c0499" page_y="1fd228bc89010781" />
+    <tag name="906" page_x="29aa2a027910e29b" page_y="941ef1d800000000" />
+    <tag name="906D" page_x="29aa2a027914e29b" page_y="5068066880000000" />
+    <tag name="898" page_x="07aa2a027ba0e099" page_y="b88a813805010781" />
+    <tag name="898D" page_x="07aa2a027ba4e099" page_y="7cfc768885010781" />
+    <tag name="900" page_x="07aa2a027ca4e119" page_y="898d2b9c0d010781" />
+    <tag name="900D" page_x="07aa2a027ca8e119" page_y="401bee688d010781" />
+    <tag name="902" page_x="07aa2a027f24e199" page_y="8395162805010781" />
+    <tag name="902D" page_x="07aa2a027f28e199" page_y="4a03d3dc85010781" />
+    <tag name="904" page_x="07aa2a027fece219" page_y="a6579df40d010781" />
+    <tag name="904D" page_x="07aa2a027ff0e219" page_y="74013c888d010781" />
+    <tag name="873" page_x="07aa2a0280e6da59" page_y="30b3287c05010781" />
+    <tag name="873D" page_x="07aa2a0280eada59" page_y="f925ed8885010781" />
+    <tag name="908" page_x="07aa2a02823ae319" page_y="705235c805010781" />
+    <tag name="908D" page_x="07aa2a02823ee319" page_y="b424c27885010781" />
+    <signal foot_tag="53" name="S44" sig_id="21" />
+    <signal foot_tag="18" name="S43" sig_id="13" />
+    <signal foot_tag="900" name="S1629" sig_id="25" />
+    <signal foot_tag="904" name="S1637" sig_id="26" />
+</tag_route>

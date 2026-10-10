@@ -1,0 +1,29 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tag_route name="NORMAL_TLP_UP_CRC" dir="2">
+    <tag name="551" page_x="07b7b7826b0689d9" page_y="f27b409c1080fa81" />
+    <tag name="551D" page_x="07b7b7826b0289d9" page_y="360db72c9080fa81" />
+    <tag name="553D" page_x="faa4b7826ad88a59" page_y="714651688800fa80" />
+    <tag name="553" page_x="faa4b7826ad48a59" page_y="b8d0949c0800fa80" />
+    <tag name="555D" page_x="faa5a482698e8ad9" page_y="450c0ab08800fa80" />
+    <tag name="555" page_x="faa5a482698a8ad9" page_y="817afd000800fa80" />
+    <tag name="557D" page_x="faa5a58268948b59" page_y="11fad9988000fa80" />
+    <tag name="557" page_x="faa5a58268908b59" page_y="d58c2e280000fa80" />
+    <tag name="559" page_x="faa5a58268188bd9" page_y="c22090d00000fa80" />
+    <tag name="559D" page_x="faa5a58268148bd9" page_y="0bb655248000fa80" />
+    <tag name="561" page_x="faa5a58267aa8c59" page_y="c8f745f00000fa80" />
+    <tag name="561D" page_x="faa5a58267a68c59" page_y="016180048000fa80" />
+    <tag name="563" page_x="faaaa58266b08cd9" page_y="e9bade901200fa80" />
+    <tag name="563D" page_x="faaaa58266ac8cd9" page_y="3bec7fec9200fa80" />
+    <tag name="169" page_x="faaaaa8266882a59" page_y="83c1a1dc0280fa80" />
+    <tag name="169D" page_x="faaaaa8266842a59" page_y="4a5764288280fa80" />
+    <tag name="171" page_x="2b2aaa82661a2adb" page_y="659a52d000000038" />
+    <tag name="171D" page_x="2b2aaa8266162adb" page_y="ac0c972480000038" />
+    <tag name="173" page_x="faaaaa8263962b59" page_y="d406df000280fa80" />
+    <tag name="173D" page_x="faaaaa8263922b59" page_y="107028b08280fa80" />
+    <tag name="175" page_x="faaaaa8262b02bd9" page_y="75e7e0401280fa80" />
+    <tag name="177" page_x="faaaaa825fa42c59" page_y="4b850ab40280fa80" />
+    <tag name="179" page_x="faaaaa825eb42cd9" page_y="a39c34181280fa80" />
+    <signal foot_tag="551" name="S20_TL" sig_id="22" />
+    <signal foot_tag="563" name="S15_TL" sig_id="10" />
+    <signal foot_tag="175" name="S14ID_TL" sig_id="18" />
+</tag_route>

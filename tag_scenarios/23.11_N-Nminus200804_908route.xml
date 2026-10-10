@@ -1,0 +1,65 @@
+<?xml version="1.0" ?>
+<route>
+    <route_data route_name="DN_804_908" dir="1">
+        <rfid_data rfid_id="804" tag_name="main" tag_type="9" abs_loc="159500" next_rfid_abs_loc="159660" track_id="110" page_x="07b737026f0cc919" page_y="8ebf4ec402810781"/>
+        <rfid_data rfid_id="2" tag_name="main" tag_type="9" abs_loc="159660" next_rfid_abs_loc="159664" track_id="110" page_x="07b737026fac0099" page_y="379015c80a00fa81"/>
+        <rfid_data rfid_id="2D" tag_name="duplicate" tag_type="9" abs_loc="159664" next_rfid_abs_loc="160151" track_id="110" page_x="07b737026fb00099" page_y="e5c6b4b48a00fa81"/>
+        <rfid_data rfid_id="4D" tag_name="duplicate" tag_type="9" abs_loc="160151" next_rfid_abs_loc="160155" track_id="110" page_x="07b7190271970119" page_y="4bd06f5080010781"/>
+        <rfid_data rfid_id="4" tag_name="main" tag_type="9" abs_loc="160155" next_rfid_abs_loc="160565" track_id="110" page_x="07b71902719b0119" page_y="8246aaa400010781"/>
+        <rfid_data rfid_id="6D" tag_name="duplicate" tag_type="9" abs_loc="160565" next_rfid_abs_loc="160569" track_id="50" page_x="07991a0273350199" page_y="7ab2565480010781"/>
+        <rfid_data rfid_id="6" tag_name="main" tag_type="9" abs_loc="160569" next_rfid_abs_loc="160819" track_id="50" page_x="07991a0273390199" page_y="b32493a000010781"/>
+        <rfid_data rfid_id="8" tag_name="main" tag_type="9" abs_loc="160819" next_rfid_abs_loc="160823" track_id="52" page_x="079a1a0274330219" page_y="9454c47400010781"/>
+        <rfid_data rfid_id="8D" tag_name="duplicate" tag_type="9" abs_loc="160823" next_rfid_abs_loc="161060" track_id="52" page_x="079a1a0274370219" page_y="502233c480010781"/>
+        <rfid_data rfid_id="10" tag_name="main" tag_type="9" abs_loc="161060" next_rfid_abs_loc="161064" track_id="52" page_x="079a1a0275240299" page_y="78251a8000010781"/>
+        <rfid_data rfid_id="10D" tag_name="duplicate" tag_type="9" abs_loc="161064" next_rfid_abs_loc="161330" track_id="52" page_x="079a1a0275280299" page_y="b1b3df7480010781"/>
+        <rfid_data rfid_id="12" tag_name="main" tag_type="9" abs_loc="161330" next_rfid_abs_loc="161334" track_id="52" page_x="079a1b0276320319" page_y="e8062a7008010781"/>
+        <rfid_data rfid_id="12D" tag_name="duplicate" tag_type="9" abs_loc="161334" next_rfid_abs_loc="161605" track_id="52" page_x="079a1b0276360319" page_y="2c70ddc088010781"/>
+        <rfid_data rfid_id="14" tag_name="main" tag_type="9" abs_loc="161605" next_rfid_abs_loc="161609" track_id="54" page_x="079b1c0277450399" page_y="df8b689400010781"/>
+        <rfid_data rfid_id="14D" tag_name="duplicate" tag_type="9" abs_loc="161609" next_rfid_abs_loc="161738" track_id="54" page_x="079b1c0277490399" page_y="161dad6080010781"/>
+        <rfid_data rfid_id="16D" tag_name="duplicate" tag_type="9" abs_loc="161738" next_rfid_abs_loc="161742" track_id="56" page_x="079c1c0277ca0419" page_y="fd79e6b080010781"/>
+        <rfid_data rfid_id="16" tag_name="main" tag_type="9" abs_loc="161742" next_rfid_abs_loc="161864" track_id="56" page_x="079c1c0277ce0419" page_y="390f110000010781"/>
+        <rfid_data rfid_id="18" tag_name="main" tag_type="9" abs_loc="161864" next_rfid_abs_loc="161868" track_id="56" page_x="079c2a0278480499" page_y="dba4df0c09010781"/>
+        <rfid_data rfid_id="18D" tag_name="duplicate" tag_type="9" abs_loc="161868" next_rfid_abs_loc="162064" track_id="56" page_x="079c2a02784c0499" page_y="1fd228bc89010781"/>
+        <rfid_data rfid_id="906" tag_name="main" tag_type="11" abs_loc="162064" next_rfid_abs_loc="162068" track_id="84" page_x="29aa2a027910e29b" page_y="941ef1d800000000"/>
+        <rfid_data rfid_id="906D" tag_name="duplicate" tag_type="11" abs_loc="162068" next_rfid_abs_loc="162720" track_id="84" page_x="29aa2a027914e29b" page_y="5068066880000000"/>
+        <rfid_data rfid_id="898" tag_name="main" tag_type="9" abs_loc="162720" next_rfid_abs_loc="162724" track_id="84" page_x="07aa2a027ba0e099" page_y="b88a813805010781"/>
+        <rfid_data rfid_id="898D" tag_name="duplicate" tag_type="9" abs_loc="162724" next_rfid_abs_loc="162980" track_id="84" page_x="07aa2a027ba4e099" page_y="7cfc768885010781"/>
+        <rfid_data rfid_id="900" tag_name="main" tag_type="9" abs_loc="162980" next_rfid_abs_loc="162984" track_id="84" page_x="07aa2a027ca4e119" page_y="898d2b9c0d010781"/>
+        <rfid_data rfid_id="900D" tag_name="duplicate" tag_type="9" abs_loc="162984" next_rfid_abs_loc="163620" track_id="84" page_x="07aa2a027ca8e119" page_y="401bee688d010781"/>
+        <rfid_data rfid_id="902" tag_name="main" tag_type="12" abs_loc="163620" next_rfid_abs_loc="163820" track_id="84" page_x="2e2a2a027f24e19c" page_y="c71354e40288413f"/>
+        <rfid_data rfid_id="904" tag_name="main" tag_type="9" abs_loc="163820" next_rfid_abs_loc="164070" track_id="84" page_x="07aa2a027f24e219" page_y="1ab519d00d010781"/>
+        <rfid_data rfid_id="873" tag_name="main" tag_type="9" abs_loc="164070" next_rfid_abs_loc="164410" track_id="84" page_x="07aa2a02801eda59" page_y="a01101c005010781"/>
+        <rfid_data rfid_id="908" tag_name="main" tag_type="9" abs_loc="164410" next_rfid_abs_loc="164410" track_id="84" page_x="07aa2a028172e319" page_y="1ac5730405010781"/>
+    </route_data>
+    <route_data route_name="REV_DN_804_908" dir="2">
+        <rfid_data rfid_id="908" tag_name="main" tag_type="9" abs_loc="164410" next_rfid_abs_loc="164070" track_id="84" page_x="07aa2a028172e319" page_y="1ac5730405010781"/>
+        <rfid_data rfid_id="873" tag_name="main" tag_type="9" abs_loc="164070" next_rfid_abs_loc="163820" track_id="84" page_x="07aa2a02801eda59" page_y="a01101c005010781"/>
+        <rfid_data rfid_id="904" tag_name="main" tag_type="9" abs_loc="163820" next_rfid_abs_loc="163620" track_id="84" page_x="07aa2a027f24e219" page_y="1ab519d00d010781"/>
+        <rfid_data rfid_id="902" tag_name="main" tag_type="12" abs_loc="163620" next_rfid_abs_loc="162984" track_id="84" page_x="2e2a2a027f24e19c" page_y="c71354e40288413f"/>
+        <rfid_data rfid_id="900D" tag_name="duplicate" tag_type="9" abs_loc="162984" next_rfid_abs_loc="162980" track_id="84" page_x="07aa2a027ca8e119" page_y="401bee688d010781"/>
+        <rfid_data rfid_id="900" tag_name="main" tag_type="9" abs_loc="162980" next_rfid_abs_loc="162724" track_id="84" page_x="07aa2a027ca4e119" page_y="898d2b9c0d010781"/>
+        <rfid_data rfid_id="898D" tag_name="duplicate" tag_type="9" abs_loc="162724" next_rfid_abs_loc="162720" track_id="84" page_x="07aa2a027ba4e099" page_y="7cfc768885010781"/>
+        <rfid_data rfid_id="898" tag_name="main" tag_type="9" abs_loc="162720" next_rfid_abs_loc="162068" track_id="84" page_x="07aa2a027ba0e099" page_y="b88a813805010781"/>
+        <rfid_data rfid_id="906D" tag_name="duplicate" tag_type="11" abs_loc="162068" next_rfid_abs_loc="162064" track_id="84" page_x="29aa2a027914e29b" page_y="5068066880000000"/>
+        <rfid_data rfid_id="906" tag_name="main" tag_type="11" abs_loc="162064" next_rfid_abs_loc="161868" track_id="84" page_x="29aa2a027910e29b" page_y="941ef1d800000000"/>
+        <rfid_data rfid_id="18D" tag_name="duplicate" tag_type="9" abs_loc="161868" next_rfid_abs_loc="161864" track_id="56" page_x="079c2a02784c0499" page_y="1fd228bc89010781"/>
+        <rfid_data rfid_id="18" tag_name="main" tag_type="9" abs_loc="161864" next_rfid_abs_loc="161742" track_id="56" page_x="079c2a0278480499" page_y="dba4df0c09010781"/>
+        <rfid_data rfid_id="16" tag_name="main" tag_type="9" abs_loc="161742" next_rfid_abs_loc="161738" track_id="56" page_x="079c1c0277ce0419" page_y="390f110000010781"/>
+        <rfid_data rfid_id="16D" tag_name="duplicate" tag_type="9" abs_loc="161738" next_rfid_abs_loc="161609" track_id="56" page_x="079c1c0277ca0419" page_y="fd79e6b080010781"/>
+        <rfid_data rfid_id="14D" tag_name="duplicate" tag_type="9" abs_loc="161609" next_rfid_abs_loc="161605" track_id="54" page_x="079b1c0277490399" page_y="161dad6080010781"/>
+        <rfid_data rfid_id="14" tag_name="main" tag_type="9" abs_loc="161605" next_rfid_abs_loc="161334" track_id="54" page_x="079b1c0277450399" page_y="df8b689400010781"/>
+        <rfid_data rfid_id="12D" tag_name="duplicate" tag_type="9" abs_loc="161334" next_rfid_abs_loc="161330" track_id="52" page_x="079a1b0276360319" page_y="2c70ddc088010781"/>
+        <rfid_data rfid_id="12" tag_name="main" tag_type="9" abs_loc="161330" next_rfid_abs_loc="161064" track_id="52" page_x="079a1b0276320319" page_y="e8062a7008010781"/>
+        <rfid_data rfid_id="10D" tag_name="duplicate" tag_type="9" abs_loc="161064" next_rfid_abs_loc="161060" track_id="52" page_x="079a1a0275280299" page_y="b1b3df7480010781"/>
+        <rfid_data rfid_id="10" tag_name="main" tag_type="9" abs_loc="161060" next_rfid_abs_loc="160823" track_id="52" page_x="079a1a0275240299" page_y="78251a8000010781"/>
+        <rfid_data rfid_id="8D" tag_name="duplicate" tag_type="9" abs_loc="160823" next_rfid_abs_loc="160819" track_id="52" page_x="079a1a0274370219" page_y="502233c480010781"/>
+        <rfid_data rfid_id="8" tag_name="main" tag_type="9" abs_loc="160819" next_rfid_abs_loc="160569" track_id="52" page_x="079a1a0274330219" page_y="9454c47400010781"/>
+        <rfid_data rfid_id="6" tag_name="main" tag_type="9" abs_loc="160569" next_rfid_abs_loc="160565" track_id="50" page_x="07991a0273390199" page_y="b32493a000010781"/>
+        <rfid_data rfid_id="6D" tag_name="duplicate" tag_type="9" abs_loc="160565" next_rfid_abs_loc="160155" track_id="50" page_x="07991a0273350199" page_y="7ab2565480010781"/>
+        <rfid_data rfid_id="4" tag_name="main" tag_type="9" abs_loc="160155" next_rfid_abs_loc="160151" track_id="110" page_x="07b71902719b0119" page_y="8246aaa400010781"/>
+        <rfid_data rfid_id="4D" tag_name="duplicate" tag_type="9" abs_loc="160151" next_rfid_abs_loc="159664" track_id="110" page_x="07b7190271970119" page_y="4bd06f5080010781"/>
+        <rfid_data rfid_id="2D" tag_name="duplicate" tag_type="9" abs_loc="159664" next_rfid_abs_loc="159660" track_id="110" page_x="07b737026fb00099" page_y="e5c6b4b48a00fa81"/>
+        <rfid_data rfid_id="2" tag_name="main" tag_type="9" abs_loc="159660" next_rfid_abs_loc="159500" track_id="110" page_x="07b737026fac0099" page_y="379015c80a00fa81"/>
+        <rfid_data rfid_id="804" tag_name="main" tag_type="9" abs_loc="159500" next_rfid_abs_loc="159500" track_id="110" page_x="07b737026f0cc919" page_y="8ebf4ec402810781"/>
+    </route_data>
+</route>

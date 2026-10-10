@@ -23,6 +23,9 @@ CONFIG += dl_link_only
 include($$PWD/serial.pri)
 
 RESOURCES += $$PWD/images.qrc $$PWD/lococonfig/lococonfig.qrc
+# Session 201: the RFID Tag Builder's built-in scenario library (tags_sim's
+# KAV_CONFIG routes, made by scripts/tags_sim_library.py).
+RESOURCES += $$PWD/tag_scenarios.qrc
 
 LIBS += -L$$DLCORE_DIR -ldlcore
 msvc: PRE_TARGETDEPS += $$DLCORE_DIR/dlcore.lib

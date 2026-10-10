@@ -7,7 +7,8 @@ Writes ROUTE.tagroute.xml next to each input. Only the standard library is
 used (an .xlsx is a zip of XML), so it runs wherever tags_sim ran.
 
 tags_sim's sheets: `tags` (Tag, `page_x="..." page_y="..."`) and `signals`
-(sig_foot_tag, signal, sig_id). The direction is left unset (dir="0"):
+(sig_foot_tag, signal, sig_id). Older tags_sim saves have one sheet of tags
+and no signals; those are read too. The direction is left unset (dir="0"):
 tags_sim guessed it from the tags' locations, and DLConsole asks for it.
 """
 import re
@@ -67,7 +68,13 @@ def number(text):
 def convert(path):
     book = sheets(path)
     if "tags" not in book:
-        raise ValueError("no 'tags' sheet")
+        # Older tags_sim saves: one sheet (Sheet1) of tags, no signals, the
+        # header spelt more than one way: take the first sheet that holds tags.
+        first = next((rows for rows in book.values()
+                      if any(len(r) > 1 and PAGES.search(r[1]) for r in rows)), None)
+        if first is None:
+            raise ValueError("no sheet of page_x / page_y tags")
+        book = {"tags": first}
     name = re.sub(r"\.xlsx$", "", path.replace("\\", "/").split("/")[-1], flags=re.I)
     lines = ['<?xml version="1.0" encoding="UTF-8"?>',
              "<tag_route name=%s dir=\"0\">" % quoteattr(name)]

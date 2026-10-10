@@ -1,0 +1,25 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tag_route name="Lingampalli_DN_Test5.125_CRC" dir="1">
+    <tag name="804" page_x="07b737026f0cc919" page_y="8ebf4ec402810781" />
+    <tag name="2" page_x="07b737026fac0099" page_y="dc636fe40a010781" />
+    <tag name="2D" page_x="07b737026fb00099" page_y="0e35ce988a010781" />
+    <tag name="4D" page_x="07b7190271970119" page_y="4bd06f5080010781" />
+    <tag name="4" page_x="07b71902719b0119" page_y="8246aaa400010781" />
+    <tag name="6D" page_x="07991a0273350199" page_y="7ab2565480010781" />
+    <tag name="6" page_x="07991a0273390199" page_y="b32493a000010781" />
+    <tag name="8" page_x="079a1a0274330219" page_y="9454c47400010781" />
+    <tag name="8D" page_x="079a1a0274370219" page_y="502233c480010781" />
+    <tag name="10" page_x="079a1a0275240299" page_y="78251a8000010781" />
+    <tag name="10D" page_x="079a1a0275280299" page_y="b1b3df7480010781" />
+    <tag name="12" page_x="079a1b0276320319" page_y="e8062a7008010781" />
+    <tag name="12D" page_x="079a1b0276360319" page_y="2c70ddc088010781" />
+    <tag name="56" page_x="079b188276e80e19" page_y="f7dfae8818010781" />
+    <tag name="3" page_x="0798a98277c900d9" page_y="d665a77000010781" />
+    <tag name="1" page_x="07a9a98278e50059" page_y="067026e811010781" />
+    <tag name="991" page_x="07a9a98279b9f7d9" page_y="7d0f3af405010781" />
+    <tag name="989" page_x="07a9a9827b64f759" page_y="b687ef1415010781" />
+    <tag name="987" page_x="07a9a9827c2cf6d9" page_y="0b96779805010781" />
+    <tag name="985" page_x="07a9a9827d44f659" page_y="9d6aeb8805010781" />
+    <signal foot_tag="2" name="S50" sig_id="11" />
+    <signal foot_tag="12" name="S48" sig_id="16" />
+</tag_route>

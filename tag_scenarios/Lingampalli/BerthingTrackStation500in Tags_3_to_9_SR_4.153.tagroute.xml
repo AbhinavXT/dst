@@ -1,0 +1,26 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<tag_route name="BerthingTrackStation500in Tags_3_to_9_SR_4.153" dir="2">
+    <tag name="3" page_x="fa18a98277c900d9" page_y="000000000000fa00" />
+    <tag name="5" page_x="fa19988276c00159" page_y="000000000000fa00" />
+    <tag name="7" page_x="fa19998275c601d9" page_y="eec69ffc0000fa00" />
+    <tag name="9" page_x="fa19998275240259" page_y="4a6f7e0c0000fa00" />
+    <tag name="11" page_x="079a998273f802d9" page_y="d0be553810010781" />
+    <tag name="11D" page_x="079a998273f402d9" page_y="192890cc90010781" />
+    <tag name="13" page_x="079b9a8272c60359" page_y="daf53a3800010781" />
+    <tag name="13D" page_x="079b9a8272c20359" page_y="1e83cd8880010781" />
+    <tag name="15D" page_x="079b9b82718503d9" page_y="0000000080010781" />
+    <tag name="15" page_x="079b9b82718103d9" page_y="0000000000010781" />
+    <tag name="17" page_x="07b79b8270c40459" page_y="de06be4012010781" />
+    <tag name="17D" page_x="07b79b8270c00459" page_y="1a7049f092010781" />
+    <tag name="605" page_x="3737b782702e975b" page_y="1916af2c00000000" />
+    <tag name="605D" page_x="3737b782702a975b" page_y="dd60589c80000000" />
+    <tag name="601" page_x="07b7b7826fe89659" page_y="076fdd1402810781" />
+    <tag name="601D" page_x="07b7b7826fe49659" page_y="cef918e082810781" />
+    <tag name="603" page_x="07b7b7826c0096d9" page_y="0000000002810781" />
+    <tag name="603D" page_x="07b7b7826bfc96d9" page_y="0000000082810781" />
+    <signal foot_tag="981" name="S1640" sig_id="27" />
+    <signal foot_tag="989" name="S1626" sig_id="28" />
+    <signal foot_tag="1" name="S1" sig_id="3" />
+    <signal foot_tag="11" name="S3" sig_id="7" />
+    <signal foot_tag="17" name="S6" sig_id="24" />
+</tag_route>
