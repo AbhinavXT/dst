@@ -11,6 +11,61 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-200"></a>
+## Session 200 — RFID Tag Builder: set a field on several tags at once
+
+Asked for by Abhinav (tag builder extras, second of two). A route is many
+tags that share most of their fields: TIN, station, section type, comm
+flags. Changing one of them meant editing every tag by hand.
+
+**What the operator sees** on the Tags tab:
+- **Several rows can be selected** with Shift-click, Ctrl-click or Ctrl+A.
+  The editor on the right shows the first.
+- **Set field…** opens a dialog for the selected tags:
+  - **Field** lists only the fields every selected tag carries. Normal and
+    adjustment tags together share TIN, section, comm, duplication…, but
+    not `abs_loc` (adjustment tags have `abs_loc_1`) and not the station.
+  - **Value** is a named list for a short coded field and a number
+    otherwise, starting at the first selected tag's value.
+  - On OK, every selected tag gets the value and a recomputed CRC, and
+    every other field stays as it was.
+  - **Refused as a whole, nothing changed,** if any tag would not take it.
+    The status says which tag and why ("does not fit its 8 bits").
+  - It is one Undo step, and the selection stays.
+- **Delete** with several rows selected deletes them all and names them,
+  in one Undo step. Before this, multi-selection did not exist; a Delete
+  that removed only one of the selected rows would surprise.
+
+### Files
+
+Changed: `tagbuilderwindow.{h,cpp}`, `tests/tests.pro`,
+`docs/RFID_TAG_BUILDER.md`. New: `tests/test_session200.cpp`.
+
+### Tests
+
+`session200` (14 checks), on built routes of Normal tags and an adjustment
+tag:
+- the selection, in order;
+- the fields in common;
+- `tin_nom` on three tags: the others untouched, every CRC passing, every
+  other field kept, one Undo step, and the status;
+- a coded field;
+- a value too wide, and a field one tag lacks: both refused with nothing
+  changed;
+- Undo twice;
+- deleting two rows, and its Undo;
+- the 1100 × 700 fit, and no orphan widgets.
+
+**Not tested:** the Set field dialog itself (modal). Its result goes
+through `setFieldOn`, which is tested.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2, with the local fixtures:
+validators **13/13**; `dltests` **249 suites / 6791 checks, 1 failed** (the
+`session156` pty check, as at 194); menu audit passed; headless smoke
+alive.
+
+---
+
 <a id="session-199"></a>
 ## Session 199 — RFID Tag Builder: fix the CRCs
 

@@ -32,6 +32,9 @@
 //    (session 199) Fix CRCs: every tag of the route whose CRC-30 fails gets
 //                 the one its contents give (only the CRC bits change); and
 //                 the same over a whole Configuration1.xml / route.xml file.
+//    (session 200) several rows can be selected: Set field… sets one field
+//                 on all of them (CRCs recomputed, refused whole if any tag
+//                 would not take it, one Undo step); Delete deletes them all.
 //
 //  Nothing here is sent anywhere: it makes files.
 // =============================================================================
@@ -103,6 +106,12 @@ public:
     bool compareRun();                    // the route against the run's log
     bool makeRouteFromRun();              // replaces the route (asks first if changed)
     void selectRow(int row);
+    // Session 200.
+    QList<int> selectedRows() const;      // ascending
+    void selectRows(const QList<int> &rows);
+    // The fields every one of `rows` carries, in wire order.
+    QVector<RfidTag::Field> commonFields(const QList<int> &rows) const;
+    bool setFieldOn(const QList<int> &rows, const QString &field, qint64 value);
 
     QTableWidget *routeTable() const { return m_table; }
     QTableWidget *signalTable() const { return m_signals; }

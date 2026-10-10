@@ -103,7 +103,7 @@ the window's Run tab. The window now takes the `MessageDispatcher`.
 
 Extras Abhinav picked (2026-10-10), one patch each: **Fix all CRCs**
 (patch 199, done: `RfidTag::fixCrc`, `RfidExport::fixCrcs`), **Bulk edit
-fields** (patch 200).
+fields** (patch 200, done: `TagBuilderWindow::setFieldOn`, multi-select).
 
 All four phases are built. Open threads, none started:
 - `Schema::Encoder::enumChoices` finds no enum in kavach.xml (they sit in

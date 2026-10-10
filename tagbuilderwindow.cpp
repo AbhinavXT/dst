@@ -1,5 +1,7 @@
 #include "tagbuilderwindow.h"
 
+#include <algorithm>
+
 #include "rfidcheck.h"
 #include "rfidexport.h"
 #include "messagedispatcher.h"
@@ -12,6 +14,8 @@
 #include <QCloseEvent>
 #include <QDateTime>
 #include <QDir>
+#include <QDialogButtonBox>
+#include <QDialog>
 #include <QMenu>
 #include <QComboBox>
 #include <QFile>
@@ -123,7 +127,7 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     m_table->verticalHeader()->hide();
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_table->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_table->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_table->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
     m_table->horizontalHeader()->setStretchLastSection(true);
     m_table->setToolTip(tr("The tags in the order the loco meets them. Select one to edit it on the right"));
@@ -139,6 +143,9 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     auto *dupBtn = new QPushButton(tr("Add duplicate"), this);
     dupBtn->setToolTip(tr("The selected main tag's duplicate tag, %1 m further along the direction, right after it")
                            .arg(RfidCheck::kDuplicateGap));
+    auto *setBtn = new QPushButton(tr("Set field…"), this);
+    setBtn->setToolTip(tr("Set one field on every selected tag (Shift- or Ctrl-click to select several), "
+                          "CRCs recomputed"));
     auto *fixBtn = new QPushButton(tr("Fix CRCs"), this);
     fixBtn->setToolTip(tr("Every tag whose CRC-30 fails gets the CRC its contents give. Only the CRC bits change"));
     auto *shiftBtn = new QPushButton(tr("Shift…"), this);
@@ -154,6 +161,7 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     for (QPushButton *b : { addBtn, insBtn, repBtn, delBtn, upBtn, downBtn }) rowBtns->addWidget(b);
     rowBtns->addStretch(1);
     auto *rowBtns2 = new QHBoxLayout;
+    rowBtns2->addWidget(setBtn);
     rowBtns2->addWidget(dupBtn);
     rowBtns2->addWidget(shiftBtn);
     rowBtns2->addWidget(fixBtn);
@@ -410,6 +418,54 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
         if (!out.isEmpty()) exportIntoConfiguration(in, out);
     });
     connect(fixBtn, &QPushButton::clicked, this, &TagBuilderWindow::fixRouteCrcs);
+    connect(setBtn, &QPushButton::clicked, this, [this]() {
+        const QList<int> rows = selectedRows();
+        const QVector<RfidTag::Field> fields = commonFields(rows);
+        if (rows.isEmpty() || fields.isEmpty()) {
+            m_status->warn(rows.isEmpty() ? tr("Select the tags to set a field on")
+                                          : tr("The selected tags have no field in common"));
+            return;
+        }
+        QDialog dlg(this);
+        dlg.setWindowTitle(tr("Set a field on %1 tag%2").arg(rows.size()).arg(rows.size() == 1 ? "" : "s"));
+        auto *field = new QComboBox(&dlg);
+        for (const RfidTag::Field &f : fields) field->addItem(QStringLiteral("%1 (%2 bit%3)").arg(f.name).arg(f.bits).arg(f.bits == 1 ? "" : "s"), f.name);
+        auto *coded = new QComboBox(&dlg);
+        auto *number = new QSpinBox(&dlg);
+        auto *form = new QFormLayout;
+        form->addRow(tr("Field:"), field);
+        auto *value = new QHBoxLayout;
+        value->addWidget(coded, 1);
+        value->addWidget(number, 1);
+        form->addRow(tr("Value:"), value);
+        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+        auto *lay = new QVBoxLayout(&dlg);
+        lay->addLayout(form);
+        lay->addWidget(buttons);
+        connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+        // The value editor follows the field: a named list for a short coded
+        // field, a number otherwise; it starts at the first selected tag's value.
+        auto showField = [&]() {
+            const RfidTag::Field &f = fields.at(field->currentIndex());
+            const qint64 now = RfidTag::values(m_route.tags.at(rows.first()).bytes).value(f.name);
+            const bool isCoded = !f.enumName.isEmpty() && f.bits <= 4;
+            coded->clear();
+            if (isCoded)
+                for (qint64 v = 0; v < (qint64(1) << f.bits); ++v) coded->addItem(RfidTag::enumLabel(f.enumName, v), v);
+            coded->setCurrentIndex(coded->findData(now));
+            number->setRange(0, int(qMin<qint64>((qint64(1) << f.bits) - 1, 0x7FFFFFFF)));
+            number->setValue(int(now));
+            coded->setVisible(isCoded);
+            number->setVisible(!isCoded);
+        };
+        connect(field, QOverload<int>::of(&QComboBox::currentIndexChanged), &dlg, showField);
+        showField();
+        if (dlg.exec() != QDialog::Accepted) return;
+        const RfidTag::Field &f = fields.at(field->currentIndex());
+        const bool isCoded = !f.enumName.isEmpty() && f.bits <= 4;
+        setFieldOn(rows, f.name, isCoded ? coded->currentData().toLongLong() : number->value());
+    });
     connect(actFixFile, &QAction::triggered, this, [this]() {
         const QString in = QFileDialog::getOpenFileName(this, tr("The file whose CRCs to fix"), QString(), tr("XML (*.xml)"));
         if (in.isEmpty()) return;
@@ -613,8 +669,66 @@ void TagBuilderWindow::fillTable()
 
 int TagBuilderWindow::currentRow() const
 {
-    const QList<QTableWidgetItem *> sel = m_table->selectedItems();
-    return sel.isEmpty() ? -1 : sel.first()->row();
+    const QList<int> rows = selectedRows();
+    return rows.isEmpty() ? -1 : rows.first();
+}
+
+QList<int> TagBuilderWindow::selectedRows() const
+{
+    QList<int> rows;
+    for (const QModelIndex &i : m_table->selectionModel()->selectedRows()) rows << i.row();
+    std::sort(rows.begin(), rows.end());
+    return rows;
+}
+
+void TagBuilderWindow::selectRows(const QList<int> &rows)
+{
+    m_table->clearSelection();
+    for (int r : rows) m_table->selectionModel()->select(m_table->model()->index(r, 0),
+                                                         QItemSelectionModel::Select | QItemSelectionModel::Rows);
+}
+
+QVector<RfidTag::Field> TagBuilderWindow::commonFields(const QList<int> &rows) const
+{
+    QVector<RfidTag::Field> out;
+    if (rows.isEmpty() || rows.first() < 0 || rows.last() >= m_route.tags.size()) return out;
+    out = RfidTag::fieldsOf(RfidTag::summary(m_route.tags.at(rows.first()).bytes).type);
+    for (int r : rows) {
+        QStringList names;
+        for (const RfidTag::Field &f : RfidTag::fieldsOf(RfidTag::summary(m_route.tags.at(r).bytes).type)) names << f.name;
+        for (int i = out.size() - 1; i >= 0; --i)
+            if (!names.contains(out.at(i).name)) out.remove(i);
+    }
+    return out;
+}
+
+bool TagBuilderWindow::setFieldOn(const QList<int> &rows, const QString &field, qint64 value)
+{
+    bool known = false;
+    for (const RfidTag::Field &f : commonFields(rows)) known = known || f.name == field;
+    if (!known) {
+        m_status->fail(tr("Not set: %1 is not a field of every selected tag").arg(field));
+        return false;
+    }
+    RfidTag::Route next = m_route;
+    for (int r : rows) {
+        QHash<QString, qint64> v = RfidTag::values(next.tags.at(r).bytes);
+        v.insert(field, value);
+        QString err;
+        const QByteArray b = RfidTag::build(v, &err);
+        if (b.isEmpty()) {
+            m_status->fail(tr("Nothing set: tag %1 (row %2): %3").arg(RfidTag::nameOf(next.tags.at(r).bytes)).arg(r + 1).arg(err));
+            return false;
+        }
+        next.tags[r].bytes = b;
+    }
+    const RfidTag::Route before = m_route;
+    m_route = next;
+    changed(tr("Set %1 on %2 tags").arg(field).arg(rows.size()), before, rows.first());
+    selectRows(rows);
+    m_status->ok(tr("%1 = %2 on %3 tag%4, their CRCs recomputed").arg(field).arg(value).arg(rows.size())
+                     .arg(rows.size() == 1 ? "" : "s"));
+    return true;
 }
 
 void TagBuilderWindow::selectRow(int row)
@@ -729,13 +843,18 @@ void TagBuilderWindow::replaceTag()
 
 void TagBuilderWindow::deleteTag()
 {
-    const int row = currentRow();
-    if (row < 0) return;
+    const QList<int> rows = selectedRows();
+    if (rows.isEmpty()) return;
     const RfidTag::Route before = m_route;
-    const QString name = RfidTag::nameOf(m_route.tags.at(row).bytes);
-    m_route.tags.remove(row);
-    changed(tr("Delete tag %1").arg(name), before, qMin(row, m_route.tags.size() - 1));
-    m_status->ok(tr("Tag %1 deleted from row %2").arg(name).arg(row + 1));
+    QStringList names;
+    for (int i = rows.size() - 1; i >= 0; --i) {
+        names.prepend(RfidTag::nameOf(m_route.tags.at(rows.at(i)).bytes));
+        m_route.tags.remove(rows.at(i));
+    }
+    const QString list = names.join(QStringLiteral(", "));
+    changed(tr("Delete %1").arg(list), before, qMin(rows.first(), m_route.tags.size() - 1));
+    m_status->ok(names.size() == 1 ? tr("Tag %1 deleted from row %2").arg(list).arg(rows.first() + 1)
+                                   : tr("%1 tags deleted: %2").arg(names.size()).arg(list));
 }
 
 void TagBuilderWindow::moveTag(int delta)
