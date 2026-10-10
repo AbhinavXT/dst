@@ -99,18 +99,40 @@ QByteArray toTagRouteXml(const Route &r);
 // (empty, *err) while the direction is unset: the REV twin and the names
 // depend on it.
 QByteArray toRouteXml(const Route &r, QString *err = nullptr);
-// The tags_sim <rfid_data> rows of one direction, as the simulator reads
-// them: rfid_id, tag_name main/duplicate, tag_type, abs_loc,
+// The tags_sim <rfid_data> rows of a route run in `dir`, as the simulator
+// reads them: rfid_id, tag_name main/duplicate, tag_type, abs_loc,
 // next_rfid_abs_loc (the next row's; the last row its own), track_id (the
 // reverse-direction TIN, as tags_sim writes it), page_x, page_y.
+//
+// Session 197, ADJUSTMENT TAGS: after an adjustment tag (type 12) the tags'
+// locations are in the numbering the tag corrects to. tags_sim writes them
+// back in the numbering before it, so abs_loc / next_rfid_abs_loc stay one
+// continuous line for the simulator (its set_nom/rev_adjusted_tags):
+//   nominal: dir_corr_1  1 N->N: from location-1 to location-2
+//                        4 R->R: from location-2 to location-1
+//                        2 N->R: from location-1 to location-2, mirrored
+//   reverse: dir_corr_2  4 R->R: from location-2 to location-1
+//                        1 N->N: from location-1 to location-2
+//                        3 R->N: from location-1 to location-2, mirrored
+//   a later main tag at L:  (from - to) + L, mirrored: +/- 2 |to - L|
+//   (+ nominal, - reverse); the adjustment tag itself at `from`.
+// Duplicate tags keep their own location, and a row's next location is
+// adjusted only when its own is, both as tags_sim does. Reproduces every
+// row of tags_sim's six route.xml files that hold adjustment tags. One
+// difference, on purpose: a dir_corr with no rule here (0, 5-7, or N->R
+// read in reverse) leaves the tag at its own location (tags_sim wrote -1)
+// and `adjustNote` says so; the tags after it are not corrected, as in
+// tags_sim.
 struct RouteRow {
     QString rfidId, tagName;
     int     tagType = 0;
     qint64  absLoc = 0, nextAbsLoc = 0;
+    qint64  ownLoc = 0;           // the tag's own abs_loc (abs_loc_1 on type 12)
     int     trackId = 0;
     QString pageX, pageY;
+    QString adjustNote;           // set on an adjustment tag: what it did
 };
-QVector<RouteRow> routeRows(const QVector<Tag> &tags);
+QVector<RouteRow> routeRows(const QVector<Tag> &tags, int dir);
 
 bool writeFile(const QString &path, const QByteArray &data, QString *err = nullptr);
 

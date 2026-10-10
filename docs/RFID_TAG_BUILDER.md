@@ -86,14 +86,14 @@ Status: **done, patch 196** (CHANGELOG session 196). Undo via `UndoLog`
 - Track preview (reuse `trackdiagram` if it fits).
 
 ### C — Configuration1.xml, adjustment, text exports
-Status: not started
-
-- Read all routes of a Configuration1.xml; write one back (station/tracks
-  kept).
-- Adjustment-tag location correction made visible (tags_sim's
-  `set_nom/rev_adjusted_tags`, with its assumptions named).
-- rfid.txt / sigID.txt / tag_link_info.txt exports (formats in tags_sim
-  `output/`).
+Status: **done, patch 197** (CHANGELOG session 197). Adjustment in
+`RfidTag::routeRows(tags, dir)` (comment there has the rules); text files and
+the Configuration1.xml splice in `rfidexport.{h,cpp}`. Ground truth (local):
+`tests/fixtures/tags_sim/adjust/` and `text/`, copied from the zip's
+KAV_CONFIG (3.40804_908route.xml, the "23.11_N->N…" one renamed without `>`,
+S2S UP/DN `…plus1000m…route.xml`, Gullaguda DN MAIN/LOOP route.xml) and
+`output/` (SingleDN20.9.xlsx, UpSingle20.9.xlsx converted, 550_991_*.txt,
+991_175_*.txt).
 
 ### D — plan vs run
 Status: not started

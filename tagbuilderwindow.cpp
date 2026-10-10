@@ -1,6 +1,7 @@
 #include "tagbuilderwindow.h"
 
 #include "rfidcheck.h"
+#include "rfidexport.h"
 #include "routestrip.h"
 #include "statusline.h"
 #include "undolog.h"
@@ -8,7 +9,10 @@
 #include "windowgeometry.h"
 
 #include <QCloseEvent>
+#include <QDir>
+#include <QMenu>
 #include <QComboBox>
+#include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QFontDatabase>
@@ -77,9 +81,17 @@ TagBuilderWindow::TagBuilderWindow(QWidget *parent)
                            "scripts/tags_sim_import.py"));
     auto *saveBtn = new QPushButton(tr("Save…"), this);
     saveBtn->setToolTip(tr("The route as a DLConsole route file: tags, signals, name and direction"));
-    auto *exportBtn = new QPushButton(tr("Export route.xml…"), this);
-    exportBtn->setToolTip(tr("tags_sim's route.xml, as the RFID simulator's Configuration1.xml holds it: "
-                             "the route and its REV route"));
+    auto *exportBtn = new QPushButton(tr("Export"), this);
+    auto *exportMenu = new QMenu(exportBtn);
+    QAction *actRouteXml = exportMenu->addAction(tr("route.xml…"));
+    actRouteXml->setToolTip(tr("tags_sim's route.xml: the route and its REV route"));
+    QAction *actConfig = exportMenu->addAction(tr("Into Configuration1.xml…"));
+    actConfig->setToolTip(tr("Put the route and its REV route into an existing Configuration1.xml, replacing the "
+                             "routes of the same name; the rest of the file is left as it was"));
+    QAction *actText = exportMenu->addAction(tr("Text files (rfid, sigID, tag_link_info)…"));
+    exportMenu->setToolTipsVisible(true);
+    exportBtn->setMenu(exportMenu);
+    exportBtn->setToolTip(tr("route.xml, into a Configuration1.xml, or tags_sim's text files"));
     auto *bar = new QHBoxLayout;
     bar->addWidget(new QLabel(tr("Route:"), this));
     bar->addWidget(m_routeName, 1);
@@ -92,10 +104,14 @@ TagBuilderWindow::TagBuilderWindow(QWidget *parent)
 
     // ---- route table -------------------------------------------------------------------------
     m_table = new QTableWidget(this);
-    m_table->setColumnCount(9);
-    m_table->setHorizontalHeaderLabels({ tr("#"), tr("Tag"), tr("CRC-30"), tr("Type"), tr("Abs loc (m)"), tr("Δ (m)"),
-                                         tr("TIN nom / rev"), tr("Placement"), tr("page_x  page_y") });
-    m_table->horizontalHeaderItem(5)->setToolTip(tr("Metres from the tag before, along the direction (+ = further on). "
+    m_table->setColumnCount(10);
+    m_table->setHorizontalHeaderLabels({ tr("#"), tr("Tag"), tr("CRC-30"), tr("Type"), tr("Abs loc (m)"),
+                                         tr("route.xml loc"), tr("Δ (m)"), tr("TIN nom / rev"), tr("Placement"),
+                                         tr("page_x  page_y") });
+    m_table->horizontalHeaderItem(5)->setToolTip(tr("Where route.xml puts the tag, when not at its own location: after "
+                                                    "an adjustment tag, tags_sim writes locations back in the numbering "
+                                                    "before it, so the simulator sees one continuous line"));
+    m_table->horizontalHeaderItem(6)->setToolTip(tr("Metres from the tag before, along the direction (+ = further on). "
                                                     "Blank after an adjustment tag, whose numbering may change"));
     m_table->verticalHeader()->hide();
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
@@ -322,10 +338,22 @@ TagBuilderWindow::TagBuilderWindow(QWidget *parent)
                                                           tr("DLConsole tag routes (*.tagroute.xml)"));
         if (!path.isEmpty()) saveFile(path);
     });
-    connect(exportBtn, &QPushButton::clicked, this, [this]() {
+    connect(actRouteXml, &QAction::triggered, this, [this]() {
         const QString path = QFileDialog::getSaveFileName(this, tr("Export tags_sim route.xml"),
                                                           QStringLiteral("route.xml"), tr("XML (*.xml)"));
         if (!path.isEmpty()) exportRouteXml(path);
+    });
+    connect(actConfig, &QAction::triggered, this, [this]() {
+        const QString in = QFileDialog::getOpenFileName(this, tr("The Configuration1.xml to put the route into"),
+                                                        QString(), tr("XML (*.xml)"));
+        if (in.isEmpty()) return;
+        const QString out = QFileDialog::getSaveFileName(this, tr("Write the merged Configuration1.xml as"), in,
+                                                         tr("XML (*.xml)"));
+        if (!out.isEmpty()) exportIntoConfiguration(in, out);
+    });
+    connect(actText, &QAction::triggered, this, [this]() {
+        const QString dir = QFileDialog::getExistingDirectory(this, tr("Folder for the text files"));
+        if (!dir.isEmpty()) exportTextFiles(dir);
     });
 
     setTag(blankTag(9));
@@ -478,6 +506,7 @@ void TagBuilderWindow::setType(int type)
 void TagBuilderWindow::fillTable()
 {
     const QSignalBlocker block(m_table);
+    const QVector<RfidTag::RouteRow> rows = RfidTag::routeRows(m_route.tags, m_route.dir);
     m_table->setRowCount(m_route.tags.size());
     for (int i = 0; i < m_route.tags.size(); ++i) {
         const QByteArray &b = m_route.tags.at(i).bytes;
@@ -489,15 +518,19 @@ void TagBuilderWindow::fillTable()
         m_table->setItem(i, 1, name);
         m_table->setItem(i, 3, cell(QStringLiteral("%1 %2").arg(s.type).arg(RfidTag::typeName(s.type))));
         m_table->setItem(i, 4, cell(s.absLoc == RfidCheck::kNotApplicable ? tr("N/A") : QString::number(s.absLoc)));
-        m_table->setItem(i, 5, cell(RfidCheck::deltaText(m_route, i)));
-        m_table->setItem(i, 6, cell(QStringLiteral("%1 / %2").arg(s.tinNom).arg(s.tinRev)));
-        m_table->setItem(i, 7, cell(s.type == 9 || s.type == 10 ? QString::number(s.placement) : QString()));
+        const QString written = i < rows.size() && rows.at(i).absLoc != rows.at(i).ownLoc ? QString::number(rows.at(i).absLoc) : QString();
+        QTableWidgetItem *wr = cell(written);
+        if (i < rows.size() && !rows.at(i).adjustNote.isEmpty()) wr->setToolTip(rows.at(i).adjustNote);
+        m_table->setItem(i, 5, wr);
+        m_table->setItem(i, 6, cell(RfidCheck::deltaText(m_route, i)));
+        m_table->setItem(i, 7, cell(QStringLiteral("%1 / %2").arg(s.tinNom).arg(s.tinRev)));
+        m_table->setItem(i, 8, cell(s.type == 9 || s.type == 10 ? QString::number(s.placement) : QString()));
         QTableWidgetItem *crc = cell(s.crcOk ? tr("pass") : tr("FAIL"));
         crc->setForeground(s.crcOk ? UiColor::ok() : UiColor::error());
         if (!s.crcOk) crc->setToolTip(tr("Stored %1, the contents give %2: a loco would not process this tag")
                                           .arg(hex8(s.crcStored), hex8(s.crcCalc)));
         m_table->setItem(i, 2, crc);
-        m_table->setItem(i, 8, cell(RfidTag::pageX(b) + QStringLiteral("  ") + RfidTag::pageY(b)));
+        m_table->setItem(i, 9, cell(RfidTag::pageX(b) + QStringLiteral("  ") + RfidTag::pageY(b)));
     }
     m_updating = true;
     if (m_routeName->text() != m_route.name) m_routeName->setText(m_route.name);
@@ -804,6 +837,48 @@ bool TagBuilderWindow::exportRouteXml(const QString &path)
     }
     m_status->ok(tr("Exported %1: the route and its REV route, %2 tags each")
                      .arg(QFileInfo(path).fileName()).arg(m_route.tags.size()));
+    return true;
+}
+
+bool TagBuilderWindow::exportIntoConfiguration(const QString &configPath, const QString &outPath)
+{
+    QFile in(configPath);
+    if (!in.open(QIODevice::ReadOnly)) {
+        m_status->fail(tr("Not exported: %1: %2").arg(QFileInfo(configPath).fileName(), in.errorString()));
+        return false;
+    }
+    QString err;
+    QStringList notes;
+    const QByteArray merged = RfidExport::mergeIntoConfiguration(in.readAll(), m_route, &err, &notes);
+    if (merged.isEmpty() || !RfidTag::writeFile(outPath, merged, &err)) {
+        m_status->fail(tr("Not exported: %1").arg(err));
+        return false;
+    }
+    m_status->ok(tr("%1: %2; the rest of the file as it was").arg(QFileInfo(outPath).fileName(), notes.join(QStringLiteral(", "))));
+    return true;
+}
+
+bool TagBuilderWindow::exportTextFiles(const QString &folder)
+{
+    if (m_route.tags.isEmpty()) {
+        m_status->warn(tr("The route has no tags"));
+        return false;
+    }
+    const RfidExport::TextFiles t = RfidExport::textFiles(m_route);
+    const QDir dir(folder);
+    QString err;
+    const QVector<QPair<QString, QStringList>> files{ { QStringLiteral("rfid.txt"), t.rfid },
+                                                      { QStringLiteral("sigID.txt"), t.sigId },
+                                                      { QStringLiteral("tag_link_info.txt"), t.tagLinkInfo } };
+    for (const auto &f : files) {
+        QByteArray data;
+        for (const QString &line : f.second) data += line.toUtf8() + '\n';
+        if (!RfidTag::writeFile(dir.filePath(t.stem + f.first), data, &err)) {
+            m_status->fail(tr("Not exported: %1").arg(err));
+            return false;
+        }
+    }
+    m_status->ok(tr("Wrote %1rfid.txt, %1sigID.txt and %1tag_link_info.txt").arg(t.stem));
     return true;
 }
 

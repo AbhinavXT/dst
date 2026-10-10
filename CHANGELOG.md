@@ -11,6 +11,86 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-197"></a>
+## Session 197 — RFID Tag Builder, phase C: adjustment tags, Configuration1.xml, text files
+
+Phase C of the tag builder (`docs/RFID_TAG_BUILDER.md`): the rest of what
+tags_sim wrote, done the way it did it, so DLConsole can replace it.
+
+**What the operator sees:**
+- **Export** is now a menu:
+  - **route.xml…**, as before;
+  - **Into Configuration1.xml…**: pick the simulator's file, then where to
+    write the result (it may be the same file). The route and its REV route
+    replace the routes of the same name, or are added after the last one.
+    **Everything else in the file is left byte for byte as it was:** the
+    edit is a splice of text, so the hand-kept station, tracks and
+    formatting are untouched. The result is read back first and refused
+    unless it parses, keeps every other route and holds this one.
+  - **Text files…**: tags_sim's `<first>_<last>_rfid.txt`, `_sigID.txt` and
+    `_tag_link_info.txt`, written into a folder.
+- **route.xml loc** column. After an adjustment tag, the tags' own locations
+  are in the numbering it corrects to. tags_sim writes them back in the
+  numbering before it, so the simulator sees one continuous line, and this
+  column shows where route.xml puts such a tag. route.xml now does the same:
+  - nominal routes use `dir_corr_1` and reverse routes `dir_corr_2`;
+  - N→N and R→R are shifted, N→R and R→N mirrored;
+  - duplicate tags keep their own location.
+
+  An adjustment whose `dir_corr` has no rule for the direction keeps its own
+  location. tags_sim wrote **-1** into the file there, so this is a
+  deliberate difference; a tooltip says why.
+
+**Checked against tags_sim's own output:**
+- **Its six route.xml files that hold adjustment tags** (Gullaguda,
+  3.40/23.11, S2S UP and DN), rebuilt from their tags: **every row, attribute
+  for attribute, in both directions**.
+- **Text files:**
+  - SingleDN20.9: all three files line for line (550_991_*).
+  - UpSingle20.9: rfid and sigID line for line. tag_link_info has the same
+    five stretches plus a sixth. The file on disk predates the tags_sim code
+    this was ported from, which writes six.
+- **Not reproduced:** one Telapur route.xml lists a tag id twice, and
+  tags_sim's dictionary then reorders two of its rows. The checks already
+  flag a main tag listed twice.
+
+### Files
+
+New: `rfidexport.{h,cpp}`, `tests/test_session197.cpp`. Changed:
+`rfidtag.{h,cpp}` (`routeRows(tags, dir)`, the adjustment, the REV route
+built from the forward rows), `tagbuilderwindow.{h,cpp}`, `dlcore.pri`,
+`tests/tests.pro`, `tests/test_session196.cpp` (column index),
+`docs/RFID_TAG_BUILDER.md`. Local, git-ignored fixtures added:
+`tests/fixtures/tags_sim/adjust/` (the six route.xml) and `text/` (two
+routes and the text files tags_sim wrote for them).
+
+### Tests
+
+`session197`: 19 checks, plus 4 with the local fixtures.
+- **Adjustment, on built routes:** N→N, N→R (mirrored), a dir_corr with no
+  rule, reverse R→R, a duplicate after it, and the REV route in route.xml.
+- **Text files:** a built route with signals and a duplicate, line for line.
+- **Configuration1.xml:**
+  - a route replaced in place and its REV added;
+  - the bytes before and after unchanged;
+  - merging twice changes nothing;
+  - a file with no routes, and a route with no direction, are refused.
+- *(local fixtures)*:
+  - the six adjustment route.xml files, every row;
+  - both text-file routes;
+  - the real S2S Configuration1.xml merged, the rest unchanged.
+- **The window:** the route.xml loc column, Export ▸ Text files, and Export
+  ▸ Into Configuration1.xml.
+
+**Not tested:** the merged Configuration1.xml loaded by the RFID simulator.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2, with the local fixtures:
+validators **13/13**; `dltests` **246 suites / 6749 checks, 1 failed** (the
+`session156` pty check, as at 194); menu audit passed; headless smoke
+alive.
+
+---
+
 <a id="session-196"></a>
 ## Session 196 — RFID Tag Builder, phase B: route checks, the route strip, signals
 

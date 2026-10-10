@@ -296,23 +296,100 @@ QByteArray toTagRouteXml(const Route &r)
     return out;
 }
 
-QVector<RouteRow> routeRows(const QVector<Tag> &tags)
+namespace {
+
+struct Adjust { qint64 from = -1, to = -1; bool mirrored = false; bool ruled = false; };
+
+// tags_sim's get_nom_dir_adjustment / get_rev_dir_adjustment.
+Adjust adjustOf(const QHash<QString, qint64> &v, bool nominal)
 {
+    const qint64 l1 = v.value(QStringLiteral("abs_loc_1")), l2 = v.value(QStringLiteral("abs_loc_2"));
+    const int d = int(v.value(nominal ? QStringLiteral("dir_corr_1") : QStringLiteral("dir_corr_2")));
+    Adjust a;
+    if (nominal) {
+        if (d == 1) a = { l1, l2, false, true };
+        else if (d == 4) a = { l2, l1, false, true };
+        else if (d == 2) a = { l1, l2, true, true };
+    } else {
+        if (d == 4) a = { l2, l1, false, true };
+        else if (d == 1) a = { l1, l2, false, true };
+        else if (d == 3) a = { l1, l2, true, true };
+    }
+    return a;
+}
+
+}  // namespace
+
+QVector<RouteRow> routeRows(const QVector<Tag> &tags, int dir)
+{
+    const bool nominal = dir != DirReverse;
     QVector<RouteRow> rows;
+    QVector<Summary> sum;
     for (const Tag &t : tags) {
         const Summary s = summary(t.bytes);
+        sum << s;
         RouteRow r;
         r.rfidId = nameOf(t.bytes);
         r.tagName = s.duplicate ? QStringLiteral("duplicate") : QStringLiteral("main");
         r.tagType = s.type;
-        r.absLoc = s.absLoc;
+        r.absLoc = r.ownLoc = s.absLoc;
         r.trackId = s.tinRev;
         r.pageX = pageX(t.bytes);
         r.pageY = pageY(t.bytes);
         rows.append(r);
     }
-    for (int i = 0; i < rows.size(); ++i)
-        rows[i].nextAbsLoc = i + 1 < rows.size() ? rows.at(i + 1).absLoc : rows.at(i).absLoc;
+
+    // Main tags in first-seen order, as tags_sim's dictionary keeps them.
+    QVector<int> order;
+    QHash<int, qint64> own;
+    QHash<int, Adjust> adjustAt;
+    for (int i = 0; i < tags.size(); ++i) {
+        if (sum.at(i).type == 12) {
+            adjustAt.insert(sum.at(i).unique, adjustOf(values(tags.at(i).bytes), nominal));
+            if (!adjustAt.value(sum.at(i).unique).ruled && !sum.at(i).duplicate)
+                rows[i].adjustNote = QStringLiteral("dir_corr_%1 = %2: no correction for this direction; kept at its own location")
+                                         .arg(nominal ? 1 : 2)
+                                         .arg(values(tags.at(i).bytes).value(nominal ? QStringLiteral("dir_corr_1")
+                                                                                     : QStringLiteral("dir_corr_2")));
+        }
+        if (sum.at(i).duplicate) continue;
+        if (!own.contains(sum.at(i).unique)) order << sum.at(i).unique;
+        own.insert(sum.at(i).unique, sum.at(i).absLoc);
+    }
+    QHash<int, qint64> adjusted;
+    qint64 distance = 0, to = 0;
+    bool mirrored = false;
+    for (int u : order) {
+        const qint64 l = own.value(u);
+        if (distance != 0) {
+            const qint64 diff = qAbs(to - l);
+            adjusted.insert(u, distance + l + (mirrored ? (nominal ? 2 : -2) * diff : 0));
+        }
+        if (adjustAt.contains(u)) {
+            const Adjust a = adjustAt.value(u);
+            if (!a.ruled) {
+                distance = 0;           // tags_sim: (-1) - (-1): the tags after it are not corrected
+                continue;
+            }
+            to = a.to;
+            distance = a.from - a.to;
+            mirrored = a.mirrored;
+            adjusted.insert(u, a.from);
+        }
+    }
+
+    for (int i = 0; i < rows.size(); ++i) {
+        const bool mine = !sum.at(i).duplicate && adjusted.contains(sum.at(i).unique);
+        if (mine) rows[i].absLoc = adjusted.value(sum.at(i).unique);
+        if (sum.at(i).type == 12 && mine && rows.at(i).absLoc != rows.at(i).ownLoc)
+            rows[i].adjustNote = QStringLiteral("written at %1 m (its own location %2 m)").arg(rows.at(i).absLoc).arg(rows.at(i).ownLoc);
+        if (i + 1 < rows.size()) {
+            const Summary &n = sum.at(i + 1);
+            rows[i].nextAbsLoc = mine && !n.duplicate ? adjusted.value(n.unique, n.absLoc) : n.absLoc;
+        } else {
+            rows[i].nextAbsLoc = rows.at(i).absLoc;
+        }
+    }
     return rows;
 }
 
@@ -342,11 +419,11 @@ QByteArray toRouteXml(const Route &r, QString *err)
     w.setAutoFormattingIndent(4);
     w.writeStartDocument();
     w.writeStartElement(QStringLiteral("route"));
-    auto block = [&](const QString &name, int dir, const QVector<Tag> &tags) {
+    auto block = [&](const QString &name, int dir, const QVector<RouteRow> &rows) {
         w.writeStartElement(QStringLiteral("route_data"));
         w.writeAttribute(QStringLiteral("route_name"), name);
         w.writeAttribute(QStringLiteral("dir"), QString::number(dir));
-        for (const RouteRow &row : routeRows(tags)) {
+        for (const RouteRow &row : rows) {
             w.writeEmptyElement(QStringLiteral("rfid_data"));
             w.writeAttribute(QStringLiteral("rfid_id"), row.rfidId);
             w.writeAttribute(QStringLiteral("tag_name"), row.tagName);
@@ -359,9 +436,13 @@ QByteArray toRouteXml(const Route &r, QString *err)
         }
         w.writeEndElement();
     };
-    const QVector<Tag> reversed(r.tags.crbegin(), r.tags.crend());
-    block(side + ends, r.dir, r.tags);
-    block(QStringLiteral("REV_") + side + ends, r.dir == DirNominal ? DirReverse : DirNominal, reversed);
+    // The REV route is the same rows backwards, locations as written for the
+    // route (tags_sim reverses its finished rows; it does not recompute them).
+    const QVector<RouteRow> rows = routeRows(r.tags, r.dir);
+    QVector<RouteRow> rev(rows.crbegin(), rows.crend());
+    for (int i = 0; i < rev.size(); ++i) rev[i].nextAbsLoc = i + 1 < rev.size() ? rev.at(i + 1).absLoc : rev.at(i).absLoc;
+    block(side + ends, r.dir, rows);
+    block(QStringLiteral("REV_") + side + ends, r.dir == DirNominal ? DirReverse : DirNominal, rev);
     w.writeEndElement();
     w.writeEndDocument();
     return out;

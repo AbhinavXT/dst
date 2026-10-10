@@ -104,6 +104,7 @@ SOURCES += \
     $$PWD/readerdir.cpp \
     $$PWD/readerdirwindow.cpp \
     $$PWD/rfidcheck.cpp \
+    $$PWD/rfidexport.cpp \
     $$PWD/rfidtag.cpp \
     $$PWD/routestrip.cpp \
     $$PWD/tagbuilderwindow.cpp \
@@ -245,6 +246,7 @@ HEADERS += \
     $$PWD/readerdir.h \
     $$PWD/readerdirwindow.h \
     $$PWD/rfidcheck.h \
+    $$PWD/rfidexport.h \
     $$PWD/rfidtag.h \
     $$PWD/routestrip.h \
     $$PWD/tagbuilderwindow.h \

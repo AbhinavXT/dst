@@ -187,7 +187,7 @@ TEST_SUITE(session196)
         CHECK(w.tabs()->count() == 3 && w.tabs()->tabText(1) == QLatin1String("Signals (1)")
                   && w.tabs()->tabText(2) == QLatin1String("Checks") && w.strip()->drawnTags() == 10,
               QByteArray("Tags, Signals (1), Checks; the strip draws all 10 tags: ") + w.tabs()->tabText(2).toUtf8());
-        CHECK(w.routeTable()->item(2, 5)->text() == QLatin1String("+296"), "the Δ column");
+        CHECK(w.routeTable()->item(2, 6)->text() == QLatin1String("+296"), "the Δ column");
 
         // The strip: a click near a tag selects it.
         const QPoint at(int(w.strip()->width() / 2.0), 50);       // 160600 m is the middle: tag 102

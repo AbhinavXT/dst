@@ -21,6 +21,9 @@
 //                 Add duplicate (the selected main tag's duplicate, 4 m on
 //                 along the direction); Shift (every location by N m, CRCs
 //                 recomputed); Undo (Ctrl+Z) for every route edit.
+//    (session 197) Export ▸ route.xml / into Configuration1.xml / text files
+//                 (rfidexport.h); the "route.xml loc" column: where route.xml
+//                 puts a tag after an adjustment tag, when not its own place.
 //
 //  Nothing here is sent anywhere: it makes files.
 // =============================================================================
@@ -60,6 +63,11 @@ public:
     bool loadFile(const QString &path, int routeIndex = -1);   // -1: ask when several
     bool saveFile(const QString &path);
     bool exportRouteXml(const QString &path);
+    // Session 197: the route into an existing Configuration1.xml (`configPath`),
+    // written to `outPath` (may be the same file); tags_sim's text files into
+    // `folder`.
+    bool exportIntoConfiguration(const QString &configPath, const QString &outPath);
+    bool exportTextFiles(const QString &folder);
     bool isModified() const { return m_modified; }
 
     // Route edits, on the selected row (append when none is selected).
