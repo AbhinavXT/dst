@@ -11,6 +11,75 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-198"></a>
+## Session 198 — RFID Tag Builder, phase D: plan vs run
+
+The last phase of the tag builder (`docs/RFID_TAG_BUILDER.md`). It answers:
+did the loco read the tags this route says it should, and were they the
+tags we think they are?
+
+**What the operator sees:** a **Run** tab in Tools ▸ RFID Tag Builder.
+- **Loco log** picks any open tab. When the builder opens, it defaults to
+  the tab in front.
+- **Compare** checks each tag of the route against the log's `@rfid`
+  frames, using the first read only. Each tag comes out as one of:
+  - **read** (the same 16 bytes);
+  - **read, different**: same tag id and main/duplicate, other bytes. The
+    fields are named, e.g. "abs_loc 160350 → 160300", so a tag rewritten,
+    moved or mis-programmed after the route was made shows up;
+  - **not read**;
+  - **read, out of order**: read before a tag that comes earlier in the
+    route.
+
+  Tags read that the route does not hold are listed last as **not
+  planned**. A summary line counts each kind. Double-click a row to show
+  that read in the log.
+- **Make a route from this run** builds a new route from what the loco
+  read: each tag (main and duplicate) once, in the order first read,
+  exactly as read, with the direction taken from the locations. It is the
+  start of a route for track nobody wrote down, and the "import from a
+  capture" from the plan.
+
+**Limits, said in the code:**
+- Only the first read of each tag counts, so a log with several passes is
+  compared on the first.
+- A route run the other way reads backwards and shows as out of order. Use
+  the route's REV.
+
+### Files
+
+New: `planrun.{h,cpp}`, `tests/test_session198.cpp`. Changed:
+`tagbuilderwindow.{h,cpp}` (the window takes the dispatcher; the
+`jumpRequested` signal), `mainwindow_tools.cpp`, `dlcore.pri`,
+`tests/tests.pro`, `tests/test_session196.cpp` (four tabs),
+`docs/RFID_TAG_BUILDER.md`.
+
+### Tests
+
+`session198` (15 checks), on **real** `@rfid` frames
+(`replay/loco_1_1_27062026_140226.cap`):
+- the reads, with the null tag left out;
+- a route made from the run: each tag once, with a direction;
+- the run against itself: all read;
+- one plan changed four ways at once, and each state seen:
+  - a tag never read;
+  - a tag planned 50 m off ("different", with the field and both values);
+  - a read tag left out of the plan ("not planned");
+  - two tags swapped ("out of order", naming the tag it was read before);
+- **the window:** Make a route from this run, Compare (the rows, the
+  unplanned row, the summary), double-click to the log, no log to compare
+  with, the 1100 × 700 fit, and no orphan widgets.
+
+**Not tested:** a capture where a tag really was missed or misread on the
+track; none of the replays has one known to be.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2, with the local fixtures:
+validators **13/13**; `dltests` **247 suites / 6764 checks, 1 failed** (the
+`session156` pty check, as at 194); menu audit passed; headless smoke
+alive.
+
+---
+
 <a id="session-197"></a>
 ## Session 197 — RFID Tag Builder, phase C: adjustment tags, Configuration1.xml, text files
 

@@ -24,14 +24,21 @@
 //    (session 197) Export ▸ route.xml / into Configuration1.xml / text files
 //                 (rfidexport.h); the "route.xml loc" column: where route.xml
 //                 puts a tag after an adjustment tag, when not its own place.
+//    (session 198) a Run tab: the route against a loco's log (planrun.h),
+//                 tag by tag: read, read but different, not read, out of
+//                 order, and tags read that the route does not hold; and
+//                 "Make a route from this run". Double-click: show the read
+//                 in the log.
 //
 //  Nothing here is sent anywhere: it makes files.
 // =============================================================================
 
+#include "planrun.h"
 #include "rfidtag.h"
 
 #include <QWidget>
 
+class MessageDispatcher;
 class QComboBox;
 class QTabWidget;
 class RouteStrip;
@@ -47,7 +54,8 @@ class TagBuilderWindow : public QWidget
 {
     Q_OBJECT
 public:
-    explicit TagBuilderWindow(QWidget *parent = nullptr);
+    // `dispatcher` (may be null): the loco logs the Run tab compares against.
+    explicit TagBuilderWindow(MessageDispatcher *dispatcher = nullptr, QWidget *parent = nullptr);
 
     // The editor's tag (16 bytes) and setting it (fills the fields).
     QByteArray tag() const { return m_tag; }
@@ -82,18 +90,29 @@ public:
     void addSignal();
     void deleteSignal();
     bool undo();
+    // Run tab.
+    void setRunSource(const QString &key);
+    QString runSource() const { return m_runKey; }
+    bool compareRun();                    // the route against the run's log
+    bool makeRouteFromRun();              // replaces the route (asks first if changed)
     void selectRow(int row);
 
     QTableWidget *routeTable() const { return m_table; }
     QTableWidget *signalTable() const { return m_signals; }
     QTableWidget *checkTable() const { return m_checks; }
     QTabWidget *tabs() const { return m_tabs; }
+    QTableWidget *runTable() const { return m_runTable; }
+    QLabel *runSummary() const { return m_runSummary; }
+    const PlanRun::Result &runResult() const { return m_runResult; }
     RouteStrip *strip() const { return m_strip; }
     UndoLog *undoLog() const { return m_undo; }
     QLabel *crcLabel() const { return m_crc; }
     QLineEdit *pageXEdit() const { return m_pageX; }
     QLineEdit *pageYEdit() const { return m_pageY; }
     StatusLine *status() const { return m_status; }
+
+signals:
+    void jumpRequested(const QString &key, qint64 ms);
 
 protected:
     void closeEvent(QCloseEvent *e) override;
@@ -112,6 +131,7 @@ private:
     // redrawn, the route marked changed, `row` selected.
     void changed(const QString &label, const RfidTag::Route &before, int row);
     void setModified(bool on);
+    void refreshRunPicker();
     int  currentRow() const;
     bool confirmDiscard();
 
@@ -138,6 +158,12 @@ private:
     QTabWidget *m_tabs = nullptr;
     RouteStrip *m_strip = nullptr;
     UndoLog *m_undo = nullptr;
+    MessageDispatcher *m_dispatcher = nullptr;
+    QComboBox *m_runPicker = nullptr;
+    QTableWidget *m_runTable = nullptr;
+    QLabel *m_runSummary = nullptr;
+    QString m_runKey;
+    PlanRun::Result m_runResult;
     StatusLine *m_status = nullptr;
 };
 

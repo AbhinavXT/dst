@@ -96,7 +96,21 @@ S2S UP/DN `…plus1000m…route.xml`, Gullaguda DN MAIN/LOOP route.xml) and
 991_175_*.txt).
 
 ### D — plan vs run
-Status: not started
+Status: **done, patch 198** (CHANGELOG session 198). `planrun.{h,cpp}`;
+the window's Run tab. The window now takes the `MessageDispatcher`.
 
-- A route against a capture: which planned tags were read, missed, out of
-  order, or read with different contents. Builds on `tagcheck.{h,cpp}`.
+## After D
+
+All four phases are built. Open threads, none started:
+- `Schema::Encoder::enumChoices` finds no enum in kavach.xml (they sit in
+  `<enums>`), so Packet Maker and Field sweep never offer named choices.
+  Left alone on purpose (fixing it changes Packet Maker's defaults); ask
+  Abhinav.
+- The checks read `dir_corr_1` for nominal and `dir_corr_2` for reverse,
+  as tags_sim does: not confirmed against firmware.
+- Nothing has been loaded into the RFID simulator itself yet.
+- Pushing: patches 195-198 were committed locally; the auto-mode classifier
+  blocked `git push`. The remote also has a WRONG `patch-195` tag (it points
+  at patch 194's commit) from a failed first attempt; fix with
+  `git push origin main && git push -f origin patch-195 && git push origin
+  patch-196 patch-197 patch-198`.

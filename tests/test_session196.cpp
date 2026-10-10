@@ -184,7 +184,7 @@ TEST_SUITE(session196)
         w.resize(1100, 680);
         w.show();
         w.setRoute(clean());
-        CHECK(w.tabs()->count() == 3 && w.tabs()->tabText(1) == QLatin1String("Signals (1)")
+        CHECK(w.tabs()->count() == 4 && w.tabs()->tabText(1) == QLatin1String("Signals (1)")
                   && w.tabs()->tabText(2) == QLatin1String("Checks") && w.strip()->drawnTags() == 10,
               QByteArray("Tags, Signals (1), Checks; the strip draws all 10 tags: ") + w.tabs()->tabText(2).toUtf8());
         CHECK(w.routeTable()->item(2, 6)->text() == QLatin1String("+296"), "the Δ column");

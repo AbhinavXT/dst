@@ -2,6 +2,7 @@
 
 #include "rfidcheck.h"
 #include "rfidexport.h"
+#include "messagedispatcher.h"
 #include "routestrip.h"
 #include "statusline.h"
 #include "undolog.h"
@@ -9,6 +10,7 @@
 #include "windowgeometry.h"
 
 #include <QCloseEvent>
+#include <QDateTime>
 #include <QDir>
 #include <QMenu>
 #include <QComboBox>
@@ -57,8 +59,9 @@ QByteArray blankTag(int type)
 
 }  // namespace
 
-TagBuilderWindow::TagBuilderWindow(QWidget *parent)
+TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *parent)
     : QWidget(parent, Qt::Window)
+    , m_dispatcher(dispatcher)
 {
     setAttribute(Qt::WA_DeleteOnClose);
     setWindowTitle(tr("RFID Tag Builder"));
@@ -199,6 +202,42 @@ TagBuilderWindow::TagBuilderWindow(QWidget *parent)
     m_tabs->addTab(tagsPage, tr("Tags"));
     m_tabs->addTab(sigPage, tr("Signals"));
     m_tabs->addTab(m_checks, tr("Checks"));
+
+    // ---- run ---------------------------------------------------------------------------------
+    m_runPicker = new QComboBox(this);
+    m_runPicker->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    m_runPicker->setMinimumContentsLength(14);
+    m_runPicker->setToolTip(tr("The loco log (tab) to compare the route with: its @rfid frames"));
+    auto *compareBtn = new QPushButton(tr("Compare"), this);
+    compareBtn->setToolTip(tr("Each tag of the route against what the loco read: first read only"));
+    auto *fromRunBtn = new QPushButton(tr("Make a route from this run"), this);
+    fromRunBtn->setToolTip(tr("A new route of the tags the loco read, in the order first read, exactly as read"));
+    m_runSummary = new QLabel(this);
+    m_runSummary->setWordWrap(true);
+    m_runTable = new QTableWidget(this);
+    m_runTable->setColumnCount(5);
+    m_runTable->setHorizontalHeaderLabels({ tr("#"), tr("Tag"), tr("Result"), tr("First read"), tr("Detail") });
+    m_runTable->verticalHeader()->hide();
+    m_runTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_runTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_runTable->setWordWrap(true);
+    m_runTable->verticalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_runTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_runTable->horizontalHeader()->setStretchLastSection(true);
+    m_runTable->setToolTip(tr("Double-click: show the read in the log"));
+    auto *runBar = new QHBoxLayout;
+    runBar->addWidget(new QLabel(tr("Loco log:"), this));
+    runBar->addWidget(m_runPicker, 1);
+    runBar->addWidget(compareBtn);
+    runBar->addWidget(fromRunBtn);
+    auto *runPage = new QWidget(this);
+    auto *runLayout = new QVBoxLayout(runPage);
+    runLayout->setContentsMargins(0, 0, 0, 0);
+    runLayout->addLayout(runBar);
+    runLayout->addWidget(m_runSummary);
+    runLayout->addWidget(m_runTable, 1);
+    m_tabs->addTab(runPage, tr("Run"));
+    refreshRunPicker();
     m_strip = new RouteStrip(this);
 
     auto *left = new QWidget(this);
@@ -311,6 +350,18 @@ TagBuilderWindow::TagBuilderWindow(QWidget *parent)
                                            tr("Metres to add to every tag's location (negative to subtract):"),
                                            0, -8388607, 8388607, 1, &ok);
         if (ok && m != 0) shiftAll(m);
+    });
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this](int i) {
+        if (i == 3) refreshRunPicker();
+    });
+    connect(m_runPicker, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
+        m_runKey = m_runPicker->currentData().toString();
+    });
+    connect(compareBtn, &QPushButton::clicked, this, &TagBuilderWindow::compareRun);
+    connect(fromRunBtn, &QPushButton::clicked, this, &TagBuilderWindow::makeRouteFromRun);
+    connect(m_runTable, &QTableWidget::cellDoubleClicked, this, [this](int r) {
+        const qint64 ms = m_runTable->item(r, 3) ? m_runTable->item(r, 3)->data(Qt::UserRole).toLongLong() : 0;
+        if (ms > 0) emit jumpRequested(m_runKey, ms);
     });
     connect(m_undo, &UndoLog::undone, this, [this](const QString &label, bool restored) {
         if (restored) m_status->ok(tr("Undone: %1").arg(label));
@@ -879,6 +930,95 @@ bool TagBuilderWindow::exportTextFiles(const QString &folder)
         }
     }
     m_status->ok(tr("Wrote %1rfid.txt, %1sigID.txt and %1tag_link_info.txt").arg(t.stem));
+    return true;
+}
+
+// ---- run ---------------------------------------------------------------------------------------
+
+void TagBuilderWindow::refreshRunPicker()
+{
+    if (!m_dispatcher) return;
+    QStringList keys = m_dispatcher->knownKeys();
+    keys.sort();
+    const QSignalBlocker block(m_runPicker);
+    m_runPicker->clear();
+    for (const QString &k : keys) {
+        const QString friendly = m_dispatcher->friendlyNameFor(k);
+        m_runPicker->addItem(friendly == k ? k : QStringLiteral("%1   (%2)").arg(friendly, k), k);
+    }
+    const int idx = m_runPicker->findData(m_runKey);
+    if (idx >= 0) m_runPicker->setCurrentIndex(idx);
+    else m_runKey = m_runPicker->currentData().toString();
+}
+
+void TagBuilderWindow::setRunSource(const QString &key)
+{
+    m_runKey = key;
+    refreshRunPicker();
+}
+
+bool TagBuilderWindow::compareRun()
+{
+    const LogModel *model = m_dispatcher && !m_runKey.isEmpty() ? m_dispatcher->modelForKey(m_runKey) : nullptr;
+    if (!model) {
+        m_status->warn(tr("Pick a loco log to compare with"));
+        return false;
+    }
+    const QVector<PlanRun::Read> reads = PlanRun::readsOf(model);
+    m_runResult = PlanRun::compare(m_route, reads);
+    const PlanRun::Result &r = m_runResult;
+    m_runTable->setRowCount(r.planned.size() + r.notPlanned.size());
+    auto hms = [](qint64 ms) { return ms > 0 ? QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss")) : QString(); };
+    int i = 0;
+    for (const PlanRun::Planned &p : r.planned) {
+        m_runTable->setItem(i, 0, cell(QString::number(p.row + 1)));
+        m_runTable->setItem(i, 1, cell(p.name));
+        QTableWidgetItem *st = cell(PlanRun::stateText(p.state));
+        if (p.state != PlanRun::State::Read) st->setForeground(UiColor::warning());
+        m_runTable->setItem(i, 2, st);
+        QTableWidgetItem *t = cell(hms(p.firstMs));
+        t->setData(Qt::UserRole, p.firstMs);
+        m_runTable->setItem(i, 3, t);
+        m_runTable->setItem(i, 4, cell(p.detail));
+        ++i;
+    }
+    for (int k = 0; k < r.notPlanned.size(); ++k, ++i) {
+        m_runTable->setItem(i, 0, cell(QString()));
+        m_runTable->setItem(i, 1, cell(r.notPlanned.at(k)));
+        QTableWidgetItem *st = cell(tr("not planned"));
+        st->setForeground(UiColor::warning());
+        m_runTable->setItem(i, 2, st);
+        QTableWidgetItem *t = cell(hms(r.notPlannedMs.at(k)));
+        t->setData(Qt::UserRole, r.notPlannedMs.at(k));
+        m_runTable->setItem(i, 3, t);
+        m_runTable->setItem(i, 4, cell(tr("read in the log; not in this route")));
+    }
+    m_runSummary->setText(tr("%1: %2 tag reads. Of the route's %3 tags: %4 read as planned, %5 read but different, "
+                             "%6 read out of order, %7 not read. %8 tags read that the route does not hold.")
+                              .arg(m_runPicker->currentText()).arg(reads.size()).arg(r.planned.size())
+                              .arg(r.count(PlanRun::State::Read)).arg(r.count(PlanRun::State::Different))
+                              .arg(r.count(PlanRun::State::OutOfOrder)).arg(r.count(PlanRun::State::NotRead))
+                              .arg(r.notPlanned.size()));
+    m_tabs->setCurrentIndex(3);
+    if (reads.isEmpty()) m_status->warn(tr("%1 has no @rfid frames").arg(m_runPicker->currentText()));
+    else m_status->ok(tr("Compared with %1").arg(m_runPicker->currentText()));
+    return true;
+}
+
+bool TagBuilderWindow::makeRouteFromRun()
+{
+    const LogModel *model = m_dispatcher && !m_runKey.isEmpty() ? m_dispatcher->modelForKey(m_runKey) : nullptr;
+    const QVector<PlanRun::Read> reads = PlanRun::readsOf(model);
+    if (reads.isEmpty()) {
+        m_status->warn(tr("No @rfid frames to make a route from"));
+        return false;
+    }
+    if (!confirmDiscard()) return false;
+    RfidTag::Route r = PlanRun::routeFromRun(reads);
+    r.name = tr("run %1").arg(m_runKey);
+    setRoute(r);
+    setModified(true);
+    m_status->ok(tr("A route of the %1 tags %2 read, in the order first read").arg(r.tags.size()).arg(m_runPicker->currentText()));
     return true;
 }
 
