@@ -11,6 +11,47 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-206"></a>
+## Session 206 — @speed pulses read by the simulator's arithmetic
+
+Asked for by Abhinav (item 3 of the simulator follow-ups). The RFID
+simulator sends the loco unit a tacho count every 100 ms, in a message with
+the `@speed` packet's fields (reader, direction, tachometer 1 and 2) and a
+CRC it sets to 0.
+
+**What the operator sees:** **Against the run** (Simulator tab, session
+205) also reads the log's `@speed` frames:
+- how many there are and how many are moving;
+- tachometer 1 turned into km/h by the simulator's arithmetic (median, min
+  and max), beside the speed previewed;
+- how many carry CRC 0, as the simulator sends it.
+
+A log with none says "No @speed frames in it."
+
+**Not changed:** the schema's SPEED packet and its decoding. The
+simulator's wheel (950 mm), 30 pulses a turn and ×1000 count say nothing
+about a real loco's tachometer, so the km/h is shown only here, as the
+simulator's. Not modelled: while braking, the simulator counts with PI 3.14
+instead of 3.1428571, about 0.1 % more pulses.
+
+**Not tested on a real frame:** no `@speed` frame exists in `replay/`. The
+frames in the test are built in the simulator's layout. Whether the unit
+logs the simulator's message as it arrives (CRC 0) is not known.
+
+**Files:** `simpreview.{h,cpp}` (`kmhOfPulses`, `speedsOf`),
+`tagbuilderwindow.cpp`; `tests/test_session206.cpp`.
+
+**Tests:** session206, 7 checks: speed → pulses → speed for 5 to 160 km/h;
+16746 pulses = 60 km/h; a built log (stopped, 60 and 80 km/h, one frame with
+a CRC); the window's summary.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2, with the local fixtures:
+validators **13/13**; `dltests` **255 suites / 6874 checks, 1 failed** (the
+`session156` pty check, as at 194); menu audit passed; headless smoke
+alive.
+
+---
+
 <a id="session-205"></a>
 ## Session 205 — the simulator preview against a loco log
 

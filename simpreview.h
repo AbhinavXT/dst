@@ -43,6 +43,8 @@
 #include <QStringList>
 #include <QVector>
 
+class LogModel;
+
 namespace SimPreview {
 
 struct Options {
@@ -97,6 +99,22 @@ struct Against {
     QVector<int>    unpredicted;  // reads (indices) inside the matched span that no send explains
 };
 Against against(const Result &preview, const QVector<PlanRun::Read> &reads);
+
+// Session 206: the speed the simulator's pulses stand for, by its own
+// arithmetic (the inverse of pulsesPerTick: PI 3.1428571, 950 mm wheel, 30
+// pulses a turn, a count x1000 every 100 ms). Its speed message
+// (LPIM_LKAVACH_SPEED_INFO_MSG) carries the fields of the @speed packet
+// (reader, direction, tachometer 1 and 2) and a CRC it sets to 0. While
+// braking it counts with PI 3.14 instead: about 0.1 % more pulses. Says
+// nothing about a real loco's tachometer.
+double kmhOfPulses(quint32 pulsesPerTick);
+struct SpeedSeen {
+    int    frames = 0;            // @speed frames in the log
+    int    moving = 0;            // of them, tachometer 1 above 0
+    int    crcZero = 0;           // of them, CRC 0 (as the simulator sends it)
+    double minKmh = 0, maxKmh = 0, medianKmh = 0;   // tachometer 1, the moving frames
+};
+SpeedSeen speedsOf(const LogModel *model);
 
 }  // namespace SimPreview
 

@@ -1,7 +1,13 @@
 #include "simpreview.h"
 
+#include "capturedecoder.h"
+#include "logmodel.h"
+
 #include <QHash>
 #include <QSet>
+#include <QtEndian>
+
+#include <algorithm>
 
 namespace SimPreview {
 
@@ -192,6 +198,37 @@ Against against(const Result &preview, const QVector<PlanRun::Read> &reads)
     for (int k = 0; any && k < reads.size(); ++k)
         if (!used.contains(k) && reads.at(k).ms >= firstMs && reads.at(k).ms <= lastMs) a.unpredicted << k;
     return a;
+}
+
+double kmhOfPulses(quint32 pulses)
+{
+    return (kPi * kWheel * pulses) / kPulsesPerRev / 1000 * 10 * 3.6;
+}
+
+SpeedSeen speedsOf(const LogModel *model)
+{
+    SpeedSeen s;
+    if (!model) return s;
+    QVector<double> kmh;
+    for (int i = 0; i < model->count(); ++i) {
+        const LogEntryPtr e = model->entryAt(i);
+        if (!e || !e->text.startsWith(QLatin1String("@speed_"))) continue;
+        const CaptureLine c = CaptureDecoder::parseLine(e->text);
+        if (!c.valid || c.bytes.size() < 14) continue;     // reader, dir, tacho 1, tacho 2, crc
+        const uchar *b = reinterpret_cast<const uchar *>(c.bytes.constData());
+        ++s.frames;
+        s.crcZero += qFromLittleEndian<quint32>(b + 10) == 0 ? 1 : 0;
+        const quint32 p = qFromLittleEndian<quint32>(b + 2);
+        if (p > 0) kmh << kmhOfPulses(p);
+    }
+    s.moving = kmh.size();
+    if (!kmh.isEmpty()) {
+        std::sort(kmh.begin(), kmh.end());
+        s.minKmh = kmh.first();
+        s.maxKmh = kmh.last();
+        s.medianKmh = kmh.at(kmh.size() / 2);
+    }
+    return s;
 }
 
 }  // namespace SimPreview

@@ -121,9 +121,11 @@ back from the unit. Patch 202: its `XML/Configuration1.xml` built in
 `LocoDialog::calculateNextDistance / sendingRfidData`.
 Then Abhinav asked (2026-10-11) for three simulator follow-ups, in order:
 (1) patch 204, the Checks tab reads a file's rows as the simulator does
-(`RfidCheck::check`, "Simulator:" findings); (2) a captured run's reader-1/2
-reads and timing against the Simulator tab's preview; (3) `@speed` pulses
-against the simulator's pulse arithmetic.
+(`RfidCheck::check`, "Simulator:" findings); (2) patch 205, a captured
+run's reader-1/2 reads and timing against the Simulator tab's preview
+(`SimPreview::against`, Against the run); (3) patch 206, `@speed` pulses
+read by the simulator's pulse arithmetic (`SimPreview::speedsOf`). No real
+`@speed` frame and no log of a simulator run have been seen yet.
 
 All four phases are built. Open threads, none started:
 - `Schema::Encoder::enumChoices` finds no enum in kavach.xml (they sit in

@@ -1387,6 +1387,17 @@ bool TagBuilderWindow::previewAgainstRun(SimPreview::Against *out)
     if (!extra.isEmpty())
         text += tr(" Read but not predicted: %1%2.").arg(extra.mid(0, 12).join(QStringLiteral(", ")))
                     .arg(extra.size() > 12 ? tr(" and %1 more").arg(extra.size() - 12) : QString());
+    const SimPreview::SpeedSeen sp = SimPreview::speedsOf(model);
+    if (sp.frames == 0) {
+        text += tr(" No @speed frames in it.");
+    } else {
+        text += tr(" Its @speed frames: %1, %2 moving").arg(sp.frames).arg(sp.moving);
+        if (sp.moving)
+            text += tr("; tachometer 1 at %1 km/h (median; %2 to %3) by the simulator's arithmetic, against the previewed %4 km/h")
+                        .arg(sp.medianKmh, 0, 'f', 1).arg(sp.minKmh, 0, 'f', 1).arg(sp.maxKmh, 0, 'f', 1)
+                        .arg(simulatorOptions().speedKmh);
+        text += tr("; %1 with CRC 0 (the simulator sends 0).").arg(sp.crcZero);
+    }
     m_simSummary->setText(m_simSummary->text() + text);
     if (a.matched == 0) m_status->warn(tr("No send of the preview was read in %1").arg(m_runPicker->currentText()));
     else m_status->ok(tr("Against the run: %1 of %2 sends read").arg(a.matched).arg(r.events.size()));
