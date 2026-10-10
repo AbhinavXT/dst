@@ -40,6 +40,7 @@ struct Read {
     QByteArray bytes;             // the 16 tag bytes
     int        unique = 0;
     bool       duplicate = false;
+    int        reader = 0;        // the frame's reader-id byte (1, 2), session 205
 };
 // The @rfid frames of a log (or of [fromMs, toMs]), in order.
 QVector<Read> readsOf(const LogModel *model, qint64 fromMs = 0, qint64 toMs = 0);

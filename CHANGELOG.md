@@ -11,6 +11,52 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-205"></a>
+## Session 205 — the simulator preview against a loco log
+
+Asked for by Abhinav (item 2 of the simulator follow-ups). After a test
+run with the RFID simulator: did the loco unit log each tag the simulator
+sent, on the reader it was sent on, and when?
+
+**What the operator sees:** on the RFID Tag Builder's **Simulator** tab, an
+**Against the run** button beside the missing-tags field. It previews as
+the controls are set, then reads the loco log picked on the **Run** tab:
+- two new columns: **Read at** (the log's time of that read, or "not read")
+  and **Lag (s)**;
+- the summary adds how many sends were read on their reader, the largest
+  lag, and the reads the preview does not explain ("read but not
+  predicted", tag and reader).
+
+**How it matches:** each reader's sends in order against that reader's reads
+of the same tag (main or duplicate, by name), using the frame's reader-id
+byte (now kept in `PlanRun::Read::reader`). Times are lined up on the first
+matched send. A read 1 or 2 counts only on its own reader.
+
+**What the lag means:** only something for a run the simulator drove at the
+previewed speed from the previewed start tag (constant speed: the
+simulator's acceleration is not modelled). The logs' times are to the
+second.
+
+**Real log:** `replay/loco_1_1_27062026_140226.cap` against a route made
+from it: 45 of 45 sends read on their reader. Its largest lag, 181 s, only
+says that run was not the simulator at 60 km/h. No log of a simulator run
+was available: the lag itself was tested on reads built from a preview.
+
+**Files:** `simpreview.{h,cpp}` (`SimPreview::against`), `planrun.{h,cpp}`
+(the reader byte), `tagbuilderwindow.{h,cpp}`; `tests/test_session205.cpp`.
+
+**Tests:** session205, 13 checks: reads made from a preview (exact, one
+late, one lost, one on the wrong reader, one extra, none); the real log;
+the window (no log picked, columns, summary, no stale reads after a plain
+preview).
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2, with the local fixtures, run once
+on patches 204 and 205 together: validators **13/13**; `dltests` **254
+suites / 6867 checks, 1 failed** (the `session156` pty check, as at 194);
+menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-204"></a>
 ## Session 204 — the Checks tab reads a simulator file as the simulator does
 

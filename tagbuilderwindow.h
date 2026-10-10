@@ -120,6 +120,9 @@ public:
     // Simulator tab (session 203): fills the tab and returns what it showed.
     SimPreview::Result previewSimulator(const SimPreview::Options &options);
     SimPreview::Options simulatorOptions() const;   // as the tab's controls are set
+    // Session 205: the preview (as the controls are set) against the Run
+    // tab's log: each send's read and lag. False with no log or no preview.
+    bool previewAgainstRun(SimPreview::Against *out = nullptr);
     QTableWidget *simTable() const { return m_simTable; }
     QLabel *simSummary() const { return m_simSummary; }
     void selectRow(int row);

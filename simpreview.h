@@ -36,6 +36,7 @@
 //  station's route.
 // =============================================================================
 
+#include "planrun.h"
 #include "rfidtag.h"
 
 #include <QString>
@@ -79,6 +80,23 @@ struct Result {
 quint32 pulsesPerTick(double speedKmh);
 double  metresPerTick(double speedKmh);
 Result  run(const RfidTag::Route &route, const Options &options);
+
+// Session 205: a preview against a loco log's tag reads (PlanRun::readsOf).
+// Each reader's sends are matched in order to that reader's reads of the
+// same tag (main / duplicate by name); a send with no such read later in the
+// log is "not read". Times are lined up on the first matched send: its lag
+// is 0 and every other one is the log's time minus the preview's. Reads
+// between the first and the last matched one that match no send are "not
+// predicted". The lag only means something for a run the simulator drove
+// at the previewed speed from the previewed start tag.
+struct Against {
+    QVector<int>    readOf;       // per event: index into the reads, -1 = not read
+    QVector<double> lagS;         // per event: log time - preview time (s), 0 if not read
+    int             matched = 0;
+    double          maxLagS = 0;  // the largest |lag|
+    QVector<int>    unpredicted;  // reads (indices) inside the matched span that no send explains
+};
+Against against(const Result &preview, const QVector<PlanRun::Read> &reads);
 
 }  // namespace SimPreview
 

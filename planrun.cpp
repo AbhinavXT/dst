@@ -21,7 +21,7 @@ QVector<Read> readsOf(const LogModel *model, qint64 fromMs, qint64 toMs)
         const QByteArray tag = c.bytes.mid(1, RfidTag::TagBytes);      // after the reader-id byte
         const RfidTag::Summary s = RfidTag::summary(tag);
         if (s.unique == 0) continue;                                    // the null tag: nothing read
-        out.append({ e->epochMs, tag, s.unique, s.duplicate });
+        out.append({ e->epochMs, tag, s.unique, s.duplicate, quint8(c.bytes.at(0)) });
     }
     return out;
 }

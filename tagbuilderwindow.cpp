@@ -281,11 +281,15 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     m_simMissing->setToolTip(tr("The simulator's \"missing tag ids\": tags it does not send (the row before stays current)"));
     auto *simBtn = new QPushButton(tr("Preview"), this);
     simBtn->setToolTip(tr("What the RFID simulator would send for this route, tick by tick (100 ms), on each reader"));
+    auto *simRunBtn = new QPushButton(tr("Against the run"), this);
+    simRunBtn->setToolTip(tr("The preview against the loco log picked on the Run tab: when each send was read "
+                             "on its reader, and how far its time is from the preview's"));
     m_simSummary = new QLabel(this);
     m_simSummary->setWordWrap(true);
     m_simTable = new QTableWidget(this);
-    m_simTable->setColumnCount(6);
-    m_simTable->setHorizontalHeaderLabels({ tr("Time (s)"), tr("At (m)"), tr("Reader"), tr("Tag"), tr("Tag's location"), tr("Row") });
+    m_simTable->setColumnCount(8);
+    m_simTable->setHorizontalHeaderLabels({ tr("Time (s)"), tr("At (m)"), tr("Reader"), tr("Tag"), tr("Tag's location"), tr("Row"),
+                                            tr("Read at"), tr("Lag (s)") });
     m_simTable->verticalHeader()->hide();
     m_simTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_simTable->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -304,7 +308,10 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     auto *simLayout = new QVBoxLayout(simPage);
     simLayout->setContentsMargins(0, 0, 0, 0);
     simLayout->addLayout(simBar);
-    simLayout->addWidget(m_simMissing);
+    auto *simBar2 = new QHBoxLayout;
+    simBar2->addWidget(m_simMissing, 1);
+    simBar2->addWidget(simRunBtn);
+    simLayout->addLayout(simBar2);
     simLayout->addWidget(m_simSummary);
     simLayout->addWidget(m_simTable, 1);
     m_tabs->addTab(simPage, tr("Simulator"));
@@ -430,6 +437,7 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     });
     connect(compareBtn, &QPushButton::clicked, this, &TagBuilderWindow::compareRun);
     connect(simBtn, &QPushButton::clicked, this, [this]() { previewSimulator(simulatorOptions()); });
+    connect(simRunBtn, &QPushButton::clicked, this, [this]() { previewAgainstRun(); });
     connect(m_simTable, &QTableWidget::cellDoubleClicked, this, [this](int r) {
         const int row = m_simTable->item(r, 5) ? m_simTable->item(r, 5)->data(Qt::UserRole).toInt() : -1;
         if (row < 0) return;
@@ -1319,6 +1327,7 @@ SimPreview::Result TagBuilderWindow::previewSimulator(const SimPreview::Options 
         m_status->warn(tr("No preview: %1").arg(r.error));
         return r;
     }
+    m_simTable->clearContents();          // no reads left from an earlier Against the run
     m_simTable->setRowCount(r.events.size());
     for (int i = 0; i < r.events.size(); ++i) {
         const SimPreview::Event &e = r.events.at(i);
@@ -1351,6 +1360,38 @@ SimPreview::Result TagBuilderWindow::previewSimulator(const SimPreview::Options 
     m_simSummary->setText(text);
     m_status->ok(tr("Simulator preview: %1 tags sent").arg(r.events.size()));
     return r;
+}
+
+bool TagBuilderWindow::previewAgainstRun(SimPreview::Against *out)
+{
+    const LogModel *model = m_dispatcher && !m_runKey.isEmpty() ? m_dispatcher->modelForKey(m_runKey) : nullptr;
+    if (!model) {
+        m_status->warn(tr("Pick a loco log on the Run tab to compare with"));
+        return false;
+    }
+    const SimPreview::Result r = previewSimulator(simulatorOptions());
+    if (!r.ok) return false;
+    const QVector<PlanRun::Read> reads = PlanRun::readsOf(model);
+    const SimPreview::Against a = SimPreview::against(r, reads);
+    for (int i = 0; i < r.events.size(); ++i) {
+        const int k = a.readOf.at(i);
+        QTableWidgetItem *at = cell(k < 0 ? tr("not read") : QDateTime::fromMSecsSinceEpoch(reads.at(k).ms).toString(QStringLiteral("HH:mm:ss.zzz")));
+        if (k < 0) at->setForeground(UiColor::warning());
+        m_simTable->setItem(i, 6, at);
+        m_simTable->setItem(i, 7, cell(k < 0 ? QString() : QString::number(a.lagS.at(i), 'f', 1)));
+    }
+    QStringList extra;
+    for (int k : a.unpredicted) extra << QStringLiteral("%1 on %2").arg(RfidTag::nameOf(reads.at(k).bytes)).arg(reads.at(k).reader);
+    QString text = tr(" Against %1: %2 of %3 sends read on their reader").arg(m_runPicker->currentText()).arg(a.matched).arg(r.events.size());
+    text += a.matched ? tr(", times lined up on the first; the largest lag %1 s.").arg(a.maxLagS, 0, 'f', 1) : tr(".");
+    if (!extra.isEmpty())
+        text += tr(" Read but not predicted: %1%2.").arg(extra.mid(0, 12).join(QStringLiteral(", ")))
+                    .arg(extra.size() > 12 ? tr(" and %1 more").arg(extra.size() - 12) : QString());
+    m_simSummary->setText(m_simSummary->text() + text);
+    if (a.matched == 0) m_status->warn(tr("No send of the preview was read in %1").arg(m_runPicker->currentText()));
+    else m_status->ok(tr("Against the run: %1 of %2 sends read").arg(a.matched).arg(r.events.size()));
+    if (out) *out = a;
+    return a.matched > 0;
 }
 
 bool TagBuilderWindow::confirmDiscard()

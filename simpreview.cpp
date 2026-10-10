@@ -158,4 +158,40 @@ Result run(const RfidTag::Route &route, const Options &o)
     return r;
 }
 
+Against against(const Result &preview, const QVector<PlanRun::Read> &reads)
+{
+    Against a;
+    a.readOf.fill(-1, preview.events.size());
+    a.lagS.fill(0, preview.events.size());
+    QHash<int, int> next;                                  // reader -> first read not yet looked at
+    QSet<int> used;
+    for (int i = 0; i < preview.events.size(); ++i) {
+        const Event &e = preview.events.at(i);
+        for (int k = next.value(e.reader); k < reads.size(); ++k) {
+            if (reads.at(k).reader != e.reader || RfidTag::nameOf(reads.at(k).bytes) != e.tag) continue;
+            a.readOf[i] = k;
+            next.insert(e.reader, k + 1);
+            used.insert(k);
+            break;
+        }
+    }
+    qint64 t0 = 0, firstMs = 0, lastMs = 0;
+    bool any = false;
+    for (int i = 0; i < a.readOf.size(); ++i) {
+        const int k = a.readOf.at(i);
+        if (k < 0) continue;
+        const qint64 ms = reads.at(k).ms;
+        if (!any) t0 = ms - qint64(preview.events.at(i).timeS * 1000);
+        firstMs = any ? qMin(firstMs, ms) : ms;
+        lastMs = any ? qMax(lastMs, ms) : ms;
+        any = true;
+        a.lagS[i] = (ms - t0) / 1000.0 - preview.events.at(i).timeS;
+        a.maxLagS = qMax(a.maxLagS, qAbs(a.lagS.at(i)));
+        ++a.matched;
+    }
+    for (int k = 0; any && k < reads.size(); ++k)
+        if (!used.contains(k) && reads.at(k).ms >= firstMs && reads.at(k).ms <= lastMs) a.unpredicted << k;
+    return a;
+}
+
 }  // namespace SimPreview
