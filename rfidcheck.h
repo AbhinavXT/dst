@@ -26,6 +26,13 @@
 //    adjustment    what an adjustment tag tells a loco running this way:
 //                  dir_corr_1 read for nominal, dir_corr_2 for reverse, as
 //                  tags_sim reads them (not confirmed against firmware)
+//    simulator     (session 204) a route.xml / Configuration1.xml row's own
+//                  attributes, which the RFID simulator moves and sends by
+//                  (SimPreview): tag_type and tag_name against the tag,
+//                  page digits (it joins page_y + page_x as written), rfid_id,
+//                  abs_loc against what route.xml would write, a repeated
+//                  rfid_id, and the abs_loc -> next_rfid_abs_loc chain (a
+//                  row with no length, a gap, an overlap, the last row)
 //
 //  Location order, TIN and signals need the route's direction; with none set
 //  they are skipped, and the first finding says so.

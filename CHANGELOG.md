@@ -11,6 +11,54 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-204"></a>
+## Session 204 — the Checks tab reads a simulator file as the simulator does
+
+Asked for by Abhinav (item 1 of the simulator follow-ups). The RFID
+simulator moves and sends by each `<rfid_data>` row's own attributes, not by
+the tag in it. For a route opened from a route.xml or Configuration1.xml,
+the **Checks** tab now also reports, per row, findings starting
+"Simulator:":
+
+- **tag_type** not the tag's type: it decodes the tag with that type's
+  layout (or, for a value outside 9 to 12, sends nothing);
+- **tag_name** "main" on a duplicate tag or the other way round: reader 2
+  keeps it in the wrong slot;
+- **page_x / page_y** not 16 hex digits: the simulator joins page_y + page_x
+  as written, so a dropped leading zero shifts every field (spaces are
+  harmless: `QByteArray::fromHex` skips them, so they are not reported);
+- **rfid_id** not the tag's name (its missing-tags list uses rfid_id), and
+  the same rfid_id as the row before (reader 1 does not send it again);
+- **abs_loc** not what route.xml would write for the tag;
+- the **abs_loc → next_rfid_abs_loc chain**: a row with no length (never
+  sent), the route's last row (never sent), an overlap (the earlier row
+  wins), a gap (another row covers it, or the simulator ends the route).
+
+Rows whose tag was edited since the file was read are left out, and the
+tab says how many.
+
+**On the simulator's own Configuration1.xml** (165 routes): 10 rows whose
+tag_type is not the tag's (the 7 LC gate tags session 202 noted, one
+adjustment tag and two normal tags marked 11), 142 rows with no length (a main and its duplicate at one location:
+the first is never sent), 14 chain breaks, 1 repeated rfid_id, and 146
+routes ending in a row of no length.
+
+Not reported: duplicate route names (the simulator lists routes by name
+per station; none in this file).
+
+**Files:** `rfidcheck.{h,cpp}`; `tests/test_session204.cpp`;
+`tests/screenshot_main.cpp` (`SHOT_TAB=simchecks`).
+
+**Tests:** session204, 18 checks: a route.xml DLConsole wrote is clean but
+for its last row; each attribute broken by hand; the counts on the real file.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2, with the local fixtures, run once
+on patches 204 and 205 together: validators **13/13**; `dltests` **254
+suites / 6867 checks, 1 failed** (the `session156` pty check, as at 194);
+menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-203"></a>
 ## Session 203 — what the RFID simulator would send: a preview
 

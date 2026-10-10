@@ -4,6 +4,8 @@
 #include <QSet>
 #include <QStringList>
 
+#include <cctype>
+
 namespace RfidCheck {
 
 namespace {
@@ -174,6 +176,75 @@ QVector<Finding> check(const RfidTag::Route &r)
         }
         add(i, names.at(i), Level::Info, text);
     }
+
+    // ---- the file's rows, as the RFID simulator reads them (session 204) ------------------------
+    // Rows whose tag was edited since the file was read are left out: an
+    // export writes them anew.
+    const QVector<RfidTag::RouteRow> rr = s != 0 ? RfidTag::routeRows(r.tags, r.dir) : QVector<RfidTag::RouteRow>();
+    auto hexDigits = [](const QString &v) {
+        int n = 0;
+        for (const QChar c : v) n += isxdigit(c.toLatin1()) ? 1 : 0;
+        return n;
+    };
+    int stale = 0;
+    for (int i = 0; i < t.size(); ++i) {
+        const RfidTag::FileRow &f = r.tags.at(i).file;
+        if (!f.present) continue;
+        if (RfidTag::fromPages(f.pageX, f.pageY) != r.tags.at(i).bytes) {
+            ++stale;
+            continue;
+        }
+        const RfidTag::Summary &x = t.at(i);
+        const QString &n = names.at(i);
+        if (f.tagType != x.type)
+            add(i, n, Level::Attention,
+                f.tagType >= 9 && f.tagType <= 12
+                    ? QStringLiteral("Simulator: the row's tag_type is %1, the tag is type %2; it decodes and sends the tag with the %3 layout")
+                          .arg(f.tagType).arg(x.type).arg(RfidTag::typeName(f.tagType))
+                    : QStringLiteral("Simulator: the row's tag_type is %1, the tag is type %2; it sends nothing for tag_type %1")
+                          .arg(f.tagType).arg(x.type));
+        if ((f.tagName == QLatin1String("main")) == x.duplicate)
+            add(i, n, Level::Attention, QStringLiteral("Simulator: the row's tag_name is \"%1\", the tag is a %2 tag; reader 2 keeps it as %3")
+                                            .arg(f.tagName, x.duplicate ? QStringLiteral("duplicate") : QStringLiteral("main"),
+                                                 f.tagName == QLatin1String("main") ? QStringLiteral("the main tag") : QStringLiteral("the duplicate")));
+        if (hexDigits(f.pageX) != 16 || hexDigits(f.pageY) != 16)
+            add(i, n, Level::Attention, QStringLiteral("Simulator: page_x / page_y have %1 / %2 hex digits, not 16; it joins page_y and "
+                                                       "page_x as they are, so every field after the short one is shifted")
+                                            .arg(hexDigits(f.pageX)).arg(hexDigits(f.pageY)));
+        if (f.rfidId != n)
+            add(i, n, Level::Info, QStringLiteral("Simulator: the row's rfid_id is \"%1\"; its missing-tags list names the tag that way").arg(f.rfidId));
+        if (!rr.isEmpty() && f.absLoc != double(rr.at(i).absLoc))
+            add(i, n, Level::Info, QStringLiteral("Simulator: the row's abs_loc is %1 m, route.xml would write %2 m; it sends the tag at %1 m")
+                                       .arg(f.absLoc, 0, 'f', 0).arg(rr.at(i).absLoc));
+        const bool last = i == t.size() - 1;
+        if (i > 0 && r.tags.at(i - 1).file.present && r.tags.at(i - 1).file.rfidId == f.rfidId)
+            add(i, n, Level::Attention, QStringLiteral("Simulator: the row before has the same rfid_id (%1); reader 1 does not send it again").arg(f.rfidId));
+        if (f.nextAbsLoc == f.absLoc)
+            add(i, n, Level::Attention, last ? QStringLiteral("Simulator: the route's last row (next_rfid_abs_loc = abs_loc): never sent")
+                                             : QStringLiteral("Simulator: next_rfid_abs_loc = abs_loc (%1 m): no location is inside this row, "
+                                                              "so it is never sent").arg(f.absLoc, 0, 'f', 0));
+        else if (!last && r.tags.at(i + 1).file.present && f.nextAbsLoc != r.tags.at(i + 1).file.absLoc) {
+            const double nextAt = r.tags.at(i + 1).file.absLoc;
+            QString what = QStringLiteral("the rows overlap; the earlier row in the file wins");
+            if (qAbs(f.nextAbsLoc - f.absLoc) < qAbs(nextAt - f.absLoc)) {
+                // The simulator takes the first row in the file whose span holds the location.
+                const double mid = (f.nextAbsLoc + nextAt) / 2;
+                int cover = -1;
+                for (int k = 0; k < r.tags.size() && cover < 0; ++k) {
+                    const RfidTag::FileRow &o = r.tags.at(k).file;
+                    if (o.present && ((o.absLoc <= mid && o.nextAbsLoc > mid) || (o.absLoc >= mid && o.nextAbsLoc < mid))) cover = k;
+                }
+                what = cover < 0 ? QStringLiteral("a gap no row covers: the simulator ends the route there")
+                                 : QStringLiteral("a gap; row %1 (%2) covers it, so the simulator sends that tag there")
+                                       .arg(cover + 1).arg(r.tags.at(cover).file.rfidId);
+            }
+            add(i, n, Level::Attention, QStringLiteral("Simulator: next_rfid_abs_loc %1 m, the next row starts at %2 m: %3")
+                                            .arg(f.nextAbsLoc, 0, 'f', 0).arg(nextAt, 0, 'f', 0).arg(what));
+        }
+    }
+    if (stale > 0)
+        add(-1, QString(), Level::Info, QStringLiteral("%1 row%2 edited since the file was read: not checked as the simulator "
+                                                       "reads them (an export writes them anew)").arg(stale).arg(stale == 1 ? "" : "s"));
 
     std::stable_sort(out.begin(), out.end(), [](const Finding &a, const Finding &b) { return a.row < b.row; });
     return out;

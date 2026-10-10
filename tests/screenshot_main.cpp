@@ -222,6 +222,11 @@ int main(int argc, char **argv)
                 w->setDirection(RfidTag::DirNominal);
                 w->selectRow(3);
                 if (qEnvironmentVariable("SHOT_TAB") == QLatin1String("checks")) w->tabs()->setCurrentIndex(2);
+                if (qEnvironmentVariable("SHOT_TAB") == QLatin1String("simchecks")) {
+                    // The simulator's "LC gate_16 manned auto on": its rows' own findings.
+                    w->loadFile(QStringLiteral(":/tag_scenarios/LocoTcasSimulator/Configuration1.xml"), 7);
+                    w->tabs()->setCurrentIndex(2);
+                }
                 if (qEnvironmentVariable("SHOT_TAB") == QLatin1String("sim")) {
                     // The simulator's own first route (built in), previewed at 80 km/h.
                     w->loadFile(QStringLiteral(":/tag_scenarios/LocoTcasSimulator/Configuration1.xml"), 0);

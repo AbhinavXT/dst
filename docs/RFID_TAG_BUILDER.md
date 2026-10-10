@@ -119,6 +119,11 @@ back from the unit. Patch 202: its `XML/Configuration1.xml` built in
 (`tag_scenarios/LocoTcasSimulator/`). Patch 203: the Simulator tab
 (`simpreview.{h,cpp}`), its tick loop ported from
 `LocoDialog::calculateNextDistance / sendingRfidData`.
+Then Abhinav asked (2026-10-11) for three simulator follow-ups, in order:
+(1) patch 204, the Checks tab reads a file's rows as the simulator does
+(`RfidCheck::check`, "Simulator:" findings); (2) a captured run's reader-1/2
+reads and timing against the Simulator tab's preview; (3) `@speed` pulses
+against the simulator's pulse arithmetic.
 
 All four phases are built. Open threads, none started:
 - `Schema::Encoder::enumChoices` finds no enum in kavach.xml (they sit in
@@ -132,4 +137,4 @@ All four phases are built. Open threads, none started:
   blocked `git push`. The remote also has a WRONG `patch-195` tag (it points
   at patch 194's commit) from a failed first attempt; fix with
   `git push origin main && git push -f origin patch-195 && git push origin
-  patch-196 patch-197 patch-198`.
+  patch-196 ... patch-<latest>`.
