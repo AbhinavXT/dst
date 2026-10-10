@@ -67,6 +67,11 @@ struct Summary {
     quint32 crcStored = 0, crcCalc = 0;
 };
 Summary summary(const QByteArray &tag);
+// The same tag with the CRC-30 its contents give (session 199). Only the CRC
+// bits change (page_y bits 34-63, where tags_sim's corrector writes it too):
+// every data and reserved bit is kept, which rebuilding from the fields
+// would not promise.
+QByteArray fixCrc(const QByteArray &tag);
 // tags_sim's name: the unique id, "D" after it for a duplicate tag.
 QString nameOf(const QByteArray &tag);
 QString typeName(int type);       // "Normal", "LC gate", ...

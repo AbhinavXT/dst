@@ -101,6 +101,10 @@ the window's Run tab. The window now takes the `MessageDispatcher`.
 
 ## After D
 
+Extras Abhinav picked (2026-10-10), one patch each: **Fix all CRCs**
+(patch 199, done: `RfidTag::fixCrc`, `RfidExport::fixCrcs`), **Bulk edit
+fields** (patch 200).
+
 All four phases are built. Open threads, none started:
 - `Schema::Encoder::enumChoices` finds no enum in kavach.xml (they sit in
   `<enums>`), so Packet Maker and Field sweep never offer named choices.

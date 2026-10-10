@@ -170,6 +170,18 @@ Summary summary(const QByteArray &tag)
     return s;
 }
 
+QByteArray fixCrc(const QByteArray &tag)
+{
+    if (tag.size() != TagBytes) return tag;
+    const Summary s = summary(tag);
+    if (s.crcOk) return tag;
+    quint64 y = leWord(tag, 8);
+    y = (y & ((quint64(1) << 34) - 1)) | (quint64(s.crcCalc) << 34);
+    QByteArray out = tag;
+    for (int i = 0; i < 8; ++i) out[8 + i] = char((y >> (8 * i)) & 0xFF);
+    return out;
+}
+
 QString nameOf(const QByteArray &tag)
 {
     const Summary s = summary(tag);

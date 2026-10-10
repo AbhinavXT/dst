@@ -179,4 +179,63 @@ QByteArray mergeIntoConfiguration(const QByteArray &config, const RfidTag::Route
     return out;
 }
 
+QByteArray fixCrcs(const QByteArray &config, QStringList *changes, QString *err)
+{
+    QString text = QString::fromUtf8(config);
+    static const QRegularExpression rowRe(QStringLiteral("<rfid_data\\b[^>]*>"));
+    static const QRegularExpression routeRe(QStringLiteral("<route_data\\b[^>]*\\broute_name\\s*=\\s*\"([^\"]*)\""));
+    static const QRegularExpression pxRe(QStringLiteral("\\bpage_x\\s*=\\s*\"([0-9A-Fa-f]*)\""));
+    static const QRegularExpression pyRe(QStringLiteral("\\bpage_y\\s*=\\s*\"([0-9A-Fa-f]*)\""));
+    static const QRegularExpression idRe(QStringLiteral("\\brfid_id\\s*=\\s*\"([^\"]*)\""));
+
+    // Find the rows first, then edit from the end so earlier offsets hold.
+    struct Edit { int at, len; QString value, line; };
+    QVector<Edit> edits;
+    int rowsSeen = 0;
+    QVector<QPair<int, QString>> routes;           // where each route_data opens, its name
+    QRegularExpressionMatchIterator ri = routeRe.globalMatch(text);
+    while (ri.hasNext()) {
+        const QRegularExpressionMatch m = ri.next();
+        routes.append({ int(m.capturedStart()), m.captured(1) });
+    }
+    QRegularExpressionMatchIterator it = rowRe.globalMatch(text);
+    while (it.hasNext()) {
+        const QRegularExpressionMatch row = it.next();
+        ++rowsSeen;
+        const QString el = row.captured();
+        const QRegularExpressionMatch px = pxRe.match(el), py = pyRe.match(el);
+        if (!px.hasMatch() || !py.hasMatch()) continue;
+        const QByteArray tag = RfidTag::fromPages(px.captured(1), py.captured(1));
+        if (tag.isEmpty() || RfidTag::summary(tag).crcOk) continue;
+        const QString newY = RfidTag::pageY(RfidTag::fixCrc(tag));
+        // The route this row is in: the last route_data opened before it.
+        QString route;
+        for (int k = routes.size() - 1; k >= 0 && route.isEmpty(); --k)
+            if (routes.at(k).first < row.capturedStart()) route = routes.at(k).second;
+        edits.append({ int(row.capturedStart() + py.capturedStart(1)), int(py.capturedLength(1)), newY,
+                       QStringLiteral("%1: %2  page_y %3 -> %4")
+                           .arg(route.isEmpty() ? QStringLiteral("(no route)") : route, idRe.match(el).captured(1),
+                                py.captured(1), newY) });
+    }
+    if (rowsSeen == 0) {
+        if (err) *err = QStringLiteral("no <rfid_data> rows in it");
+        return {};
+    }
+    for (int i = edits.size() - 1; i >= 0; --i) text.replace(edits.at(i).at, edits.at(i).len, edits.at(i).value);
+    if (changes) for (const Edit &e : edits) *changes << e.line;
+
+    // Read back: every row's CRC passes, and the routes are all still there.
+    const QByteArray out = text.toUtf8();
+    QString e;
+    const QVector<RfidTag::Route> before = RfidTag::readXml(config, &e), after = RfidTag::readXml(out, &e);
+    bool allPass = !after.isEmpty();
+    for (const RfidTag::Route &r : after)
+        for (const RfidTag::Tag &t : r.tags) allPass = allPass && RfidTag::summary(t.bytes).crcOk;
+    if (!allPass || after.size() != before.size()) {
+        if (err) *err = QStringLiteral("the corrected file did not read back with every CRC passing; not written");
+        return {};
+    }
+    return out;
+}
+
 }  // namespace RfidExport

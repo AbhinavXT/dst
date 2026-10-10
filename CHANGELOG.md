@@ -11,6 +11,67 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-199"></a>
+## Session 199 — RFID Tag Builder: fix the CRCs
+
+Asked for by Abhinav (tag builder extras, first of two). The checks found
+**601 of the 1208 tags** in the S2S Configuration1.xml, tag 550 of
+tags_sim's output and 871D of Hafizpet DN_MAIN with a CRC-30 that fails: a
+loco would not process them. tags_sim had a script for it
+(`confuguration1_xml_crc_corrector.py`, hard-coded to `/home/…`, printing to
+a terminal).
+
+**What the operator sees:**
+- **Fix CRCs** (Tags tab) gives every failing tag of the route the CRC-30
+  its contents give. The status names the tags; Undo puts the old CRCs
+  back. "Every tag's CRC-30 already matches" when there is nothing to do.
+- **Export ▸ Fix the CRCs in a Configuration1.xml or route.xml…** takes a
+  file in and writes the corrected one out (it may be the same file):
+  - every `<rfid_data>` whose CRC fails gets the right one;
+  - a box says how many, and its details list each one as
+    `route: rfid_id  page_y old -> new`;
+  - **nothing else in the file changes, byte for byte** (attribute order,
+    spacing, the good rows);
+  - the result is read back first and refused unless every CRC passes and
+    every route is still there.
+
+**Only the CRC bits change** (page_y bits 34–63, where tags_sim's corrector
+writes them too). page_x and every data and reserved bit are kept. Rebuilding
+a tag from its fields would not promise that, so it is not done that way.
+A tag's correct CRC is unique, so the result is the same as tags_sim's
+corrector.
+
+### Files
+
+Changed: `rfidtag.{h,cpp}` (`fixCrc`), `rfidexport.{h,cpp}` (`fixCrcs`),
+`tagbuilderwindow.{h,cpp}`, `tests/tests.pro`. New:
+`tests/test_session199.cpp`.
+
+### Tests
+
+`session199`: 12 checks, plus 1 with the local fixtures.
+- **Tag 550:** fixed, with page_x, the data bits and every field the same.
+- **A damaged CRC** comes back exactly; a good tag is left alone.
+- **A file** with failing rows in two routes, written with odd attribute
+  order and spacing:
+  - each row named by route and tag;
+  - the output equals the input with only those page_y values swapped;
+  - a second run changes nothing;
+  - a file with no tag rows is refused.
+- *(local fixtures)* **the real S2S Configuration1.xml:** 601 fixed, all
+  1208 pass, every page_x and field the same, and the file the same size.
+- **The window:** fix one of three tags, nothing on a second press, Undo,
+  and the file fix.
+
+**Gate** (macOS), with the local fixtures: Qt 5.15.19 and Qt 6.11.2, validators
+**13/13**; `dltests` **248 suites / 6777 checks, 1 failed** (the `session156`
+pty check, as at 194); menu audit passed; headless smoke alive. The first
+Qt 6 run caught a `qsizetype` → `int` narrowing in `fixCrcs` (a build
+error). After the cast, Qt 6's full gate was rerun, and on Qt 5 the library
+was rebuilt and the five tag-builder suites rerun (130 checks, all ok).
+
+---
+
 <a id="session-198"></a>
 ## Session 198 — RFID Tag Builder, phase D: plan vs run
 

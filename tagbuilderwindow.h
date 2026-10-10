@@ -29,6 +29,9 @@
 //                 order, and tags read that the route does not hold; and
 //                 "Make a route from this run". Double-click: show the read
 //                 in the log.
+//    (session 199) Fix CRCs: every tag of the route whose CRC-30 fails gets
+//                 the one its contents give (only the CRC bits change); and
+//                 the same over a whole Configuration1.xml / route.xml file.
 //
 //  Nothing here is sent anywhere: it makes files.
 // =============================================================================
@@ -76,6 +79,10 @@ public:
     // `folder`.
     bool exportIntoConfiguration(const QString &configPath, const QString &outPath);
     bool exportTextFiles(const QString &folder);
+    // Session 199. The route's failing CRCs; the number of tags fixed (-1 none to fix).
+    int fixRouteCrcs();
+    // A whole file's failing CRCs, written to `outPath`; *changes one line per tag.
+    bool fixFileCrcs(const QString &inPath, const QString &outPath, QStringList *changes = nullptr);
     bool isModified() const { return m_modified; }
 
     // Route edits, on the selected row (append when none is selected).

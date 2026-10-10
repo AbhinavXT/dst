@@ -92,6 +92,10 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     actConfig->setToolTip(tr("Put the route and its REV route into an existing Configuration1.xml, replacing the "
                              "routes of the same name; the rest of the file is left as it was"));
     QAction *actText = exportMenu->addAction(tr("Text files (rfid, sigID, tag_link_info)…"));
+    exportMenu->addSeparator();
+    QAction *actFixFile = exportMenu->addAction(tr("Fix the CRCs in a Configuration1.xml or route.xml…"));
+    actFixFile->setToolTip(tr("Every tag in the file whose CRC-30 fails gets the CRC its contents give (page_y only, "
+                              "as tags_sim's corrector does); the rest of the file is left as it was"));
     exportMenu->setToolTipsVisible(true);
     exportBtn->setMenu(exportMenu);
     exportBtn->setToolTip(tr("route.xml, into a Configuration1.xml, or tags_sim's text files"));
@@ -135,6 +139,8 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     auto *dupBtn = new QPushButton(tr("Add duplicate"), this);
     dupBtn->setToolTip(tr("The selected main tag's duplicate tag, %1 m further along the direction, right after it")
                            .arg(RfidCheck::kDuplicateGap));
+    auto *fixBtn = new QPushButton(tr("Fix CRCs"), this);
+    fixBtn->setToolTip(tr("Every tag whose CRC-30 fails gets the CRC its contents give. Only the CRC bits change"));
     auto *shiftBtn = new QPushButton(tr("Shift…"), this);
     shiftBtn->setToolTip(tr("Move every tag's location by the same number of metres (CRCs recomputed). "
                             "Adjustment tags: location-1 only, as tags_sim shifts them"));
@@ -150,6 +156,7 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     auto *rowBtns2 = new QHBoxLayout;
     rowBtns2->addWidget(dupBtn);
     rowBtns2->addWidget(shiftBtn);
+    rowBtns2->addWidget(fixBtn);
     rowBtns2->addStretch(1);
     rowBtns2->addWidget(undoBtn);
 
@@ -401,6 +408,21 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
         const QString out = QFileDialog::getSaveFileName(this, tr("Write the merged Configuration1.xml as"), in,
                                                          tr("XML (*.xml)"));
         if (!out.isEmpty()) exportIntoConfiguration(in, out);
+    });
+    connect(fixBtn, &QPushButton::clicked, this, &TagBuilderWindow::fixRouteCrcs);
+    connect(actFixFile, &QAction::triggered, this, [this]() {
+        const QString in = QFileDialog::getOpenFileName(this, tr("The file whose CRCs to fix"), QString(), tr("XML (*.xml)"));
+        if (in.isEmpty()) return;
+        const QString out = QFileDialog::getSaveFileName(this, tr("Write the corrected file as"), in, tr("XML (*.xml)"));
+        if (out.isEmpty()) return;
+        QStringList changes;
+        if (!fixFileCrcs(in, out, &changes) || changes.isEmpty()) return;
+        QMessageBox box(QMessageBox::Information, tr("CRCs fixed"),
+                        tr("%1 tags in %2 had a CRC-30 that fails. Each now has the CRC its contents give; "
+                           "nothing else in the file changed.").arg(changes.size()).arg(QFileInfo(in).fileName()),
+                        QMessageBox::Ok, this);
+        box.setDetailedText(changes.join(QLatin1Char('\n')));
+        box.exec();
     });
     connect(actText, &QAction::triggered, this, [this]() {
         const QString dir = QFileDialog::getExistingDirectory(this, tr("Folder for the text files"));
@@ -1019,6 +1041,46 @@ bool TagBuilderWindow::makeRouteFromRun()
     setRoute(r);
     setModified(true);
     m_status->ok(tr("A route of the %1 tags %2 read, in the order first read").arg(r.tags.size()).arg(m_runPicker->currentText()));
+    return true;
+}
+
+int TagBuilderWindow::fixRouteCrcs()
+{
+    const RfidTag::Route before = m_route;
+    QStringList fixed;
+    for (RfidTag::Tag &t : m_route.tags) {
+        if (RfidTag::summary(t.bytes).crcOk) continue;
+        t.bytes = RfidTag::fixCrc(t.bytes);
+        fixed << RfidTag::nameOf(t.bytes);
+    }
+    if (fixed.isEmpty()) {
+        m_status->ok(tr("Every tag's CRC-30 already matches its contents"));
+        return -1;
+    }
+    changed(tr("Fix %1 CRCs").arg(fixed.size()), before, currentRow());
+    if (currentRow() >= 0) setTag(m_route.tags.at(currentRow()).bytes);
+    m_status->ok(tr("CRC-30 recomputed for %1 tag%2: %3").arg(fixed.size()).arg(fixed.size() == 1 ? "" : "s")
+                     .arg(fixed.join(QStringLiteral(", "))));
+    return fixed.size();
+}
+
+bool TagBuilderWindow::fixFileCrcs(const QString &inPath, const QString &outPath, QStringList *changes)
+{
+    QFile in(inPath);
+    if (!in.open(QIODevice::ReadOnly)) {
+        m_status->fail(tr("Not fixed: %1: %2").arg(QFileInfo(inPath).fileName(), in.errorString()));
+        return false;
+    }
+    QString err;
+    QStringList lines;
+    const QByteArray out = RfidExport::fixCrcs(in.readAll(), &lines, &err);
+    if (out.isEmpty() || !RfidTag::writeFile(outPath, out, &err)) {
+        m_status->fail(tr("Not fixed: %1").arg(err));
+        return false;
+    }
+    if (changes) *changes = lines;
+    if (lines.isEmpty()) m_status->ok(tr("%1: every CRC-30 already matches; written unchanged").arg(QFileInfo(outPath).fileName()));
+    else m_status->ok(tr("%1: CRC-30 fixed for %2 tags; nothing else changed").arg(QFileInfo(outPath).fileName()).arg(lines.size()));
     return true;
 }
 

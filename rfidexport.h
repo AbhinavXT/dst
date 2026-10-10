@@ -48,6 +48,15 @@ TextFiles textFiles(const RfidTag::Route &route);
 QByteArray mergeIntoConfiguration(const QByteArray &config, const RfidTag::Route &route,
                                   QString *err = nullptr, QStringList *notes = nullptr);
 
+// Session 199: every <rfid_data> in `config` (a Configuration1.xml or a
+// route.xml) whose CRC-30 fails gets the CRC its contents give: page_y
+// rewritten in that element only (page_x and every data bit kept), the
+// rest of the file byte for byte. *changes: one line per tag fixed,
+// "<route>: <rfid_id>  page_y <old> -> <new>". Empty and *err set if the
+// file has no rfid_data rows or the result does not read back with every
+// CRC passing.
+QByteArray fixCrcs(const QByteArray &config, QStringList *changes = nullptr, QString *err = nullptr);
+
 }  // namespace RfidExport
 
 #endif  // RFIDEXPORT_H
