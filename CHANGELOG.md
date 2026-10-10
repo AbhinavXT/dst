@@ -11,6 +11,56 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-202"></a>
+## Session 202 — the RFID simulator's Configuration1.xml in the tag library
+
+Asked for by Abhinav after reading the RFID simulator
+(`LocoTcasSimulator2.zip`: the Qt app that plays tags over serial and speed
+pulses over UDP to a loco Kavach unit). Its own `XML/Configuration1.xml`
+(9 Oct 2026, the file it runs from) is newer than the copy in tags_sim's
+KAV_CONFIG. It is now built in as **LocoTcasSimulator ▸ Configuration1.xml**
+in Tools ▸ RFID Tag Builder ▸ Library…. Only the current file is added: the
+51 dated copies beside it (`XML/*.xml`, `XML/files/`) are near-identical
+versions of about 1 MB each.
+
+**What it holds:** 165 routes, 6413 tags, station LNGP.
+- **37 tags fail their CRC-30**, so the unit would not process them when the
+  simulator sends them. Export ▸ Fix the CRCs corrects all 37.
+- **62 LC gate tags (type 10)**, though only 55 rows *say* `tag_type="10"`.
+  The simulator picks its packet layout by that attribute, not by the tag.
+
+**Fixed on the way (a patch-199 bug):** two of its rows have a space inside
+the quotes (`page_x="080505828848ce99 "`). The file reader trimmed it, but
+Fix the CRCs did not, so it refused the whole file ("did not read back
+with every CRC passing"). It now reads past spaces inside the quotes and
+rewrites only the hex digits; the space stays where it was.
+
+`scripts/tags_sim_library.py --index tag_scenarios tag_scenarios.qrc`
+rewrites only the resource list, after files are added to the library by
+hand.
+
+### Files
+
+New: `tag_scenarios/LocoTcasSimulator/Configuration1.xml`,
+`tests/test_session202.cpp`. Changed: `tag_scenarios.qrc`,
+`rfidexport.cpp`, `scripts/tags_sim_library.py`, `tests/tests.pro`.
+
+### Tests
+
+`session202` (5 checks), on the built-in file:
+- 165 routes and 6413 tags;
+- 37 failing CRCs;
+- 62 LC gate tags;
+- Fix the CRCs corrects the 37 with the file the same size, and the space
+  is kept.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2, with the local fixtures:
+validators **13/13**; `dltests` **251 suites / 6814 checks, 1 failed** (the
+`session156` pty check, as at 194); menu audit passed; headless smoke
+alive.
+
+---
+
 <a id="session-201"></a>
 ## Session 201 — RFID Tag Builder: tags_sim's scenarios built in
 

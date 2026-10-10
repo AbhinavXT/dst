@@ -82,6 +82,7 @@
         <file>tag_scenarios/Lingampalli/RoutesXML/UP_LOOP2_CRC.tagroute.xml</file>
         <file>tag_scenarios/Lingampalli/RoutesXML/UP_LOOP3_CRC.tagroute.xml</file>
         <file>tag_scenarios/Lingampalli/RoutesXML/UP_MAIN_CRC.tagroute.xml</file>
+        <file>tag_scenarios/LocoTcasSimulator/Configuration1.xml</file>
         <file>tag_scenarios/S2S/DN_TLP_LNGP.tagroute.xml</file>
         <file>tag_scenarios/S2S/DN_TLP_LNGP_CRC.tagroute.xml</file>
         <file>tag_scenarios/S2S/DN_TLP_LNGP_NORMAL.tagroute.xml</file>

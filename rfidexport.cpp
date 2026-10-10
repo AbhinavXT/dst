@@ -184,8 +184,10 @@ QByteArray fixCrcs(const QByteArray &config, QStringList *changes, QString *err)
     QString text = QString::fromUtf8(config);
     static const QRegularExpression rowRe(QStringLiteral("<rfid_data\\b[^>]*>"));
     static const QRegularExpression routeRe(QStringLiteral("<route_data\\b[^>]*\\broute_name\\s*=\\s*\"([^\"]*)\""));
-    static const QRegularExpression pxRe(QStringLiteral("\\bpage_x\\s*=\\s*\"([0-9A-Fa-f]*)\""));
-    static const QRegularExpression pyRe(QStringLiteral("\\bpage_y\\s*=\\s*\"([0-9A-Fa-f]*)\""));
+    // Spaces inside the quotes are allowed (a real simulator file has page_x="…ce99 "):
+    // only the hex digits are read and replaced.
+    static const QRegularExpression pxRe(QStringLiteral("\\bpage_x\\s*=\\s*\"\\s*([0-9A-Fa-f]*)\\s*\""));
+    static const QRegularExpression pyRe(QStringLiteral("\\bpage_y\\s*=\\s*\"\\s*([0-9A-Fa-f]*)\\s*\""));
     static const QRegularExpression idRe(QStringLiteral("\\brfid_id\\s*=\\s*\"([^\"]*)\""));
 
     // Find the rows first, then edit from the end so earlier offsets hold.
