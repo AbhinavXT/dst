@@ -455,6 +455,7 @@ CapType typeFromToken(const QString &token)
     if (token == "sos")     return CapType::Sos;
     if (token == "sossrc")  return CapType::SosSrc;
     if (token == "sosev")   return CapType::SosEv;
+    if (token == "rdir")    return CapType::Rdir;
     if (token == "speed")   return CapType::Speed;
     if (token == "analog_top")    return CapType::AnalogTop;
     if (token == "analog_bottom") return CapType::AnalogBottom;
@@ -504,6 +505,7 @@ const char *typeLabel(CapType t)
     case CapType::Sos:      return "sos";
     case CapType::SosSrc:   return "sos source";
     case CapType::SosEv:    return "sos event";
+    case CapType::Rdir:     return "reader direction";
     case CapType::Speed:    return "speed";
     case CapType::AnalogTop:    return "analog top";
     case CapType::AnalogBottom: return "analog bottom";
@@ -537,6 +539,7 @@ CapDir directionFor(CapType t)
     case CapType::Sos:
     case CapType::SosSrc:
     case CapType::SosEv:    return CapDir::Out;   // the loco's own SoS state, logged out
+    case CapType::Rdir:     return CapDir::Out;   // the loco's own reader directions
     case CapType::Speed:                          // tachometer pulses, sensed
     case CapType::AnalogTop:
     case CapType::AnalogBottom: return CapDir::In; // analog (pressure) inputs, sensed
@@ -1505,6 +1508,8 @@ QVector<FieldRow> describe(const CaptureLine &c, const QHash<int, qint64> *tagLo
     case CapType::Sos:    r += schemaRows(b, QStringLiteral("sos"),    nullptr, -1, rawValues); break;
     case CapType::SosSrc: r += schemaRows(b, QStringLiteral("sossrc"), nullptr, -1, rawValues); break;
     case CapType::SosEv:  r += schemaRows(b, QStringLiteral("sosev"),  nullptr, -1, rawValues); break;
+    // @rdir READER_INFO (session 194): 5 B LE, no header/CRC.
+    case CapType::Rdir:   r += schemaRows(b, QStringLiteral("rdir"),   nullptr, -1, rawValues); break;
     // @speed / @analog_*: flat LE structs, decoded from byte 0 (session 67).
     // @analog_* is six floats with no CRC; the schema shows them %g.
     case CapType::Speed: r += schemaRows(b, QStringLiteral("speed"), nullptr, -1, rawValues); break;

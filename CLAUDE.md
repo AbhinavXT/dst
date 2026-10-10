@@ -49,8 +49,9 @@ Nothing is committed as a patch unless **all** of these are green:
 ./verify.sh            # validators, unit suite, menu audit, headless smoke
 ```
 
-- 12 Python golden validators (`schema/validate_*.py`) against `replay/`
-  (`validate_sos.py` against synthetic fixtures until a real `@sos` capture exists).
+- 13 Python golden validators (`schema/validate_*.py`) against `replay/`
+  (`validate_sos.py` and `validate_rdir.py` against synthetic fixtures until
+  real `@sos` / `@rdir` captures exist).
 - Unit suite `dltests` (152 suites / 4898 checks at patch 96). Run one suite
   with `cd tests && ../build-verify/tests/dltests <suite>`.
 - Menu audit (`tests/menuaudit_main.cpp`, 138 checks): builds the real

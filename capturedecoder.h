@@ -62,10 +62,12 @@ enum class CapType {
                               // STRUCT_ANALOG_SENSOR_DATA, 6 floats, 24 B LE, no CRC
     Lsos,                     // @lsos LOCO_SOS: SoS/collision/head-on/rear-end
                               // status, 31 B flat LE, no header/CRC (session 98)
-    Sos, SosSrc, SosEv        // @sos / @sossrc / @sosev: the firmware's SoS
+    Sos, SosSrc, SosEv,       // @sos / @sossrc / @sosev: the firmware's SoS
                               // table, one row per source loco, and its
                               // decisions (session 184; sosLog.h). Flat LE,
                               // no header/CRC.
+    Rdir                      // @rdir READER_INFO: one RFID read and the
+                              // directions after it, 5 B LE (session 194)
 };
 
 enum class CapDir { Unknown = 0, In, Out };   // provisional per-type direction

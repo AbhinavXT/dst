@@ -36,6 +36,7 @@
 #include "trackdiagramwindow.h"
 #include "twolocowindow.h"
 #include "soswindow.h"
+#include "readerdirwindow.h"
 #include "incidentreportwindow.h"
 #include "incidentreportdialog.h"
 #include "flasherwindow.h"
@@ -201,6 +202,36 @@ int main(int argc, char **argv)
                 disp.drainNow();
                 auto *w = new TwoLocoWindow(&disp);
                 w->setAttribute(Qt::WA_DeleteOnClose, false);
+                win = w;
+            }
+            if (which == QLatin1String("rdir")) {
+                // SYNTHETIC @rdir (schema/fixtures, tests/rdirgen): FRS 18.1-18.7.
+                // SHOT_TEST=18.x picks the case (its run is found by the minute gaps).
+                QFile run(QStringLiteral(DL_SRC_DIR "/schema/fixtures/rdir_synthetic.log"));
+                if (run.open(QIODevice::ReadOnly)) {
+                    while (!run.atEnd()) {
+                        const QByteArray l = run.readLine().trimmed();
+                        if (!l.startsWith('@')) continue;
+                        const QList<QByteArray> tok = l.split(' ');
+                        if (tok.size() < 3) continue;
+                        disp.ingestLocal(1, 1, l, QDateTime::fromString(QString::fromLatin1(tok.at(1)), Qt::ISODate).toMSecsSinceEpoch(), QString());
+                    }
+                }
+                disp.drainNow();
+                auto *w = new ReaderDirWindow(&disp);
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
+                const QString id = qEnvironmentVariableIsEmpty("SHOT_TEST") ? QStringLiteral("18.4") : qEnvironmentVariable("SHOT_TEST");
+                QVector<int> starts;
+                const auto &reads = w->log().reads;
+                for (int i = 0; i < reads.size(); ++i)
+                    if (i == 0 || reads.at(i).ms - reads.at(i - 1).ms > 30000) starts << i;
+                int k = 0;
+                for (int i = 0; i < ReaderDir::frs18().size(); ++i) if (ReaderDir::frs18().at(i).id == id) k = i;
+                if (k < starts.size()) {
+                    w->setFromRead(starts.at(k));
+                    w->setToRead(k + 1 < starts.size() ? starts.at(k + 1) - 1 : -1);
+                }
+                w->setTestCase(id);
                 win = w;
             }
             if (which == QLatin1String("sos") || which == QLatin1String("twolocosos")) {

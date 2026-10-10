@@ -534,6 +534,14 @@
       <map v="22" label="%v (own unusual-stoppage alarm acknowledged)"/>
       <map default="true" label="%v"/>
     </enum>
+    <!-- READER_INFO (@rdir, session 194): the firmware's MOVEMENT_DIRECTION;
+         the RDSO direction tables write U and N. -->
+    <enum name="readerDir">
+      <map v="0" label="%v (U, undefined)"/>
+      <map v="1" label="%v (N, nominal)"/>
+      <map v="2" label="%v (R, reverse)"/>
+      <map default="true" label="%v"/>
+    </enum>
     <enum name="dmiUnmapped">
       <map default="true" label="%v (unmapped)"/>
     </enum>
@@ -1832,6 +1840,20 @@
     <field name="is_train_parted_recvd"       bits="8"/>
     <field name="sos_distance"                bits="32"/>
     <field name="collision_distance"          bits="32"/>
+  </packet>
+
+  <!-- ===================================================================
+       READER_INFO (@rdir, session 194): one per RFID tag read, after the
+       reader's direction is decided (SOS_handoff/04_READER_DIRECTION_LOGGING.md).
+       5 bytes, little-endian, written byte by byte. The RDSO FRS-18 direction
+       tests (18.1-18.7) read it: each reader's direction, and the loco's.
+       NO REAL CAPTURE YET: schema/fixtures/rdir_synthetic.log (tests/rdirgen).
+       =================================================================== -->
+  <packet name="READER_INFO" match="captype==rdir" wire="lsb-first" trailer_bytes="0">
+    <field name="reader_id"    bits="8"/>
+    <field name="tag_id"       bits="16"/>
+    <field name="reader_dir"   bits="8" enum="readerDir"/>
+    <field name="movement_dir" bits="8" enum="readerDir"/>
   </packet>
 
   <!-- ===================================================================

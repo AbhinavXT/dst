@@ -11,6 +11,92 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-194"></a>
+## Session 194 — reader direction (@rdir) and the RDSO FRS 18 direction tests
+
+Asked for by Abhinav: a READER_INFO message from the firmware, and a window
+with the readers' directions against the RDSO test cases FRS 18.1–18.7
+("direction determination based on tag read by RFID reader-1 and reader-2",
+SIF-0533 v4.22 pp. 359–362). His choices: the token `@rdir`, 5 bytes LE;
+directions 0 U, 1 N, 2 R; check against a picked test case; the tag reported
+to SVK from the loco's ARP.
+
+**The message** (`SOS_handoff/04_READER_DIRECTION_LOGGING.md`): `reader_id`
+u8, `tag_id` u16 LE, `reader_dir` u8, `movement_dir` u8, one per tag read.
+The firmware keeps no per-reader direction (`current_direction` is a local in
+`DetermineTrainDirectionReader1/2`, set from a reader's second tag on), so
+the README adds one value per reader: U until it decides, back to U where the
+reader's count resets. The send call goes in `ProcessRFIDTagReader` after
+each reader's function, not inside it, because
+`ClearPositionReportWithoutProfile` also calls them with a tag nobody read.
+
+**What the operator sees:** **Tools ▸ Monitor ▸ Reader direction…**
+(Ctrl+Alt+E).
+- **Observed**, one row per read: #, time, reader, tag ("R2 (102)"),
+  Reader-1 / Reader-2 / OVK direction after it, the **tag reported to SVK**
+  (the loco's next ARP's `LAST_RFID_TAG`, when it changed before the next
+  read; blank otherwise, as in the RDSO tables; a CRC-failed ARP is ignored),
+  and which test row it satisfies.
+- **R1, R2, …** are the tags ordered by location from `@rfid` when every tag
+  has one, else by tag id. The line above the table says which.
+- **Test case** picks one of the seven RDSO tables; it is shown under the
+  reads with each row "seen at read N" or "not seen in order". The OK / Not OK
+  column is left blank for the signatory.
+- **From read / to read** bound the test run. Both readers start at U there,
+  as at a start of mission, and a later run in the same log can't satisfy
+  this one's rows.
+- **Copy tables:** both, tab-separated, for the test record. Double-click a
+  read to show it in the log.
+
+**Schema:** `READER_INFO` (`captype==rdir`), enum `readerDir`.
+`validate_rdir.py` (13th validator) compares the engine with `struct.unpack`
+field by field and checks every frame is 5 bytes: 39/39. A wrong `tag_id`
+width drops it to 11.
+
+**Fixture:** `tests/rdirgen/make_fixture.py` writes
+`schema/fixtures/rdir_synthetic.log`, the seven cases a minute apart.
+- `@rdir` come from a simulation of the two firmware functions as written.
+- After each input-table step there is a **real** ARP of loco 1 in SR
+  (2026-10-08 10:16), with only `LAST_RFID_TAG` set and its JAMCRC
+  recomputed. The recipe reproduces the original's stored CRC (`78067F5F`),
+  and all 28 pass in C++.
+- **Simulated as written, the firmware's logic produces all seven RDSO tables
+  row for row.** That is the scripted logic, not a test of the firmware.
+
+### Files
+
+New: `readerdir.{h,cpp}`, `readerdirwindow.{h,cpp}`,
+`schema/validate_rdir.py`, `schema/fixtures/rdir_synthetic.log`,
+`tests/rdirgen/make_fixture.py`, `tests/test_session194.cpp`. Changed:
+`capturedecoder.{h,cpp}` (`CapType::Rdir`), `schema/kavach.xml`,
+`mainwindow.h`, `mainwindow_menus.cpp`, `mainwindow_tools.cpp`, `dlcore.pri`,
+`tests/tests.pro`, `tests/screenshot_main.cpp` (`SHOT_WINDOW=rdir`,
+`SHOT_TEST=18.x`), `CLAUDE.md` (13 validators).
+
+### Tests
+
+`session194` (32 checks):
+- the decoder agrees with the schema on all 39 frames, and the 28 ARPs pass
+  their CRC; not-5-byte frames are not read; U / N / R;
+- every one of 18.1–18.7, bounded to its own run, has every RDSO row seen in
+  order;
+- 18.1's run against 18.4's table: 2 of 4, row 1 not seen;
+- 18.4 read by read;
+- R1.. by location from **real** `@rfid` frames (560, 598, 8: not by id);
+- the window: the mapping line, 18.7's table all seen with its blank and R4
+  rows, the observed row numbering, the status count, Copy, the 18.4
+  mismatch, double-click, fits 1100 × 700, no orphan widgets; a log without
+  `@rdir` says why.
+
+**Not tested:** the README's code in the firmware (only against stubs); a real
+`@rdir` capture.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators **13/13**; `dltests`
+**243 suites / 6647 checks, 1 failed** (the `session156` pty check);
+menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-193"></a>
 ## Session 193 — the review's findings on the SoS work, fixed
 

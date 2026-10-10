@@ -525,6 +525,14 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                           "(@sos / @sossrc / @sosev)"));
     connect(actSos, &QAction::triggered, this, &MainWindow::onActionSosWindow);
 
+    // Session 194: the RFID readers' directions, read by read, against RDSO FRS 18.
+    QAction *actReaderDir = monitorMenu->addAction(tr("Reader dir&ection…"));
+    actReaderDir->setObjectName(QStringLiteral("actReaderDir"));
+    actReaderDir->setShortcut(QKeySequence("Ctrl+Alt+E"));
+    actReaderDir->setToolTip(tr("Each RFID tag read (@rdir): reader-1, reader-2 and OVK direction and the tag "
+                                "reported to SVK, beside an RDSO direction test case (FRS 18.1-18.7)"));
+    connect(actReaderDir, &QAction::triggered, this, &MainWindow::onActionReaderDirection);
+
     // Session 99: the track, by absolute location.
     QAction *actTrackDiagram = monitorMenu->addAction(tr("Trac&k diagram…"));
     actTrackDiagram->setShortcut(QKeySequence("Ctrl+Alt+K"));
