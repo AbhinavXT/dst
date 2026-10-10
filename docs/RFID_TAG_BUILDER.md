@@ -73,7 +73,10 @@ setType / loadFile(path, routeIndex)`.
   (add/insert/delete/move, import/export).
 
 ### B — scenario editor and checks
-Status: not started
+Status: **done, patch 196** (CHANGELOG session 196). Undo via `UndoLog`
+(each route edit goes through `TagBuilderWindow::changed()`); checks in
+`rfidcheck.{h,cpp}`; picture in `routestrip.{h,cpp}` (its own widget, not
+`trackdiagram`, which is built around a log).
 
 - Signals table, explicit direction, shift all by ±N m, undo.
 - Checks (observed / what the loco would do, never "invalid"): CRC-30;

@@ -103,7 +103,9 @@ SOURCES += \
     $$PWD/sosrelay.cpp \
     $$PWD/readerdir.cpp \
     $$PWD/readerdirwindow.cpp \
+    $$PWD/rfidcheck.cpp \
     $$PWD/rfidtag.cpp \
+    $$PWD/routestrip.cpp \
     $$PWD/tagbuilderwindow.cpp \
     $$PWD/twolocowindow.cpp \
     $$PWD/trackdiagram.cpp \
@@ -242,7 +244,9 @@ HEADERS += \
     $$PWD/sosrelay.h \
     $$PWD/readerdir.h \
     $$PWD/readerdirwindow.h \
+    $$PWD/rfidcheck.h \
     $$PWD/rfidtag.h \
+    $$PWD/routestrip.h \
     $$PWD/tagbuilderwindow.h \
     $$PWD/twolocowindow.h \
     $$PWD/trackdiagram.h \

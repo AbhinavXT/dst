@@ -11,6 +11,118 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-196"></a>
+## Session 196 — RFID Tag Builder, phase B: route checks, the route strip, signals
+
+Phase B of the tag builder (`docs/RFID_TAG_BUILDER.md`). The aim is to put a
+whole track scenario together and see what is wrong with it before the
+simulator or a loco finds out.
+
+**What the operator sees** in Tools ▸ RFID Tag Builder:
+- **The route strip**, above the tables. The route is drawn by absolute
+  location:
+  - a tick per tag, tall for a main tag and short for its duplicate;
+  - the main tags' names, the signals at their foot tags, and an arrow for
+    the direction of travel;
+  - a tag whose CRC fails in the error colour, an adjustment tag in the
+    accent colour, and the selected tag ringed;
+  - click a tag to select it.
+
+  Names that would overlap are left off. They are all in the tables.
+- **Tags tab**:
+  - a new **Δ (m)** column: metres from the tag before, along the direction;
+  - **Add duplicate**: the selected main tag's duplicate, right after it and
+    4 m further on (the Hafizpet spacing), CRC computed. It is not added
+    twice.
+  - **Shift…**: every location moved by N m and the CRCs recomputed. It is
+    refused as a whole, with nothing moved, if any tag would land outside
+    0–8388606 m. Adjustment tags get location-1 only, as tags_sim shifts
+    them.
+  - **Undo** (Ctrl+Z, and a button that names the step) works for every
+    route edit: add, insert, replace, delete, move, duplicate, shift,
+    direction, signals.
+- **Signals tab** (tags_sim's signals sheet): foot tag, signal, signal id,
+  edited in place. **Add signal** adds one at the selected tag.
+- **Checks tab**, "Checks (N to look at)". These are observations; a finding
+  only says what a loco would do where the specification says so.
+  Double-click a finding to select its tag.
+  - **To look at:**
+    - a CRC-30 that fails ("a loco would not process this tag");
+    - a type that is not a tag type;
+    - a duplicate not right after its main tag, or with no main tag;
+    - a duplicate not further along than its main, or differing from it
+      (it names the fields);
+    - a main tag listed twice;
+    - a tag behind, or level with, the one before it along the direction;
+    - a signal whose foot tag is not in the route;
+    - a signal on a tag that is not a signal foot for this direction.
+  - **Information:**
+    - main tags with no duplicate;
+    - where the TIN for this direction changes;
+    - a signal-foot tag with no signal;
+    - what an adjustment tag tells a loco running this way;
+    - that LC gate tags have never been seen in a capture.
+
+  Location order is not checked across an adjustment tag, whose numbering
+  may legitimately change. With no direction set, the direction-dependent
+  checks are skipped, and the first finding says so. **No distance limits
+  are graded:** the specification gives none here, so gaps are shown in Δ
+  and not judged.
+
+**On the real Hafizpet DN_MAIN route** (local fixtures), read as nominal,
+the checks find three things:
+- signal S1637_H names tag 904, which is not in this route (it starts at
+  910);
+- **tag 871D fails its CRC-30**;
+- the TIN changes five times along the route (84 → 2 → 4 → 6 → 8 → 81).
+
+**Assumption, named in the code:** the checks read `dir_corr_1` for a loco
+running nominal and `dir_corr_2` for reverse, as tags_sim reads them. This
+is not confirmed against firmware.
+
+### Files
+
+New: `rfidcheck.{h,cpp}`, `routestrip.{h,cpp}`, `tests/test_session196.cpp`.
+Changed: `tagbuilderwindow.{h,cpp}`, `dlcore.pri`, `tests/tests.pro`,
+`tests/screenshot_main.cpp` (`SHOT_TAB=checks`), `docs/RFID_TAG_BUILDER.md`.
+
+### Tests
+
+`session196`: 32 checks, plus 1 with the local fixtures. The routes are
+built in the test from field values through the schema:
+- **Every check**, each on a route made to break it:
+  - a clean route has nothing to look at;
+  - with no direction, it says what is skipped;
+  - the same tags read as reverse;
+  - a corrupted tag;
+  - two main tags swapped;
+  - a lone duplicate and a lone main;
+  - a duplicate on another TIN;
+  - a TIN change;
+  - three kinds of signal mismatch;
+  - an adjustment tag (its message, no order finding across it, a blank Δ);
+  - an LC gate tag.
+- *(local fixtures)* the real DN_MAIN findings above, exactly.
+- **The window:**
+  - the tabs and their counts, the Δ column, the strip's hit test;
+  - Add duplicate, and not twice;
+  - Shift, the refused shift, Undo of it, and the undo depth;
+  - direction change and its undo;
+  - double-click from a finding to its tag;
+  - add, edit and delete a signal, with the checks following;
+  - the 1100 × 700 fit, and no orphan widgets.
+
+**Not tested:**
+- the strip's drawing beyond its hit test (checked by screenshot only);
+- the adjustment direction fields against firmware.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2, with the local fixtures:
+validators **13/13**; `dltests` **245 suites / 6726 checks, 1 failed** (the
+`session156` pty check, as at 194); menu audit passed; headless smoke
+alive.
+
+---
+
 <a id="session-195"></a>
 ## Session 195 — RFID Tag Builder, phase A: tags, routes, route.xml
 

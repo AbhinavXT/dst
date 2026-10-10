@@ -38,6 +38,7 @@
 #include "soswindow.h"
 #include "readerdirwindow.h"
 #include "tagbuilderwindow.h"
+#include <QTabWidget>
 #include "incidentreportwindow.h"
 #include "incidentreportdialog.h"
 #include "flasherwindow.h"
@@ -210,7 +211,9 @@ int main(int argc, char **argv)
                 auto *w = new TagBuilderWindow;
                 w->setAttribute(Qt::WA_DeleteOnClose, false);
                 w->loadFile(QStringLiteral(DL_SRC_DIR "/tests/fixtures/tags_sim/DN_MAIN.tagroute.xml"));
+                w->setDirection(RfidTag::DirNominal);
                 w->selectRow(3);
+                if (qEnvironmentVariable("SHOT_TAB") == QLatin1String("checks")) w->tabs()->setCurrentIndex(2);
                 win = w;
             }
             if (which == QLatin1String("rdir")) {

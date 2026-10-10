@@ -15,6 +15,12 @@
 //                 Open a DLConsole route, a tags_sim route.xml or a
 //                 Configuration1.xml (one of its routes); save the route;
 //                 export tags_sim's route.xml (the route and its REV twin).
+//    (session 196) the route drawn by location above it (routestrip.h);
+//                 a Signals tab (the signal at each foot tag); a Checks tab
+//                 (rfidcheck.h), each finding a double-click from its row;
+//                 Add duplicate (the selected main tag's duplicate, 4 m on
+//                 along the direction); Shift (every location by N m, CRCs
+//                 recomputed); Undo (Ctrl+Z) for every route edit.
 //
 //  Nothing here is sent anywhere: it makes files.
 // =============================================================================
@@ -24,6 +30,9 @@
 #include <QWidget>
 
 class QComboBox;
+class QTabWidget;
+class RouteStrip;
+class UndoLog;
 class QFormLayout;
 class QLabel;
 class QLineEdit;
@@ -59,9 +68,20 @@ public:
     void replaceTag();
     void deleteTag();
     void moveTag(int delta);
+    void addDuplicate();                  // of the selected main tag
+    bool shiftAll(int metres);            // every tag's location; refused whole if one would not fit
+    void setDirection(int dir);
+    void addSignal();
+    void deleteSignal();
+    bool undo();
     void selectRow(int row);
 
     QTableWidget *routeTable() const { return m_table; }
+    QTableWidget *signalTable() const { return m_signals; }
+    QTableWidget *checkTable() const { return m_checks; }
+    QTabWidget *tabs() const { return m_tabs; }
+    RouteStrip *strip() const { return m_strip; }
+    UndoLog *undoLog() const { return m_undo; }
     QLabel *crcLabel() const { return m_crc; }
     QLineEdit *pageXEdit() const { return m_pageX; }
     QLineEdit *pageYEdit() const { return m_pageY; }
@@ -77,6 +97,12 @@ private:
     void pagesEdited();
     void showTag();
     void fillTable();
+    void fillSignals();
+    void fillChecks();
+    void refreshAll();
+    // After an edit of m_route: one Undo step back to `before`, everything
+    // redrawn, the route marked changed, `row` selected.
+    void changed(const QString &label, const RfidTag::Route &before, int row);
     void setModified(bool on);
     int  currentRow() const;
     bool confirmDiscard();
@@ -99,6 +125,11 @@ private:
     QLineEdit *m_routeName = nullptr;
     QComboBox *m_dir = nullptr;
     QTableWidget *m_table = nullptr;
+    QTableWidget *m_signals = nullptr;
+    QTableWidget *m_checks = nullptr;
+    QTabWidget *m_tabs = nullptr;
+    RouteStrip *m_strip = nullptr;
+    UndoLog *m_undo = nullptr;
     StatusLine *m_status = nullptr;
 };
 

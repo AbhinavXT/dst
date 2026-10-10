@@ -1,6 +1,9 @@
 #include "tagbuilderwindow.h"
 
+#include "rfidcheck.h"
+#include "routestrip.h"
 #include "statusline.h"
+#include "undolog.h"
 #include "uicolors.h"
 #include "windowgeometry.h"
 
@@ -21,7 +24,10 @@
 #include <QRegularExpressionValidator>
 #include <QScrollArea>
 #include <QSpinBox>
+#include <QPointer>
 #include <QSplitter>
+#include <QTabWidget>
+#include <QToolButton>
 #include <QTableWidget>
 #include <QVBoxLayout>
 
@@ -86,9 +92,11 @@ TagBuilderWindow::TagBuilderWindow(QWidget *parent)
 
     // ---- route table -------------------------------------------------------------------------
     m_table = new QTableWidget(this);
-    m_table->setColumnCount(8);
-    m_table->setHorizontalHeaderLabels({ tr("#"), tr("Tag"), tr("CRC-30"), tr("Type"), tr("Abs loc (m)"),
+    m_table->setColumnCount(9);
+    m_table->setHorizontalHeaderLabels({ tr("#"), tr("Tag"), tr("CRC-30"), tr("Type"), tr("Abs loc (m)"), tr("Δ (m)"),
                                          tr("TIN nom / rev"), tr("Placement"), tr("page_x  page_y") });
+    m_table->horizontalHeaderItem(5)->setToolTip(tr("Metres from the tag before, along the direction (+ = further on). "
+                                                    "Blank after an adjustment tag, whose numbering may change"));
     m_table->verticalHeader()->hide();
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -105,15 +113,83 @@ TagBuilderWindow::TagBuilderWindow(QWidget *parent)
     auto *delBtn = new QPushButton(tr("Delete"), this);
     auto *upBtn = new QPushButton(tr("Up"), this);
     auto *downBtn = new QPushButton(tr("Down"), this);
+    auto *dupBtn = new QPushButton(tr("Add duplicate"), this);
+    dupBtn->setToolTip(tr("The selected main tag's duplicate tag, %1 m further along the direction, right after it")
+                           .arg(RfidCheck::kDuplicateGap));
+    auto *shiftBtn = new QPushButton(tr("Shift…"), this);
+    shiftBtn->setToolTip(tr("Move every tag's location by the same number of metres (CRCs recomputed). "
+                            "Adjustment tags: location-1 only, as tags_sim shifts them"));
+    m_undo = new UndoLog(this);
+    QAction *undoAct = m_undo->createAction(this);
+    addAction(undoAct);
+    auto *undoBtn = new QToolButton(this);
+    undoBtn->setDefaultAction(undoAct);
+    undoBtn->setToolButtonStyle(Qt::ToolButtonTextOnly);
     auto *rowBtns = new QHBoxLayout;
     for (QPushButton *b : { addBtn, insBtn, repBtn, delBtn, upBtn, downBtn }) rowBtns->addWidget(b);
     rowBtns->addStretch(1);
+    auto *rowBtns2 = new QHBoxLayout;
+    rowBtns2->addWidget(dupBtn);
+    rowBtns2->addWidget(shiftBtn);
+    rowBtns2->addStretch(1);
+    rowBtns2->addWidget(undoBtn);
+
+    auto *tagsPage = new QWidget(this);
+    auto *tagsLayout = new QVBoxLayout(tagsPage);
+    tagsLayout->setContentsMargins(0, 0, 0, 0);
+    tagsLayout->addWidget(m_table, 1);
+    tagsLayout->addLayout(rowBtns);
+    tagsLayout->addLayout(rowBtns2);
+
+    // ---- signals -----------------------------------------------------------------------------
+    m_signals = new QTableWidget(this);
+    m_signals->setColumnCount(3);
+    m_signals->setHorizontalHeaderLabels({ tr("Foot tag"), tr("Signal"), tr("Signal id") });
+    m_signals->verticalHeader()->hide();
+    m_signals->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_signals->setSelectionMode(QAbstractItemView::SingleSelection);
+    m_signals->horizontalHeader()->setSectionResizeMode(QHeaderView::Stretch);
+    m_signals->setToolTip(tr("tags_sim's signals sheet: the signal at each signal-foot tag. Double-click to edit"));
+    auto *addSig = new QPushButton(tr("Add signal"), this);
+    addSig->setToolTip(tr("A signal at the selected tag of the Tags tab"));
+    auto *delSig = new QPushButton(tr("Delete signal"), this);
+    auto *sigBtns = new QHBoxLayout;
+    sigBtns->addWidget(addSig);
+    sigBtns->addWidget(delSig);
+    sigBtns->addStretch(1);
+    auto *sigPage = new QWidget(this);
+    auto *sigLayout = new QVBoxLayout(sigPage);
+    sigLayout->setContentsMargins(0, 0, 0, 0);
+    sigLayout->addWidget(m_signals, 1);
+    sigLayout->addLayout(sigBtns);
+
+    // ---- checks ------------------------------------------------------------------------------
+    m_checks = new QTableWidget(this);
+    m_checks->setColumnCount(3);
+    m_checks->setHorizontalHeaderLabels({ tr("#"), tr("Tag"), tr("Finding") });
+    m_checks->verticalHeader()->hide();
+    m_checks->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_checks->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_checks->setWordWrap(true);
+    // Rows follow their wrapped text as the column width changes (a one-off
+    // resizeRowsToContents() measured while the tab was hidden made them huge).
+    m_checks->verticalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_checks->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_checks->horizontalHeader()->setStretchLastSection(true);
+    m_checks->setToolTip(tr("What the route's tags say about themselves and each other. Observed, not judged. "
+                            "Double-click: select the tag"));
+
+    m_tabs = new QTabWidget(this);
+    m_tabs->addTab(tagsPage, tr("Tags"));
+    m_tabs->addTab(sigPage, tr("Signals"));
+    m_tabs->addTab(m_checks, tr("Checks"));
+    m_strip = new RouteStrip(this);
 
     auto *left = new QWidget(this);
     auto *leftLayout = new QVBoxLayout(left);
     leftLayout->setContentsMargins(0, 0, 0, 0);
-    leftLayout->addWidget(m_table, 1);
-    leftLayout->addLayout(rowBtns);
+    leftLayout->addWidget(m_strip);
+    leftLayout->addWidget(m_tabs, 1);
 
     // ---- tag editor --------------------------------------------------------------------------
     auto *editor = new QGroupBox(tr("Tag"), this);
@@ -183,13 +259,46 @@ TagBuilderWindow::TagBuilderWindow(QWidget *parent)
         setModified(true);
     });
     connect(m_dir, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
-        if (m_updating) return;
-        m_route.dir = m_dir->currentData().toInt();
-        setModified(true);
+        if (!m_updating) setDirection(m_dir->currentData().toInt());
     });
     connect(m_table, &QTableWidget::itemSelectionChanged, this, [this]() {
         const int row = currentRow();
+        m_strip->setSelectedRow(row);
         if (row >= 0 && row < m_route.tags.size()) setTag(m_route.tags.at(row).bytes);
+    });
+    connect(m_strip, &RouteStrip::rowClicked, this, [this](int row) {
+        m_tabs->setCurrentIndex(0);
+        selectRow(row);
+    });
+    connect(m_checks, &QTableWidget::cellDoubleClicked, this, [this](int r) {
+        const int row = m_checks->item(r, 0) ? m_checks->item(r, 0)->data(Qt::UserRole).toInt() : -1;
+        if (row < 0) return;
+        m_tabs->setCurrentIndex(0);
+        selectRow(row);
+    });
+    connect(m_signals, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *it) {
+        if (m_updating || it->row() >= m_route.signalList.size()) return;
+        const RfidTag::Route before = m_route;
+        RfidTag::Signal &sg = m_route.signalList[it->row()];
+        const QString text = it->text().trimmed();
+        if (it->column() == 0) sg.footTag = text;
+        else if (it->column() == 1) sg.name = text;
+        else sg.sigId = text;
+        changed(tr("Edit signal"), before, currentRow());
+    });
+    connect(addSig, &QPushButton::clicked, this, &TagBuilderWindow::addSignal);
+    connect(delSig, &QPushButton::clicked, this, &TagBuilderWindow::deleteSignal);
+    connect(dupBtn, &QPushButton::clicked, this, &TagBuilderWindow::addDuplicate);
+    connect(shiftBtn, &QPushButton::clicked, this, [this]() {
+        bool ok = false;
+        const int m = QInputDialog::getInt(this, tr("Shift every location"),
+                                           tr("Metres to add to every tag's location (negative to subtract):"),
+                                           0, -8388607, 8388607, 1, &ok);
+        if (ok && m != 0) shiftAll(m);
+    });
+    connect(m_undo, &UndoLog::undone, this, [this](const QString &label, bool restored) {
+        if (restored) m_status->ok(tr("Undone: %1").arg(label));
+        else m_status->warn(tr("Could not undo %1").arg(label));
     });
     connect(addBtn, &QPushButton::clicked, this, &TagBuilderWindow::addTag);
     connect(insBtn, &QPushButton::clicked, this, &TagBuilderWindow::insertTag);
@@ -220,7 +329,7 @@ TagBuilderWindow::TagBuilderWindow(QWidget *parent)
     });
 
     setTag(blankTag(9));
-    fillTable();
+    refreshAll();
     m_status->state(tr("A new route. Build a tag on the right and Add it, or Open a route"));
 }
 
@@ -379,15 +488,16 @@ void TagBuilderWindow::fillTable()
             name->setToolTip(tr("The file named it %1").arg(m_route.tags.at(i).name));
         m_table->setItem(i, 1, name);
         m_table->setItem(i, 3, cell(QStringLiteral("%1 %2").arg(s.type).arg(RfidTag::typeName(s.type))));
-        m_table->setItem(i, 4, cell(QString::number(s.absLoc)));
-        m_table->setItem(i, 5, cell(QStringLiteral("%1 / %2").arg(s.tinNom).arg(s.tinRev)));
-        m_table->setItem(i, 6, cell(s.type == 9 || s.type == 10 ? QString::number(s.placement) : QString()));
+        m_table->setItem(i, 4, cell(s.absLoc == RfidCheck::kNotApplicable ? tr("N/A") : QString::number(s.absLoc)));
+        m_table->setItem(i, 5, cell(RfidCheck::deltaText(m_route, i)));
+        m_table->setItem(i, 6, cell(QStringLiteral("%1 / %2").arg(s.tinNom).arg(s.tinRev)));
+        m_table->setItem(i, 7, cell(s.type == 9 || s.type == 10 ? QString::number(s.placement) : QString()));
         QTableWidgetItem *crc = cell(s.crcOk ? tr("pass") : tr("FAIL"));
         crc->setForeground(s.crcOk ? UiColor::ok() : UiColor::error());
         if (!s.crcOk) crc->setToolTip(tr("Stored %1, the contents give %2: a loco would not process this tag")
                                           .arg(hex8(s.crcStored), hex8(s.crcCalc)));
         m_table->setItem(i, 2, crc);
-        m_table->setItem(i, 7, cell(RfidTag::pageX(b) + QStringLiteral("  ") + RfidTag::pageY(b)));
+        m_table->setItem(i, 8, cell(RfidTag::pageX(b) + QStringLiteral("  ") + RfidTag::pageY(b)));
     }
     m_updating = true;
     if (m_routeName->text() != m_route.name) m_routeName->setText(m_route.name);
@@ -416,28 +526,85 @@ void TagBuilderWindow::setModified(bool on)
 void TagBuilderWindow::setRoute(const RfidTag::Route &r)
 {
     m_route = r;
-    fillTable();
+    m_undo->clear();
+    refreshAll();
     setModified(false);
     if (!m_route.tags.isEmpty()) selectRow(0);
 }
 
+void TagBuilderWindow::refreshAll()
+{
+    fillTable();
+    fillSignals();
+    fillChecks();
+    m_strip->setRoute(m_route);
+    m_strip->setSelectedRow(currentRow());
+}
+
+void TagBuilderWindow::changed(const QString &label, const RfidTag::Route &before, int row)
+{
+    QPointer<TagBuilderWindow> self(this);
+    m_undo->push(label, [self, before]() {
+        if (!self) return false;
+        self->m_route = before;
+        self->refreshAll();
+        self->setModified(true);
+        return true;
+    });
+    refreshAll();
+    setModified(true);
+    selectRow(row);
+}
+
+void TagBuilderWindow::fillSignals()
+{
+    m_updating = true;
+    m_signals->setRowCount(m_route.signalList.size());
+    for (int i = 0; i < m_route.signalList.size(); ++i) {
+        const RfidTag::Signal &sg = m_route.signalList.at(i);
+        m_signals->setItem(i, 0, new QTableWidgetItem(sg.footTag));
+        m_signals->setItem(i, 1, new QTableWidgetItem(sg.name));
+        m_signals->setItem(i, 2, new QTableWidgetItem(sg.sigId));
+    }
+    m_tabs->setTabText(1, tr("Signals (%1)").arg(m_route.signalList.size()));
+    m_updating = false;
+}
+
+void TagBuilderWindow::fillChecks()
+{
+    const QVector<RfidCheck::Finding> found = RfidCheck::check(m_route);
+    m_checks->setRowCount(found.size());
+    int attention = 0;
+    for (int i = 0; i < found.size(); ++i) {
+        const RfidCheck::Finding &f = found.at(i);
+        const bool look = f.level == RfidCheck::Level::Attention;
+        attention += look ? 1 : 0;
+        QTableWidgetItem *row = cell(f.row < 0 ? QString() : QString::number(f.row + 1));
+        row->setData(Qt::UserRole, f.row);
+        m_checks->setItem(i, 0, row);
+        m_checks->setItem(i, 1, cell(f.tag));
+        QTableWidgetItem *text = cell(f.text);
+        if (look) text->setForeground(UiColor::warning());
+        m_checks->setItem(i, 2, text);
+    }
+    m_tabs->setTabText(2, attention ? tr("Checks (%1 to look at)").arg(attention) : tr("Checks"));
+}
+
 void TagBuilderWindow::addTag()
 {
+    const RfidTag::Route before = m_route;
     const int at = currentRow() < 0 ? m_route.tags.size() : currentRow() + 1;
     m_route.tags.insert(at, { RfidTag::nameOf(m_tag), m_tag });
-    fillTable();
-    setModified(true);
-    selectRow(at);
+    changed(tr("Add tag %1").arg(RfidTag::nameOf(m_tag)), before, at);
     m_status->ok(tr("Tag %1 added at row %2").arg(RfidTag::nameOf(m_tag)).arg(at + 1));
 }
 
 void TagBuilderWindow::insertTag()
 {
+    const RfidTag::Route before = m_route;
     const int at = qMax(0, currentRow());
     m_route.tags.insert(at, { RfidTag::nameOf(m_tag), m_tag });
-    fillTable();
-    setModified(true);
-    selectRow(at);
+    changed(tr("Insert tag %1").arg(RfidTag::nameOf(m_tag)), before, at);
     m_status->ok(tr("Tag %1 inserted at row %2").arg(RfidTag::nameOf(m_tag)).arg(at + 1));
 }
 
@@ -448,10 +615,9 @@ void TagBuilderWindow::replaceTag()
         m_status->warn(tr("Select the row to replace"));
         return;
     }
+    const RfidTag::Route before = m_route;
     m_route.tags[row] = { RfidTag::nameOf(m_tag), m_tag };
-    fillTable();
-    setModified(true);
-    selectRow(row);
+    changed(tr("Replace row %1").arg(row + 1), before, row);
     m_status->ok(tr("Row %1 is now tag %2").arg(row + 1).arg(RfidTag::nameOf(m_tag)));
 }
 
@@ -459,11 +625,10 @@ void TagBuilderWindow::deleteTag()
 {
     const int row = currentRow();
     if (row < 0) return;
+    const RfidTag::Route before = m_route;
     const QString name = RfidTag::nameOf(m_route.tags.at(row).bytes);
     m_route.tags.remove(row);
-    fillTable();
-    setModified(true);
-    selectRow(qMin(row, m_route.tags.size() - 1));
+    changed(tr("Delete tag %1").arg(name), before, qMin(row, m_route.tags.size() - 1));
     m_status->ok(tr("Tag %1 deleted from row %2").arg(name).arg(row + 1));
 }
 
@@ -471,10 +636,109 @@ void TagBuilderWindow::moveTag(int delta)
 {
     const int row = currentRow(), to = row + delta;
     if (row < 0 || to < 0 || to >= m_route.tags.size()) return;
+    const RfidTag::Route before = m_route;
     std::swap(m_route.tags[row], m_route.tags[to]);
-    fillTable();
-    setModified(true);
-    selectRow(to);
+    changed(tr("Move tag %1").arg(RfidTag::nameOf(m_route.tags.at(to).bytes)), before, to);
+}
+
+void TagBuilderWindow::addDuplicate()
+{
+    const int row = currentRow();
+    if (row < 0) {
+        m_status->warn(tr("Select the main tag to add a duplicate of"));
+        return;
+    }
+    const RfidTag::Summary s = RfidTag::summary(m_route.tags.at(row).bytes);
+    if (s.duplicate) {
+        m_status->warn(tr("Row %1 is a duplicate tag already").arg(row + 1));
+        return;
+    }
+    if (row + 1 < m_route.tags.size()) {
+        const RfidTag::Summary n = RfidTag::summary(m_route.tags.at(row + 1).bytes);
+        if (n.duplicate && n.unique == s.unique) {
+            m_status->warn(tr("Tag %1 has its duplicate in the next row").arg(s.unique));
+            return;
+        }
+    }
+    QHash<QString, qint64> v = RfidTag::values(m_route.tags.at(row).bytes);
+    v.insert(QStringLiteral("duplication"), 1);
+    const QString loc = s.type == 12 ? QStringLiteral("abs_loc_1") : QStringLiteral("abs_loc");
+    if (s.absLoc != RfidCheck::kNotApplicable)
+        v.insert(loc, s.absLoc + (m_route.dir == RfidTag::DirReverse ? -1 : 1) * RfidCheck::kDuplicateGap);
+    QString err;
+    const QByteArray dup = RfidTag::build(v, &err);
+    if (dup.isEmpty()) {
+        m_status->fail(tr("No duplicate made: %1").arg(err));
+        return;
+    }
+    const RfidTag::Route before = m_route;
+    m_route.tags.insert(row + 1, { RfidTag::nameOf(dup), dup });
+    changed(tr("Add duplicate %1").arg(RfidTag::nameOf(dup)), before, row + 1);
+    m_status->ok(tr("Duplicate tag %1 added at %2 m").arg(RfidTag::nameOf(dup)).arg(RfidTag::summary(dup).absLoc));
+}
+
+bool TagBuilderWindow::shiftAll(int metres)
+{
+    RfidTag::Route next = m_route;
+    int moved = 0;
+    for (int i = 0; i < next.tags.size(); ++i) {
+        const RfidTag::Summary s = RfidTag::summary(next.tags.at(i).bytes);
+        if (s.absLoc == RfidCheck::kNotApplicable) continue;
+        QHash<QString, qint64> v = RfidTag::values(next.tags.at(i).bytes);
+        v.insert(s.type == 12 ? QStringLiteral("abs_loc_1") : QStringLiteral("abs_loc"), s.absLoc + metres);
+        QString err;
+        const QByteArray b = RfidTag::build(v, &err);
+        if (b.isEmpty() || s.absLoc + metres < 0) {
+            m_status->fail(tr("Nothing shifted: tag %1 at %2 m would be at %3 m, outside 0 to 8388606")
+                               .arg(RfidTag::nameOf(next.tags.at(i).bytes)).arg(s.absLoc).arg(s.absLoc + metres));
+            return false;
+        }
+        next.tags[i].bytes = b;
+        ++moved;
+    }
+    const RfidTag::Route before = m_route;
+    m_route = next;
+    changed(tr("Shift by %1 m").arg(metres), before, currentRow());
+    m_status->ok(tr("%1 tags moved by %2 m, their CRCs recomputed").arg(moved).arg(metres));
+    return true;
+}
+
+void TagBuilderWindow::setDirection(int dir)
+{
+    if (dir == m_route.dir) return;
+    const RfidTag::Route before = m_route;
+    m_route.dir = dir;
+    changed(tr("Direction"), before, currentRow());
+}
+
+void TagBuilderWindow::addSignal()
+{
+    const int row = currentRow();
+    QString foot;
+    if (row >= 0) {
+        const RfidTag::Summary s = RfidTag::summary(m_route.tags.at(row).bytes);
+        foot = QString::number(s.unique);
+    }
+    const RfidTag::Route before = m_route;
+    m_route.signalList.append({ foot, QString(), QString() });
+    changed(tr("Add signal"), before, row);
+    m_tabs->setCurrentIndex(1);
+    m_signals->setCurrentCell(m_route.signalList.size() - 1, 1);
+}
+
+void TagBuilderWindow::deleteSignal()
+{
+    const QList<QTableWidgetItem *> sel = m_signals->selectedItems();
+    if (sel.isEmpty()) return;
+    const int at = sel.first()->row();
+    const RfidTag::Route before = m_route;
+    m_route.signalList.remove(at);
+    changed(tr("Delete signal"), before, currentRow());
+}
+
+bool TagBuilderWindow::undo()
+{
+    return m_undo->undo();
 }
 
 // ---- files -------------------------------------------------------------------------------------
