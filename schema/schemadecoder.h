@@ -64,6 +64,10 @@ public:
     int packetCount() const { return m_packets.size(); }
     int structCount() const { return m_structs.size(); }
     int enumCount()   const { return m_enums.size(); }
+    // A coded value as the decoder shows it: "1 (Duplicate Tag)", "N/A", or
+    // the bare number when the enum does not name it (session 195: public,
+    // for the tag builder's choice lists).
+    QString enumLabel(const QString &enumName, qint64 v) const;
     QStringList packetNames() const;
 
     // Every field name the schema can produce, across all packets and structs,
@@ -202,7 +206,6 @@ private:
                     int depth = 0) const;
     static constexpr int kMaxStructDepth = 32;
 
-    QString enumLabel(const QString &enumName, qint64 v) const;
     QString bareVal(const QDomElement &fld, qint64 v) const;  // entry token value
     QString fullVal(const QDomElement &fld, qint64 v) const;  // flat row value
     static bool condOk(const QString &when, const Ctx &ctx);

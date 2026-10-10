@@ -11,6 +11,121 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-195"></a>
+## Session 195 — RFID Tag Builder, phase A: tags, routes, route.xml
+
+Asked for by Abhinav: bring the tags_sim tool (PyQt5, used to make the RFID
+tags and routes the RFID simulator reads) into DLConsole and make it better,
+in four phases A, B, C, D (his order). The plan, the decisions taken and the
+state of each phase are in `docs/RFID_TAG_BUILDER.md`. It is kept there so
+the work can carry on from another session or account.
+
+**What the operator sees:** **Tools ▸ RFID Tag Builder…** (Ctrl+Alt+B).
+- **Tag** (right): the type (9 Normal, 10 LC gate, 11 Adjacent line,
+  12 Adjustment/Junction) and every field the schema gives that type.
+  Short coded fields are a list of every value, named as the decoder names
+  them; locations are numbers in metres. Edit a field and page_x / page_y
+  follow, with the CRC-30 computed. Paste page_x / page_y and the fields
+  follow, with the stored CRC checked: "CRC-30 stored …, the contents give …:
+  a loco would not process this tag". **Recompute CRC** rebuilds the tag
+  from its fields.
+- **Route** (left): the tags in the order the loco meets them, with the
+  CRC-30 result beside each one, plus a name and a direction. Add, Insert
+  above, Replace, Delete, Up, Down. The title shows `*` while there are
+  changes; closing or opening another route asks first.
+- **Open…** reads a DLConsole route (`.tagroute.xml`), a tags_sim
+  `route.xml` (both its older flat form and the newer route + REV form), or a
+  **Configuration1.xml**. A file with several routes asks which one to open.
+  Opening says how many tags fail their CRC.
+- **Save…** writes the DLConsole route file: tags, signals, name, direction.
+- **Export route.xml…** writes tags_sim's route.xml: the route and its REV
+  route, named `DN_<first>_<last>` / `UP_…` and `REV_…` as tags_sim names
+  them. It is refused while the direction is not set.
+
+**Found on the way:**
+- **Tag 550 of tags_sim's own output fails its CRC-30.** So do **601 of
+  the 1208 tags** in the S2S `Configuration1.xml`. tags_sim never says so.
+- `Schema::Encoder::enumChoices` finds no enum in kavach.xml, because the
+  schema nests them in `<enums>` and the encoder only looks at the top
+  level. So Packet Maker and Field sweep never offer named choices. **Not
+  changed here** (it would change Packet Maker's defaults). The tag builder
+  uses the decoder's labels instead (`Schema::Decoder::enumLabel`, made
+  public).
+
+**How:**
+- `rfidtag.{h,cpp}`. **page_x is tag bytes 0–7 as a little-endian 64-bit
+  number, page_y bytes 8–15.** Fields are read and written through the
+  schema's `RFID` packet (Schema::Encoder parse/encode, the `<crc>` element
+  for the CRC-30), the same definition the decoder and `validate_rfid.py`
+  use. A value too wide for its field is refused by name, not cut short.
+- route.xml's columns follow what the real files hold, checked over the
+  KAV_CONFIG set with `rfid_oracle.py`:
+  - `track_id` is the reverse-direction TIN;
+  - `next_rfid_abs_loc` is the next row's location (the last row gives its
+    own).
+- `scripts/tags_sim_import.py` (standard library only) converts tags_sim's
+  `.xlsx` routes, signals sheet included, to `.tagroute.xml`. It converted
+  every .xlsx in tags_sim's KAV_CONFIG. DLConsole has no xlsx reader (Qt has
+  no public zip API).
+
+### Files
+
+New: `rfidtag.{h,cpp}`, `tagbuilderwindow.{h,cpp}`,
+`scripts/tags_sim_import.py`, `docs/RFID_TAG_BUILDER.md`,
+`tests/test_session195.cpp`.
+
+**Real KAV_CONFIG files stay local (Abhinav's choice).**
+`tests/fixtures/tags_sim/` is git-ignored. On this Mac it holds:
+- Hafizpet DN/UP route.xml;
+- an S2S route.xml;
+- tags_sim's old flat 550_991 route.xml;
+- the S2S Configuration1.xml;
+- two .xlsx with their converted .tagroute.xml.
+
+`session195` checks against them when they are there. When they are not
+(CI, another machine), it prints a NOTE and skips those checks. Only three
+real tags (904, 904D, 550) appear in the test source, as hex.
+
+Changed: `dlcore.pri`, `mainwindow.h`, `mainwindow_menus.cpp`,
+`mainwindow_tools.cpp`, `schema/schemadecoder.h` (enumLabel public),
+`tests/tests.pro`, `tests/screenshot_main.cpp` (`SHOT_WINDOW=tagbuilder`).
+
+### Tests
+
+`session195`: 47 checks with the local fixtures, 34 without:
+- **Codec:** page values ↔ bytes ↔ the schema's fields for tag 904, which
+  agree with the hand decoder and the route.xml's own values. An LC gate tag
+  built from its fields reads back field for field. A 24-bit location is
+  refused.
+- *(local fixtures)* **Every real tag in them (1,400+)** rebuilds with the same fields
+  and a CRC that passes. It rebuilds byte for byte except where its stored
+  CRC failed.
+- **Files** *(the real ones with the local fixtures)*:
+  - both route.xml forms, a Configuration1.xml (20 routes, 1208 tags) and a
+    converted .xlsx (42 tags, 9 signals);
+  - a route file saves and reads back the same bytes;
+  - **the exported route.xml has tags_sim's rows, attribute for attribute, in
+    both directions**, for a DN and an UP route;
+  - bad rows are skipped and named.
+- **The window:** paste, edit, type change, the CRC states, the route
+  operations, Save, Export, the warning on failing tags, the refusal with no
+  direction, the 1100 × 700 fit, and no orphan widgets.
+
+**Not tested:**
+- type 10 (LC gate) against a real tag: none exists in any capture or in
+  KAV_CONFIG;
+- the exported route.xml loaded into the RFID simulator itself.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2, with the local fixtures:
+validators **13/13**; `dltests` **244 suites / 6694 checks, 1 failed** (the
+`session156` pty check, as at 194); menu audit passed; headless smoke
+alive. After that, the window checks were changed to build their own route,
+so they run without the fixtures. `session195` was then rerun alone on Qt 5,
+with the fixtures (47 ok) and without them (34 ok); the full gate was not
+rerun for that test-only change.
+
+---
+
 <a id="session-194"></a>
 ## Session 194 — reader direction (@rdir) and the RDSO FRS 18 direction tests
 

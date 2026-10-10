@@ -106,6 +106,7 @@
 #include "twolocowindow.h"
 #include "soswindow.h"
 #include "readerdirwindow.h"
+#include "tagbuilderwindow.h"
 #include "trackdiagramwindow.h"
 #include "workspacesnapshot.h"
 #include "tabtags.h"
@@ -569,6 +570,13 @@ void MainWindow::onActionSosWindow()
     const QString key = currentTabKey();
     if (!key.isEmpty() && SosLog::hasSos(m_dispatcher->modelForKey(key))) w->setSource(key);
     connect(w, &SosWindow::jumpRequested, this, [this](const QString &tabKey, qint64 ms) { jumpToEntry(tabKey, ms); });
+    w->show();
+    w->raise();
+}
+
+void MainWindow::onActionTagBuilder()
+{
+    auto *w = new TagBuilderWindow(this);
     w->show();
     w->raise();
 }

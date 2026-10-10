@@ -1,0 +1,105 @@
+#ifndef TAGBUILDERWINDOW_H
+#define TAGBUILDERWINDOW_H
+
+// =============================================================================
+//  RFID Tag Builder (session 195) — Tools ▸ RFID Tag Builder… (Ctrl+Alt+B)
+//  -----------------------------------------------------------------------------
+//  tags_sim, in DLConsole (docs/RFID_TAG_BUILDER.md):
+//
+//    tag editor   one tag: its type, every field the schema gives that type
+//                 (coded values by name), page_x / page_y. Edit a field and
+//                 the page values follow, CRC-30 computed; paste page values
+//                 and the fields follow, with the stored CRC checked.
+//    route        the tags in the order the loco meets them, with the route's
+//                 name and direction: add, insert, replace, delete, move.
+//                 Open a DLConsole route, a tags_sim route.xml or a
+//                 Configuration1.xml (one of its routes); save the route;
+//                 export tags_sim's route.xml (the route and its REV twin).
+//
+//  Nothing here is sent anywhere: it makes files.
+// =============================================================================
+
+#include "rfidtag.h"
+
+#include <QWidget>
+
+class QComboBox;
+class QFormLayout;
+class QLabel;
+class QLineEdit;
+class QPushButton;
+class QTableWidget;
+class StatusLine;
+
+class TagBuilderWindow : public QWidget
+{
+    Q_OBJECT
+public:
+    explicit TagBuilderWindow(QWidget *parent = nullptr);
+
+    // The editor's tag (16 bytes) and setting it (fills the fields).
+    QByteArray tag() const { return m_tag; }
+    void setTag(const QByteArray &tag);
+    void setPages(const QString &pageX, const QString &pageY);
+    // Set one field of the editor's tag by schema name; false if the editor
+    // has no such field. The tag is rebuilt, CRC included.
+    bool setField(const QString &name, qint64 value);
+    void setType(int type);
+
+    const RfidTag::Route &route() const { return m_route; }
+    void setRoute(const RfidTag::Route &r);
+    bool loadFile(const QString &path, int routeIndex = -1);   // -1: ask when several
+    bool saveFile(const QString &path);
+    bool exportRouteXml(const QString &path);
+    bool isModified() const { return m_modified; }
+
+    // Route edits, on the selected row (append when none is selected).
+    void addTag();
+    void insertTag();
+    void replaceTag();
+    void deleteTag();
+    void moveTag(int delta);
+    void selectRow(int row);
+
+    QTableWidget *routeTable() const { return m_table; }
+    QLabel *crcLabel() const { return m_crc; }
+    QLineEdit *pageXEdit() const { return m_pageX; }
+    QLineEdit *pageYEdit() const { return m_pageY; }
+    StatusLine *status() const { return m_status; }
+
+protected:
+    void closeEvent(QCloseEvent *e) override;
+
+private:
+    void rebuildForm();
+    void fillForm();
+    void buildFromForm();
+    void pagesEdited();
+    void showTag();
+    void fillTable();
+    void setModified(bool on);
+    int  currentRow() const;
+    bool confirmDiscard();
+
+    QByteArray m_tag;
+    RfidTag::Route m_route;
+    bool m_modified = false;
+    bool m_updating = false;
+    int  m_formType = -1;
+
+    QComboBox *m_type = nullptr;
+    QFormLayout *m_form = nullptr;
+    QWidget *m_formHost = nullptr;
+    QHash<QString, QWidget *> m_editors;   // field name -> QSpinBox / QComboBox
+    QLineEdit *m_pageX = nullptr;
+    QLineEdit *m_pageY = nullptr;
+    QLabel *m_name = nullptr;
+    QLabel *m_crc = nullptr;
+
+    QLineEdit *m_routeName = nullptr;
+    QComboBox *m_dir = nullptr;
+    QTableWidget *m_table = nullptr;
+    StatusLine *m_status = nullptr;
+};
+
+#endif  // TAGBUILDERWINDOW_H

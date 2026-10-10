@@ -643,6 +643,15 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     connect(actLocoConfig, &QAction::triggered,
             this,          &MainWindow::onActionLocoConfig);
 
+    // Session 195: tags_sim in DLConsole. Beside Loco Configuration: it makes
+    // files for setting up a run (tags, routes), and sends nothing.
+    QAction *actTagBuilder = toolsMenu->addAction(tr("RFID &Tag Builder…"));
+    actTagBuilder->setObjectName(QStringLiteral("actTagBuilder"));
+    actTagBuilder->setShortcut(QKeySequence("Ctrl+Alt+B"));
+    actTagBuilder->setToolTip(tr("Make and edit RFID tags (page_x / page_y, CRC-30) and tag routes; open and "
+                                 "export tags_sim route.xml and Configuration1.xml routes"));
+    connect(actTagBuilder, &QAction::triggered, this, &MainWindow::onActionTagBuilder);
+
     // Session 85: a QCom-style serial terminal. The IOA's input / output /
     // analog logs only come out of a serial port; with "Feed console" on,
     // its lines land in a tab like UDP traffic. One window per port.
