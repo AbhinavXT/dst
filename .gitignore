@@ -45,3 +45,4 @@ build/
 # Real KAV_CONFIG routes from tags_sim: kept local, not published (session 195).
 # session195 checks against them when present and says it skipped them when not.
 tests/fixtures/tags_sim/
+tests/fixtures/station_layout/

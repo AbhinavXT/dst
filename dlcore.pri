@@ -114,6 +114,9 @@ SOURCES += \
     $$PWD/twolocowindow.cpp \
     $$PWD/trackdiagram.cpp \
     $$PWD/trackdiagramwindow.cpp \
+    $$PWD/xlsxbook.cpp \
+    $$PWD/stationlayout.cpp \
+    $$PWD/stationlayoutwindow.cpp \
     $$PWD/workspacesnapshot.cpp \
     $$PWD/settingsbundle.cpp \
     $$PWD/namemap.cpp \
@@ -259,6 +262,9 @@ HEADERS += \
     $$PWD/twolocowindow.h \
     $$PWD/trackdiagram.h \
     $$PWD/trackdiagramwindow.h \
+    $$PWD/xlsxbook.h \
+    $$PWD/stationlayout.h \
+    $$PWD/stationlayoutwindow.h \
     $$PWD/workspacesnapshot.h \
     $$PWD/settingsbundle.h \
     $$PWD/namemap.h \

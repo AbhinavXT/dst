@@ -652,6 +652,15 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                                  "export tags_sim route.xml and Configuration1.xml routes"));
     connect(actTagBuilder, &QAction::triggered, this, &MainWindow::onActionTagBuilder);
 
+    // Session 208: the old Python tool's station file, as DLConsole's own
+    // editable layout, with its .xlsx imported and exported.
+    QAction *actStationLayout = toolsMenu->addAction(tr("Station La&yout…"));
+    actStationLayout->setObjectName(QStringLiteral("actStationLayout"));
+    actStationLayout->setShortcut(QKeySequence("Ctrl+Alt+Y"));
+    actStationLayout->setToolTip(tr("Draw and edit a station's lines, tags, signals, points and texts; "
+                                    "import and export the Python tool's station .xlsx"));
+    connect(actStationLayout, &QAction::triggered, this, &MainWindow::onActionStationLayout);
+
     // Session 85: a QCom-style serial terminal. The IOA's input / output /
     // analog logs only come out of a serial port; with "Feed console" on,
     // its lines land in a tab like UDP traffic. One window per port.

@@ -34,6 +34,7 @@
 #include "comparewindow.h"
 #include "mergedwindow.h"
 #include "trackdiagramwindow.h"
+#include "stationlayoutwindow.h"
 #include "twolocowindow.h"
 #include "soswindow.h"
 #include "readerdirwindow.h"
@@ -183,6 +184,16 @@ int main(int argc, char **argv)
                 const QString key = disp.knownKeys().value(0);
                 auto *w = new TrackDiagramWindow(disp.modelForKey(key), key, QStringLiteral("L1_V1"));
                 w->setAttribute(Qt::WA_DeleteOnClose, false);
+                win = w;
+            }
+            if (which == QLatin1String("stationlayout")) {
+                // SHOT_FILE picks a station file; default: the synthetic fixture.
+                auto *w = new StationLayoutWindow;
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
+                w->openFile(qEnvironmentVariableIsEmpty("SHOT_FILE")
+                                ? QStringLiteral(DL_SRC_DIR "/tests/fixtures/station_layout_synthetic.xlsx")
+                                : qEnvironmentVariable("SHOT_FILE"));
+                if (!qEnvironmentVariableIsEmpty("SHOT_EXPORT")) w->exportXlsx(qEnvironmentVariable("SHOT_EXPORT"));
                 win = w;
             }
             if (which == QLatin1String("twoloco")) {

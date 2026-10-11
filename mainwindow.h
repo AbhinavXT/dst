@@ -198,6 +198,7 @@ private slots:
     void onActionFirmwareFlasher();  // Tools → Firmware Flasher…
     void onActionLocoConfig();
     void onActionTagBuilder();       // Tools → RFID Tag Builder… (session 195)       // Tools → Loco Configuration…
+    void onActionStationLayout();    // Tools → Station Layout… (session 208)
 
     // ---- Live-applied settings --------------------------------------
     void onThemeChanged(QString themeName);

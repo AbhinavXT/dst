@@ -106,6 +106,7 @@
 #include "twolocowindow.h"
 #include "soswindow.h"
 #include "readerdirwindow.h"
+#include "stationlayoutwindow.h"
 #include "tagbuilderwindow.h"
 #include "trackdiagramwindow.h"
 #include "workspacesnapshot.h"
@@ -580,6 +581,14 @@ void MainWindow::onActionTagBuilder()
     w->setRunSource(currentTabKey());
     w->reopenLast();
     connect(w, &TagBuilderWindow::jumpRequested, this, [this](const QString &tabKey, qint64 ms) { jumpToEntry(tabKey, ms); });
+    w->show();
+    w->raise();
+}
+
+void MainWindow::onActionStationLayout()
+{
+    auto *w = new StationLayoutWindow(this);
+    w->reopenLast();
     w->show();
     w->raise();
 }

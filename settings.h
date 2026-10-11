@@ -528,6 +528,12 @@ public:
     { QSettings s(iniPath(), QSettings::IniFormat); return s.value("tag_builder/last_route", 0).toInt(); }
     static void setTagBuilderLast(const QString &file, int route)
     { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("tag_builder/last_file", file); s.setValue("tag_builder/last_route", route); }
+    // Session 208: the Station Layout window's last file (.json own file or
+    // an imported .xlsx), reopened with it and offered to the Track diagram.
+    static QString stationLayoutLastFile()
+    { QSettings s(iniPath(), QSettings::IniFormat); return s.value("station_layout/last_file").toString(); }
+    static void setStationLayoutLastFile(const QString &file)
+    { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("station_layout/last_file", file); }
 };
 
 #endif // SETTINGS_H

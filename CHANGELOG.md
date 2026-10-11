@@ -11,6 +11,91 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-208"></a>
+## Session 208 — Station Layout: the Python tool's station file, editable
+
+Asked for by Abhinav (item 4 of the DEBUGGING_TOOL_KAVACH study): the old
+tool's station file (`loco_performance/config/station/*.xlsx`), made
+editable in DLConsole so a layout can be changed easily, with import and
+export. His choices (2026-10-11): an editor window plus an overlay on the
+Track diagram (the overlay is the next patch), DLConsole's own JSON plus
+.xlsx in and out, and a moved tag re-encoded.
+
+**What the operator sees:** Tools ▸ **Station Layout…** (Ctrl+Alt+Y). On
+top, a schematic: every line of the lines sheet as a lane (DN DM, UP UM,
+LOOP…), its tags at the location inside their bits (duplicates hollow),
+signals at their foot tags, points joining two lanes, station markers and
+texts. **Drag a tag along its line** to move it. Zoom in/out/Fit, or
+Ctrl + wheel. Below, one table per sheet (Tags, Signals, Points, Lines,
+Station, Texts) edited in place, with Add row / Delete rows. Typing a new
+**Abs loc** moves the tag the same way: it is re-encoded with RfidTag, the
+CRC-30 is recomputed, and every other field is kept. A **Checks** tab lists
+what a reader would trip on: a tag whose page_x/page_y don't make a tag,
+whose bits name another tag, whose CRC-30 doesn't match, a tag listed twice,
+or a signal or line naming a tag that isn't in the tags. These are reported,
+never corrected. **Other sheets** lists relaymap / adjustment / …: kept and
+written back on export, not used (relaymap is NMS field-input data).
+**Open / Save** the own `.json`; **Import .xlsx / Export .xlsx** the
+tool's file. Undo (Ctrl+Z) for every edit. The last file reopens with the
+window.
+
+**Reading .xlsx without a dependency:** Qt has no public zip API, and its
+private QZipReader is missing where Debian's `qtbase5-dev` leaves the
+private headers out (as on the Linux CI). So `xlsxbook.cpp` reads the zip
+itself: stored and deflated entries, with an RFC 1951 inflate after zlib's
+puff.c and every entry's CRC-32 checked. It writes stored entries,
+inline strings and no styles.
+
+**Export keeps the tool reading the same values:** a column that was
+numbers is written as numbers, the rest as text. This matters because
+pandas turns a whole-number column with one gap into floats, and its
+`astype(str)` then gives "981.0". Checked by running the tool's own
+`load_station()` pandas expressions on each real file and on DLConsole's
+export of it. Every dictionary it builds is identical, except that a
+leading space some original tag cells had before `page_x` is gone. The
+tool reads those cells with a regex, so it gets the same tags.
+
+**Found in the real files** (reported in Checks; nothing changed):
+- In the file with an adjustment sheet, row **820D holds tag 828D's bits**
+  and row **821D's page_y has 17 hex digits**. The Python tool never checks
+  either. Both rows are kept, not dropped, so an export loses nothing.
+- Many station-file tags carry a **CRC-30 of 0** (`page_y="00000000…"`):
+  88 of 211 in station.xlsx. They are drawing references, never
+  CRC-corrected.
+
+**Files:** `xlsxbook.{h,cpp}`, `stationlayout.{h,cpp}`,
+`stationlayoutwindow.{h,cpp}`, `settings.h` (last file),
+`mainwindow_menus.cpp`, `mainwindow_tools.cpp`, `mainwindow.h`,
+`dlcore.pri`, `tests/screenshot_main.cpp` (`SHOT_WINDOW=stationlayout`,
+`SHOT_FILE`, `SHOT_EXPORT`), `scripts/make_station_layout_fixture.py`,
+`tests/fixtures/station_layout_synthetic.xlsx`, `.gitignore`.
+
+**Tests:** session208 (42 checks), session208_window (20 checks):
+- CRC-32 check value, column names, a corrupt deflate stream and a non-zip
+  both refused;
+- the synthetic fixture (deflated, shared strings, in git; its three tags
+  are real ones from `tag_scenarios/`) read sheet by sheet with types kept;
+- tag 804 at 159500 m as its route file says; moving it re-encodes it with
+  a good CRC and keeps the other fields; a location too wide is refused;
+- JSON and xlsx round trips; exported column types; deterministic export;
+- the window: tables, drawn marks, a typed move and Undo, a drag, a sheet
+  edit, save/reopen/export, no orphan widgets, fits 1100 × 700.
+
+The real station files (`tests/fixtures/station_layout/`, git-ignored,
+copied from the zip) are checked when present: every tag row kept, the two
+bad rows reported, export then import identical.
+
+**Not done:** creating a tag from scratch here (Add row copies the selected
+tag; the RFID Tag Builder makes new tags); drawing the points' connection
+lists (`conn_x_list` …), which are kept and exported only; any turnout logic
+(owned by another person). Not tested on Windows by hand; CI builds it.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators **13/13**;
+`dltests` **258 suites / 6963 checks, 1 failed** (the `session156` pty
+check, as at 194 and 206); menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-207"></a>
 ## Session 207 — the SLRP profile on the Track diagram
 
