@@ -1,12 +1,15 @@
 #include "nmslogwindow.h"
 
 #include "statusline.h"
+#include "uicolors.h"
 #include "windowgeometry.h"
 #include "xlsxbook.h"
 
 #include <QCheckBox>
 #include <QFile>
 #include <QFileDialog>
+#include <QFont>
+#include <QBrush>
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
@@ -68,8 +71,18 @@ int NmsLogTableModel::columnCount(const QModelIndex &parent) const
 QVariant NmsLogTableModel::data(const QModelIndex &index, int role) const
 {
     if (!index.isValid()) return QVariant();
-    if (role == Qt::DisplayRole || role == Qt::ToolTipRole) return m_table.cell(index.row(), index.column());
-    return QVariant();
+    if (role == Qt::DisplayRole) return m_table.cell(index.row(), index.column());
+    if (role != Qt::ToolTipRole && role != Qt::ForegroundRole && role != Qt::FontRole) return QVariant();
+    // Session 250: a cell that reports a failure or an event is marked.
+    const QString text = m_table.cell(index.row(), index.column());
+    QString why;
+    const NmsLog::Mark m = NmsLog::markOf(m_table.header(index.column()), text, &why);
+    if (role == Qt::ToolTipRole) return why.isEmpty() ? text : text + QStringLiteral("\n") + why;
+    if (m == NmsLog::Mark::None) return QVariant();
+    if (role == Qt::ForegroundRole) return QBrush(m == NmsLog::Mark::Fail ? UiColor::error() : UiColor::warning());
+    QFont f;
+    f.setBold(true);
+    return f;
 }
 
 QVariant NmsLogTableModel::headerData(int section, Qt::Orientation o, int role) const
@@ -99,7 +112,9 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
     m_view->horizontalHeader()->setDefaultSectionSize(120);
     m_view->horizontalHeader()->setStretchLastSection(true);
     m_view->verticalHeader()->setDefaultSectionSize(m_view->fontMetrics().height() + 6);
-    m_view->setToolTip(tr("One row per @%1 packet, as decoded. Double-click a row: the frame in its tab")
+    m_view->setToolTip(tr("One row per @%1 packet, as decoded. Bold cells: a failure (error colour) or an "
+                          "event (warning colour) the packet reported; hover one for what. "
+                          "Double-click a row: the frame in its tab")
                            .arg(NmsLog::token(kind)));
 
     m_follow = new QCheckBox(tr("Follow new packets"), this);

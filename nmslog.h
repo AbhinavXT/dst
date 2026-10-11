@@ -60,6 +60,14 @@ struct Table {
     int  columnOf(const QString &name, Group g = Group::Body);
 };
 
+// Session 250: what a cell reports, for the table to mark it. Fail: the
+// packet reports equipment down (a radio, a link, a module, no keys) or its
+// CRC did not match. Warn: an event worth reading (a brake application, an
+// SoS, a missing tag, no GPS fix, a fault reported). Read from the decoded
+// text, so it follows the decoder's labels. `why` says what was reported.
+enum class Mark { None, Warn, Fail };
+Mark markOf(const QString &column, const QString &value, QString *why = nullptr);
+
 // Adds `entry` as a row when it is a well-formed capture line of `kind`.
 // False (and nothing added) otherwise. *newColumns set when the packet
 // brought a column the table did not have.

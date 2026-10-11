@@ -48,6 +48,64 @@ QVariant sheetCell(const QString &s)
 
 }  // namespace
 
+Mark markOf(const QString &column, const QString &value, QString *why)
+{
+    auto mark = [&](Mark m, const QString &text) {
+        if (why) *why = text;
+        return m;
+    };
+    if (why) why->clear();
+    if (value.isEmpty()) return Mark::None;
+    // "fault[2] fault_id", "RADIO_1_HEALTH (2)": the name without its repeat.
+    const QString name = column.section(QStringLiteral(" ("), 0, 0);
+    auto is = [&](const char *n) { return name == QLatin1String(n); };
+    auto has = [&](const char *t) { return value.contains(QLatin1String(t), Qt::CaseInsensitive); };
+
+    if (is("CRC"))
+        return value == QLatin1String("FAIL") ? mark(Mark::Fail, QStringLiteral("The frame's CRC did not match"))
+                                              : Mark::None;
+    if (name.startsWith(QLatin1String("fault[")) && name.endsWith(QLatin1String("fault_id")))
+        return mark(Mark::Warn, QStringLiteral("A fault the subsystem reported"));
+
+    // Equipment reported down.
+    if ((is("RADIO_1_HEALTH") || is("RADIO_2_HEALTH")) && !has("(OK)"))
+        return mark(Mark::Fail, QStringLiteral("The radio reported not OK"));
+    if ((is("DMI_1_LINK_STATUS") || is("DMI_2_LINK_STATUS") || is("RFID_READER_1_LINK_STATUS")
+         || is("RFID_READER_2_LINK_STATUS")) && has("NOT OK"))
+        return mark(Mark::Fail, QStringLiteral("The link reported NOT OK"));
+    if (is("ONBOARD_KAVACH_MODULES_HEALTH") && has("NOT OK"))
+        return mark(Mark::Fail, QStringLiteral("A module reported NOT OK"));
+    if (is("REMAINING_KEY_NUMBERS")) {
+        if (has("No keys")) return mark(Mark::Fail, QStringLiteral("No authentication key sets left"));
+        const int left = value.section(QLatin1Char(' '), 0, 0).toInt();
+        if (left < 5) return mark(Mark::Warn, QStringLiteral("Fewer than 5 key sets left"));
+        return Mark::None;
+    }
+    if (is("BOOTUP_SEQUENCE_ERROR")) return mark(Mark::Fail, QStringLiteral("A boot-up sequence error was reported"));
+    if (is("BRAKE_INTERFACE_ERROR")) return mark(Mark::Fail, QStringLiteral("A brake interface error was reported"));
+
+    // Events worth reading.
+    if (is("ACTIVE_GPS_NUMBER") && has("No Active GPS"))
+        return mark(Mark::Warn, QStringLiteral("No GPS active"));
+    if ((is("GPS_1_VIEW_STATUS") || is("GPS_2_VIEW_STATUS")) && (has("(V)") || has("No Data")))
+        return mark(Mark::Warn, QStringLiteral("No valid GPS fix (A is a valid fix)"));
+    if ((is("GPS_1_LINK_STATUS") || is("GPS_2_LINK_STATUS")) && has("fail"))
+        return mark(Mark::Warn, QStringLiteral("The GPS link or PPS reported a failure"));
+    if (is("BRAKE_APPLICATION_REASON") && !has("Not used"))
+        return mark(Mark::Warn, QStringLiteral("A brake application was reported"));
+    if (is("LOCO_SELF_SOS") || is("STATION_GENERAL_SOS") || is("STATION_LOCO_SPECIFIC_SOS"))
+        return mark(Mark::Warn, QStringLiteral("An SoS event was reported"));
+    if (is("COLLISION_DETECTION"))
+        return mark(Mark::Warn, QStringLiteral("A collision detection was reported"));
+    if (is("DUPLICATE_MISSING_RFID") || is("MISSING_LINKED_RFID") || is("CONFLICT_ROUTE_RFID"))
+        return mark(Mark::Warn, QStringLiteral("An RFID tag event was reported"));
+    if (is("EB_BYPASSED") && has("Bypassed"))
+        return mark(Mark::Warn, QStringLiteral("EB reported bypassed"));
+    if ((is("BIU_ISOLATED") || is("KAVACH_CONNECTION")) && has("Isolated"))
+        return mark(Mark::Warn, QStringLiteral("Reported isolated"));
+    return Mark::None;
+}
+
 QString token(Kind k)
 {
     switch (k) {

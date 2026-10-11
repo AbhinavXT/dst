@@ -11,6 +11,58 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-250"></a>
+## Session 250 — the NMS tables mark what a packet reports
+
+Item 1 of Abhinav's list after patch 248: highlight anything not OK.
+
+What the operator sees: a cell that reports something is **bold**, in the
+error colour for a failure and in the warning colour for an event worth
+reading. Hovering it shows the value and what was reported. Every other
+cell is unchanged. The colours are `UiColor::error()` / `warning()`, so
+they follow the theme and the colour-blind-safe mode. Exports are
+unchanged (text only).
+
+| Mark | When |
+|---|---|
+| failure | RADIO_n_HEALTH not OK; DMI / RFID reader link NOT OK; a module NOT OK; no key sets left; a boot-up sequence error; a brake interface error; CRC FAIL |
+| event | no GPS active; GPS view status V or No Data (A is a valid fix); GPS link / PPS failure; fewer than 5 key sets; a brake application reason; an SoS; a collision detection; a duplicate / missing / conflict-route RFID; EB bypassed; isolated; in the fault log, every reported fault_id |
+
+The rules read the decoder's own labels (`NmsLog::markOf`), so they follow
+`nmsHealthMeaning`. They describe what the packet reported, not a verdict.
+How often they fire across all 10,615 `@nmshlth` packets in `replay/`:
+DMI / RFID links NOT OK 7 / 2 times (in `loco_1_1_29062026_134509`), no
+keys 23, brake application reasons 612, no active GPS 36, nothing for the
+radios (always OK).
+
+Note: the decoder notes that `@nmsrssi` CRCs fail because of a firmware bug.
+Where that happens, the RSSI table's CRC column is marked: it is what was
+observed.
+
+### Files
+
+`nmslog.h/.cpp` (`Mark`, `markOf`), `nmslogwindow.cpp` (foreground, font
+and tooltip roles; the table's tooltip explains the marks);
+`tests/test_session250.cpp`, `tests/tests.pro`; the screenshot harness gains
+`SHOT_SCROLLTO=<column>`.
+
+### Tests
+
+`session250` (34 checks): every `@nmshlth` and `@nmsflt` in `replay/`, with
+real cells for each case (NOT OK, No keys, No Active GPS, No Data, a brake
+reason, an SoS, a collision, a duplicate tag → marked; OK, Both GPS, 10 key
+sets, EB Connected, Connected → not). The decoder labels the captures do
+not carry (Radio Fail, PPS fail, module NOT OK, CRC FAIL, 4 key sets) are
+checked against the rule directly. In the window, the NOT OK cell is in the
+error colour, bold, with its reason; an OK cell has no colour or font.
+`./verify.sh` green on macOS (Qt 6.11.2): 13 validators, `dltests` 294
+suites / 7723 checks / 0 failed, menu audit (183 ok), smoke. Harness shot
+of `loco_1_1_29062026_134509` at the first DMI NOT OK (row 2036) checked.
+Not tested here: Windows / Qt 5.15 (CI after the push), the dark themes by
+eye.
+
+---
+
 <a id="session-249"></a>
 ## Session 249 — the NMS tables: late rows no longer cut off
 
