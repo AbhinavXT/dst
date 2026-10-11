@@ -11,6 +11,52 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-243"></a>
+## Session 243 — Packet Maker: reply watch
+
+Item 8 of the Packet Maker list. The Send log tab has a row above the table:
+
+> Reply: watch `[lsrp, arp]` for a change in `[LOCO_MODE]` within `[5000 ms]`
+
+and the log a **Reply** column (shown before the hex). After each send:
+
+- **with a field**: the first value of that field, in a watched packet type,
+  that differs from its value before the send, and how long after the send
+  it arrived, e.g. `LOCO_MODE 2 → 6 after 300 ms (lsrp)`. Nothing seen
+  before the send: the first value is the baseline, not a change.
+- **with no field**: the first frame of a watched type, `lsrp after 40 ms`.
+- **window passed**: `no change within 5000 ms (LOCO_MODE = 6)`,
+  `LOCO_MODE not seen within …`, or `nothing within …`.
+- **Off by default** (no packet type entered). The Packet Maker's own
+  loopback frames (source 253) are never a reply.
+
+During an interval run every send gets its own watch, so one change answers
+every send still inside its window, each with its own delay. The CSV gains a
+`reply` column.
+
+MainWindow's Packet Makers get every accepted entry
+(`MessageDispatcher::entryAppended`); the recorded-session window's do not.
+
+### Files
+
+`packetmakerdialog.{h,cpp}` (`observe`, `closeExpiredReplies`, the watch
+row, the Reply column), `mainwindow_tools.cpp`; tests `test_session243.cpp`
+(new), `test_session241.cpp` (CSV header), `tests.pro`.
+
+### Tests
+
+`session243` (14 checks) with two real consecutive LSRPs
+(replay/loco_1_1_26062026_162418.cap, LOCO_MODE 2 → 6) and real loopback
+sends: off by default; a send starts a watch; the same value, a loopback
+frame and an unwatched type are not replies; the change is named with a
+delay measured from the send; a closed window says no change, with the
+value; the first-frame mode; silence; the CSV.
+
+Gate: Qt 5.15 and Qt 6.11 green (289 suites, 7581 checks, 178 menu-audit
+checks, validators, smoke). Not checked: against a live loco.
+
+---
+
 <a id="session-242"></a>
 ## Session 242 — Packet Maker: Show in tab (local loopback)
 

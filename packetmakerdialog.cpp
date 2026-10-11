@@ -2,6 +2,7 @@
 #include "framenumberwatch.h"
 #include "frameclock.h"
 #include "rejectrules.h"
+#include "capturedecoder.h"
 #include "windowgeometry.h"
 #include "statusline.h"
 #include <QCloseEvent>
@@ -47,6 +48,7 @@
 #include <QStringList>
 #include <QRegularExpression>
 #include <QSet>
+#include <QTimer>
 #include <QFile>
 #include <QTextBlock>
 
@@ -636,15 +638,42 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     auto *logPage = new QWidget(m_lowerTabs);
     auto *logLay = new QVBoxLayout(logPage);
     logLay->setContentsMargins(0, 4, 0, 0);
-    m_sendLog = new QTableWidget(0, 7, logPage);
+    // Reply watch (session 243): what came back after each send, and how soon.
+    auto *replyRow = new QHBoxLayout;
+    m_replyTypes = new QLineEdit(logPage);
+    m_replyTypes->setObjectName(QStringLiteral("pmReplyTypes"));
+    m_replyTypes->setPlaceholderText(tr("e.g. lsrp, arp — blank: off"));
+    m_replyField = new QLineEdit(logPage);
+    m_replyField->setObjectName(QStringLiteral("pmReplyField"));
+    m_replyField->setPlaceholderText(tr("blank: the first frame"));
+    m_replyWindow = new QSpinBox(logPage);
+    m_replyWindow->setRange(100, 600000);
+    m_replyWindow->setValue(5000);
+    m_replyWindow->setSuffix(tr(" ms"));
+    replyRow->addWidget(new QLabel(tr("Reply: watch"), logPage));
+    replyRow->addWidget(m_replyTypes, 1);
+    replyRow->addWidget(new QLabel(tr("for a change in"), logPage));
+    replyRow->addWidget(m_replyField, 1);
+    replyRow->addWidget(new QLabel(tr("within"), logPage));
+    replyRow->addWidget(m_replyWindow);
+    logLay->addLayout(replyRow);
+    connect(m_replyField, &QLineEdit::textChanged, this, [this]() { m_replyHaveLast = false; });
+    auto *replyTimer = new QTimer(this);
+    replyTimer->start(250);
+    connect(replyTimer, &QTimer::timeout, this,
+            [this]() { closeExpiredReplies(QDateTime::currentMSecsSinceEpoch()); });
+
+    m_sendLog = new QTableWidget(0, 8, logPage);
     m_sendLog->setObjectName(QStringLiteral("pmSendLog"));
     m_sendLog->setHorizontalHeaderLabels({ tr("Time"), tr("#"), tr("Packet"), tr("FRAME_NUM"),
-                                           tr("To"), tr("Bytes"), tr("Datagram (hex)") });
+                                           tr("To"), tr("Bytes"), tr("Datagram (hex)"), tr("Reply") });
+    // The reply is what is read; the hex is long. Reply before it on screen.
+    m_sendLog->horizontalHeader()->moveSection(7, 6);
     m_sendLog->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_sendLog->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_sendLog->verticalHeader()->setVisible(false);
     m_sendLog->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
-    m_sendLog->horizontalHeader()->setStretchLastSection(true);
+    m_sendLog->horizontalHeader()->setStretchLastSection(false);
     logLay->addWidget(m_sendLog, 1);
     auto *logBtns = new QHBoxLayout;
     auto *logClear  = new QPushButton(tr("Clear"), logPage);
@@ -657,6 +686,7 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     updateSendLogTitle();
     connect(logClear, &QPushButton::clicked, this, [this]() {
         m_sendLog->setRowCount(0);
+        m_replyPending.clear();
         updateSendLogTitle();
     });
     connect(logExport, &QPushButton::clicked, this, [this]() {
@@ -1689,6 +1719,90 @@ QString PacketMakerDialog::destinationSummary() const
                            : parts.join(QStringLiteral(", "));
 }
 
+QSet<QString> PacketMakerDialog::replyTypes() const
+{
+    QSet<QString> out;
+    for (const QString &t : m_replyTypes->text().split(QRegularExpression(QStringLiteral("[\\s,;]+")),
+                                                       Qt::SkipEmptyParts)) {
+        out.insert(t.toLower());
+    }
+    return out;
+}
+
+void PacketMakerDialog::setReply(int row, const QString &text)
+{
+    if (row < 0 || row >= m_sendLog->rowCount()) { return; }
+    m_sendLog->setItem(row, 7, new QTableWidgetItem(text));
+}
+
+void PacketMakerDialog::setReplyWatchForTest(const QString &types, const QString &field, int windowMs)
+{
+    m_replyTypes->setText(types);
+    m_replyField->setText(field);
+    m_replyWindow->setValue(windowMs);
+}
+
+void PacketMakerDialog::observe(const LogEntryPtr &entry)
+{
+    if (entry.isNull() || entry->header.source_id == kLoopbackSourceId) { return; }
+    const QString t = entry->text.trimmed();
+    if (!t.startsWith(QLatin1Char('@'))) { return; }
+    const QSet<QString> types = replyTypes();
+    if (types.isEmpty()) { return; }
+    const QString captype = t.mid(1, t.indexOf(QLatin1Char(' ')) - 1).section(QLatin1Char('_'), 0, 0).toLower();
+    if (!types.contains(captype)) { return; }
+
+    const QString field = m_replyField->text().trimmed();
+    QString text;
+    qint64 now = 0;
+    if (!field.isEmpty()) {
+        QHash<QString, qint64> raw;
+        CaptureDecoder::describe(CaptureDecoder::parseLine(t), nullptr, 0, &raw);
+        const auto it = raw.constFind(field);
+        if (it == raw.constEnd()) { return; }
+        now = it.value();
+        m_replyHaveLast = true;
+        m_replyLast = now;
+    }
+    for (int i = m_replyPending.size() - 1; i >= 0; --i) {
+        const ReplyPending &p = m_replyPending[i];
+        const qint64 dt = entry->epochMs - p.sentMs;
+        if (dt < 0) { continue; }
+        if (field.isEmpty()) {
+            text = tr("%1 after %2 ms").arg(captype).arg(dt);
+        } else if (!p.haveBase) {
+            // Nothing seen before the send: the first value is the baseline,
+            // not a change.
+            m_replyPending[i].haveBase = true;
+            m_replyPending[i].base = now;
+            continue;
+        } else if (now != p.base) {
+            text = tr("%1 %2 → %3 after %4 ms (%5)").arg(field).arg(p.base).arg(now).arg(dt).arg(captype);
+        } else {
+            continue;
+        }
+        setReply(p.row, text);
+        m_replyPending.remove(i);
+    }
+}
+
+void PacketMakerDialog::closeExpiredReplies(qint64 nowMs)
+{
+    const QString field = m_replyField->text().trimmed();
+    for (int i = m_replyPending.size() - 1; i >= 0; --i) {
+        const ReplyPending &p = m_replyPending[i];
+        if (nowMs - p.sentMs <= m_replyWindow->value()) { continue; }
+        if (field.isEmpty()) {
+            setReply(p.row, tr("nothing within %1 ms").arg(m_replyWindow->value()));
+        } else if (p.haveBase) {
+            setReply(p.row, tr("no change within %1 ms (%2 = %3)").arg(m_replyWindow->value()).arg(field).arg(p.base));
+        } else {
+            setReply(p.row, tr("%1 not seen within %2 ms").arg(field).arg(m_replyWindow->value()));
+        }
+        m_replyPending.remove(i);
+    }
+}
+
 void PacketMakerDialog::updateSendLogTitle()
 {
     const int n = m_sendLog ? m_sendLog->rowCount() : 0;
@@ -1698,7 +1812,10 @@ void PacketMakerDialog::updateSendLogTitle()
 void PacketMakerDialog::onDatagramSent(const QByteArray &datagram, const QStringList &reached)
 {
     // Oldest dropped past the cap: an interval run at 100 ms is 36000 rows an hour.
-    if (m_sendLog->rowCount() >= kSendLogMax) { m_sendLog->removeRow(0); }
+    if (m_sendLog->rowCount() >= kSendLogMax) {
+        m_sendLog->removeRow(0);
+        for (ReplyPending &p : m_replyPending) { --p.row; }
+    }
     const int row = m_sendLog->rowCount();
     m_sendLog->insertRow(row);
     const QStringList cells = {
@@ -1711,6 +1828,15 @@ void PacketMakerDialog::onDatagramSent(const QByteArray &datagram, const QString
         QString::fromLatin1(datagram.toHex(' ')).toUpper(),
     };
     for (int c = 0; c < cells.size(); ++c) { m_sendLog->setItem(row, c, new QTableWidgetItem(cells[c])); }
+    if (!replyTypes().isEmpty()) {
+        ReplyPending p;
+        p.row = row;
+        p.sentMs = QDateTime::currentMSecsSinceEpoch();
+        p.haveBase = m_replyHaveLast;
+        p.base = m_replyLast;
+        m_replyPending << p;
+        setReply(row, tr("watching…"));
+    }
     updateSendLogTitle();
 }
 
@@ -1723,7 +1849,7 @@ QString PacketMakerDialog::sendLogCsv() const
         }
         return v;
     };
-    QString out = QStringLiteral("time,send,packet,frame_num,to,bytes,datagram_hex\n");
+    QString out = QStringLiteral("time,send,packet,frame_num,to,bytes,datagram_hex,reply\n");
     for (int r = 0; r < m_sendLog->rowCount(); ++r) {
         QStringList cells;
         for (int c = 0; c < m_sendLog->columnCount(); ++c) {

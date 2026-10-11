@@ -87,7 +87,7 @@ TEST_SUITE(session241)
         CHECK(num, "FRAME_NUM column holds the number built");
     }
     const QStringList csv = dlg.sendLogCsv().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-    CHECK(csv.size() == 3 && csv[0] == QLatin1String("time,send,packet,frame_num,to,bytes,datagram_hex"),
+    CHECK(csv.size() == 3 && csv[0] == QLatin1String("time,send,packet,frame_num,to,bytes,datagram_hex,reply"),
           "CSV: a header and two rows");
 
     QPushButton *clear = nullptr;

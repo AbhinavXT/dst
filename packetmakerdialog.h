@@ -14,11 +14,13 @@
 // =====================================================================
 #include <QDialog>
 #include <QHash>
+#include <QSet>
 #include <QVector>
 #include <QByteArray>
 #include <QJsonObject>
 
 #include "framenumberwatch.h"
+#include "logentry.h"
 #include "packetbuilder.h"
 #include "udpsender.h"
 #include "packetvariation.h"
@@ -87,6 +89,13 @@ public:
                                 const QByteArray &envelope, int bodyOffsetBytes,
                                 const QDateTime &at, QString *err, QString *note = nullptr);
     static constexpr quint8 kLoopbackSourceId = 253;   // serial is 254
+
+    // Session 243: the reply watch. Every entry the live pipeline accepts
+    // (MainWindow connects it); `closeExpiredReplies` closes watches whose
+    // window has passed. Both public for the tests, which pass the time.
+    void observe(const LogEntryPtr &entry);
+    void closeExpiredReplies(qint64 nowMs);
+    void setReplyWatchForTest(const QString &types, const QString &field, int windowMs);
 
 signals:
     void loopbackRequested(const QString &captureLine);
@@ -354,6 +363,16 @@ private:
     qint64 m_pendingFrameNum = -1;     // FRAME_NUM of the frame being sent
     void onDatagramSent(const QByteArray &datagram, const QStringList &reached);
     QPushButton *m_loopbackBtn = nullptr;
+    // Reply watch: one pending entry per logged send still inside its window.
+    struct ReplyPending { int row = -1; qint64 sentMs = 0; bool haveBase = false; qint64 base = 0; };
+    QVector<ReplyPending> m_replyPending;
+    QLineEdit *m_replyTypes = nullptr;
+    QLineEdit *m_replyField = nullptr;
+    QSpinBox  *m_replyWindow = nullptr;
+    bool   m_replyHaveLast = false;    // the watched field's value as last seen
+    qint64 m_replyLast = 0;
+    QSet<QString> replyTypes() const;
+    void setReply(int row, const QString &text);
     void onLoopback();
     void updateSendLogTitle();
 public:

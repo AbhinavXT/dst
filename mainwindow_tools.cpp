@@ -220,6 +220,9 @@ void MainWindow::connectLoopback(PacketMakerDialog *pm)
         m_dispatcher->ingestLocal(PacketMakerDialog::kLoopbackSourceId, 0, line.toUtf8(),
                                   QDateTime::currentMSecsSinceEpoch(), tr("Packet Maker loopback"));
     });
+    // Session 243: the reply watch sees every accepted entry.
+    connect(m_dispatcher, &MessageDispatcher::entryAppended, pm,
+            [pm](const QString &, const LogEntryPtr &e) { pm->observe(e); });
 }
 
 void MainWindow::onActionPacketMaker()
