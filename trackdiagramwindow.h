@@ -16,6 +16,7 @@
 
 class LogModel;
 class StatusLine;
+class QPainter;
 class QPushButton;
 class QSlider;
 class QTimer;
@@ -28,7 +29,7 @@ public:
     void setDiagram(const TrackDiagram::Diagram &diagram);
     const TrackDiagram::Diagram &diagram() const { return m_d; }
     QSize sizeHint() const override { return QSize(1000, 380); }
-    QSize minimumSizeHint() const override { return QSize(480, 330); }
+    QSize minimumSizeHint() const override;   // taller when there are SLRP lanes (session 207)
 
     // Index into diagram().trace.samples; -1 = before the first sample.
     void setCursorIndex(int index);
@@ -51,6 +52,10 @@ private:
     QRect  trackRect() const;
     double xOf(double locM) const;
     qint64 cursorMsOrLast() const;
+    // Session 207: the SLRP lanes (SSP, gradient, TSR, track conditions,
+    // tag links) of the profile in force at the cursor. 0 = no @slrp in the tab.
+    int  profileLanesHeight(int lineHeight) const;
+    void paintProfile(QPainter &p, int top, int lineHeight, qint64 cursorMs);
 
     TrackDiagram::Diagram m_d;
     int m_cursorIndex = -1;

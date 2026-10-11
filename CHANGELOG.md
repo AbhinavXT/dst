@@ -11,6 +11,60 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-207"></a>
+## Session 207 — the SLRP profile on the Track diagram
+
+Asked for by Abhinav (item 2 of what the old Python "Kavach 4.0 View" tool,
+`DEBUGGING_TOOL_KAVACH.zip`, could add without a station NMS feed). That
+tool draws the station's look-ahead profile along the track. DLConsole
+decoded it but drew it only on the Replay window's relative axis.
+
+**What the operator sees:** the Track diagram has five lanes under the
+signals when the tab has `@slrp` frames: **SSP** (static speed, km/h),
+**Grad** (gradient), **TSR**, **Cond** (track conditions) and **Tags**
+(linked tags). They show the profile in force at the time cursor, so
+stepping through time shows each new profile as it arrives. A caption says
+which reference tag and profile id are in force and since when. A dashed line marks
+the profile's start signal, another the SLRP movement authority end.
+Tooltips give each span's value and its from/to location. A TSR whose
+`TSR_STATUS` is not 2 is drawn dashed and faint: "Not acted on: the loco
+acts on TSR entries only when TSR_STATUS is 2". The status line adds "SLRP:
+N of M placed".
+
+**How it is placed:** the profile in force is carried the way the loco
+holds it (`CaptureDecoder::carryProfile`, the Replay window's rule).
+Positions use the schema decoder's geometry: start signal = LAST_REF_RFID's
+abs_loc + travel × DIST_PKT_START (travel −1 for PKT_DIR 2), SSP and
+gradient segments chained from it, TSR and conditions as start + length,
+tag links accumulated. The reference tag's abs_loc comes from an `@rfid`
+read anywhere in the tab. When the tab never read it, the profile is not
+placed and the caption says so.
+
+**Checked against real frames:** in `loco_1_1_27062026_170217.cap`, every
+linked tag that was also read lands on the read tag's own abs_loc, from
+two different sources (SLRP tag linking vs `@rfid`).
+
+**Not changed:** the span is not widened for the profile (it runs
+kilometres ahead and would squeeze the run); lanes are clipped to the rail.
+Turnout speed (TOSP) and LC sub-packets are not in `SlrpProfile`, so they
+are not drawn, as in the Replay window.
+
+**Files:** `trackdiagram.{h,cpp}` (`Profile`, `Diagram::profiles`,
+`profileAt`), `trackdiagramwindow.{h,cpp}` (lanes, caption, taller minimum
+only when there are lanes); `tests/test_session207.cpp`.
+
+**Tests:** session207, 27 checks on real captures: one state per `@slrp`;
+start signal recomputed from the issuing frame; SSP chained; lanes carried
+over MA-only frames; linked tags on their read locations; `profileAt`;
+canvas tooltips, minimum ≤ 700 px, no orphans; a tab with no tag read (not
+placed) and one with no `@slrp` (no lanes, old minimum).
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators **13/13**;
+`dltests` **256 suites / 6901 checks, 1 failed** (the `session156` pty
+check, as at 194 and 206); menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-206"></a>
 ## Session 206 — @speed pulses read by the simulator's arithmetic
 

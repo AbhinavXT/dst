@@ -110,12 +110,46 @@ struct EventMark {
     int     row     = -1;
 };
 
+// Session 207: the SLRP look-ahead profile, placed on the rail.
+//
+// One per @slrp frame, holding what is IN FORCE after that frame: the lanes
+// carried the way the loco holds them (CaptureDecoder::carryProfile, the
+// Replay window's rule), the MA and reference from the frame itself.
+// Placed with the schema decoder's geometry (schemadecoder.cpp): start
+// signal = LAST_REF_RFID's abs_loc + travel * DIST_PKT_START, travel -1 for
+// PKT_DIR 2 (reverse) else +1; every lane is a look-ahead distance from that
+// start signal. SSP and gradient entries are segment lengths, chained; TSR
+// and track conditions are start + length; tag links accumulate.
+// The reference tag's abs_loc comes from an @rfid read anywhere in the tab
+// (a tag does not move). No read of it: the profile is not placed.
+struct ProfileSpan { double fromM = 0.0, toM = 0.0; QString label, tip; };
+struct ProfileMark { double locM = 0.0; QString label; };
+
+struct Profile {
+    qint64 epochMs = 0;          // the @slrp frame this state starts at
+    int    row = -1;
+    int    refRfid = -1;         // LAST_REF_RFID the lanes are measured from
+    int    refProfId = -1;
+    int    pktDir = 0;
+    bool   placed = false;       // the reference tag's location is known
+    double startSignalM = 0.0;
+    bool   haveMa = false;
+    double maEndM = 0.0;
+    int    tsrStatus = -1;       // the loco acts on TSR entries only when it is 2
+    QVector<ProfileSpan> ssp, grad, tsr, cond;
+    QVector<ProfileMark> tagLinks;
+    bool hasLanes() const { return !ssp.isEmpty() || !grad.isEmpty() || !tsr.isEmpty() || !cond.isEmpty() || !tagLinks.isEmpty(); }
+};
+
 struct Diagram {
     QString tabKey, tabName;
     SpeedDistance::Trace trace;     // unchanged from SpeedDistance::extract()
     QVector<RfidMark>   tags;
     QVector<SignalMark> signalMarks;
     QVector<EventMark>  events;
+    QVector<Profile>    profiles;   // session 207: one per @slrp frame, in row order
+    // The profile in force at `ms`: the last one at or before it, or null.
+    const Profile *profileAt(qint64 ms) const;
     double minLocM = 0.0, maxLocM = 1.0;   // the known samples' span, widened by tags/signals/MA
     int  unknownSamples = 0;               // samples at 0 m (location not known)
     int  unpinnedEvents = 0;               // events at a moment the location was not known

@@ -184,7 +184,8 @@ void TrackDiagramCanvas::paintEvent(QPaintEvent *)
     //   | signal labels (2 rows) | scale | legend
     const int readoutH = fm.height() + 10;
     const int eventH = 26, tagLabH = 3 * lh, tagH = 14, signalH = 44, sigLabH = 2 * lh, scaleH = lh + 12, legendH = lh + 8;
-    const int blockH = readoutH + eventH + tagLabH + tagH + 22 + signalH + sigLabH + scaleH + legendH;
+    const int profH = profileLanesHeight(lh);
+    const int blockH = readoutH + eventH + tagLabH + tagH + 22 + signalH + sigLabH + profH + scaleH + legendH;
     int y = qMax(0, (height() - blockH) / 2);
     const int readoutY = y;              y += readoutH;
     const int eventTop = y;              y += eventH;
@@ -193,6 +194,7 @@ void TrackDiagramCanvas::paintEvent(QPaintEvent *)
     const int midY = y + 11;             y += 22;
     const int signalTop = y;             y += signalH;
     const int sigLabTop = y;             y += sigLabH;
+    const int profTop = y;               y += profH;
     const int scaleY = y;                y += scaleH;
     const int legendY = y;
 
@@ -320,6 +322,8 @@ void TrackDiagramCanvas::paintEvent(QPaintEvent *)
         }
     }
 
+    if (profH > 0) paintProfile(p, profTop, lh, cursorMs);
+
     // ---- events ---------------------------------------------------------------------------------
     for (const TrackDiagram::EventMark &e : m_d.events) {
         const double x = xOf(e.locM);
@@ -374,6 +378,121 @@ void TrackDiagramCanvas::paintEvent(QPaintEvent *)
             p.drawLine(x + 3, cy - 6, x + 3, cy + 6); x += 10; label(k.second);
         }
     }
+}
+
+// ---- SLRP profile lanes (session 207) -------------------------------------------------------
+
+namespace {
+constexpr int kProfileLanes = 5;   // SSP, gradient, TSR, track conditions, tag links
+}
+
+QSize TrackDiagramCanvas::minimumSizeHint() const
+{
+    QFont small = font();
+    small.setPointSizeF(qMax(6.0, small.pointSizeF() - 1.0));
+    return QSize(480, 330 + profileLanesHeight(QFontMetrics(small).height()));
+}
+
+int TrackDiagramCanvas::profileLanesHeight(int lh) const
+{
+    return m_d.profiles.isEmpty() ? 0 : (lh + 6) + kProfileLanes * (lh + 4) + 6;
+}
+
+void TrackDiagramCanvas::paintProfile(QPainter &p, int top, int lh, qint64 cursorMs)
+{
+    const QRect track = trackRect();
+    const QColor text = palette().color(QPalette::Text), ink = UiColor::muted();
+    const QFontMetrics sfm(p.font());
+    const TrackDiagram::Profile *pr = m_d.profileAt(cursorMs);
+
+    // caption: which profile, or why none is drawn
+    QString caption;
+    if (!pr) caption = tr("SLRP profile: none received yet at this moment");
+    else if (!pr->placed) caption = tr("SLRP profile: reference tag %1 was not read in this tab, so it cannot be placed").arg(pr->refRfid);
+    else caption = tr("SLRP profile in force: reference tag %1, profile id %2, from %3")
+                       .arg(pr->refRfid).arg(pr->refProfId).arg(hms(pr->epochMs));
+    p.setPen(pr && pr->placed ? text : ink);
+    p.drawText(QRect(track.left(), top, track.width(), lh + 4), Qt::AlignLeft | Qt::AlignVCenter,
+               sfm.elidedText(caption, Qt::ElideRight, track.width()));
+
+    const int laneTop = top + lh + 6, laneH = lh + 4;
+    const QStringList names{ tr("SSP"), tr("Grad"), tr("TSR"), tr("Cond"), tr("Tags") };
+    for (int l = 0; l < kProfileLanes; ++l) {
+        const int ly = laneTop + l * laneH;
+        p.setPen(ink);
+        p.drawText(QRect(2, ly, track.left() - 6, laneH - 2), Qt::AlignRight | Qt::AlignVCenter, names.at(l));
+        p.setPen(QPen(UiColor::grid(), 1));
+        p.drawLine(track.left(), ly + laneH - 2, track.right(), ly + laneH - 2);
+    }
+    if (!pr || !pr->placed) return;
+
+    // A span, clipped to the rail; its label only where it fits.
+    auto span = [&](int lane, const TrackDiagram::ProfileSpan &s, const QColor &c, bool acted) {
+        double x0 = xOf(qMin(s.fromM, s.toM)), x1 = xOf(qMax(s.fromM, s.toM));
+        if (x1 < track.left() || x0 > track.right()) return;
+        x0 = qMax(x0, double(track.left()));
+        x1 = qMin(x1, double(track.right()));
+        const QRectF r(x0, laneTop + lane * laneH + 1, qMax(2.0, x1 - x0), laneH - 4);
+        QColor fill = c;
+        fill.setAlpha(acted ? 70 : 25);
+        p.setBrush(fill);
+        p.setPen(QPen(c, 1, acted ? Qt::SolidLine : Qt::DashLine));
+        p.drawRect(r);
+        if (sfm.horizontalAdvance(s.label) + 4 <= r.width()) {
+            p.setPen(acted ? text : ink);
+            p.drawText(r, Qt::AlignCenter, s.label);
+        }
+        QString tip = tr("%1, %2 to %3").arg(s.tip, km(s.fromM), km(s.toM));
+        if (!acted) tip += QLatin1Char('\n') + tr("Not acted on: the loco acts on TSR entries only when TSR_STATUS is 2");
+        m_hits << Hit{ r.toAlignedRect(), tip };
+    };
+    for (const auto &s : pr->ssp)  span(0, s, UiColor::series(1), true);
+    for (const auto &s : pr->grad) span(1, s, UiColor::series(2), true);
+    for (const auto &s : pr->tsr)  span(2, s, UiColor::series(3), pr->tsrStatus == 2);
+    for (const auto &s : pr->cond) span(3, s, UiColor::series(4), true);
+
+    // tag links: ticks, labels stacked in one row
+    {
+        const int ly = laneTop + 4 * laneH;
+        QVector<QPair<double, int>> xw;
+        QVector<const TrackDiagram::ProfileMark *> marks;
+        for (const auto &m : pr->tagLinks) {
+            const double x = xOf(m.locM);
+            if (x < track.left() || x > track.right()) continue;
+            xw << qMakePair(x, sfm.horizontalAdvance(m.label) + 10);
+            marks << &m;
+        }
+        QVector<int> order(xw.size());
+        for (int i = 0; i < order.size(); ++i) order[i] = i;
+        std::sort(order.begin(), order.end(), [&xw](int a, int b) { return xw.at(a).first < xw.at(b).first; });
+        QVector<QPair<double, int>> sorted;
+        for (int i : order) sorted << xw.at(i);
+        const QVector<int> rows = stackLabels(sorted, 1);
+        for (int k = 0; k < order.size(); ++k) {
+            const TrackDiagram::ProfileMark &m = *marks.at(order.at(k));
+            const double x = sorted.at(k).first;
+            p.setPen(QPen(UiColor::series(0), 2));
+            p.drawLine(QPointF(x, ly + 2), QPointF(x, ly + laneH - 4));
+            if (rows.at(k) >= 0) {
+                p.setPen(text);
+                p.drawText(QRectF(x + 3, ly, sorted.at(k).second, laneH - 2), Qt::AlignLeft | Qt::AlignVCenter, m.label);
+            }
+            m_hits << Hit{ QRectF(x - 4, ly, 8, laneH).toAlignedRect(),
+                           tr("Linked tag %1 expected at %2").arg(m.label, km(m.locM)) };
+        }
+    }
+
+    // the start signal the lanes are measured from, and the MA end
+    auto marker = [&](double locM, const QColor &c, const QString &tip) {
+        const double x = xOf(locM);
+        if (x < track.left() || x > track.right()) return;
+        p.setPen(QPen(c, 1, Qt::DashLine));
+        p.drawLine(QPointF(x, laneTop), QPointF(x, laneTop + kProfileLanes * laneH - 2));
+        m_hits << Hit{ QRectF(x - 3, laneTop, 6, kProfileLanes * laneH).toAlignedRect(), tip };
+    };
+    marker(pr->startSignalM, text, tr("Profile start signal at %1 (from reference tag %2, PKT_DIR %3)")
+           .arg(km(pr->startSignalM)).arg(pr->refRfid).arg(pr->pktDir));
+    if (pr->haveMa) marker(pr->maEndM, UiColor::accent(), tr("Movement authority end (SLRP) at %1").arg(km(pr->maEndM)));
 }
 
 // =============================================================================
@@ -446,6 +565,11 @@ void TrackDiagramWindow::rebuild()
         QStringList parts{ count(m_diagram.tags.size(), tr("RFID tag"), tr("RFID tags")),
                            count(m_diagram.signalMarks.size(), tr("signal"), tr("signals")),
                            count(m_diagram.events.size(), tr("event"), tr("events")) };
+        if (!m_diagram.profiles.isEmpty()) {
+            int placed = 0;
+            for (const TrackDiagram::Profile &pr : m_diagram.profiles) placed += pr.placed ? 1 : 0;
+            parts << tr("SLRP: %1 of %2 placed").arg(placed).arg(m_diagram.profiles.size());
+        }
         // Said, so a frame left off the rail is not mistaken for a missing
         // one; the why is in the tooltip, to keep the line to one line.
         if (m_diagram.unknownSamples > 0) {

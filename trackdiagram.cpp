@@ -177,9 +177,83 @@ Diagram build(const LogModel *model, const QString &tabKey, const QString &tabNa
                  [](const EventMark &a, const EventMark &b) { return a.epochMs < b.epochMs; });
     }
 
+    // ---- SLRP profile in force, placed from its reference tag (session 207) ----------
+    //  Not widening the span: a profile runs kilometres ahead of the loco and
+    //  would squeeze the run into a corner. Lanes are clipped to the rail.
+    {
+        QHash<int, double> tagLoc;
+        for (const RfidMark &t : d.tags) tagLoc.insert(int(t.uniqueId), t.locM);
+        auto speed = [](int a, int b, int c, bool classified) {
+            auto one = [](int v) { return v < 0 ? QStringLiteral("?") : QString::number(v); };
+            return classified ? QStringLiteral("%1/%2/%3").arg(one(a), one(b), one(c)) : one(a);
+        };
+        SlrpProfile held;
+        for (int i = 0; i < n; ++i) {
+            const LogEntryPtr e = model->entryAt(i);
+            if (!e) continue;
+            const CaptureLine c = CaptureDecoder::parseLine(e->text);
+            if (!c.valid || c.type != CapType::SLRP) continue;
+            const SlrpProfile latest = CaptureDecoder::profileOf(c);
+            if (!latest.valid) continue;
+            held = CaptureDecoder::carryProfile(held, latest);
+
+            Profile pr;
+            pr.epochMs = e->epochMs;
+            pr.row = i;
+            pr.refRfid = held.refRfid;
+            pr.refProfId = held.refProfId;
+            pr.pktDir = held.pktDir;
+            pr.tsrStatus = held.tsrStatus;
+            pr.placed = tagLoc.contains(held.refRfid);
+            if (pr.placed) {
+                const double travel = held.pktDir == 2 ? -1.0 : 1.0;
+                const double o = tagLoc.value(held.refRfid) + travel * held.distPktStart;
+                auto at = [o, travel](double dist) { return o + travel * dist; };
+                pr.startSignalM = o;
+                if (held.haveMA) { pr.haveMa = true; pr.maEndM = at(held.maWrtSig); }
+                double acc = 0.0;
+                for (const SlrpProfile::SpeedStep &s : held.ssp) {
+                    const QString v = speed(s.a, s.b, s.c, s.classified);
+                    pr.ssp << ProfileSpan{ at(acc), at(acc + s.d), v, QObject::tr("Static speed %1 km/h").arg(v) };
+                    acc += s.d;
+                }
+                acc = 0.0;
+                for (const SlrpProfile::GradPt &g : held.grad) {
+                    const QString v = QStringLiteral("%1%2").arg(g.value).arg(g.uphill ? QChar(0x2191) : QChar(0x2193));
+                    pr.grad << ProfileSpan{ at(acc), at(acc + g.d), v,
+                                            QObject::tr("Gradient %1 %2").arg(g.value).arg(g.uphill ? QObject::tr("rising") : QObject::tr("falling")) };
+                    acc += g.d;
+                }
+                for (const SlrpProfile::TsrZone &z : held.tsr) {
+                    const QString v = speed(z.a, z.b, z.c, z.classified);
+                    pr.tsr << ProfileSpan{ at(z.d), at(z.d + z.len), QStringLiteral("TSR %1: %2").arg(z.id).arg(v),
+                                           QObject::tr("TSR %1, %2 km/h, TSR_STATUS %3").arg(z.id).arg(v).arg(held.tsrStatus) };
+                }
+                for (const SlrpProfile::TrackCond &t : held.cond) {
+                    const QString v = CaptureDecoder::tcTypeName(t.type);
+                    pr.cond << ProfileSpan{ at(t.sd), at(t.sd + t.len), v, QObject::tr("Track condition: %1").arg(v) };
+                }
+                acc = 0.0;
+                for (const SlrpProfile::TagLink &t : held.tags) {
+                    acc += t.d;
+                    pr.tagLinks << ProfileMark{ at(acc), QString::number(t.tag) };
+                }
+            }
+            d.profiles << pr;
+        }
+    }
+
     if (!haveSpan) { d.minLocM = 0.0; d.maxLocM = 1.0; }
     else if (d.maxLocM - d.minLocM < 1.0) { d.minLocM -= 50.0; d.maxLocM += 50.0; }   // one point: give it room
     return d;
+}
+
+const Profile *Diagram::profileAt(qint64 ms) const
+{
+    const Profile *found = nullptr;
+    for (const Profile &p : profiles)
+        if (p.epochMs <= ms) found = &p;   // rows can step back in time; the last one at or before wins
+    return found;
 }
 
 }  // namespace TrackDiagram
