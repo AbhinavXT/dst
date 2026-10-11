@@ -199,6 +199,18 @@ int main(int argc, char **argv)
                                 : qEnvironmentVariable("SHOT_FILE"));
                 if (!qEnvironmentVariableIsEmpty("SHOT_EXPORT")) w->exportXlsx(qEnvironmentVariable("SHOT_EXPORT"));
                 if (!qEnvironmentVariableIsEmpty("SHOT_DRAWING")) w->exportDrawing(qEnvironmentVariable("SHOT_DRAWING"));   // session 212
+                // Session 233: SHOT_MEASURE=910,981 measures between two tags; SHOT_POINT=3 selects a point.
+                if (!qEnvironmentVariableIsEmpty("SHOT_MEASURE") || !qEnvironmentVariableIsEmpty("SHOT_POINT")) {
+                    w->resize(1200, 760);
+                    w->show();
+                    w->canvas()->grab();
+                    if (!qEnvironmentVariableIsEmpty("SHOT_POINT")) w->selectSheetRow(2, qEnvironmentVariable("SHOT_POINT").toInt());
+                    const QStringList m = qEnvironmentVariable("SHOT_MEASURE").split(QLatin1Char(','), Qt::SkipEmptyParts);
+                    if (m.size() == 2) {
+                        w->measureButton()->setChecked(true);
+                        for (const QString &t : m) w->canvas()->measureAt(w->canvas()->tagRect(t).center());
+                    }
+                }
                 win = w;
             }
             if (which == QLatin1String("testcatalog")) {

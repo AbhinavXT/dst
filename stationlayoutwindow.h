@@ -27,6 +27,7 @@
 #include <QWidget>
 
 class QLabel;
+class QPushButton;
 class QPainter;
 class QListWidget;
 class QScrollArea;
@@ -77,7 +78,32 @@ public:
     // Session 222: the line whose lane is at canvas y (within half a lane), or "".
     QString lineAt(double y) const;
 
-    struct Hit { QRectF rect; QString tag; QString text; };
+    struct Hit { QRectF rect; QString tag; QString text; int signal = -1; int point = -1; };
+
+    // Session 233: selecting a signal or a point (an index into the layout's
+    // lists; -1 for none), as a tag is selected.
+    void setSelectedSignal(int i);
+    void setSelectedPoint(int i);
+    int selectedSignal() const { return m_selSignal; }
+    int selectedPoint() const { return m_selPoint; }
+
+    // Session 233: Measure. Each click (or measureAt) sets the start, then the
+    // end; a third starts again. A click on a tag, signal or point takes its
+    // location; anywhere else, the location under it.
+    struct MeasureEnd {
+        bool    set = false;
+        qint64  loc = 0;
+        QString what;            // "tag 910", "signal S1647", "point P30", "164.610 km"
+        double  y = 0;
+    };
+    void setMeasuring(bool on);
+    bool isMeasuring() const { return m_measuring; }
+    void measureAt(const QPointF &pos);
+    void clearMeasure();
+    const MeasureEnd &measureStart() const { return m_measureA; }
+    const MeasureEnd &measureEnd() const { return m_measureB; }
+    // The lane names, top to bottom (tests).
+    const QStringList &laneNames() const { return m_laneNames; }
     const QVector<Hit> &hits() const { return m_hits; }
 
 signals:
@@ -90,6 +116,10 @@ signals:
     // it is on (or ""), the location under it, and whether it is above the lanes.
     void contextRequested(const QPoint &globalPos, const QString &tag, const QString &line, qint64 locM, bool aboveLanes);
     void tagDragged(const QString &name, qint64 newLocM);
+    void signalClicked(int index);            // session 233
+    void pointClicked(int index);
+    void measured(const QString &text);       // the measurement, in words
+    void measureCancelled();                  // Esc while measuring
 
 protected:
     void paintEvent(QPaintEvent *) override;
@@ -100,6 +130,7 @@ protected:
     void mouseDoubleClickEvent(QMouseEvent *e) override;
     void contextMenuEvent(QContextMenuEvent *e) override;
     void wheelEvent(QWheelEvent *e) override;
+    void keyPressEvent(QKeyEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
     bool eventFilter(QObject *o, QEvent *e) override;
 
@@ -134,6 +165,13 @@ private:
     double m_zoom = 1.0;
     QString m_selected;
     QSet<QString> m_marked;            // session 223
+    QVector<StationLayout::Line> m_extraLines;   // session 233: lines only points name
+    int m_selSignal = -1, m_selPoint = -1;       // session 233
+    // Session 233: Measure.
+    bool m_measuring = false;
+    int  m_measureClicks = 0;
+    MeasureEnd m_measureA, m_measureB;
+    QPoint m_hover;
     QHash<QString, int> m_diffKinds;   // session 226
     QHash<QString, int> m_runStates;   // session 227
     QPoint  m_bandFrom;                // Shift + drag: the box's corner (canvas)
@@ -150,6 +188,10 @@ class StationLayoutWindow : public QWidget
 {
     Q_OBJECT
 public:
+    // Session 233: select a row of a sheet (1 signals, 2 points) and show it.
+    void selectSheetRow(int sheet, int row);
+    QPushButton *measureButton() const { return m_measureBtn; }
+
     explicit StationLayoutWindow(QWidget *parent = nullptr);
 
     bool openFile(const QString &path);       // .json, or an .xlsx (imported)
@@ -171,6 +213,7 @@ public:
     bool isModified() const { return m_modified; }
     StationLayoutCanvas *canvas() const { return m_canvas; }
     QTabWidget *tabs() const { return m_tabs; }
+    StatusLine *status() const { return m_status; }
     QTableWidget *table(int sheet) const;     // 0 tags, 1 signals, 2 points, 3 lines, 4 station, 5 texts
     bool undo();
     // Move a tag (what a drag does).
@@ -250,6 +293,7 @@ protected:
     void closeEvent(QCloseEvent *e) override;
 
 private:
+    QPushButton *m_measureBtn = nullptr;
     void refreshAll();
     void fillRun();
     int  tagIndexOf(const QString &name) const;   // -1 when absent

@@ -1,5 +1,7 @@
 #include "stationlayout.h"
 
+#include <QSet>
+
 #include "rfidtag.h"
 
 #include <QDir>
@@ -222,6 +224,15 @@ QStringList checks(const Layout &l)
     for (const Line &ln : l.lines)
         for (const QString &t : ln.tags)
             if (!seen.contains(t)) out << QStringLiteral("line %1: tag %2 is not in the tags").arg(ln.line, t);
+    // Session 233: drawn on a lane of its own, but the lines sheet should list it.
+    QSet<QString> lines;
+    for (const Line &ln : l.lines) lines.insert(ln.line);
+    for (const Point &p : l.points)
+        for (const QString &id : { p.line1, p.line2 })
+            if (!id.isEmpty() && !lines.contains(id)) {
+                out << QStringLiteral("point %1: line %2 is not in the lines sheet").arg(p.name, id);
+                break;
+            }
     return out;
 }
 

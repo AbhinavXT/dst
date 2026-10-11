@@ -136,6 +136,22 @@ void StationLayoutCanvas::layoutLanes()
     // nearest); any other line after them, in file order.
     QVector<const StationLayout::Line *> order;
     for (const StationLayout::Line &ln : m_l.lines) order << &ln;
+    // Session 233: a line a point joins but the lines sheet does not list
+    // (22.20.xlsx: lines has DM only, its points join DM to DL1, DL2) still
+    // gets its lane, so the point is drawn rather than left in the table.
+    m_extraLines.clear();
+    QSet<QString> listed;
+    for (const StationLayout::Line &ln : m_l.lines) listed.insert(ln.line);
+    for (const StationLayout::Point &pt : m_l.points)
+        for (const QString &id : { pt.line1, pt.line2 })
+            if (!id.trimmed().isEmpty() && !listed.contains(id)) {
+                listed.insert(id);
+                StationLayout::Line extra;
+                extra.line = id;
+                extra.name = id;     // Checks says it is not in the lines sheet
+                m_extraLines << extra;
+            }
+    for (const StationLayout::Line &ln : m_extraLines) order << &ln;
     auto rank = [](const QString &line) {
         const QString u = line.toUpper();
         if (u == QLatin1String("DM")) return 1000;
@@ -496,6 +512,10 @@ bool StationLayoutCanvas::event(QEvent *e)
 void StationLayoutCanvas::mousePressEvent(QMouseEvent *e)
 {
     if (e->button() != Qt::LeftButton) return;
+    if (m_measuring) {
+        measureAt(e->pos());
+        return;
+    }
     // Session 223: Shift + drag boxes tags; Ctrl + click adds or removes one.
     if (e->modifiers() & Qt::ShiftModifier) {
         m_bandFrom = e->pos();
@@ -510,6 +530,12 @@ void StationLayoutCanvas::mousePressEvent(QMouseEvent *e)
         emit tagClicked(h.tag);
         return;
     }
+    // Session 233: a signal or a point selects its row, as a tag does.
+    for (const Hit &h : m_hits) {
+        if (!h.rect.contains(e->pos())) continue;
+        if (h.signal >= 0) { setSelectedSignal(h.signal); emit signalClicked(h.signal); return; }
+        if (h.point >= 0) { setSelectedPoint(h.point); emit pointClicked(h.point); return; }
+    }
     // Session 220: anywhere else, grab the sheet and move it.
     if (QScrollArea *sa = scrollArea()) {
         m_panning = true;
@@ -522,6 +548,13 @@ void StationLayoutCanvas::mousePressEvent(QMouseEvent *e)
 
 void StationLayoutCanvas::mouseMoveEvent(QMouseEvent *e)
 {
+    if (m_measuring) {
+        if (m_measureA.set && !m_measureB.set) {
+            m_hover = e->pos();
+            update();
+        }
+        return;
+    }
     if (!m_band.isNull() && (e->buttons() & Qt::LeftButton)) {
         m_band = QRect(m_bandFrom, e->pos()).normalized();
         update();
@@ -667,24 +700,41 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
 
     // ---- points: a link between two lanes -------------------------------------------------
     QHash<int, QVector<double>> ptEnds;
-    for (const StationLayout::Point &pt : m_l.points) {
+    for (int pi = 0; pi < m_l.points.size(); ++pi) {
+        const StationLayout::Point &pt = m_l.points.at(pi);
         if (!m_laneOfLine.contains(pt.line1) || !m_laneOfLine.contains(pt.line2)) continue;
         const QPointF a(xOf(pt.loc1), laneY(m_laneOfLine.value(pt.line1)));
-        const QPointF b(xOf(pt.loc2), laneY(m_laneOfLine.value(pt.line2)));
+        QPointF b(xOf(pt.loc2), laneY(m_laneOfLine.value(pt.line2)));
+        // Session 233: a point on one line (a crossover's end: P21 DL2 to DL2)
+        // is a short stroke across its lane, so it can be seen and clicked.
+        const bool oneLine = pt.line1 == pt.line2 && std::fabs(b.x() - a.x()) < 4;
         // Session 218: in the TIN of the point's tag, as a band like the lines.
         QColor c;
         for (auto it = m_pointOfTag.constBegin(); it != m_pointOfTag.constEnd() && !c.isValid(); ++it)
             if (m_l.points.at(it.value()).name == pt.name) c = TinLayout::tinColor(m_info.value(it.key()).tinNom);
-        p.setPen(c.isValid() ? QPen(c, 7, Qt::SolidLine, Qt::FlatCap) : QPen(UiColor::frame(), 2));
-        p.drawLine(a, b);
-        const QPointF mid = (a + b) / 2.0;
+        if (pi == m_selPoint) {
+            p.setPen(QPen(UiColor::accent(), 11, Qt::SolidLine, Qt::RoundCap));
+            if (oneLine) p.drawLine(QPointF(a.x(), a.y() - 9), QPointF(a.x(), a.y() + 9));
+            else p.drawLine(a, b);
+        }
+        p.setPen(c.isValid() ? QPen(c, 7, Qt::SolidLine, Qt::FlatCap) : QPen(UiColor::frame(), oneLine ? 3 : 2));
+        if (oneLine) {
+            p.drawLine(QPointF(a.x(), a.y() - 8), QPointF(a.x(), a.y() + 8));
+            b = QPointF(a.x(), a.y() + 8);
+        } else {
+            p.drawLine(a, b);
+        }
+        const QPointF mid = oneLine ? QPointF(a.x(), a.y() - 8) : (a + b) / 2.0;
         const int w = fm.horizontalAdvance(pt.name) + 4;
         if (placeLabel(ptEnds, 0, mid.x() + w / 2.0 + 3, w, 1) >= 0) {
-            p.setPen(ink);
+            p.setPen(pi == m_selPoint ? text : ink);
             p.drawText(QRectF(mid.x() + 3, mid.y() - lh / 2.0, w, lh), Qt::AlignLeft | Qt::AlignVCenter, pt.name);
         }
-        m_hits << Hit{ QRectF(qMin(a.x(), b.x()) - 3, qMin(a.y(), b.y()) - 3, std::fabs(b.x() - a.x()) + 6, std::fabs(b.y() - a.y()) + 6),
-                       QString(), tr("Point %1: %2 on %3 to %4 on %5").arg(pt.name, km(pt.loc1), pt.line1, km(pt.loc2), pt.line2) };
+        QRectF r(qMin(a.x(), b.x()) - 3, qMin(a.y(), b.y()) - 3, std::fabs(b.x() - a.x()) + 6, std::fabs(b.y() - a.y()) + 6);
+        if (oneLine) r = QRectF(a.x() - 6, a.y() - 10, 12, 20);
+        Hit h{ r, QString(), tr("Point %1: %2 on %3 to %4 on %5").arg(pt.name, km(pt.loc1), pt.line1, km(pt.loc2), pt.line2) };
+        h.point = pi;
+        m_hits << h;
     }
 
     // Main and duplicate make one set (H2.15): the duplicate is the main's
@@ -761,22 +811,34 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
 
     // ---- signals at their foot tags ---------------------------------------------------------------
     QHash<int, QVector<double>> sigEnds;
-    for (const StationLayout::Signal &s : m_l.signalList) {
+    for (int si = 0; si < m_l.signalList.size(); ++si) {
+        const StationLayout::Signal &s = m_l.signalList.at(si);
         if (!m_loc.contains(s.footTag)) continue;
         const double x = xOf(m_loc.value(s.footTag));
         const double y = tagPos(s.footTag, x).y();
+        if (si == m_selSignal) {
+            p.setPen(QPen(UiColor::accent(), 2));
+            p.setBrush(Qt::NoBrush);
+            p.drawRoundedRect(QRectF(x - 7, y + 6, 14, 20), 3, 3);
+        }
         p.setPen(QPen(UiColor::signalLamp(QStringLiteral("red")), 2));
         p.drawLine(QPointF(x, y + 8), QPointF(x, y + 18));
         p.setBrush(UiColor::signalLamp(QStringLiteral("red")));
         p.drawEllipse(QPointF(x, y + 20), 3, 3);
+        p.setBrush(Qt::NoBrush);
         const int w = fm.horizontalAdvance(s.name) + 4;
         const int row = placeLabel(sigEnds, m_lane.value(s.footTag, 0), x, w, 2);
         if (row >= 0) {
+            QFont f = p.font();
+            if (si == m_selSignal) { f.setBold(true); p.setFont(f); }
             p.setPen(text);
-            p.drawText(QRectF(x - w / 2.0, y + 24 + row * lh, w, lh), Qt::AlignCenter, s.name);
+            p.drawText(QRectF(x - w / 2.0 - 4, y + 24 + row * lh, w + 8, lh), Qt::AlignCenter, s.name);
+            if (si == m_selSignal) { f.setBold(false); p.setFont(f); }
         }
-        m_hits << Hit{ QRectF(x - 6, y + 8, 12, 16 + lh), QString(),
-                       tr("Signal %1 (id %2, station %3) at foot tag %4").arg(s.name).arg(s.sigId).arg(s.stationId).arg(s.footTag) };
+        Hit h{ QRectF(x - 6, y + 8, 12, 16 + lh),  QString(),
+               tr("Signal %1 (id %2, station %3) at foot tag %4").arg(s.name).arg(s.sigId).arg(s.stationId).arg(s.footTag) };
+        h.signal = si;
+        m_hits << h;
     }
 
     // ---- gap dimensions between tag sets (as on the RDSO layouts) ----------------------------------
@@ -921,6 +983,122 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         p.setBrush(Qt::NoBrush);
         p.drawRect(m_band);
     }
+    // Session 233: the measurement — its two ends, and between them a
+    // dimension line with the distance along the track.
+    if (m_measureA.set) {
+        const double top = topMargin() - 4, bottom = lanesBottom + 6;
+        const double xa = xOf(m_measureA.loc);
+        const bool live = !m_measureB.set && m_measuring && !m_hover.isNull();
+        const bool have = m_measureB.set || live;
+        const qint64 locB = m_measureB.set ? m_measureB.loc : locAt(m_hover.x());
+        const double xb = have ? xOf(locB) : xa;
+        p.setPen(QPen(UiColor::accent(), 1, Qt::DashLine));
+        p.drawLine(QPointF(xa, top), QPointF(xa, bottom));
+        if (have) p.drawLine(QPointF(xb, top), QPointF(xb, bottom));
+        if (have && std::fabs(xb - xa) >= 1) {
+            const double y = top + 2;
+            p.setPen(QPen(UiColor::accent(), 2));
+            p.drawLine(QPointF(xa, y), QPointF(xb, y));
+            const double dir = xb > xa ? 1 : -1;
+            for (const QPointF &tip : { QPointF(xa, y), QPointF(xb, y) }) {
+                const double d = tip.x() == xa ? dir : -dir;
+                p.drawLine(tip, QPointF(tip.x() + 7 * d, y - 4));
+                p.drawLine(tip, QPointF(tip.x() + 7 * d, y + 4));
+            }
+            const QString label = QStringLiteral("%1 m").arg(std::llabs(locB - m_measureA.loc));
+            const int w = fm.horizontalAdvance(label) + 10;
+            const QRectF box((xa + xb) / 2.0 - w / 2.0, y - lh - 2, w, lh + 2);
+            p.setPen(Qt::NoPen);
+            p.setBrush(palette().color(QPalette::Base));
+            p.drawRoundedRect(box, 3, 3);
+            p.setBrush(Qt::NoBrush);
+            p.setPen(UiColor::accent());
+            p.drawText(box, Qt::AlignCenter, label);
+        }
+    }
+}
+
+void StationLayoutCanvas::setSelectedSignal(int i)
+{
+    m_selSignal = i;
+    update();
+}
+
+void StationLayoutCanvas::setSelectedPoint(int i)
+{
+    m_selPoint = i;
+    update();
+}
+
+void StationLayoutCanvas::setMeasuring(bool on)
+{
+    m_measuring = on;
+    m_hover = QPoint();
+    if (on) {
+        setCursor(Qt::CrossCursor);
+        setFocus();         // so Esc reaches it
+    } else {
+        unsetCursor();
+    }
+    update();
+}
+
+void StationLayoutCanvas::keyPressEvent(QKeyEvent *e)
+{
+    if (m_measuring && e->key() == Qt::Key_Escape) {
+        emit measureCancelled();
+        return;
+    }
+    QWidget::keyPressEvent(e);
+}
+
+void StationLayoutCanvas::clearMeasure()
+{
+    m_measureA = MeasureEnd();
+    m_measureB = MeasureEnd();
+    update();
+}
+
+void StationLayoutCanvas::measureAt(const QPointF &pos)
+{
+    MeasureEnd end;
+    end.set = true;
+    end.y = pos.y();
+    bool found = false;
+    for (const Hit &h : m_hits) {
+        if (!h.rect.contains(pos)) continue;
+        if (!h.tag.isEmpty() && m_loc.contains(h.tag)) {
+            end.loc = m_loc.value(h.tag);
+            end.what = tr("tag %1").arg(h.tag);
+        } else if (h.signal >= 0 && m_loc.contains(m_l.signalList.at(h.signal).footTag)) {
+            end.loc = m_loc.value(m_l.signalList.at(h.signal).footTag);
+            end.what = tr("signal %1").arg(m_l.signalList.at(h.signal).name);
+        } else if (h.point >= 0) {
+            const StationLayout::Point &pt = m_l.points.at(h.point);
+            end.loc = std::fabs(pos.x() - xOf(pt.loc1)) <= std::fabs(pos.x() - xOf(pt.loc2)) ? pt.loc1 : pt.loc2;
+            end.what = tr("point %1").arg(pt.name);
+        } else {
+            continue;
+        }
+        found = true;
+        break;
+    }
+    if (!found) {
+        end.loc = locAt(pos.x());
+        end.what = km(end.loc);
+    } else {
+        end.what += QStringLiteral(" (%1)").arg(km(end.loc));
+    }
+    if (!m_measureA.set || m_measureB.set) {
+        m_measureA = end;
+        m_measureB = MeasureEnd();
+        emit measured(tr("From %1: click the end").arg(end.what));
+    } else {
+        m_measureB = end;
+        emit measured(tr("From %1 to %2: %3 m").arg(m_measureA.what, m_measureB.what)
+                          .arg(std::llabs(m_measureB.loc - m_measureA.loc)));
+    }
+    update();
 }
 
 // =============================================================================
@@ -1031,7 +1209,12 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     for (QWidget *w : std::initializer_list<QWidget *>{ openBtn, saveBtn, saveAsBtn, importBtn, exportBtn })
         bar->addWidget(w);
     bar->addStretch(1);
-    for (QWidget *w : std::initializer_list<QWidget *>{ zoomOut, zoomIn, fit, undoBtn }) bar->addWidget(w);
+    // Session 233: Measure, from one place on the drawing to another.
+    m_measureBtn = new QPushButton(tr("Measure"), this);
+    m_measureBtn->setCheckable(true);
+    m_measureBtn->setToolTip(tr("Click a start and an end on the drawing: the distance between them along the track. "
+                                "A tag, signal or point under the click gives its location. Esc clears"));
+    for (QWidget *w : std::initializer_list<QWidget *>{ m_measureBtn, zoomOut, zoomIn, fit, undoBtn }) bar->addWidget(w);
 
     m_canvas = new StationLayoutCanvas(this);
     m_scroll = new QScrollArea(this);
@@ -1210,6 +1393,22 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
         if (!sel.removeOne(name)) sel << name;
         selectTags(sel);
     });
+    // Session 233: signals and points select as tags do, both ways.
+    connect(m_canvas, &StationLayoutCanvas::signalClicked, this, [this](int i) { selectSheetRow(1, i); });
+    connect(m_canvas, &StationLayoutCanvas::pointClicked, this, [this](int i) { selectSheetRow(2, i); });
+    connect(m_tables.at(1), &QTableWidget::itemSelectionChanged, this, [this]() {
+        if (!m_updating) m_canvas->setSelectedSignal(m_tables.at(1)->currentRow());
+    });
+    connect(m_tables.at(2), &QTableWidget::itemSelectionChanged, this, [this]() {
+        if (!m_updating) m_canvas->setSelectedPoint(m_tables.at(2)->currentRow());
+    });
+    connect(m_measureBtn, &QPushButton::toggled, this, [this](bool on) {
+        m_canvas->setMeasuring(on);
+        if (on) m_status->state(tr("Measure: click the start on the drawing"));
+        else { m_canvas->clearMeasure(); m_status->clear(); }
+    });
+    connect(m_canvas, &StationLayoutCanvas::measured, this, [this](const QString &t) { m_status->state(t); });
+    connect(m_canvas, &StationLayoutCanvas::measureCancelled, this, [this]() { m_measureBtn->setChecked(false); });
     connect(m_canvas, &StationLayoutCanvas::tagClicked, this, [this](const QString &name) {
         for (int i = 0; i < m_layout.tags.size(); ++i)
             if (m_layout.tags.at(i).name == name) {
@@ -1657,6 +1856,15 @@ QStringList StationLayoutWindow::selectedTags() const
     QStringList out;
     for (int r : rows) if (r < m_layout.tags.size()) out << m_layout.tags.at(r).name;
     return out;
+}
+
+void StationLayoutWindow::selectSheetRow(int sheet, int row)
+{
+    QTableWidget *t = m_tables.value(sheet);
+    if (!t || row < 0 || row >= t->rowCount()) return;
+    m_tabs->setCurrentIndex(sheet);
+    t->selectRow(row);
+    t->scrollToItem(t->item(row, 0));
 }
 
 void StationLayoutWindow::selectTags(const QStringList &names)

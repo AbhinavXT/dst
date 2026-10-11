@@ -11,6 +11,59 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-233"></a>
+## Session 233 — Station Layout: points drawn, signals and points selectable, Measure
+
+Abhinav: "in the station layout there are no points, they are only on the
+table; make selection the same for signals and points as for tags; add a
+measure tool".
+
+- **Points were missing from the drawing** whenever the lines sheet left
+  out a line a point joins. A point was drawn only when both of its lines
+  had a lane. For example, library `ajay/22.20.xlsx` lists DM only in its
+  lines sheet while its 18 points join DM to DL1, DL2 and DL3.
+  - Now every line a point names gets a lane. The file is not changed.
+  - **Checks** says "point P30: line DL1 is not in the lines sheet".
+  - A point on one line (a crossover's end, P21 DL2 to DL2) is drawn as a
+    short stroke across its lane, so it can be seen and clicked.
+- **Signals and points select as tags do.**
+  - A click on one opens the Signals or Points tab with its row selected.
+  - Selecting a row marks it on the drawing: a ring round the signal, the
+    point's link drawn in the accent colour.
+  - A tag under the click still wins, as before.
+- **Measure** (beside the zoom buttons).
+  - Click a start and an end on the drawing. A dimension line with the
+    distance in metres along the track is drawn between them, and the status
+    reads "From tag 910 (164.610 km) to tag 981 (163.960 km): 650 m".
+  - A click on a tag, signal (its foot tag) or point (its nearer end) takes
+    that location; anywhere else, the location under the cursor.
+  - Before the end is clicked, the line follows the mouse. A third click
+    starts a new measurement; Esc or the button ends it.
+  - While measuring, clicks select nothing.
+
+### Files
+
+- `stationlayoutwindow.{h,cpp}`: lanes for lines only points name; signal
+  and point hits, selection and highlight; Measure;
+- `stationlayout.cpp` (the check);
+- tests: `test_session233.cpp` (new), `tests.pro`, `screenshot_main.cpp`
+  (`SHOT_MEASURE`, `SHOT_POINT`).
+
+### Tests
+
+`session233` (23 checks):
+- 22.20.xlsx: every point with two lines is drawn (before: none); DL1 and
+  DL2 lanes; the Checks finding; the file unchanged;
+- station.xlsx: 36 signals and 18 points clickable; a click selects the
+  row and tab, a row selects on the drawing;
+- Measure tag 910 to tag 981 = 650 m; a third click restarts from a signal;
+  an empty spot gives its km; Esc ends it; clicks select again after;
+- no loose widgets; the bar still fits the 1000 px check.
+
+All earlier Station Layout suites (208-230) pass unchanged.
+
+---
+
 <a id="session-232"></a>
 ## Session 232 — Packet Matrix: one preset per SIF operation
 
