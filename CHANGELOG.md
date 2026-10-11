@@ -11,6 +11,41 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-245"></a>
+## Session 245 — the COM-port libraries link after the library
+
+A build fix; nothing the operator sees changes.
+
+- **SetupAPI, cfgmgr32 and advapi32** (session 156's `serialportscan.cpp`:
+  where each COM port is plugged in) were linked from `serial.pri`, which
+  `dlcore_link.pri` includes *before* `-ldlcore`. GNU ld (MinGW) resolves a
+  static library only from libraries listed after it, so the port scan's
+  symbols can come up undefined. The line now sits in `dlcore_link.pri` after
+  `-ldlcore`, next to the flasher's `ws2_32`/`winmm`; MSVC does not care
+  about the order either way.
+- It is **not gated on `dl_serial`**: with that gate the Windows build
+  failed to link. The libraries are system ones, so a build without the
+  serial terminal only links them unused.
+- `.DS_Store` and `.qtc_clangd/compile_commands.json` (per-machine files)
+  are no longer tracked and are in `.gitignore`.
+
+### Files
+
+`dlcore_link.pri`, `serial.pri`, `.gitignore`; `.DS_Store` and
+`.qtc_clangd/compile_commands.json` removed from the index.
+
+### Tests
+
+No new suite: build files only. `./verify.sh` on macOS (Qt 6.11.2), from a
+clean `build-verify/`, is green: 13 validators, `dltests` 290 suites / 7619
+checks / 0 failed, menu audit, smoke. (The first run failed to link the
+menu audit and the app: a stale `lococonsolewindow.o` built against older Qt
+headers still referenced `operator<(QString, QString)`. Unrelated to this
+change; a clean build fixed it.) The gate does not evaluate `win32:` lines — **the change itself is tested only
+by Windows builds** (CI's MSVC job; a MinGW build was not run here).
+
+---
+
 <a id="session-244"></a>
 ## Session 244 — the encoder writes every packet in kavach.xml
 

@@ -38,3 +38,8 @@ else: PRE_TARGETDEPS += $$DLCORE_DIR/libdlcore.a
 
 # The flasher engine uses Winsock and timeBeginPeriod() on Windows.
 win32: LIBS += -lws2_32 -lwinmm
+# Session 156: where each COM port is plugged in (serialportscan.cpp: SetupAPI,
+# the device tree). After -ldlcore: GNU ld (MinGW) resolves a static library
+# only from libraries listed after it; MSVC does not care about the order.
+# Not gated on dl_serial: with that gate the Windows build failed to link.
+win32: LIBS += -lsetupapi -lcfgmgr32 -ladvapi32

@@ -8,9 +8,8 @@
     QT      += serialport
     DEFINES += DL_HAVE_SERIAL
     CONFIG  += dl_serial
-    # Session 156: where each COM port is plugged in (SetupAPI, the device
-    # tree). In the library's programs too: a static library carries no links.
-    win32: LIBS += -lsetupapi -lcfgmgr32 -ladvapi32
+    # Session 156: serialportscan.cpp's Windows libraries (SetupAPI, the
+    # device tree) are linked in dlcore_link.pri, after -ldlcore.
     # The library compiles them; programs linking it only need the module
     # and the define (dlcore_link.pri sets dl_link_only).
     !dl_link_only {
