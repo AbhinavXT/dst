@@ -63,7 +63,8 @@ FleetWindow::FleetWindow(QWidget *parent)
     m_table = new QTableWidget(this);
     const QStringList heads{ tr("Loco"), tr("Day"), tr("Files"), tr("Hours"), tr("km"), tr("Modes"), tr("EB"), tr("FSB"),
                              tr("Brake reasons (commonest)"), tr("Top km/h"), tr("Faults"), tr("Reject frames"), tr("Tags"),
-                             tr("Missions"), tr("SLRP lost %"), tr("Outages"), tr("Odometry (m)") };
+                             tr("Missions"), tr("SLRP lost %"), tr("Outages"), tr("Odometry (m)"),
+                             tr("Start-up (min)") };
     m_table->setColumnCount(heads.size());
     m_table->setHorizontalHeaderLabels(heads);
     m_table->verticalHeader()->hide();
@@ -184,5 +185,9 @@ void FleetWindow::addRow(const Fleet::Row &r)
     auto *odo = r.odoReads ? number(r.odoMedianM, 1) : text(QString());
     if (r.odoReads) odo->setToolTip(tr("median of %1 tag reads").arg(r.odoReads));
     m_table->setItem(i, c++, odo);
+    // Session 219: start of mission to Staff_Responsible; the tooltip names the slow step.
+    auto *startUp = r.startUps ? number(r.startUpMedianMs / 60000.0, 1) : text(QString());
+    if (r.startUps) startUp->setToolTip(tr("median of %1 start-up(s); the longest step: %2").arg(r.startUps).arg(r.slowestSteps));
+    m_table->setItem(i, c++, startUp);
     if (!r.error.isEmpty()) m_table->item(i, 0)->setForeground(UiColor::warning());
 }

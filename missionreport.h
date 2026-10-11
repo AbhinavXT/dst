@@ -69,6 +69,7 @@ struct Mission {
     qint64  maxSpeedMs = 0;
     qint64  minLocM = 0, maxLocM = 0;  // 0 = no located frame
     QStringList tags;                  // tag ids read, in order, repeats collapsed
+    qint64  firstTagMs = 0;            // session 219: when the first of them was read
     qint64  noRadioMs = 0;
     int     dmiFrames = 0;
     int     arpModeFrames = 0;         // ARPs whose mode was taken (the DMI silent)
@@ -83,6 +84,22 @@ struct Mission {
     // Start of mission to the first Staff_Responsible (0 = not reached).
     qint64 startUpMs() const { return firstSrMs ? firstSrMs - fromMs : 0; }
 };
+
+// Session 219: the start-up, step by step. One entry per milestone, in this
+// fixed order: Self test starts / ends and Train config starts / ends (the
+// DMI's alarm messages, before Staff_Responsible), Staff_Responsible, First
+// tag, Supervised (the first On_Sight / Limited / Full_Supervision). The
+// start-of-mission ARP state is not a step: it lasts until Staff_Responsible.
+// ms 0 = not seen. stepMs is the time from the latest milestone seen before
+// it (or the start of mission) to it.
+struct StartUpStep {
+    QString name;
+    qint64  ms = 0;
+    qint64  stepMs = 0;
+};
+QVector<StartUpStep> startUpSteps(const Mission &m);
+// The name of the longest step, or "" when none was seen.
+QString slowestStep(const QVector<StartUpStep> &steps);
 
 struct Options {
     int     maxListRows = 200;

@@ -201,6 +201,7 @@ QVector<Mission> split(const LogModel *model, const Options &options)
             if (!raw.contains(QStringLiteral("unique"))) continue;
             const QString tag = QString::number(raw.value(QStringLiteral("unique")));
             if (tag != lastTag && tag != QLatin1String("0")) {
+                if (b.m.tags.isEmpty()) b.m.firstTagMs = ms;
                 b.m.tags << tag;
                 lastTag = tag;
             }
@@ -267,6 +268,44 @@ QVector<Mission> split(const LogModel *model, const Options &options)
     if (!out.isEmpty() && out.last().index > 0) out.last().endsWithLog = true;
     if (!out.isEmpty() && out.last().index == 0) out.last().endsWithLog = true;
     return out;
+}
+
+QVector<StartUpStep> startUpSteps(const Mission &m)
+{
+    qint64 supervised = 0;
+    for (const qint64 ms : { m.firstOsMs, m.firstLsMs, m.firstFsMs })
+        if (ms && (!supervised || ms < supervised)) supervised = ms;
+    // A DMI phase that began after Staff_Responsible is not start-up (81_1 mission 2 shows
+    // "System Self Test" again at 11:08:45, before its System_Failure).
+    // shortcut: a phase begun before SR and repeated after it is cut at SR; record its
+    // pre-SR end in split() if that ever matters.
+    const auto before = [&](qint64 ms) { return m.firstSrMs && ms > m.firstSrMs ? 0 : ms; };
+    const qint64 testFrom = before(m.selfTestFromMs), cfgFrom = before(m.trainConfigFromMs);
+    const auto cut = [&](qint64 from, qint64 to) { return !from ? 0 : m.firstSrMs ? qMin(to, m.firstSrMs) : to; };
+    QVector<StartUpStep> steps = {
+        { QStringLiteral("Self test starts"), testFrom }, { QStringLiteral("Self test ends"), cut(testFrom, m.selfTestToMs) },
+        { QStringLiteral("Train config starts"), cfgFrom }, { QStringLiteral("Train config ends"), cut(cfgFrom, m.trainConfigToMs) },
+        { QStringLiteral("Staff_Responsible"), m.firstSrMs }, { QStringLiteral("First tag"), m.firstTagMs },
+        { QStringLiteral("Supervised"), supervised } };
+    for (int i = 0; i < steps.size(); ++i) {
+        if (!steps[i].ms) continue;
+        qint64 prev = m.fromMs;
+        for (int j = 0; j < steps.size(); ++j) {
+            const qint64 o = steps.at(j).ms;
+            // Earlier in time; at the same instant, earlier in the fixed order.
+            if (j != i && o && (o < steps[i].ms || (o == steps[i].ms && j < i))) prev = qMax(prev, o);
+        }
+        steps[i].stepMs = qMax<qint64>(0, steps[i].ms - prev);
+    }
+    return steps;
+}
+
+QString slowestStep(const QVector<StartUpStep> &steps)
+{
+    const StartUpStep *top = nullptr;
+    for (const StartUpStep &s : steps)
+        if (s.ms && (!top || s.stepMs > top->stepMs)) top = &s;
+    return top ? top->name : QString();
 }
 
 void addDmiMoments(const LogModel *model, QVector<Mission> *missions, int maxPerMission)
@@ -362,6 +401,30 @@ QString toHtml(const QVector<Mission> &missions, const QString &tabKey, const QS
                  .arg(m.maxSpeedKmh, 0, 'f', 0).arg(m.tags.size()).arg(durationText(m.noRadioMs)).arg(m.faultsRaised.size());
     }
     h += QStringLiteral("</table>");
+
+    // ---- session 219: the start-up, step by step -------------------------------------------------
+    if (started > 0) {
+        h += QStringLiteral("<h2>Start-up, step by step</h2><p class=\"muted\">Each cell is the time from the step "
+                            "seen before it (or the start of mission) to this one, then its clock time. "
+                            "The longest step of each mission is in bold. — = not seen in that mission.</p>");
+        h += QStringLiteral("<table><tr><th>#</th>");
+        for (const StartUpStep &s : startUpSteps(Mission())) h += QStringLiteral("<th>%1</th>").arg(esc(s.name));
+        h += QStringLiteral("<th>To Staff_Resp.</th></tr>");
+        for (const Mission &m : missions) {
+            if (!m.index) continue;
+            const QVector<StartUpStep> steps = startUpSteps(m);
+            const QString slow = slowestStep(steps);
+            h += QStringLiteral("<tr><td>%1</td>").arg(m.index);
+            for (const StartUpStep &s : steps) {
+                if (!s.ms) { h += QStringLiteral("<td>—</td>"); continue; }
+                const QString cell = QStringLiteral("%1 <span class=\"muted\">%2</span>")
+                                         .arg(s.stepMs ? durationText(s.stepMs) : QStringLiteral("0 s"), timeText(s.ms));
+                h += s.name == slow ? QStringLiteral("<td><b>%1</b></td>").arg(cell) : QStringLiteral("<td>%1</td>").arg(cell);
+            }
+            h += QStringLiteral("<td>%1</td></tr>").arg(durationText(m.startUpMs()));
+        }
+        h += QStringLiteral("</table>");
+    }
 
     // ---- each mission --------------------------------------------------------------------------
     const int cap = options.maxListRows;

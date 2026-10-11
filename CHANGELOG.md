@@ -11,6 +11,71 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-219"></a>
+## Session 219 — the start-up, step by step
+
+Asked for by Abhinav (a mission-log feature, picked from a list). The
+mission report said how long a start-up took (start of mission to
+Staff_Responsible). It now says **where the time went**, mission by
+mission, and the fleet summary carries it across a folder.
+
+- **Mission report** (Ctrl+Alt+M): a new **"Start-up, step by step"** table
+  under the summary. There is one row per mission, and the columns are the
+  milestones in a fixed order:
+  - Self test starts / ends;
+  - Train config starts / ends (the DMI's alarm messages);
+  - Staff_Responsible;
+  - First tag;
+  - Supervised (the first On_Sight / Limited / Full_Supervision).
+
+  Each cell gives the time since the milestone seen before it (or since
+  the start of mission), then the clock time. Each mission's longest step
+  is in bold, and "—" means the milestone was not seen.
+- **What 81_1 shows** (session 171's fixture):
+  - Mission 2's 4 min 21 s start-up is almost all train config: 4 min 14 s
+    from the "Select Train Config" alarm to its last frame, then 2 s to
+    Staff_Responsible.
+  - Mission 3 reaches Staff_Responsible in 14 s, then waits 3 min 17 s
+    after its first tag before On_Sight.
+- **Not a step**:
+  - The start-of-mission ARP state (Stand_By, no direction / tag /
+    location). In 81_1 it lasts right up to Staff_Responsible, so it spans
+    the whole start-up.
+  - A DMI phase that begins after Staff_Responsible. Mission 2 shows
+    "System Self Test" again at 11:08:45, just before its System_Failure.
+    A phase begun before Staff_Responsible and still shown after it is
+    cut at Staff_Responsible.
+- **Fleet summary** (Tools ▸ Monitor ▸ Fleet summary…): a **Start-up (min)**
+  column, the median over the loco-day's missions that reached
+  Staff_Responsible. Its tooltip names the slowest step, commonest first
+  ("Train config ends ×3; Supervised ×1"). The CSV gains `startups`,
+  `startup_median_s` and `slowest_steps`, before `error`.
+
+### Files
+
+`missionreport.{h,cpp}` (`Mission::firstTagMs`, `startUpSteps()`,
+`slowestStep()`, the table), `fleetsummary.{h,cpp}`, `fleetwindow.cpp`;
+tests `test_session219.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session219` (23 checks) uses real frames. The train-config span
+10:56:34–11:00:48 was cross-checked with `schema/engine.py`, and the first
+@rfid of each mission against the capture's lines. It covers:
+- the steps of missions 2 and 3, and their slowest step;
+- the self test after Staff_Responsible being left out;
+- the same-instant and cut-at-SR rules on a hand-made mission;
+- the report's bold cells;
+- the fleet row's median (137.5 s), its slowest steps and its CSV.
+
+`session171`, `session191` and `session215` pass unchanged.
+
+Not tested: a log that shows the self test before train config. No
+fixture holds one, because in 81_1 the self test falls in the stretch
+before the first start of mission.
+
+---
+
 <a id="session-218"></a>
 ## Session 218 — Station Layout arranged like the RDSO sheets
 

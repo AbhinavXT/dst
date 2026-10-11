@@ -3,6 +3,7 @@
 #include "fieldplot.h"
 #include "logmodel.h"
 #include "messagedispatcher.h"
+#include "missionreport.h"
 #include "odometry.h"
 #include "radiolinks.h"
 #include "runreport.h"
@@ -214,6 +215,27 @@ Row summariseModel(const LogModel *model, const QString &tabKey)
     r.tags = s.distinctTags;
     r.missions = s.missionStarts.size();
 
+    // Session 219: the start-ups, and which step was the slow one.
+    QVector<qint64> startUps;
+    QMap<QString, int> slowest;
+    for (const Missions::Mission &m : Missions::split(model)) {
+        if (!m.index || !m.startUpMs()) continue;
+        startUps << m.startUpMs();
+        slowest[Missions::slowestStep(Missions::startUpSteps(m))] += 1;
+    }
+    if (!startUps.isEmpty()) {
+        std::sort(startUps.begin(), startUps.end());
+        r.startUps = startUps.size();
+        r.startUpMedianMs = startUps.size() % 2 ? startUps.at(startUps.size() / 2)
+                                                : (startUps.at(startUps.size() / 2 - 1) + startUps.at(startUps.size() / 2)) / 2;
+        QVector<QPair<int, QString>> order;
+        for (auto it = slowest.cbegin(); it != slowest.cend(); ++it) order << qMakePair(it.value(), it.key());
+        std::stable_sort(order.begin(), order.end(), [](const auto &a, const auto &b) { return a.first > b.first; });
+        QStringList parts;
+        for (const auto &o : order) parts << QStringLiteral("%1 ×%2").arg(o.second).arg(o.first);
+        r.slowestSteps = parts.join(QStringLiteral("; "));
+    }
+
     for (const RadioLinks::Link &l : RadioLinks::build(model).links) {
         if (l.type != QLatin1String("slrp")) continue;
         r.slrpReceived += l.frames - l.repeats;
@@ -240,7 +262,7 @@ QString toCsv(const QVector<Row> &rows)
     QStringList lines;
     lines << QStringLiteral("loco,day,files,frames,from,to,hours,distance_km,modes,eb,fsb,brake_reasons,max_speed_kmh,"
                             "faults_raised,reject_frames,tags,missions,slrp_received,slrp_lost,slrp_lost_pct,outages,"
-                            "odometry_reads,odometry_median_m,error");
+                            "odometry_reads,odometry_median_m,startups,startup_median_s,slowest_steps,error");
     auto t = [](qint64 ms) { return ms ? QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss")) : QString(); };
     for (const Row &r : rows) {
         QStringList names;
@@ -252,7 +274,9 @@ QString toCsv(const QVector<Row> &rows)
             csvField(r.brakeReasons), QString::number(r.maxSpeedKmh, 'f', 0), QString::number(r.faults),
             QString::number(r.rejectFrames), QString::number(r.tags), QString::number(r.missions),
             QString::number(r.slrpReceived), QString::number(r.slrpLost), QString::number(r.slrpLostPercent(), 'f', 1),
-            QString::number(r.outages), QString::number(r.odoReads), r.odoReads ? QString::number(r.odoMedianM, 'f', 2) : QString(), csvField(r.error)
+            QString::number(r.outages), QString::number(r.odoReads), r.odoReads ? QString::number(r.odoMedianM, 'f', 2) : QString(),
+            QString::number(r.startUps), r.startUps ? QString::number(r.startUpMedianMs / 1000) : QString(), csvField(r.slowestSteps),
+            csvField(r.error)
         }.join(QLatin1Char(','));
     }
     return lines.join(QLatin1Char('\n')) + QLatin1Char('\n');

@@ -11,6 +11,7 @@
 //                speed, faults raised, reject-rule frames, tags, missions
 //    RadioLinks  SLRP lost in contact, outages (session 214)
 //    Odometry    the median error at the tags (session 213)
+//    Missions    the start-up to Staff_Responsible, and its slowest step (219)
 //    distance    the DMI (or LSRP) location's steps added up, steps over
 //                500 m left out (relocations: SpeedDistance's rule)
 //
@@ -60,6 +61,9 @@ struct Row {
     int     rejectFrames = 0;
     int     tags = 0;
     int     missions = 0;
+    int     startUps = 0;               // session 219: missions that reached Staff_Responsible
+    qint64  startUpMedianMs = 0;        // start of mission to Staff_Responsible, their median
+    QString slowestSteps;               // the step that took longest, commonest first: "Train config ×3; ..."
     int     slrpReceived = 0, slrpLost = 0, outages = 0;
     double  slrpLostPercent() const { return slrpReceived + slrpLost > 0 ? 100.0 * slrpLost / (slrpReceived + slrpLost) : 0.0; }
     int     odoReads = 0;
