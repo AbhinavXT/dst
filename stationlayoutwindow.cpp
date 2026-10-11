@@ -118,6 +118,7 @@ void StationLayoutCanvas::setStation(const StationLayout::Layout &l)
 {
     m_l = l;
     layoutLanes();
+    placeTexts();
     updateGeometry();
     update();
 }
@@ -254,7 +255,34 @@ QPointF StationLayoutCanvas::tagPos(const QString &name, double x) const
     return QPointF(x, laneY(m_lane.value(name, 0)));
 }
 
-int StationLayoutCanvas::laneY(int lane) const { return kTop + kAbove + lane * kLaneGap; }
+int StationLayoutCanvas::laneY(int lane) const { return topMargin() + kAbove + lane * kLaneGap; }
+
+int StationLayoutCanvas::topMargin() const
+{
+    return kTop + (m_textRowsAbove - 1) * QFontMetrics(smallFont()).height();
+}
+
+void StationLayoutCanvas::placeTexts()
+{
+    const QFontMetrics fm(smallFont());
+    QHash<int, QVector<double>> ends;
+    m_textRow.clear();
+    int above = 1, below = 1;
+    for (const StationLayout::Text &t : m_l.texts) {
+        // Bands 100 / 101: their own, apart from the lanes' label bands.
+        const int band = t.posY < 0 ? 100 : 101;
+        int row = placeLabel(ends, band, xOf(t.location), fm.horizontalAdvance(t.text) + 4, 8);
+        if (row < 0) row = 7;   // shortcut: a ninth text on one spot overprints the eighth row; no library file needs that many (session230)
+        m_textRow << row;
+        (band == 100 ? above : below) = qMax(band == 100 ? above : below, row + 1);
+    }
+    if (above != m_textRowsAbove || below != m_textRowsBelow) {
+        m_textRowsAbove = above;
+        m_textRowsBelow = below;
+        setMinimumHeight(sheetHeight(width()));
+        updateGeometry();
+    }
+}
 
 QFont StationLayoutCanvas::smallFont() const
 {
@@ -266,7 +294,7 @@ QFont StationLayoutCanvas::smallFont() const
 int StationLayoutCanvas::sheetHeight(int w) const
 {
     const int lh = QFontMetrics(smallFont()).height();
-    return laneY(m_laneNames.size() - 1) + kBelow + lh + 12 + legend(nullptr, 0, w) + lh + 28;
+    return laneY(m_laneNames.size() - 1) + kBelow + m_textRowsBelow * lh + 12 + legend(nullptr, 0, w) + lh + 28;
 }
 
 QSize StationLayoutCanvas::sizeHint() const
@@ -283,8 +311,9 @@ QSize StationLayoutCanvas::minimumSizeHint() const
 
 void StationLayoutCanvas::resizeEvent(QResizeEvent *e)
 {
-    // The legend wraps: a new width can need a new height.
+    // The legend wraps: a new width can need a new height. The texts' rows follow the width too.
     QWidget::resizeEvent(e);
+    placeTexts();
     if (sheetHeight(width()) != minimumHeight()) {
         setMinimumHeight(sheetHeight(width()));
         updateGeometry();
@@ -612,10 +641,12 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
 
     // ---- texts: above the lanes when posy < 0, else below ----------------------------------------
     const int lanesBottom = laneY(m_laneNames.size() - 1) + kBelow;
-    for (const StationLayout::Text &t : m_l.texts) {
+    for (int i = 0; i < m_l.texts.size(); ++i) {
+        const StationLayout::Text &t = m_l.texts.at(i);
         const double x = xOf(t.location);
         const int w = fm.horizontalAdvance(t.text) + 4;
-        const QRectF r(x - w / 2.0, t.posY < 0 ? kTop - 2 * lh - 6 : lanesBottom + 4, w, lh);
+        const int row = m_textRow.value(i);
+        const QRectF r(x - w / 2.0, t.posY < 0 ? kTop - 2 * lh - 6 + row * lh : lanesBottom + 4 + row * lh, w, lh);
         p.setPen(ink);
         p.drawText(r, Qt::AlignCenter, t.text);
         m_hits << Hit{ r, QString(), tr("Text at %1: %2").arg(km(t.location), t.text) };
@@ -625,12 +656,12 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
     for (const StationLayout::Station &s : m_l.stations) {
         const double x = xOf(s.location);
         p.setPen(QPen(UiColor::ok(), 1.5));
-        p.drawLine(QPointF(x, kTop), QPointF(x, lanesBottom));
+        p.drawLine(QPointF(x, topMargin()), QPointF(x, lanesBottom));
         const QString k = QString::number(s.location / 1000.0, 'f', 3);
         const int w = fm.horizontalAdvance(k) + 4;
         p.setPen(UiColor::ok());
-        p.drawText(QRectF(x - w / 2.0, kTop - lh - 2, w, lh), Qt::AlignCenter, k);
-        m_hits << Hit{ QRectF(x - 3, kTop - lh, 6, lanesBottom - kTop + lh), QString(),
+        p.drawText(QRectF(x - w / 2.0, topMargin() - lh - 2, w, lh), Qt::AlignCenter, k);
+        m_hits << Hit{ QRectF(x - 3, topMargin() - lh, 6, lanesBottom - topMargin() + lh), QString(),
                        tr("Station %1 centre line at %2").arg(s.id).arg(km(s.location)) };
     }
 

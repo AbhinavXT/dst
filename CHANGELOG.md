@@ -11,6 +11,38 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-230"></a>
+## Session 230 — Station Layout: the station's texts no longer overprint
+
+Abhinav's screenshot: the notes above the lanes ("S2S_FREQ…") were drawn
+on top of each other, unreadable.
+
+- **The cause.** Every text above the lanes went on one row, centred on
+  its location. Texts at nearby locations overprinted, and so did those
+  below the lanes.
+- **Now** each text goes on the first row where it is clear (up to eight
+  rows), the way tag labels already stack. The space over the lanes
+  grows by a row for each extra row above, and the sheet grows for rows
+  below. The rows follow the width: zooming in can put texts back on one
+  row. The PDF/PNG export draws them the same way.
+- In the library, **9 of the 41 station files with texts** overprinted
+  before at 1200 px. None does now. The busiest,
+  station_15.11_22.11_23.16_linga_adjust_907plus397N-_R.xlsx, has 12 texts.
+
+### Files
+
+`stationlayoutwindow.{h,cpp}` (`placeTexts`, `topMargin`; the lanes,
+centre line and its km start below the text rows); tests
+`test_session230.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session230` (83 checks) draws every library station file with texts at
+1200 px. No two texts' boxes overlap, and all stay below the title band.
+Against the old drawing code it fails on 9 files.
+
+---
+
 <a id="session-229"></a>
 ## Session 229 — Station Layout: the tag table, for site teams
 

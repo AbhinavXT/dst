@@ -111,6 +111,12 @@ private:
     QPointF tagPos(const QString &name, double x) const;
     QFont smallFont() const;
     int sheetHeight(int width) const;
+    // Session 230: the station's texts on rows of their own, so texts at nearby
+    // locations do not overprint; the rows above grow the space over the lanes.
+    void placeTexts();
+    int  topMargin() const;
+    QVector<int> m_textRow;            // per m_l.texts entry
+    int  m_textRowsAbove = 1, m_textRowsBelow = 1;
     int legend(QPainter *p, int top, int width) const;
 
     StationLayout::Layout m_l;
