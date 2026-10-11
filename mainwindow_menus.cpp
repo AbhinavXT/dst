@@ -420,6 +420,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     auto *liveMenu      = monitorMenu->addMenu(tr("&Live"));
     auto *runningMenu   = monitorMenu->addMenu(tr("&Running"));
     auto *equipmentMenu = monitorMenu->addMenu(tr("&Equipment"));
+    auto *nmsMenu       = monitorMenu->addMenu(tr("&NMS"));        // session 248: the NMS packet logs
     auto *reportsMenu   = monitorMenu->addMenu(tr("Re&ports"));
     toolsMenu->addSeparator();
     auto *testMenu     = toolsMenu->addMenu(tr("Test &cases"));   // acceptance runs
@@ -524,6 +525,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     connect(actCabIo, &QAction::triggered, this, &MainWindow::onActionCabIo);
 
     // Session 247: every NMS packet as a table row, exportable as CSV / .xlsx.
+    // Session 248: in their own Monitor group.
     const struct { NmsLog::Kind kind; const char *text, *name, *tip; } nmsLogs[] = {
         { NmsLog::Kind::Health, QT_TR_NOOP("&NMS health log…"), "actNmsHealthLog",
           QT_TR_NOOP("Every @nmshlth packet of the current tab as a row, one column per health event; "
@@ -536,7 +538,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                      "follows the tab; export CSV or Excel") },
     };
     for (const auto &n : nmsLogs) {
-        QAction *a = equipmentMenu->addAction(tr(n.text));
+        QAction *a = nmsMenu->addAction(tr(n.text));
         a->setObjectName(QLatin1String(n.name));
         a->setToolTip(tr(n.tip));
         const int kind = int(n.kind);

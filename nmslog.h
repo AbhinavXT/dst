@@ -2,21 +2,23 @@
 #define NMSLOG_H
 
 // =============================================================================
-//  NMS packet logs (session 247) — Tools ▸ Monitor ▸ Equipment ▸
+//  NMS packet logs (session 247) — Tools ▸ Monitor ▸ NMS ▸
 //  NMS health log… / NMS fault log… / NMS RSSI log…
 //  -----------------------------------------------------------------------------
 //  One table per NMS packet type, one row per packet, as the tab holds them
-//  and then as they arrive. The columns are what CaptureDecoder::describe()
-//  prints for the frame, in the order first seen:
-//    @nmshlth  one column per health event; a packet that did not carry an
-//              event leaves its cell empty
-//    @nmsflt   reporting_subsystem, fault_count, then fault[1] module /
-//              code_type / fault_id, fault[2] …, as many as a packet carried
-//    @nmsrssi  its fixed fields
-//  First the PC time, the loco's RTC and the capture sequence; then the
-//  packet's own fields; then the capture line's loco / ctrl, length and CRC
-//  result and the NMS header. Last: the frame in hex. Values are as the decoder shows them ("1  (OK)"); a cell that is a
-//  whole number goes to the .xlsx as a number.
+//  and then as they arrive. The columns (session 248):
+//    PC time, rtc, seq, loco / ctrl, frame len, CRC (PASS / FAIL)
+//    the NMS header: nms.start_of_frame … nms.time
+//    the packet's own fields, as CaptureDecoder::describe() prints them, in
+//    the order first seen:
+//      @nmshlth  one column per health event; a packet that did not carry
+//                an event leaves its cell empty
+//      @nmsflt   reporting_subsystem, fault_count, then fault[1] module /
+//                code_type / fault_id, fault[2] …, as many as a packet carried
+//      @nmsrssi  its fixed fields
+//    last, the frame in hex.
+//  Values are as the decoder shows them ("1  (OK)"); a cell that is a whole
+//  number goes to the .xlsx as a number.
 // =============================================================================
 
 #include <QHash>
@@ -36,9 +38,9 @@ QString token(Kind k);        // "nmshlth", "nmsflt", "nmsrssi"
 QString title(Kind k);        // "NMS health log"
 QString fileStem(Kind k);     // "nms_health"
 
-// Where a column sits: what says when the packet was, then the packet's
-// own fields, then the capture line and NMS header details.
-enum class Group { Lead, Body, Details };
+// Where a column sits: the capture line (when, which loco, length, CRC; in
+// a fixed order), then the NMS header, then the packet's own fields.
+enum class Group { Lead, Header, Body };
 
 struct Table {
     QStringList columns;                // by id, in the order first seen
@@ -53,7 +55,8 @@ struct Table {
     int  columnCount() const { return columns.size() + 1; }   // + "Frame (hex)"
     QString header(int col) const;      // by display position
     QString cell(int row, int col) const;
-    // The column's id; a new one is shown after the last of its group.
+    // The column's id; a new one is shown after the last of its group (the
+    // Lead columns in their fixed order).
     int  columnOf(const QString &name, Group g = Group::Body);
 };
 

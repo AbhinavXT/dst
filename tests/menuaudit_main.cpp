@@ -348,14 +348,15 @@ int main(int argc, char **argv) {
     QMenu *monLive      = sub(monitor, "Live");
     QMenu *monRunning   = sub(monitor, "Running");
     QMenu *monEquipment = sub(monitor, "Equipment");
+    QMenu *monNms       = sub(monitor, "NMS");            // session 248
     QMenu *monReports   = sub(monitor, "Reports");
-    CHECK(monLive && monRunning && monEquipment && monReports,
-          "Monitor > Live, Running, Equipment, Reports");
+    CHECK(monLive && monRunning && monEquipment && monNms && monReports,
+          "Monitor > Live, Running, Equipment, NMS, Reports");
     {
         bool onlyGroups = monitor != nullptr;
         if (monitor) for (QAction *a : monitor->actions())
             if (!a->menu()) onlyGroups = false;
-        CHECK(onlyGroups && monitor->actions().size() == 4, "and nothing else in Monitor");
+        CHECK(onlyGroups && monitor->actions().size() == 5, "and nothing else in Monitor");
         const struct { QMenu *menu; QStringList titles; } groups[] = {
             { monLive,      { "Compare tabs", "Live Loco Console", "Active Fault Panel", "DMI (LP-OCIP)" } },
             { monRunning,   { "Braking Curves", "Plot field over time", "Speed vs distance",
@@ -377,10 +378,11 @@ int main(int argc, char **argv) {
         CHECK(allThere && total == 19, "every former Monitor entry is in its group (19)");
     }
     CHECK(monLive && findAction(monLive, "Live Loco Console"), "Monitor > Live > Live Loco Console");
-    // Session 247: the three NMS packet logs.
-    CHECK(monEquipment && findAction(monEquipment, "NMS health log")
-              && findAction(monEquipment, "NMS fault log") && findAction(monEquipment, "NMS RSSI log"),
-          "Monitor > Equipment > NMS health / fault / RSSI log");
+    // Session 247: the three NMS packet logs; session 248: in their own group.
+    CHECK(monNms && monNms->actions().size() == 3 && findAction(monNms, "NMS health log")
+              && findAction(monNms, "NMS fault log") && findAction(monNms, "NMS RSSI log"),
+          "Monitor > NMS > NMS health / fault / RSSI log, and nothing else");
+    CHECK(monEquipment && !findAction(monEquipment, "NMS health log"), "and no longer in Equipment");
 
     // View > Theme: every theme, exactly one ticked, and the toggle.
     {

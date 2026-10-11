@@ -11,6 +11,21 @@ namespace {
 const QString kPcTime = QStringLiteral("PC time");
 const QString kHex    = QStringLiteral("Frame (hex)");
 
+// The capture line's columns, in the order they are shown.
+int leadRank(const QString &name)
+{
+    static const QStringList lead = { kPcTime, QStringLiteral("rtc"), QStringLiteral("seq"),
+                                      QStringLiteral("loco / ctrl"), QStringLiteral("frame len"),
+                                      QStringLiteral("CRC") };
+    const int i = lead.indexOf(name);
+    return i < 0 ? lead.size() : i;
+}
+
+int sortKey(const QString &name, Group g)
+{
+    return int(g) * 100 + (g == Group::Lead ? leadRank(name) : 0);
+}
+
 QString csvField(const QString &s)
 {
     if (!s.contains(QLatin1Char(',')) && !s.contains(QLatin1Char('"'))
@@ -87,8 +102,9 @@ int Table::columnOf(const QString &name, Group g)
     const int id = columns.size();
     columns << name;
     groups << g;
+    const int key = sortKey(name, g);
     int at = 0;
-    while (at < order.size() && groups.at(order.at(at)) <= g) ++at;
+    while (at < order.size() && sortKey(columns.at(order.at(at)), groups.at(order.at(at))) <= key) ++at;
     order.insert(at, id);
     for (int p = at; p < order.size(); ++p) index.insert(columns.at(order.at(p)), p);
     return id;
@@ -117,10 +133,10 @@ bool append(Table &t, Kind kind, const LogEntry &entry, bool *newColumns)
         if (name.isEmpty() || name == QLatin1String("type")) continue;   // the window is one type
         const int n = ++seen[name];
         // describe() indents the packet's own rows; the rest is the capture
-        // line and the NMS header, of which the RTC and seq say when.
+        // line, then the NMS header.
         const Group g = r.field.startsWith(QLatin1Char(' ')) ? Group::Body
-                      : (name == QLatin1String("rtc") || name == QLatin1String("seq")) ? Group::Lead
-                      : Group::Details;
+                      : leadRank(name) < leadRank(QString()) ? Group::Lead
+                      : Group::Header;
         put(n == 1 ? name : QStringLiteral("%1 (%2)").arg(name).arg(n), r.value.trimmed(), g);
     }
     while (row.size() < t.columns.size()) row << QString();

@@ -11,6 +11,59 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-248"></a>
+## Session 248 — NMS in its own Monitor group; the NMS tables' column order
+
+Abhinav: "in monitor add nms in its own sub menu" and "in the nms tables
+the coloums should be like time, rtc, seq, loco/ctrl, frame_len,
+CRC(PASS/FAIl), full NMS header feilds, then nms events".
+
+- **Tools ▸ Monitor ▸ NMS** is a fifth group, between Equipment and
+  Reports. It holds *NMS health log…*, *NMS fault log…* and *NMS RSSI
+  log…*, which were in Equipment.
+- **Column order in all three tables:**
+
+| Columns | |
+|---|---|
+| PC time, rtc, seq, loco / ctrl, frame len, CRC | the capture line, always in this order; CRC reads PASS / FAIL |
+| `nms.start_of_frame` … `nms.time` | the full NMS header, in frame order |
+| the packet's events | health events / reporting subsystem and faults / RSSI fields |
+| Frame (hex) | last, as before |
+
+Until now the capture line and the NMS header came after the events. A
+column a later packet brings (a fault packet with more faults) still joins
+the events, never the capture line or the header. The column names are
+the decoder's own (`frame len`, `CRC`), so they match the inspector.
+Exports (CSV and .xlsx) follow the same order.
+
+### Files
+
+`nmslog.h/.cpp` (the groups are now Lead, Header and Body, with the Lead
+columns in a fixed order), `mainwindow_menus.cpp`, the Monitor paths in the
+comments of `mainwindow.h`, `mainwindow_tools.cpp` and `nmslogwindow.h`;
+`tests/test_session247.cpp` (its two order checks moved to the new suite),
+`tests/test_session248.cpp`, `tests/tests.pro`, `tests/menuaudit_main.cpp`.
+
+### Tests
+
+`session248` (25 checks, real frames from
+`replay/loco_1_1_26062026_162418.cap`): for each of the three types, the
+first six columns, then the nine header fields in frame order, then the
+first event, then the frame in hex; CRC is PASS / FAIL and frame len is in
+bytes; a fault column first seen in a later packet lands among the events.
+Menu audit: Monitor holds five groups, NMS holds exactly the three logs,
+and Equipment no longer does.
+`./verify.sh` green on macOS (Qt 6.11.2): 13 validators, `dltests` 292
+suites / 7682 checks / 0 failed, menu audit (183 ok), smoke. Checked in the
+window with the screenshot harness on the same capture. Not tested here:
+Windows / Qt 5.15 (CI after the push).
+
+Still open: in rows that arrive after the window opens, a time can be wider
+than its column and show cut off ("2026-06-26 …"). The values and the exports
+are unaffected.
+
+---
+
 <a id="session-247"></a>
 ## Session 247 — NMS health, fault and RSSI logs
 

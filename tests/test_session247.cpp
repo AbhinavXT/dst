@@ -103,16 +103,7 @@ TEST_SUITE(session247)
               && hl.index.contains(QStringLiteral("nms.message_seq")),
           "the capture line and NMS header fields are columns");
 
-    // The order: when, then the packet's own fields, then the header details.
-    {
-        const auto at = [&](const QString &c) { return fl.index.value(c, -1); };
-        CHECK(at(QStringLiteral("rtc")) == 1 && at(QStringLiteral("seq")) == 2
-                  && at(QStringLiteral("reporting_subsystem")) == 3,
-              "columns: PC time, rtc, seq, then the packet's own fields");
-        CHECK(at(QStringLiteral("fault[5] fault_id")) < at(QStringLiteral("loco / ctrl"))
-                  && at(QStringLiteral("fault[5] fault_id")) < at(QStringLiteral("nms.message_seq")),
-              "columns: the capture and NMS header details after the body");
-    }
+    // The column order is session 248's (test_session248.cpp).
 
     // Values as the decoder gives them, for the first frame of each type.
     CHECK(cellAt(hl, 0, QStringLiteral("RADIO_1_HEALTH")) == QLatin1String("1  (OK)"), "health row 1: RADIO_1_HEALTH 1 (OK)");
@@ -182,7 +173,8 @@ TEST_SUITE(session247)
                   && w.view()->model()->data(w.view()->model()->index(1, w.table().index.value(QStringLiteral("fault[5] fault_id")))).toString()
                          == QLatin1String("26 (safety error)"),
               "window: five faults widen the table; the earlier row's new cells are empty");
-        CHECK(w.table().index.value(QStringLiteral("fault[5] fault_id")) < w.table().index.value(QStringLiteral("CRC")),
+        CHECK(w.table().index.value(QStringLiteral("fault[5] fault_id")) > w.table().index.value(QStringLiteral("nms.time"))
+                  && w.table().index.value(QStringLiteral("fault[5] fault_id")) < w.table().columnCount() - 1,
               "window: a column added live joins the body, not the end");
         model.appendEntries(b.mid(0, 50));
         CHECK(w.table().rows.size() == 2 + countOf(b.mid(0, 50), QStringLiteral("nmsflt")),

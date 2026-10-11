@@ -2,7 +2,7 @@
 #define NMSLOGWINDOW_H
 
 // =============================================================================
-//  NMS packet log window (session 247) — Tools ▸ Monitor ▸ Equipment ▸
+//  NMS packet log window (session 247) — Tools ▸ Monitor ▸ NMS ▸
 //  NMS health / fault / RSSI log…
 //  -----------------------------------------------------------------------------
 //  One window per packet type (NmsLog::Kind). It lists every packet of that
