@@ -22,6 +22,7 @@
 // =============================================================================
 
 #include <QHash>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -70,7 +71,15 @@ struct Table {
         QHash<int, QString> lastValue;  // by column id: the event's last value
         qint64 lastRtc = -1;            // seconds since the epoch
         int lastMsgSeq = -1;
+        // Session 254: each column's first value, and the columns that have
+        // read differently since (by column id; an empty cell does not count).
+        QHash<int, QString> firstValue;
+        QSet<int> varies;
     } carry;
+    // Session 254: has every packet so far read the same in this column (by
+    // display position)? The frame column never is.
+    bool unchanging(int col) const;
+    Group groupAt(int col) const;       // by display position; Lead for the frame column
     QHash<QString, int> index;          // column name -> display position
 
     Table();

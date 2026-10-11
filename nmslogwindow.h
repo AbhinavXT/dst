@@ -14,6 +14,8 @@
 //  Session 253: right-click to freeze the columns up to one (they stay put
 //  while the rest scroll sideways) or to pin a row: pinned rows are shown in
 //  a strip above the table, whatever the table scrolls to or filters.
+//  Session 254: Hide unchanging (the columns every packet so far reads the
+//  same in) and Columns… (show or hide any column by hand).
 // =============================================================================
 
 #include "logmodel.h"
@@ -27,6 +29,8 @@
 
 class FrozenColumns;
 class QCheckBox;
+class QDialog;
+class QListWidget;
 class QLabel;
 class QPushButton;
 class QTableView;
@@ -93,6 +97,13 @@ public:
     QList<int> pinnedRows() const;      // ascending
     QTableView *pinnedView() const { return m_pinned; }
 
+    // Session 254: which columns are shown.
+    void setHideUnchanging(bool on);
+    void setColumnShown(const QString &name, bool shown);
+    void showAllColumns();
+    QStringList hiddenColumns() const;  // by name, in display order
+    QDialog *columnChooser();           // opened by Columns…; built on first use
+
     // The export buttons' work, without the file dialog (and for the tests).
     bool saveCsv(const QString &path, QString *err = nullptr) const;
     bool saveXlsx(const QString &path, QString *err = nullptr) const;
@@ -105,11 +116,14 @@ signals:
 
 private:
     void onRowsInserted(int first, int last);
-    void widenToFit(int firstRow, int lastRow);
+    void widenToFit(int firstRow, int lastRow);   // measures the rows, then fitColumns()
+    void fitColumns();
     void exportTo(bool xlsx);
     void showCount();
     void contextMenuAt(QTableView *v, const QPoint &pos, bool header);
     void syncPinned();                  // the strip's columns, height, scroll follow the table
+    void applyColumns();                // hide / show per the box and the chooser
+    void fillChooser();
 
     NmsLog::Kind        m_kind;
     QPointer<LogModel>  m_model;
@@ -123,6 +137,14 @@ private:
     QSet<int>           m_pins;
     FrozenColumns      *m_frozen = nullptr;
     FrozenColumns      *m_pinFrozen = nullptr;
+    QCheckBox          *m_hideUnchanging = nullptr;
+    QSet<QString>       m_userHidden;   // by column name: positions move as columns arrive
+    QPointer<QDialog>   m_chooser;
+    QListWidget        *m_chooserList = nullptr;
+    QVector<int>        m_need;         // by column id: the widest cell so far (session 254)
+    QVector<int>        m_needChars;    // by column id: the longest text so far
+    int                 m_needHex = 0, m_needHexChars = 0;   // the frame (hex) column
+    int                 m_pad = 16;     // what the view adds to a text's width
     QCheckBox          *m_follow = nullptr;
     QLabel             *m_count = nullptr;
     StatusLine         *m_status = nullptr;

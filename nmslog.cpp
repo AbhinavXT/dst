@@ -153,6 +153,17 @@ QString Table::cell(int row, int col) const
     return rows.at(row).value(order.value(col, -1));   // a column added after this row: empty
 }
 
+bool Table::unchanging(int col) const
+{
+    if (col < 0 || col >= order.size()) return false;
+    return !carry.varies.contains(order.at(col));
+}
+
+Group Table::groupAt(int col) const
+{
+    return col >= 0 && col < order.size() ? groups.at(order.at(col)) : Group::Lead;
+}
+
 int Table::columnOf(const QString &name, Group g)
 {
     const auto it = index.constFind(name);
@@ -208,6 +219,14 @@ bool append(Table &t, Kind kind, const LogEntry &entry, bool *newColumns)
         } else if (t.columns.at(c) == QLatin1String("CRC") && row.at(c) == QLatin1String("FAIL")) {
             changed = true;
         }
+    }
+
+    // Session 254: which columns have read differently.
+    for (int c = 0; c < row.size(); ++c) {
+        if (row.at(c).isEmpty() || t.carry.varies.contains(c)) continue;
+        auto it = t.carry.firstValue.constFind(c);
+        if (it == t.carry.firstValue.constEnd()) t.carry.firstValue.insert(c, row.at(c));
+        else if (it.value() != row.at(c)) t.carry.varies.insert(c);
     }
 
     // Session 252: packets missing before this one?

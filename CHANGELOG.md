@@ -11,6 +11,77 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-254"></a>
+## Session 254 — the NMS tables: Hide unchanging, Columns…
+
+Item 5 of Abhinav's list after patch 248.
+
+What the operator sees, above each NMS table:
+
+- **Hide unchanging** (off at open): hides the NMS-header and event columns
+  that every packet so far reads the same in. A column comes back as soon as
+  a packet reads differently. PC time, rtc, seq, loco / ctrl, frame len, CRC
+  and the frame are always shown. The count adds "; 28 of 53 columns
+  hidden". On `loco_1_1_29062026_134509`: 28 of 53 health columns
+  (start_of_frame, message type, the radios always OK, the powers at 0 W …),
+  11 of 25 RSSI, 6 of 48 fault.
+- **Columns…**: a list of every column to tick or untick, which stays open
+  while you work. Columns Hide unchanging would hide are marked "(same in
+  every packet)". **Show all** brings every column back and turns Hide
+  unchanging off. A column hidden by hand is kept by name, so it stays
+  hidden when a new column arrives and the positions move.
+
+The frozen columns and the pinned strip hide the same columns as the table.
+
+### Also fixed: cells cut off after a reset, under Changes only, with the app's style
+
+The harness shot showed packet 2081's seq as "348…". The column-fit of
+patch 249 had three gaps:
+- after a packet brought a new column (a reset), Qt's resize-to-contents
+  measures only the rows near the view;
+- rows that arrived while Changes only hid them were never measured;
+- the item padding of the app's style sheet (`UiStyle`: `padding:2px 4px`)
+  was not counted.
+
+Now every cell is measured once as it arrives, shown or not, and the widest
+is kept per column and applied again after a reset. What the view adds to a
+text's width is read off a real cell, so margins, style sheet padding and
+grid all count. A cell three or more characters shorter than the longest
+seen in its column is not measured, so opening a long log stays cheap.
+
+### Files
+
+`nmslog.h/.cpp` (`Table::unchanging`, `groupAt`; `Carry::firstValue /
+varies`); `nmslogwindow.h/.cpp` (the box, the Columns… dialog,
+`applyColumns`, `setColumnShown`, `showAllColumns`, `hiddenColumns`; the
+column-fit as above); `tests/test_session254.cpp`, `tests/tests.pro`; the
+screenshot harness gains `SHOT_HIDESAME=1`.
+
+### Tests
+
+`session254` (23 checks, the 2081 real health packets of
+`loco_1_1_29062026_134509`):
+- **Unchanging columns:** worked out again from the cells, they are what
+  `Table::unchanging` names and exactly what the box hides, and the frame
+  never is. The capture-line columns stay, and the count says how many are
+  hidden.
+- **Live:** a column that was the same in the first 2000 packets and
+  changes in the rest is shown again when they arrive.
+- **Frozen columns and the pinned strip** hide the same columns.
+- **Columns…:** one line per column with the unchanging ones marked;
+  untick seq → hidden (the list keeps it unticked when refilled); tick →
+  shown; Show all → everything, box off. A column hidden by hand stays the
+  only one hidden across a new column arriving.
+- **Column-fit:** every cell of all 2081 rows fits after that reset, with
+  style sheet item padding, and for rows that arrived under Changes only.
+
+`./verify.sh` green on macOS (Qt 6.11.2): 13 validators, `dltests` 298
+suites / 7810 checks / 0 failed, menu audit (183 ok), smoke. Harness shot
+with Hide unchanging (packet 2081's seq in full) checked. Not tested here:
+Windows / Qt 5.15 (CI after the push).
+
+---
+
 <a id="session-253"></a>
 ## Session 253 — the NMS tables: freeze columns, pin rows
 

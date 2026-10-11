@@ -235,6 +235,12 @@ int main(int argc, char **argv)
                     w->findChild<QCheckBox *>(QStringLiteral("nmsChangesOnly"))->setChecked(true);
                     printf("  changes only: %d of %d shown\n", w->view()->model()->rowCount(), w->table().rows.size());
                 }
+                // SHOT_HIDESAME=1: Hide unchanging (session 254).
+                if (qEnvironmentVariableIsSet("SHOT_HIDESAME")) {
+                    w->setHideUnchanging(true);
+                    printf("  hidden: %d of %d columns: %s\n", int(w->hiddenColumns().size()), w->table().columnCount(),
+                           qPrintable(w->hiddenColumns().join(QStringLiteral(", "))));
+                }
                 // SHOT_FREEZE=n, SHOT_PIN=r,r (1-based packet numbers): session 253.
                 if (!qEnvironmentVariableIsEmpty("SHOT_FREEZE")) w->freezeColumns(qEnvironmentVariableIntValue("SHOT_FREEZE"));
                 for (const QString &r : qEnvironmentVariable("SHOT_PIN").split(QLatin1Char(','), Qt::SkipEmptyParts))

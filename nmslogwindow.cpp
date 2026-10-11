@@ -9,14 +9,20 @@
 #include <QCheckBox>
 #include <QFile>
 #include <QFileDialog>
+#include <QFontMetrics>
+#include <QStyle>
 #include <QFont>
 #include <QBrush>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QLabel>
+#include <QListWidget>
 #include <QMenu>
 #include <QPushButton>
 #include <QScrollBar>
+#include <QSignalBlocker>
 #include <algorithm>
 #include <QTableView>
 #include <QVBoxLayout>
@@ -197,6 +203,14 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
     m_changesOnly->setObjectName(QStringLiteral("nmsChangesOnly"));
     m_changesOnly->setToolTip(tr("Show only the packets where an event reads differently from the last time it "
                                  "was reported (and any whose CRC failed). The first packet is always shown"));
+    m_hideUnchanging = new QCheckBox(tr("Hide unchanging"), this);
+    m_hideUnchanging->setObjectName(QStringLiteral("nmsHideUnchanging"));
+    m_hideUnchanging->setToolTip(tr("Hide the NMS header and event columns that every packet so far reads the same "
+                                    "in. A column comes back as soon as a packet reads differently. Time, rtc, seq, "
+                                    "loco / ctrl, frame len and CRC are always shown"));
+    auto *columns = new QPushButton(tr("Columns…"), this);
+    columns->setObjectName(QStringLiteral("nmsColumns"));
+    columns->setToolTip(tr("Show or hide any column"));
     m_count = new QLabel(this);
     m_status = new StatusLine;
     auto *csv = new QPushButton(tr("Export CSV…"), this);
@@ -206,6 +220,8 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
 
     auto *top = new QHBoxLayout;
     top->addWidget(m_count, 1);
+    top->addWidget(m_hideUnchanging);
+    top->addWidget(columns);
     top->addWidget(m_changesOnly);
     top->addWidget(m_follow);
     auto *bottom = new QHBoxLayout;
@@ -248,6 +264,12 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
     connect(m_view->horizontalScrollBar(), &QAbstractSlider::rangeChanged, this, [this]() { syncPinned(); });
     connect(m_view->verticalHeader(), &QHeaderView::geometriesChanged, this, [this]() { syncPinned(); });
     connect(m_filter, &QAbstractItemModel::modelReset, this, [this]() { syncPinned(); }, Qt::QueuedConnection);
+    connect(m_hideUnchanging, &QCheckBox::toggled, this, [this]() { applyColumns(); });
+    connect(columns, &QPushButton::clicked, this, [this]() {
+        QDialog *d = columnChooser();
+        d->show();
+        d->raise();
+    });
     connect(m_changesOnly, &QCheckBox::toggled, this, [this](bool on) {
         m_filter->setChangesOnly(on);
         if (m_follow->isChecked()) m_view->scrollToBottom();
@@ -270,6 +292,9 @@ void NmsLogWindow::rebuild()
     m_pins.clear();                     // the rows they named are gone
     m_pinFilter->setOnlyRows(m_pins);
     m_rows->reset(NmsLog::Table());
+    m_need.clear();
+    m_needChars.clear();
+    m_needHex = m_needHexChars = 0;
     if (m_model) {
         QVector<LogEntryPtr> all;
         all.reserve(m_model->count());
@@ -277,9 +302,9 @@ void NmsLogWindow::rebuild()
         m_rows->append(m_kind, all);
     }
     m_view->resizeColumnsToContents();
+    widenToFit(0, m_rows->rowCount() - 1);
     if (m_follow->isChecked()) m_view->scrollToBottom();
-    showCount();
-    syncPinned();
+    applyColumns();
     if (m_rows->table().rows.isEmpty())
         m_status->state(tr("No @%1 packet in this tab yet; new ones are added as they arrive.")
                             .arg(NmsLog::token(m_kind)));
@@ -296,25 +321,60 @@ void NmsLogWindow::onRowsInserted(int first, int last)
     const int rowsBefore = m_rows->rowCount();
     if (m_rows->append(m_kind, batch) == 0) return;
     if (m_rows->columnCount() != columnsBefore) m_view->resizeColumnsToContents();
-    else widenToFit(rowsBefore, m_rows->rowCount() - 1);
+    widenToFit(rowsBefore, m_rows->rowCount() - 1);
+    applyColumns();
     if (m_follow->isChecked()) m_view->scrollToBottom();
-    showCount();
 }
 
 // Session 249: a row that arrives later can be wider than the columns were
 // sized for at open ("2026-06-26 …"). Widen to fit; never narrow, since
 // the operator may have widened a column by hand.
+// Session 254: every cell is measured once, as it arrives, shown or not
+// (Changes only may show it later), and the widest is kept per column.
+// Qt's resize-to-contents measures only the rows near the view, so after a
+// reset (a new column) the kept widths are applied again.
 void NmsLogWindow::widenToFit(int firstRow, int lastRow)
 {
-    const int grid = m_view->showGrid() ? 1 : 0;
-    for (int c = 0; c < m_rows->columnCount(); ++c) {
-        if (m_view->isColumnHidden(c)) continue;
-        int want = 0;
-        for (int r = firstRow; r <= lastRow; ++r) {
-            const QModelIndex shown = m_filter->mapFromSource(m_rows->index(r, c));
-            if (shown.isValid()) want = qMax(want, m_view->sizeHintForIndex(shown).width() + grid);
+    const NmsLog::Table &t = m_rows->table();
+    if (m_need.size() < t.columns.size()) { m_need.resize(t.columns.size()); m_needChars.resize(t.columns.size()); }
+    // What the view adds to a text's width (margins, the style sheet's item
+    // padding, the grid), read off a real cell rather than guessed.
+    const QFontMetrics plain(m_view->font());
+    if (m_filter->rowCount() > 0) {
+        const QModelIndex probe = m_filter->index(0, 0);
+        const QVariant f = probe.data(Qt::FontRole);
+        m_pad = m_view->sizeHintForIndex(probe).width() + (m_view->showGrid() ? 1 : 0)
+                - (f.isValid() ? QFontMetrics(f.value<QFont>()) : plain).horizontalAdvance(probe.data().toString()) + 1;
+    }
+    const int pad = m_pad;
+    for (int r = firstRow; r <= lastRow && r < t.rows.size(); ++r) {
+        const QString hex = t.hex.at(r);
+        if (hex.size() + 3 >= m_needHexChars) {
+            m_needHex = qMax(m_needHex, plain.horizontalAdvance(hex) + pad);
+            m_needHexChars = qMax(m_needHexChars, int(hex.size()));
         }
-        if (want > m_view->columnWidth(c)) m_view->setColumnWidth(c, want);
+        for (int c = 0; c < t.order.size(); ++c) {
+            const QString text = t.cell(r, c);
+            const int id = t.order.at(c);
+            // A text three characters shorter than the longest so far is not
+            // measured: opening a long log stays cheap.
+            if (text.isEmpty() || text.size() + 3 < m_needChars.at(id)) continue;
+            const QVariant f = m_rows->data(m_rows->index(r, c), Qt::FontRole);
+            const int w = (f.isValid() ? QFontMetrics(f.value<QFont>()) : plain).horizontalAdvance(text) + pad;
+            m_need[id] = qMax(m_need.at(id), w);
+            m_needChars[id] = qMax(m_needChars.at(id), int(text.size()));
+        }
+    }
+    fitColumns();
+}
+
+void NmsLogWindow::fitColumns()
+{
+    const NmsLog::Table &t = m_rows->table();
+    for (int c = 0; c < m_rows->columnCount(); ++c) {
+        const int need = c >= t.order.size() ? m_needHex                 // the frame (hex)
+                       : t.order.at(c) < m_need.size() ? m_need.at(t.order.at(c)) : 0;
+        if (need > m_view->columnWidth(c)) m_view->setColumnWidth(c, need);
     }
 }
 
@@ -325,6 +385,9 @@ void NmsLogWindow::showCount()
     if (m_filter->rowCount() != n) text += tr(", %1 shown").arg(m_filter->rowCount());
     const int gaps = m_rows->table().gaps;
     if (gaps > 0) text += gaps == 1 ? tr("; 1 gap") : tr("; %1 gaps").arg(gaps);
+    int hidden = 0;
+    for (int c = 0; c < m_rows->columnCount(); ++c) hidden += m_view->isColumnHidden(c) ? 1 : 0;
+    if (hidden > 0) text += tr("; %1 of %2 columns hidden").arg(hidden).arg(m_rows->columnCount());
     m_count->setText(text);
 }
 
@@ -455,4 +518,99 @@ void NmsLogWindow::contextMenuAt(QTableView *v, const QPoint &pos, bool header)
         connect(unfreeze, &QAction::triggered, this, [this]() { freezeColumns(0); });
     }
     if (!menu.isEmpty()) menu.exec(v->viewport()->mapToGlobal(pos));
+}
+
+// --- session 254: which columns are shown ------------------------------------
+
+void NmsLogWindow::applyColumns()
+{
+    const NmsLog::Table &t = m_rows->table();
+    const bool hideSame = m_hideUnchanging->isChecked() && t.rows.size() > 1;
+    for (int c = 0; c < m_rows->columnCount(); ++c) {
+        const bool hide = m_userHidden.contains(t.header(c))
+                          || (hideSame && t.groupAt(c) != NmsLog::Group::Lead && t.unchanging(c));
+        if (m_view->isColumnHidden(c) != hide) m_view->setColumnHidden(c, hide);
+    }
+    m_frozen->setCount(m_frozen->count());       // the overlays follow
+    m_pinFrozen->setCount(m_pinFrozen->count());
+    syncPinned();
+    showCount();
+    if (m_chooser && m_chooser->isVisible()) fillChooser();
+}
+
+void NmsLogWindow::setHideUnchanging(bool on)
+{
+    m_hideUnchanging->setChecked(on);
+}
+
+void NmsLogWindow::setColumnShown(const QString &name, bool shown)
+{
+    if (shown) m_userHidden.remove(name);
+    else m_userHidden.insert(name);
+    applyColumns();
+}
+
+void NmsLogWindow::showAllColumns()
+{
+    m_userHidden.clear();
+    m_hideUnchanging->setChecked(false);
+    applyColumns();
+}
+
+QStringList NmsLogWindow::hiddenColumns() const
+{
+    QStringList out;
+    for (int c = 0; c < m_rows->columnCount(); ++c)
+        if (m_view->isColumnHidden(c)) out << m_rows->table().header(c);
+    return out;
+}
+
+QDialog *NmsLogWindow::columnChooser()
+{
+    if (m_chooser) { fillChooser(); return m_chooser; }
+    auto *d = new QDialog(this);
+    d->setObjectName(QStringLiteral("nmsColumnChooser"));
+    d->setWindowTitle(tr("Columns — %1").arg(NmsLog::title(m_kind)));
+    auto *note = new QLabel(tr("Tick the columns to show. “same in every packet” marks the ones Hide unchanging "
+                               "would hide."), d);
+    note->setWordWrap(true);
+    m_chooserList = new QListWidget(d);
+    m_chooserList->setObjectName(QStringLiteral("nmsColumnList"));
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, d);
+    QPushButton *all = buttons->addButton(tr("Show all"), QDialogButtonBox::ResetRole);
+    all->setObjectName(QStringLiteral("nmsShowAll"));
+    auto *lay = new QVBoxLayout(d);
+    lay->addWidget(note);
+    lay->addWidget(m_chooserList, 1);
+    lay->addWidget(buttons);
+    d->resize(360, 520);
+    connect(buttons, &QDialogButtonBox::rejected, d, &QDialog::hide);
+    connect(all, &QPushButton::clicked, this, &NmsLogWindow::showAllColumns);
+    connect(m_chooserList, &QListWidget::itemChanged, this, [this](QListWidgetItem *it) {
+        const QString name = it->data(Qt::UserRole).toString();
+        const bool shown = it->checkState() == Qt::Checked;
+        if (shown == !m_userHidden.contains(name)) return;   // filled, not ticked
+        setColumnShown(name, shown);
+    });
+    m_chooser = d;
+    fillChooser();
+    return d;
+}
+
+void NmsLogWindow::fillChooser()
+{
+    if (!m_chooserList) return;
+    const NmsLog::Table &t = m_rows->table();
+    QSignalBlocker block(m_chooserList);
+    const int scroll = m_chooserList->verticalScrollBar()->value();
+    m_chooserList->clear();
+    for (int c = 0; c < m_rows->columnCount(); ++c) {
+        const QString name = t.header(c);
+        const bool same = t.rows.size() > 1 && t.groupAt(c) != NmsLog::Group::Lead && t.unchanging(c);
+        auto *it = new QListWidgetItem(same ? tr("%1   (same in every packet)").arg(name) : name, m_chooserList);
+        it->setData(Qt::UserRole, name);
+        it->setFlags(Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
+        it->setCheckState(m_userHidden.contains(name) ? Qt::Unchecked : Qt::Checked);
+    }
+    m_chooserList->verticalScrollBar()->setValue(scroll);
 }
