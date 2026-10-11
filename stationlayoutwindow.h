@@ -48,7 +48,9 @@ public:
     explicit StationLayoutCanvas(QWidget *parent = nullptr);
     void setStation(const StationLayout::Layout &l);
     void setSelectedTag(const QString &name);
-    void setZoom(double z);
+    // Session 220: 1 = the drawing fits the window; each step widens what is seen.
+    // `anchorX` (canvas x) stays under the same place; -1 = the visible middle.
+    void setZoom(double z, double anchorX = -1);
     double zoom() const { return m_zoom; }
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
@@ -72,8 +74,10 @@ protected:
     void mouseReleaseEvent(QMouseEvent *e) override;
     void wheelEvent(QWheelEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
+    bool eventFilter(QObject *o, QEvent *e) override;
 
 private:
+    QScrollArea *scrollArea() const;
     void layoutLanes();
     int laneY(int lane) const;
     // Session 218: where a tag is drawn; a point's tag rides its diagonal.
@@ -99,6 +103,9 @@ private:
     QVector<Hit> m_hits;
     QString m_dragTag;
     double  m_dragX = -1;
+    bool    m_panning = false;         // session 220: the sheet is grabbed
+    QPoint  m_panFrom;                 // where (global)
+    int     m_panH = 0, m_panV = 0;    // the scroll bars when the grab began
 };
 
 class StationLayoutWindow : public QWidget

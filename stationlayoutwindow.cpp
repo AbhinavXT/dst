@@ -24,6 +24,7 @@
 #include <QPointer>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QSplitter>
 #include <QTabWidget>
 #include <QTableWidget>
@@ -343,12 +344,35 @@ int StationLayoutCanvas::legend(QPainter *p, int top, int w) const
     return (row + 1) * rowH;
 }
 
-void StationLayoutCanvas::setZoom(double z)
+QScrollArea *StationLayoutCanvas::scrollArea() const
 {
+    return parentWidget() ? qobject_cast<QScrollArea *>(parentWidget()->parentWidget()) : nullptr;
+}
+
+void StationLayoutCanvas::setZoom(double z, double anchorX)
+{
+    QScrollArea *sa = scrollArea();
+    const int view = sa ? sa->viewport()->width() : width();
+    QScrollBar *h = sa ? sa->horizontalScrollBar() : nullptr;
+    // Where the anchor sits in the viewport, and which fraction of the sheet it is.
+    const double inView = anchorX >= 0 && h ? anchorX - h->value() : view / 2.0;
+    const double f = width() > 0 ? ((h ? h->value() : 0) + inView) / width() : 0.5;
     m_zoom = qBound(1.0, z, 40.0);
-    setMinimumWidth(int(qMax(400.0, 600 * m_zoom)));
+    // At 1 the scroll area's own width (the minimum only stops it getting unreadable).
+    const int w = m_zoom > 1.0 ? int(view * m_zoom) : 400;
+    setMinimumWidth(w);
+    if (sa) resize(qMax(w, view), height());   // now, so the scroll bar can be placed below
     updateGeometry();
+    if (h) h->setValue(int(f * width() - inView));
     update();
+}
+
+bool StationLayoutCanvas::eventFilter(QObject *o, QEvent *e)
+{
+    // The window resized: keep the same zoom against the new width.
+    if (e->type() == QEvent::Resize && m_zoom > 1.0 && scrollArea() && o == scrollArea()->viewport())
+        setZoom(m_zoom);
+    return QWidget::eventFilter(o, e);
 }
 
 void StationLayoutCanvas::setSelectedTag(const QString &name)
@@ -410,10 +434,24 @@ void StationLayoutCanvas::mousePressEvent(QMouseEvent *e)
         emit tagClicked(h.tag);
         return;
     }
+    // Session 220: anywhere else, grab the sheet and move it.
+    if (QScrollArea *sa = scrollArea()) {
+        m_panning = true;
+        m_panFrom = mapToGlobal(e->pos());
+        m_panH = sa->horizontalScrollBar()->value();
+        m_panV = sa->verticalScrollBar()->value();
+        setCursor(Qt::ClosedHandCursor);
+    }
 }
 
 void StationLayoutCanvas::mouseMoveEvent(QMouseEvent *e)
 {
+    if (m_panning && (e->buttons() & Qt::LeftButton)) {
+        const QPoint d = mapToGlobal(e->pos()) - m_panFrom;
+        scrollArea()->horizontalScrollBar()->setValue(m_panH - d.x());
+        scrollArea()->verticalScrollBar()->setValue(m_panV - d.y());
+        return;
+    }
     if (m_dragTag.isEmpty() || !(e->buttons() & Qt::LeftButton)) return;
     m_dragX = qBound(double(kLeft), double(e->pos().x()), double(width() - kRight));
     setCursor(Qt::SizeHorCursor);
@@ -426,6 +464,7 @@ void StationLayoutCanvas::mouseReleaseEvent(QMouseEvent *)
     const double x = m_dragX;
     m_dragTag.clear();
     m_dragX = -1;
+    m_panning = false;
     unsetCursor();
     if (!tag.isEmpty() && x >= 0 && std::fabs(x - xOf(m_loc.value(tag))) >= 2.0) emit tagDragged(tag, locAt(x));
     update();
@@ -433,8 +472,10 @@ void StationLayoutCanvas::mouseReleaseEvent(QMouseEvent *)
 
 void StationLayoutCanvas::wheelEvent(QWheelEvent *e)
 {
-    if (!(e->modifiers() & Qt::ControlModifier)) { QWidget::wheelEvent(e); return; }
-    setZoom(m_zoom * (e->angleDelta().y() > 0 ? 1.25 : 0.8));
+    // Session 220: the wheel zooms about the pointer; Shift + wheel scrolls.
+    const int dy = e->angleDelta().y();
+    if ((e->modifiers() & Qt::ShiftModifier) || dy == 0) { QWidget::wheelEvent(e); return; }
+    setZoom(m_zoom * (dy > 0 ? 1.25 : 0.8), e->position().x());
     e->accept();
 }
 
@@ -816,7 +857,7 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     auto *zoomIn = new QPushButton(QStringLiteral("+"), this);
     auto *zoomOut = new QPushButton(QStringLiteral("\u2212"), this);
     auto *fit = new QPushButton(tr("Fit"), this);
-    zoomIn->setToolTip(tr("Zoom in (Ctrl + mouse wheel on the drawing zooms too)"));
+    zoomIn->setToolTip(tr("Zoom in (the mouse wheel on the drawing zooms too; drag the sheet to move it)"));
     zoomOut->setToolTip(tr("Zoom out"));
     for (QPushButton *b : { zoomIn, zoomOut }) b->setMaximumWidth(b->fontMetrics().horizontalAdvance(QStringLiteral("MM")) + 24);
     m_undo = new UndoLog(this);
@@ -837,6 +878,7 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     m_scroll->setWidget(m_canvas);
     m_scroll->setWidgetResizable(true);
     m_scroll->setFrameShape(QFrame::NoFrame);
+    m_scroll->viewport()->installEventFilter(m_canvas);
 
     m_tabs = new QTabWidget(this);
     m_tabs->setUsesScrollButtons(true);   // eight tabs with counts: scroll rather than widen the window

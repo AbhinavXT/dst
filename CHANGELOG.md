@@ -11,6 +11,47 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-220"></a>
+## Session 220 — Station Layout: zoom with the wheel, grab the sheet, "+" and "−" fixed
+
+Abhinav's report: in the Station Layout window, pressing "−" six times at
+the start meant pressing "+" six times before anything zoomed.
+
+- **The cause.** Zoom 1 set a 600 px minimum width. The scroll area
+  stretches the sheet to the window, so on a wide window the first few
+  zoom steps stayed under the window's width and changed nothing you could
+  see. The zoom value still moved, and the other button had to undo it
+  one press at a time.
+- **Now 1 = fit the window.** Every "+" widens the sheet you see by 1.5×,
+  and every "−" narrows it, down to fit. "−" at fit does nothing, so the
+  next "+" zooms at once. The zoom follows the window when it is resized.
+- **The mouse wheel** on the drawing zooms in and out about the pointer:
+  the place under the pointer stays under it. Before, this needed Ctrl.
+  Shift + wheel scrolls, as before.
+- **Grab and move.** Press anywhere off a tag and drag (the hand cursor) to
+  move the sheet in both directions. Dragging a tag still moves the tag
+  along its line, as before.
+
+### Files
+
+`stationlayoutwindow.{h,cpp}`; tests `test_session220.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session220` (9 checks) uses the built-in station.xlsx in a 1600 px window.
+It checks:
+- at 1 the sheet fits the window;
+- six "−" stay at fit, then one "+" is 1.5× at once, and one "−" is back to fit;
+- one wheel step zooms in with the pointer's place kept (within 2 px);
+- a 150 px drag off a tag moves the sheet 150 px.
+
+`session208` to `session212` and `session218` pass unchanged.
+
+Not tested: a real mouse on Windows and Linux, and trackpad pinch. A
+trackpad's two-finger scroll now zooms the drawing instead of scrolling it.
+
+---
+
 <a id="session-219"></a>
 ## Session 219 — the start-up, step by step
 
