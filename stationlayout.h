@@ -79,6 +79,11 @@ bool fromJson(const QByteArray &json, Layout *out, QString *err = nullptr, QStri
 // tags and signals; *notes says when either is missing).
 bool fromSheets(const QVector<XlsxBook::Sheet> &sheets, Layout *out, QString *err = nullptr, QStringList *notes = nullptr);
 QVector<XlsxBook::Sheet> toSheets(const Layout &l);
+// Session 237: what Export .xlsx writes — toSheets(), plus an empty
+// "relaymap" sheet (the tool's header row only) when the layout carries none.
+// The Python tool reads relaymap unconditionally and stops without it, so a
+// station made here from scratch would not open there.
+QVector<XlsxBook::Sheet> toToolSheets(const Layout &l);
 
 // By extension: .xlsx imports / exports the tool's file, anything else is JSON.
 bool load(const QString &path, Layout *out, QString *err = nullptr, QStringList *notes = nullptr);

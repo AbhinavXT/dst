@@ -2334,7 +2334,7 @@ bool StationLayoutWindow::saveFile(const QString &path)
 bool StationLayoutWindow::exportXlsx(const QString &path)
 {
     QString err;
-    if (!XlsxBook::writeFile(path, StationLayout::toSheets(m_layout), &err)) { m_status->fail(err); return false; }
+    if (!XlsxBook::writeFile(path, StationLayout::toToolSheets(m_layout), &err)) { m_status->fail(err); return false; }
     m_status->ok(tr("Exported %1").arg(path));
     return true;
 }

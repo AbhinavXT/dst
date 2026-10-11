@@ -509,10 +509,25 @@ bool load(const QString &path, Layout *out, QString *err, QStringList *notes)
     return fromJson(f.readAll(), out, err, notes);
 }
 
+QVector<XlsxBook::Sheet> toToolSheets(const Layout &l)
+{
+    QVector<XlsxBook::Sheet> out = toSheets(l);
+    for (const XlsxBook::Sheet &sh : l.otherSheets)
+        if (sh.name.compare(QLatin1String("relaymap"), Qt::CaseInsensitive) == 0) return out;
+    XlsxBook::Sheet relay;
+    relay.name = QStringLiteral("relaymap");
+    XlsxBook::Row header;
+    for (const char *c : { "EqipType", "EqipName", "EqipId", "EqipAttr", "BitPos", "StationId" })
+        header << QString::fromLatin1(c);
+    relay.rows << header;
+    out << relay;
+    return out;
+}
+
 bool save(const QString &path, const Layout &l, QString *err)
 {
     if (QFileInfo(path).suffix().compare(QLatin1String("xlsx"), Qt::CaseInsensitive) == 0)
-        return XlsxBook::writeFile(path, toSheets(l), err);
+        return XlsxBook::writeFile(path, toToolSheets(l), err);
     QSaveFile f(path);
     if (!f.open(QIODevice::WriteOnly)) {
         if (err) *err = QStringLiteral("cannot write %1: %2").arg(path, f.errorString());

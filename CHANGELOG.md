@@ -11,6 +11,51 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-237"></a>
+## Session 237 — a station made from scratch opens in the Python tool
+
+Abhinav asked: can a whole new station made in DLConsole's Station Layout
+be used as it is in the debugging tool (DEBUGGING_TOOL_KAVACH,
+`loco_performance`)? It could not.
+
+- **The cause.** The tool's `load_station` reads a `relaymap` sheet (NMS
+  field-input bit positions) unconditionally and stops with "Worksheet
+  named 'relaymap' not found". Export only wrote relaymap when the file had
+  been imported with one, so a station built from New, empty never had it.
+- **Now** Export .xlsx (and saving as .xlsx) writes an empty relaymap, its
+  header row only, when the layout carries none. A station's own relaymap
+  is kept as it is.
+
+### How it was checked
+
+The tool's own `load_station`, its pandas code run outside its GUI, was run
+on DLConsole exports:
+- **a new station** (4 tags, lines DM and DL1, signal S1, point P1, station
+  900, a text): every one read, each tag on its line. It failed before.
+- **station.xlsx with a tag, signal and line added**: all three read.
+- **station.xlsx unchanged**: the same dictionaries as the original file.
+
+The tool's drawing window was not run.
+
+The tool places lines named DM, UM, DL1-DL3 and UL1-UL3 only. Another
+name is read but gets no position, so it would not be drawn.
+
+### Files
+
+`stationlayout.{h,cpp}` (`toToolSheets`), `stationlayoutwindow.cpp`
+(Export uses it); tests `test_session237.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session237` (14 checks):
+- a new station's export has the tool's seven sheets, relaymap with its
+  header and no rows;
+- saving as .xlsx writes it too;
+- read back and saved again, there is one relaymap, not two;
+- station.xlsx keeps its own relaymap rows.
+
+---
+
 <a id="session-236"></a>
 ## Session 236 — CI fixes for 233 and 235
 
