@@ -11,6 +11,47 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-210"></a>
+## Session 210 — the default station layout, built in
+
+Asked for by Abhinav: "add the default station layout to dl console".
+The default is the station file the old Python tool opens at start
+(`loco_performance/config/station/station.xlsx`: station 527, lines DN DM,
+UP UM and four loops, 211 tags, 36 signals, 18 points). It is built in
+unchanged as `:/station_layouts/station.xlsx` (`station_layouts.qrc`,
+linked by `dlcore_link.pri` like the tag scenario library). Like that
+library, it is real configuration in git, as Abhinav chose for the
+library in patch 201.
+
+**What the operator sees:**
+- Tools ▸ Station Layout opens the default when there is no last file, or
+  the last one is gone. The status says it is the built-in layout and to
+  save it as a .json to keep changes.
+- The **Open** button is now a menu: Open file…, **Default layout
+  (station.xlsx)**, New, empty. Folding New in keeps the bar under 1000 px
+  on the Mac, with room for Linux's wider fonts.
+- The zoom buttons are now − / +.
+- The Track diagram's **Station layout…** is a menu as well: the default
+  layout, or Open file….
+
+**Files:** `station_layouts/station.xlsx`, `station_layouts.qrc`,
+`dlcore_link.pri`, `stationlayout.{h,cpp}` (`defaultFile`),
+`stationlayoutwindow.cpp`, `trackdiagramwindow.cpp`;
+`tests/test_session210.cpp`.
+
+**Tests:** session210, 13 checks: the built-in file reads whole (211 tags,
+36 signals, 18 points, 6 lines, relaymap carried, station 527 at 161060 m,
+tag 981 at 163960 m); the window opens it with no last file and with a
+missing one; the bar's minimum ≤ 1000 px; over
+`loco_1_1_27062026_170217.cap` it puts the run on DM, all six tags it has
+there read, S48 and S43 at their foot tags; the Track diagram's menu.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators **13/13**;
+`dltests` **260 suites / 6997 checks, 1 failed** (the `session156` pty
+check, as at 194 and 206); menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-209"></a>
 ## Session 209 — a station layout over the Track diagram
 

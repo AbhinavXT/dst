@@ -26,6 +26,8 @@ RESOURCES += $$PWD/images.qrc $$PWD/lococonfig/lococonfig.qrc
 # Session 201: the RFID Tag Builder's built-in scenario library (tags_sim's
 # KAV_CONFIG routes, made by scripts/tags_sim_library.py).
 RESOURCES += $$PWD/tag_scenarios.qrc
+# Session 210: the default station layout (Tools > Station Layout, Track diagram).
+RESOURCES += $$PWD/station_layouts.qrc
 
 LIBS += -L$$DLCORE_DIR -ldlcore
 msvc: PRE_TARGETDEPS += $$DLCORE_DIR/dlcore.lib

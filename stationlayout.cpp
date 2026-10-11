@@ -456,6 +456,8 @@ bool fromJson(const QByteArray &json, Layout *out, QString *err, QStringList *no
     return true;
 }
 
+QString defaultFile() { return QStringLiteral(":/station_layouts/station.xlsx"); }
+
 // ---- by extension ------------------------------------------------------------------
 
 bool load(const QString &path, Layout *out, QString *err, QStringList *notes)

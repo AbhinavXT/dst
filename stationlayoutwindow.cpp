@@ -14,6 +14,7 @@
 #include <QHelpEvent>
 #include <QLabel>
 #include <QListWidget>
+#include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
 #include <QPainter>
@@ -441,8 +442,15 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     WindowGeometry::makeResizableWindow(this);
     resize(1180, 720);
 
-    auto *openBtn = new QPushButton(tr("Open…"), this);
-    openBtn->setToolTip(tr("A DLConsole station layout (.json)"));
+    // Open, the built-in default, or an empty layout: one button, so the bar
+    // fits a laptop with wider (Linux) fonts.
+    auto *openBtn = new QPushButton(tr("Open"), this);
+    auto *openMenu = new QMenu(openBtn);
+    QAction *openFileAct = openMenu->addAction(tr("Open file…"));
+    openFileAct->setToolTip(tr("A DLConsole station layout (.json)"));
+    QAction *defaultAct = openMenu->addAction(tr("Default layout (station.xlsx)"));
+    QAction *newAct = openMenu->addAction(tr("New, empty"));
+    openBtn->setMenu(openMenu);
     auto *saveBtn = new QPushButton(tr("Save"), this);
     auto *saveAsBtn = new QPushButton(tr("Save as…"), this);
     auto *importBtn = new QPushButton(tr("Import .xlsx…"), this);
@@ -450,11 +458,12 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
                              "lines, station, texts; other sheets (relaymap, …) are kept for export"));
     auto *exportBtn = new QPushButton(tr("Export .xlsx…"), this);
     exportBtn->setToolTip(tr("The Python tool's station file, every sheet it reads"));
-    auto *newBtn = new QPushButton(tr("New"), this);
-    auto *zoomIn = new QPushButton(tr("Zoom in"), this);
-    auto *zoomOut = new QPushButton(tr("Zoom out"), this);
+    auto *zoomIn = new QPushButton(QStringLiteral("+"), this);
+    auto *zoomOut = new QPushButton(QStringLiteral("\u2212"), this);
     auto *fit = new QPushButton(tr("Fit"), this);
-    zoomIn->setToolTip(tr("Ctrl + mouse wheel on the drawing zooms too"));
+    zoomIn->setToolTip(tr("Zoom in (Ctrl + mouse wheel on the drawing zooms too)"));
+    zoomOut->setToolTip(tr("Zoom out"));
+    for (QPushButton *b : { zoomIn, zoomOut }) b->setMaximumWidth(b->fontMetrics().horizontalAdvance(QStringLiteral("MM")) + 24);
     m_undo = new UndoLog(this);
     QAction *undoAct = m_undo->createAction(this);
     addAction(undoAct);
@@ -463,7 +472,7 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     undoBtn->setToolButtonStyle(Qt::ToolButtonTextOnly);
 
     auto *bar = new QHBoxLayout;
-    for (QWidget *w : std::initializer_list<QWidget *>{ newBtn, openBtn, saveBtn, saveAsBtn, importBtn, exportBtn })
+    for (QWidget *w : std::initializer_list<QWidget *>{ openBtn, saveBtn, saveAsBtn, importBtn, exportBtn })
         bar->addWidget(w);
     bar->addStretch(1);
     for (QWidget *w : std::initializer_list<QWidget *>{ zoomOut, zoomIn, fit, undoBtn }) bar->addWidget(w);
@@ -475,6 +484,7 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     m_scroll->setFrameShape(QFrame::NoFrame);
 
     m_tabs = new QTabWidget(this);
+    m_tabs->setUsesScrollButtons(true);   // eight tabs with counts: scroll rather than widen the window
     for (int i = 0; i < 6; ++i) {
         QTableWidget *t = makeTable(this);
         m_tables << t;
@@ -528,12 +538,15 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     root->addWidget(split, 1);
     root->addWidget(m_status);
 
-    connect(newBtn, &QPushButton::clicked, this, [this]() {
+    connect(newAct, &QAction::triggered, this, [this]() {
         if (!confirmDiscard()) return;
         m_path.clear();
         setStation(StationLayout::Layout());
     });
-    connect(openBtn, &QPushButton::clicked, this, [this]() {
+    connect(defaultAct, &QAction::triggered, this, [this]() {
+        if (confirmDiscard()) openFile(StationLayout::defaultFile());
+    });
+    connect(openFileAct, &QAction::triggered, this, [this]() {
         if (!confirmDiscard()) return;
         const QString path = QFileDialog::getOpenFileName(this, tr("Open station layout"), QFileInfo(m_path).path(),
                                                           tr("Station layout (*.json)"));
@@ -804,8 +817,10 @@ bool StationLayoutWindow::openFile(const QString &path)
     m_path = imported ? QString() : path;
     setStation(l);
     Settings::setStationLayoutLastFile(path);
-    const QString what = imported ? tr("Imported %1: save it as a .json to keep editing it").arg(QFileInfo(path).fileName())
-                                  : tr("Opened %1").arg(QFileInfo(path).fileName());
+    const QString what = path == StationLayout::defaultFile()
+        ? tr("The built-in default layout (station.xlsx): save it as a .json to keep your changes")
+        : imported ? tr("Imported %1: save it as a .json to keep editing it").arg(QFileInfo(path).fileName())
+                   : tr("Opened %1").arg(QFileInfo(path).fileName());
     if (notes.isEmpty()) m_status->ok(what);
     else m_status->warn(what + QStringLiteral(" · ") + notes.join(QStringLiteral("; ")));
     return true;
@@ -832,8 +847,10 @@ bool StationLayoutWindow::exportXlsx(const QString &path)
 
 bool StationLayoutWindow::reopenLast()
 {
+    // The last file, else the built-in default (session 210).
     const QString last = Settings::stationLayoutLastFile();
-    return !last.isEmpty() && QFileInfo::exists(last) && openFile(last);
+    if (!last.isEmpty() && QFileInfo::exists(last) && openFile(last)) return true;
+    return openFile(StationLayout::defaultFile());
 }
 
 bool StationLayoutWindow::undo() { return m_undo->undo(); }

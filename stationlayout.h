@@ -61,6 +61,10 @@ struct Layout {
 };
 
 // --- files -------------------------------------------------------------------
+// Session 210: the built-in default layout, the station file the Python
+// tool opens at start (its config/station/station.xlsx), unchanged.
+QString defaultFile();
+
 QByteArray toJson(const Layout &l);
 // *err set and false on a file that is not a layout; a row it cannot read is
 // skipped and named in *notes.

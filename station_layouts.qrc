@@ -1,0 +1,8 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+    <!-- Session 210: the station file the old Python tool opens at start
+         (loco_performance/config/station/station.xlsx), unchanged. -->
+    <qresource prefix="/">
+        <file>station_layouts/station.xlsx</file>
+    </qresource>
+</RCC>

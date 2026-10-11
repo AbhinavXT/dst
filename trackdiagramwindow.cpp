@@ -13,6 +13,7 @@
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHelpEvent>
+#include <QMenu>
 #include <QToolTip>
 #include <cmath>
 #include <algorithm>
@@ -624,12 +625,17 @@ TrackDiagramWindow::TrackDiagramWindow(LogModel *model, const QString &tabKey, c
         if (saveImage(path)) m_status->ok(tr("Saved %1").arg(path)); else m_status->fail(tr("Could not write %1").arg(path));
     });
 
-    connect(layoutBtn, &QPushButton::clicked, this, [this]() {
+    // Session 210: the built-in default, or a file.
+    auto *layoutMenu = new QMenu(layoutBtn);
+    layoutMenu->addAction(tr("Default layout (station.xlsx)"), this, [this]() { loadLayout(StationLayout::defaultFile()); });
+    layoutMenu->addAction(tr("Open file…"), this, [this]() {
         const QString last = Settings::stationLayoutLastFile();
-        const QString path = QFileDialog::getOpenFileName(this, tr("Station layout"), last,
+        const QString path = QFileDialog::getOpenFileName(this, tr("Station layout"),
+                                                          last.startsWith(QLatin1Char(':')) ? QString() : last,
                                                           tr("Station layout (*.json *.xlsx)"));
         if (!path.isEmpty()) loadLayout(path);
     });
+    layoutBtn->setMenu(layoutMenu);
     connect(m_hideLayout, &QPushButton::clicked, this, &TrackDiagramWindow::clearLayout);
 
     rebuild();
