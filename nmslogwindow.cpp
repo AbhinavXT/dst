@@ -167,10 +167,27 @@ void NmsLogWindow::onRowsInserted(int first, int last)
     QVector<LogEntryPtr> batch;
     for (int i = first; i <= last; ++i) batch << m_model->entryAt(i);
     const int columnsBefore = m_rows->columnCount();
+    const int rowsBefore = m_rows->rowCount();
     if (m_rows->append(m_kind, batch) == 0) return;
     if (m_rows->columnCount() != columnsBefore) m_view->resizeColumnsToContents();
+    else widenToFit(rowsBefore, m_rows->rowCount() - 1);
     if (m_follow->isChecked()) m_view->scrollToBottom();
     showCount();
+}
+
+// Session 249: a row that arrives later can be wider than the columns were
+// sized for at open ("2026-06-26 …"). Widen to fit; never narrow, since
+// the operator may have widened a column by hand.
+void NmsLogWindow::widenToFit(int firstRow, int lastRow)
+{
+    const int grid = m_view->showGrid() ? 1 : 0;
+    for (int c = 0; c < m_rows->columnCount(); ++c) {
+        if (m_view->isColumnHidden(c)) continue;
+        int want = 0;
+        for (int r = firstRow; r <= lastRow; ++r)
+            want = qMax(want, m_view->sizeHintForIndex(m_rows->index(r, c)).width() + grid);
+        if (want > m_view->columnWidth(c)) m_view->setColumnWidth(c, want);
+    }
 }
 
 void NmsLogWindow::showCount()

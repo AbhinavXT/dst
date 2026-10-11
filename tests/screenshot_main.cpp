@@ -57,6 +57,7 @@
 #include "subpacketwindow.h"
 #include "archivesearchwindow.h"
 #include "faultpanelwindow.h"
+#include "nmslogwindow.h"
 #include "roundtripwindow.h"
 #include "runreportwindow.h"
 #include "sessionwindow.h"
@@ -188,6 +189,46 @@ int main(int argc, char **argv)
                 auto *w = new TrackDiagramWindow(disp.modelForKey(key), key, QStringLiteral("L1_V1"));
                 w->setAttribute(Qt::WA_DeleteOnClose, false);
                 if (!qEnvironmentVariableIsEmpty("SHOT_LAYOUT")) w->loadLayout(qEnvironmentVariable("SHOT_LAYOUT"));   // session 209
+                win = w;
+            }
+            if (which == QLatin1String("nmshlth") || which == QLatin1String("nmsflt")
+                || which == QLatin1String("nmsrssi")) {
+                // Session 247: one real capture through the dispatcher, at its
+                // own timestamps; the window opened halfway, so the second half
+                // arrives live. Prints the table's rows against the file's count.
+                const NmsLog::Kind kind = which == QLatin1String("nmshlth") ? NmsLog::Kind::Health
+                                          : which == QLatin1String("nmsflt") ? NmsLog::Kind::Fault
+                                                                             : NmsLog::Kind::Rssi;
+                const QString cap = qEnvironmentVariableIsEmpty("SHOT_CAP") ? QStringLiteral("loco_1_1_26062026_162418")
+                                                                            : qEnvironmentVariable("SHOT_CAP");
+                QList<QByteArray> run;
+                QFile in(QStringLiteral(DL_SRC_DIR "/replay/%1.cap").arg(cap));
+                if (in.open(QIODevice::ReadOnly))
+                    while (!in.atEnd()) {
+                        const QByteArray l = in.readLine().trimmed();
+                        if (l.startsWith('@') && l.split(' ').size() >= 3) run << l;
+                    }
+                const QByteArray prefix = '@' + which.toLatin1() + '_';
+                int inFile = 0;
+                for (const QByteArray &l : run) if (l.startsWith(prefix)) ++inFile;
+                auto feed = [&](int from, int to) {
+                    for (int i = from; i < to; ++i) {
+                        const QByteArray &l = run.at(i);
+                        const qint64 ms = QDateTime::fromString(QString::fromLatin1(l.split(' ').at(1)), Qt::ISODate).toMSecsSinceEpoch();
+                        disp.ingestLocal(21, 1, l, ms, QString());
+                    }
+                    disp.drainNow();
+                    QCoreApplication::processEvents();
+                };
+                feed(0, run.size() / 2);
+                const QString key = disp.knownKeys().value(0);
+                auto *w = new NmsLogWindow(kind, disp.modelForKey(key), key, QStringLiteral("L1_V1"));
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
+                const int before = w->table().rows.size();
+                feed(run.size() / 2, run.size());
+                printf("%s: %s  rows %d at open, %d after the rest arrived; %d in the file; %d columns\n",
+                       qPrintable(which), qPrintable(cap), before, w->table().rows.size(), inFile,
+                       w->table().columnCount());
                 win = w;
             }
             if (which == QLatin1String("stationlayout")) {

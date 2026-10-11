@@ -11,6 +11,45 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-249"></a>
+## Session 249 — the NMS tables: late rows no longer cut off
+
+Abhinav asked for a run of NMS-table features, one step at a time, starting
+with this fix (item 8 of the list after patch 248).
+
+**What was wrong:** column widths were set from the rows the tab held when
+the window opened, and again only when a packet brought a new column. A row
+that arrived later and was wider in an existing column was elided. In the
+fault log on `loco_1_1_26062026_162418.cap`, rows 16, 18, 20 and 21 showed
+"2026-06-26 …" for the PC time and RTC, because 3, 4, 5 and 8 are slightly
+wider digits than the 1s and 2s of the first rows.
+
+**Now:** each batch of new rows widens any column its text does not fit
+(the delegate's own size, so exactly what *resize to contents* would give).
+A column is never narrowed, so a width the operator set by hand is kept.
+
+### Files
+
+`nmslogwindow.h/.cpp` (`widenToFit`); `tests/test_session249.cpp`,
+`tests/tests.pro`. The screenshot harness (`tests/screenshot_main.cpp`,
+not part of the gate) gains `SHOT_WINDOW=nmshlth|nmsflt|nmsrssi`: one real
+capture through the dispatcher, the window opened halfway, with the table's
+row count printed against the file's.
+
+### Tests
+
+`session249` (7 checks, real frames): a one-fault "28 (GSM-2)" packet,
+then a one-fault "2 (VCC Mc-2) / 26 (safety error)" packet that arrives
+after the window opened. Every cell fits, the fault_id column widened, and a
+column widened by hand is not narrowed by a later, narrower row. The test
+failed on the code before the fix ("row 2 '26 (safety error)'").
+`./verify.sh` green on macOS (Qt 6.11.2): 13 validators, `dltests` 293
+suites / 7689 checks / 0 failed, menu audit (183 ok), smoke. The harness
+shot of the fault log shows rows 16–21 in full. Not tested here: Windows /
+Qt 5.15 (CI after the push).
+
+---
+
 <a id="session-248"></a>
 ## Session 248 — NMS in its own Monitor group; the NMS tables' column order
 

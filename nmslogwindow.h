@@ -66,6 +66,7 @@ signals:
 
 private:
     void onRowsInserted(int first, int last);
+    void widenToFit(int firstRow, int lastRow);
     void exportTo(bool xlsx);
     void showCount();
 
