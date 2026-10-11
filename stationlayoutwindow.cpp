@@ -1065,8 +1065,17 @@ void StationLayoutCanvas::measureAt(const QPointF &pos)
     end.set = true;
     end.y = pos.y();
     bool found = false;
-    for (const Hit &h : m_hits) {
-        if (!h.rect.contains(pos)) continue;
+    // The nearest mark under the click: on a crowded sheet (narrower fonts,
+    // a smaller window) neighbouring tags' boxes overlap.
+    QVector<const Hit *> under;
+    for (const Hit &h : m_hits)
+        if (h.rect.contains(pos) && (!h.tag.isEmpty() || h.signal >= 0 || h.point >= 0)) under << &h;
+    std::stable_sort(under.begin(), under.end(), [&pos](const Hit *a, const Hit *b) {
+        const QPointF da = a->rect.center() - pos, db = b->rect.center() - pos;
+        return QPointF::dotProduct(da, da) < QPointF::dotProduct(db, db);
+    });
+    for (const Hit *hp : under) {
+        const Hit &h = *hp;
         if (!h.tag.isEmpty() && m_loc.contains(h.tag)) {
             end.loc = m_loc.value(h.tag);
             end.what = tr("tag %1").arg(h.tag);

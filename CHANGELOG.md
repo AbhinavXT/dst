@@ -11,6 +11,34 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-236"></a>
+## Session 236 — CI fixes for 233 and 235
+
+GitHub CI was red on 233-235. Linux and Qt 6 were green on 233 and 234;
+Windows failed on all three.
+
+- **Measure took the wrong tag (233, Windows).** On a narrower sheet,
+  neighbouring tags' boxes overlap, and Measure took the first box under
+  the click: a click on tag 910's centre measured from 908. It now takes
+  the **nearest** tag, signal or point under the click.
+- **The Tag Builder grew past a laptop (235, Linux: 1148 px wide).** The
+  Scenario button is gone. Its menu is now on **Add duplicate's arrow**:
+  clicking the button still adds a duplicate, and the arrow holds Add
+  duplicate, the section 14 scenarios, Jumble and Make the section 14 set.
+  Both act on the same pair. The Mac minimum went from 1035 to 927 px, about
+  1030 px with Linux's fonts.
+
+### Files
+
+`stationlayoutwindow.cpp` (`measureAt`), `tagbuilderwindow.cpp`.
+
+### Tests
+
+session195 (fits 1100 px), 196, 198, 233 and 235 pass. The Windows and
+Linux fixes are checked by CI after the push.
+
+---
+
 <a id="session-235"></a>
 ## Session 235 — Tag Builder ▸ Scenario: SIF section 14 on a tag pair
 
@@ -24,7 +52,7 @@ The cases are: duplicate missing, main missing, both missing,
 interchanged, same location, under 4 m, over 4 m. 14.25 jumbles the reads.
 Each was a copy of a working route edited by hand.
 
-- **Scenario ▾** (beside Fix CRCs) acts on the selected tag's pair, whichever
+- **Scenario** (on Add duplicate's arrow since 236) acts on the selected tag's pair, whichever
   of the two is selected. Each change is one Undo step and the status says
   what changed:
   - **Duplicate tag missing / Main tag missing / Both tags missing**;

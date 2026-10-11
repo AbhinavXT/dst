@@ -149,7 +149,8 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     auto *delBtn = new QPushButton(tr("Delete"), this);
     auto *upBtn = new QPushButton(tr("Up"), this);
     auto *downBtn = new QPushButton(tr("Down"), this);
-    auto *dupBtn = new QPushButton(tr("Add duplicate"), this);
+    auto *dupBtn = new QToolButton(this);
+    dupBtn->setText(tr("Add duplicate"));
     dupBtn->setToolTip(tr("The selected main tag's duplicate tag, %1 m further along the direction, right after it")
                            .arg(RfidCheck::kDuplicateGap));
     auto *setBtn = new QPushButton(tr("Set field…"), this);
@@ -180,16 +181,16 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     rowBtns->addStretch(1);
     auto *rowBtns2 = new QHBoxLayout;
     rowBtns2->addWidget(setBtn);
-    rowBtns2->addWidget(dupBtn);
+    rowBtns2->addWidget(dupBtn);   // its arrow: the session 235 scenarios
     rowBtns2->addWidget(shiftBtn);
     rowBtns2->addWidget(fixBtn);
     // Session 235: the SIF's tag scenarios on the selected main / duplicate pair.
-    auto *scenBtn = new QToolButton(this);
-    scenBtn->setText(tr("Scenario"));
-    scenBtn->setPopupMode(QToolButton::InstantPopup);
-    scenBtn->setToolTip(tr("The SIF section 14 cases on the selected tag and its duplicate: one change here, or the "
-                           "whole set as files named by clause"));
-    auto *scenMenu = new QMenu(scenBtn);
+    // On Add duplicate's arrow rather than a button of its own: they act on the
+    // same pair, and another button widened the window past a laptop on Linux.
+    auto *scenMenu = new QMenu(dupBtn);
+    QAction *addDupAct = scenMenu->addAction(tr("Add duplicate"));
+    connect(addDupAct, &QAction::triggered, this, &TagBuilderWindow::addDuplicate);
+    scenMenu->addSection(tr("Scenario (SIF section 14) on the selected pair"));
     for (int k = TagScenario::DuplicateMissing; k <= TagScenario::GapOver4; ++k) {
         QAction *a = scenMenu->addAction(TagScenario::describe(TagScenario::Kind(k)).left(1).toUpper()
                                          + TagScenario::describe(TagScenario::Kind(k)).mid(1));
@@ -213,8 +214,11 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
         if (!folder.isEmpty()) makeSection14(folder, m_route.tags.at(row).name);
     });
     scenMenu->setToolTipsVisible(true);
-    scenBtn->setMenu(scenMenu);
-    rowBtns2->addWidget(scenBtn);
+    dupBtn->setMenu(scenMenu);
+    dupBtn->setPopupMode(QToolButton::MenuButtonPopup);
+    dupBtn->setToolTip(dupBtn->toolTip() + tr(". Its arrow: the SIF section 14 scenarios on the selected tag and its "
+                                              "duplicate (missing, interchanged, same location, under / over 4 m, "
+                                              "jumbled), one at a time or the whole set as files named by clause"));
     rowBtns2->addStretch(1);
     rowBtns2->addWidget(undoBtn);
 
@@ -467,7 +471,7 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     });
     connect(addSig, &QPushButton::clicked, this, &TagBuilderWindow::addSignal);
     connect(delSig, &QPushButton::clicked, this, &TagBuilderWindow::deleteSignal);
-    connect(dupBtn, &QPushButton::clicked, this, &TagBuilderWindow::addDuplicate);
+    connect(dupBtn, &QToolButton::clicked, this, &TagBuilderWindow::addDuplicate);
     connect(shiftBtn, &QPushButton::clicked, this, [this]() {
         bool ok = false;
         const int m = QInputDialog::getInt(this, tr("Shift every location"),
