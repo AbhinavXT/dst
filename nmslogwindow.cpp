@@ -37,6 +37,7 @@ int NmsLogTableModel::append(NmsLog::Kind kind, const QVector<LogEntryPtr> &entr
     batch.groups = m_table.groups;
     batch.order = m_table.order;
     batch.index = m_table.index;
+    batch.lastValue = m_table.lastValue;   // "changed" carries on from the table
     for (const LogEntryPtr &e : entries) {
         if (e) NmsLog::append(batch, kind, *e);
     }
@@ -53,6 +54,8 @@ int NmsLogTableModel::append(NmsLog::Kind kind, const QVector<LogEntryPtr> &entr
     m_table.rows += batch.rows;
     m_table.hex += batch.hex;
     m_table.epochMs += batch.epochMs;
+    m_table.changed += batch.changed;
+    m_table.lastValue = batch.lastValue;
     if (widened) endResetModel();
     else endInsertRows();
     return added;
@@ -92,6 +95,27 @@ QVariant NmsLogTableModel::headerData(int section, Qt::Orientation o, int role) 
     return m_table.header(section);
 }
 
+// --- which rows are shown ----------------------------------------------------
+
+NmsLogFilter::NmsLogFilter(NmsLogTableModel *rows, QObject *parent)
+    : QSortFilterProxyModel(parent), m_rows(rows)
+{
+    setSourceModel(rows);
+}
+
+void NmsLogFilter::setChangesOnly(bool on)
+{
+    if (on == m_changesOnly) return;
+    m_changesOnly = on;
+    invalidateFilter();
+}
+
+bool NmsLogFilter::filterAcceptsRow(int sourceRow, const QModelIndex &) const
+{
+    if (m_changesOnly && !m_rows->table().changed.value(sourceRow, true)) return false;
+    return true;
+}
+
 // --- the window --------------------------------------------------------------
 
 NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &tabKey, const QString &tabName,
@@ -105,8 +129,9 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
     resize(1200, 600);
 
     m_rows = new NmsLogTableModel(this);
+    m_filter = new NmsLogFilter(m_rows, this);
     m_view = new QTableView(this);
-    m_view->setModel(m_rows);
+    m_view->setModel(m_filter);
     m_view->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_view->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_view->horizontalHeader()->setDefaultSectionSize(120);
@@ -118,8 +143,13 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
                            .arg(NmsLog::token(kind)));
 
     m_follow = new QCheckBox(tr("Follow new packets"), this);
+    m_follow->setObjectName(QStringLiteral("nmsFollow"));
     m_follow->setChecked(true);
     m_follow->setToolTip(tr("Scroll to each new packet as it arrives"));
+    m_changesOnly = new QCheckBox(tr("Changes only"), this);
+    m_changesOnly->setObjectName(QStringLiteral("nmsChangesOnly"));
+    m_changesOnly->setToolTip(tr("Show only the packets where an event reads differently from the last time it "
+                                 "was reported (and any whose CRC failed). The first packet is always shown"));
     m_count = new QLabel(this);
     m_status = new StatusLine;
     auto *csv = new QPushButton(tr("Export CSV…"), this);
@@ -129,6 +159,7 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
 
     auto *top = new QHBoxLayout;
     top->addWidget(m_count, 1);
+    top->addWidget(m_changesOnly);
     top->addWidget(m_follow);
     auto *bottom = new QHBoxLayout;
     bottom->addWidget(m_status, 1);
@@ -142,8 +173,13 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
     connect(csv, &QPushButton::clicked, this, [this]() { exportTo(false); });
     connect(xlsx, &QPushButton::clicked, this, [this]() { exportTo(true); });
     connect(m_view, &QTableView::doubleClicked, this, [this](const QModelIndex &i) {
-        const NmsLog::Table &t = m_rows->table();
-        if (i.isValid() && i.row() < t.epochMs.size()) emit jumpRequested(m_tabKey, t.epochMs.at(i.row()));
+        const int r = tableRow(i);
+        if (r >= 0) emit jumpRequested(m_tabKey, m_rows->table().epochMs.at(r));
+    });
+    connect(m_changesOnly, &QCheckBox::toggled, this, [this](bool on) {
+        m_filter->setChangesOnly(on);
+        if (m_follow->isChecked()) m_view->scrollToBottom();
+        showCount();
     });
 
     if (m_model) {
@@ -199,8 +235,10 @@ void NmsLogWindow::widenToFit(int firstRow, int lastRow)
     for (int c = 0; c < m_rows->columnCount(); ++c) {
         if (m_view->isColumnHidden(c)) continue;
         int want = 0;
-        for (int r = firstRow; r <= lastRow; ++r)
-            want = qMax(want, m_view->sizeHintForIndex(m_rows->index(r, c)).width() + grid);
+        for (int r = firstRow; r <= lastRow; ++r) {
+            const QModelIndex shown = m_filter->mapFromSource(m_rows->index(r, c));
+            if (shown.isValid()) want = qMax(want, m_view->sizeHintForIndex(shown).width() + grid);
+        }
         if (want > m_view->columnWidth(c)) m_view->setColumnWidth(c, want);
     }
 }
@@ -208,7 +246,16 @@ void NmsLogWindow::widenToFit(int firstRow, int lastRow)
 void NmsLogWindow::showCount()
 {
     const int n = m_rows->table().rows.size();
-    m_count->setText(n == 1 ? tr("1 packet") : tr("%1 packets").arg(n));
+    QString text = n == 1 ? tr("1 packet") : tr("%1 packets").arg(n);
+    if (m_filter->rowCount() != n) text += tr(", %1 shown").arg(m_filter->rowCount());
+    m_count->setText(text);
+}
+
+int NmsLogWindow::tableRow(const QModelIndex &viewIndex) const
+{
+    if (!viewIndex.isValid()) return -1;
+    const int r = m_filter->mapToSource(viewIndex).row();
+    return r >= 0 && r < m_rows->table().rows.size() ? r : -1;
 }
 
 bool NmsLogWindow::saveCsv(const QString &path, QString *err) const

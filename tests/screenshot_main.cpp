@@ -230,16 +230,23 @@ int main(int argc, char **argv)
                 printf("%s: %s  rows %d at open, %d after the rest arrived; %d in the file; %d columns\n",
                        qPrintable(which), qPrintable(cap), before, w->table().rows.size(), inFile,
                        w->table().columnCount());
+                // SHOT_CHANGES=1: Changes only ticked (session 251).
+                if (qEnvironmentVariableIsSet("SHOT_CHANGES")) {
+                    w->findChild<QCheckBox *>(QStringLiteral("nmsChangesOnly"))->setChecked(true);
+                    printf("  changes only: %d of %d shown\n", w->view()->model()->rowCount(), w->table().rows.size());
+                }
                 // SHOT_SCROLLTO=<column>: the view at that column's first marked cell (session 250).
                 if (!qEnvironmentVariableIsEmpty("SHOT_SCROLLTO")) {
-                    w->findChild<QCheckBox *>()->setChecked(false);
+                    w->findChild<QCheckBox *>(QStringLiteral("nmsFollow"))->setChecked(false);
                     const QString col = qEnvironmentVariable("SHOT_SCROLLTO");
                     const int c = w->table().index.value(col, -1);
                     for (int r = 0; c >= 0 && r < w->table().rows.size(); ++r)
-                        if (NmsLog::markOf(col, w->table().cell(r, c)) != NmsLog::Mark::None) {
+                        if (NmsLog::markOf(col, w->table().cell(r, c)) != NmsLog::Mark::None
+                            && w->filter()->mapFromSource(w->filter()->sourceModel()->index(r, c)).isValid()) {
                             w->resize(1100, 720);
                             w->show();
-                            w->view()->scrollTo(w->view()->model()->index(r, c), QAbstractItemView::PositionAtCenter);
+                            w->view()->scrollTo(w->filter()->mapFromSource(w->filter()->sourceModel()->index(r, c)),
+                                                QAbstractItemView::PositionAtCenter);
                             printf("  scrolled to row %d, %s\n", r + 1, qPrintable(w->table().cell(r, c)));
                             break;
                         }

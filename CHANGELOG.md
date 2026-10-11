@@ -11,6 +11,60 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-251"></a>
+## Session 251 — the NMS tables: Changes only
+
+Item 2 of Abhinav's list after patch 248.
+
+What the operator sees: a **Changes only** box above each NMS table. Ticked,
+the table shows only the packets where an event reads differently from the
+last time that event was reported, plus any packet whose CRC failed. The
+first packet is always shown. The count reads "2081 packets, 56 shown". The
+row numbers on the left stay the packet numbers, so a gap shows where
+packets were left out. Packets that arrive while it is ticked are shown only
+if they change something. Double-click still opens that packet's frame.
+Exports still write every packet.
+
+"Events" are the packet's own fields: the health events, the fault log's
+subsystem / count / faults, the RSSI fields. The capture line and the NMS
+header (time, seq, length, message seq …) change every packet and are not
+compared. An event a packet does not carry is not a change: health packets
+carry only some events.
+
+How much it leaves on real captures:
+
+| Capture | health | RSSI | fault |
+|---|---|---|---|
+| `loco_1_1_29062026_134509` | 56 of 2081 | 19 of 2081 | 54 of 62 |
+| `loco_1_1_27062026_140226` | 28 of 2040 | 36 of 2040 | 13 of 23 |
+| `loco_2_1_27062026_140226` | 47 of 2020 | 31 of 2020 | 19 of 35 |
+
+### Files
+
+`nmslog.h/.cpp` (`Table::changed`, worked out as each row is added, with
+the last value of each event kept in `lastValue`, so it carries across live
+batches); `nmslogwindow.h/.cpp` (`NmsLogFilter`, a proxy between the table
+and the view, which the find / filter bar will also use; `tableRow()` maps
+a view row back to its packet for the double-click jump and the
+column-fit); `tests/test_session251.cpp`, `tests/tests.pro`; the screenshot
+harness gains `SHOT_CHANGES=1`.
+
+### Tests
+
+`session251` (13 checks, real frames): on the 2081 health packets of
+`loco_1_1_29062026_134509`, the table's "changed" equals the rule worked
+out again by column name, and is the same when built in two batches
+(1000 at open, the rest live). Ticking the box shows exactly those rows and
+the count says so. The first DMI NOT OK row is shown. A double-click on a
+filtered row jumps to that packet. A repeat of the last packet arriving live
+is added but not shown. Unticking shows every packet. The fault log of
+`loco_1_1_26062026_162418` follows the same rule.
+`./verify.sh` green on macOS (Qt 6.11.2): 13 validators, `dltests` 295
+suites / 7736 checks / 0 failed, menu audit (183 ok), smoke. Not tested
+here: Windows / Qt 5.15 (CI after the push).
+
+---
+
 <a id="session-250"></a>
 ## Session 250 — the NMS tables mark what a packet reports
 

@@ -49,6 +49,11 @@ struct Table {
     QVector<QStringList> rows;          // by id; each as long as `columns` was when it was added
     QVector<QString> hex;               // per row: the frame, the last column shown
     QVector<qint64> epochMs;            // per row: the entry's time, for jumping to it
+    // Session 251: per row, did any of the packet's own fields (the events)
+    // read differently from the last time that field was carried, or did the
+    // CRC fail? The first packet always did. lastValue: by column id.
+    QVector<bool> changed;
+    QHash<int, QString> lastValue;
     QHash<QString, int> index;          // column name -> display position
 
     Table();

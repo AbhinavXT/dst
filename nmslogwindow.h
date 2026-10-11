@@ -10,12 +10,14 @@
 //  tab's model grows (live, serial, a log loaded into it), and the table is
 //  rebuilt if the tab is cleared. Rows the tab trims at capacity stay here.
 //  Export: CSV or .xlsx. Double-click a row: the frame in its tab.
+//  Changes only (session 251): the rows where an event changed.
 // =============================================================================
 
 #include "logmodel.h"
 #include "nmslog.h"
 
 #include <QAbstractTableModel>
+#include <QSortFilterProxyModel>
 #include <QPointer>
 #include <QWidget>
 
@@ -44,6 +46,24 @@ private:
     NmsLog::Table m_table;
 };
 
+// Session 251: which rows the view shows. Changes only: a packet whose events
+// read differently from the last time each was carried (or whose CRC failed).
+class NmsLogFilter : public QSortFilterProxyModel
+{
+    Q_OBJECT
+public:
+    explicit NmsLogFilter(NmsLogTableModel *rows, QObject *parent = nullptr);
+    void setChangesOnly(bool on);
+    bool changesOnly() const { return m_changesOnly; }
+
+protected:
+    bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override;
+
+private:
+    NmsLogTableModel *m_rows;
+    bool m_changesOnly = false;
+};
+
 class NmsLogWindow : public QWidget
 {
     Q_OBJECT
@@ -53,6 +73,9 @@ public:
     NmsLog::Kind kind() const { return m_kind; }
     const NmsLog::Table &table() const { return m_rows->table(); }
     QTableView *view() const { return m_view; }
+    NmsLogFilter *filter() const { return m_filter; }
+    // The table row (in table()) a view row shows; -1 if none.
+    int tableRow(const QModelIndex &viewIndex) const;
 
     // The export buttons' work, without the file dialog (and for the tests).
     bool saveCsv(const QString &path, QString *err = nullptr) const;
@@ -74,6 +97,8 @@ private:
     QPointer<LogModel>  m_model;
     QString             m_tabKey;
     NmsLogTableModel   *m_rows = nullptr;
+    NmsLogFilter       *m_filter = nullptr;
+    QCheckBox          *m_changesOnly = nullptr;
     QTableView         *m_view = nullptr;
     QCheckBox          *m_follow = nullptr;
     QLabel             *m_count = nullptr;

@@ -198,6 +198,18 @@ bool append(Table &t, Kind kind, const LogEntry &entry, bool *newColumns)
         put(n == 1 ? name : QStringLiteral("%1 (%2)").arg(name).arg(n), r.value.trimmed(), g);
     }
     while (row.size() < t.columns.size()) row << QString();
+    bool changed = false;   // the first packet's events are all new: changed
+    for (int c = 0; c < row.size(); ++c) {
+        if (row.at(c).isEmpty()) continue;
+        if (t.groups.at(c) == Group::Body) {
+            auto it = t.lastValue.find(c);
+            if (it == t.lastValue.end()) { t.lastValue.insert(c, row.at(c)); changed = true; }
+            else if (it.value() != row.at(c)) { it.value() = row.at(c); changed = true; }
+        } else if (t.columns.at(c) == QLatin1String("CRC") && row.at(c) == QLatin1String("FAIL")) {
+            changed = true;
+        }
+    }
+    t.changed << changed;
     t.rows << row;
     t.hex << QString::fromLatin1(cap.bytes.toHex(' ').toUpper());
     t.epochMs << entry.epochMs;
