@@ -28,6 +28,9 @@ RESOURCES += $$PWD/images.qrc $$PWD/lococonfig/lococonfig.qrc
 RESOURCES += $$PWD/tag_scenarios.qrc
 # Session 210: the default station layout (Tools > Station Layout, Track diagram).
 RESOURCES += $$PWD/station_layouts.qrc
+# Session 231: SIF 0533 v4.22's clauses (Tools > Test Case Catalog), made by
+# scripts/sif_catalog.py from the PDF.
+RESOURCES += $$PWD/test_catalog.qrc
 
 LIBS += -L$$DLCORE_DIR -ldlcore
 msvc: PRE_TARGETDEPS += $$DLCORE_DIR/dlcore.lib

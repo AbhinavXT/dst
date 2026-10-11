@@ -35,6 +35,7 @@
 #include "mergedwindow.h"
 #include "trackdiagramwindow.h"
 #include "stationlayoutwindow.h"
+#include "testcatalogwindow.h"
 #include "twolocowindow.h"
 #include "soswindow.h"
 #include "readerdirwindow.h"
@@ -196,6 +197,16 @@ int main(int argc, char **argv)
                                 : qEnvironmentVariable("SHOT_FILE"));
                 if (!qEnvironmentVariableIsEmpty("SHOT_EXPORT")) w->exportXlsx(qEnvironmentVariable("SHOT_EXPORT"));
                 if (!qEnvironmentVariableIsEmpty("SHOT_DRAWING")) w->exportDrawing(qEnvironmentVariable("SHOT_DRAWING"));   // session 212
+                win = w;
+            }
+            if (which == QLatin1String("testcatalog")) {
+                // Session 231. SHOT_SELECT: the clause shown (default 22.1, a matrix);
+                // SHOT_SEARCH: what the search box holds.
+                auto *w = new TestCatalogWindow;
+                w->setAttribute(Qt::WA_DeleteOnClose, false);
+                w->loadBuiltin();
+                if (!qEnvironmentVariableIsEmpty("SHOT_SEARCH")) w->setSearch(qEnvironmentVariable("SHOT_SEARCH"));
+                w->select(qEnvironmentVariableIsEmpty("SHOT_SELECT") ? QStringLiteral("22.1") : qEnvironmentVariable("SHOT_SELECT"));
                 win = w;
             }
             if (which == QLatin1String("twoloco")) {

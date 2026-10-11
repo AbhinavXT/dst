@@ -675,6 +675,15 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                                     "import and export the Python tool's station .xlsx"));
     connect(actStationLayout, &QAction::triggered, this, &MainWindow::onActionStationLayout);
 
+    // Session 231: every clause of SIF 0533 v4.22, by section, to read, edit,
+    // add to and delete from. Beside the other "set up a test" tools.
+    QAction *actTestCatalog = toolsMenu->addAction(tr("Test Case Catalo&g\u2026"));
+    actTestCatalog->setObjectName(QStringLiteral("actTestCatalog"));
+    actTestCatalog->setShortcut(QKeySequence("Ctrl+Alt+G"));
+    actTestCatalog->setToolTip(tr("Every clause of RDSO SIF 0533 v4.22 (functional test cases at system level) by "
+                                  "section: search, read, edit, add and delete; save your own catalog file"));
+    connect(actTestCatalog, &QAction::triggered, this, &MainWindow::onActionTestCatalog);
+
     // Session 85: a QCom-style serial terminal. The IOA's input / output /
     // analog logs only come out of a serial port; with "Feed console" on,
     // its lines land in a tab like UDP traffic. One window per port.

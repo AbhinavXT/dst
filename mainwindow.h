@@ -201,6 +201,7 @@ private slots:
     void onActionLocoConfig();
     void onActionTagBuilder();       // Tools → RFID Tag Builder… (session 195)       // Tools → Loco Configuration…
     void onActionStationLayout();    // Tools → Station Layout… (session 208)
+    void onActionTestCatalog();      // Tools → Test Case Catalog… (session 231)
 
     // ---- Live-applied settings --------------------------------------
     void onThemeChanged(QString themeName);

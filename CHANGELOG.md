@@ -11,6 +11,104 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-231"></a>
+## Session 231 — Test Case Catalog: every clause of SIF 0533 v4.22
+
+Abhinav's pick 1 of the "make test scenarios faster" list: the whole SIF
+as a catalog, by test case number, easy to edit, add to and delete from.
+
+- **Tools ▸ Test Case Catalog… (Ctrl+Alt+G).** Left, the 35 sections
+  (KAVACH_FRS_01 … _35, titled as the SIF's Test Definitions table titles
+  them) with their **1887 clauses**. A radio case's operations sit under
+  it (31.6 ▸ 31.6.1 … 31.6.10). Right, the selected clause: test scenario,
+  input specification, expected output, and for sections 31-33 the case's
+  purpose / methodology / set-up and each operation's two sides headed as
+  the SIF heads them ("Transmission of packets from Station side",
+  "Reception of packets at Onboard side") and its expected result.
+- **Search** over every field: words (all must appear), or a clause number
+  ("31.6" finds the case and its operations, not 31.60). **Show:** every
+  clause, changed from the SIF, added here, deleted from the SIF, with a
+  figure in the SIF.
+- **Editing** happens in place. Each clause says where it stands: "as the
+  SIF prints it, page 127", "changed from the SIF" (with **Revert to the
+  SIF**), or "added here". The list marks changed and added clauses. The
+  fields grow with their text. Tables the SIF prints inside a cell (the SoS
+  mode matrices, the comparator speeds) keep their rows as `| a | b |` lines,
+  in a fixed font. A clause whose page carries a drawing says "the SIF draws
+  a figure on page N: read it there".
+- **New** clause (the section's next number), sub-clause, section;
+  **Duplicate** (the next number, "Copy of 4.93."); **Delete** (a clause
+  takes its sub-clauses; a section asks first); the **id box** renumbers a
+  clause and its sub-clauses, and refuses a number in use. Every change is
+  one **Undo** step (Ctrl+Z); typing in one field is one step. A clause
+  deleted from the SIF is listed under Show ▸ Deleted, with **Restore**.
+- **Open / Save** a catalog file (`.json`). The SIF as built in is never
+  written over: saving it asks for a file. The window reopens the last
+  file; unsaved changes are asked about on close.
+
+### How the SIF was read
+
+`scripts/sif_catalog.py` (pdfplumber, run once per SIF version, not in the
+build) reads the 893-page PDF **word by word**, using each page's own header
+row for its columns. Cell-based extraction was tried first and returned
+nested-table text twice. What it handles, each found by checking against the
+rendered pages:
+
+- ids centred in their row (31.13.21);
+- a case row repeated at the top of its next page (32.1);
+- section 32's broken header ("O t / pera-");
+- section 34's shifted header;
+- the RF tests' title inside their Purpose cell (31.2-31.4);
+- a header-less page that starts a new layout (31.1);
+- two tables on one page (section 29);
+- the Symbol / Wingdings characters (☒, ↑, ↓, Δ, •);
+- words broken across lines, joined only when the document prints them
+  whole elsewhere ("KA-VACH" → KAVACH, "non-communication" and "S-KAVACH"
+  kept).
+
+Checks:
+- every clause id an independent text extraction finds is in the catalog;
+- none twice, none skipped;
+- every body word of the PDF accounted for.
+
+Each clause keeps its SIF page.
+
+### Files
+
+New:
+- `testcatalog.{h,cpp}`, `testcatalogwindow.{h,cpp}`;
+- `test_catalog/sif0533_v4_22.json` and `test_catalog.qrc` (built in via
+  `dlcore_link.pri`);
+- `scripts/sif_catalog.py`.
+
+Changed:
+- `dlcore.pri`;
+- `settings.h` (`test_catalog/last_file`);
+- `mainwindow.h`, `mainwindow_menus.cpp`, `mainwindow_tools.cpp`;
+- tests: `test_session231.cpp` (new), `tests.pro`, `screenshot_main.cpp`
+  (`SHOT_WINDOW=testcatalog`).
+
+### Tests
+
+`session231` checks the built-in catalog against the PDF:
+- 35 sections, 1887 clauses, in order, none skipped;
+- 4.93 as page 127 prints it;
+- 31.6 and 31.6.1 with their labels; 31.13.22's centred id; 32.1.5's
+  columns;
+- 22.1's matrix and section 22's legend; 33.3's comparator cells; 34.1;
+  31.2;
+- the hyphen joins.
+
+It also checks:
+- ids: numeric order, validity, the next free number, renames and their
+  refusals;
+- save/load round trip; changed vs. the SIF;
+- the window: search, editing as one undo step, revert, new / sub-clause /
+  duplicate / rename / delete / restore / undo, Show ▸ Added, save and
+  reopen, no loose widgets, fits 1100×700.
+
+---
+
 <a id="session-230"></a>
 ## Session 230 — Station Layout: the station's texts no longer overprint
 

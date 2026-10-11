@@ -534,6 +534,12 @@ public:
     { QSettings s(iniPath(), QSettings::IniFormat); return s.value("station_layout/last_file").toString(); }
     static void setStationLayoutLastFile(const QString &file)
     { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("station_layout/last_file", file); }
+    // Session 231: the Test Case Catalog's file, reopened with it; empty =
+    // the SIF as built in.
+    static QString testCatalogLastFile()
+    { QSettings s(iniPath(), QSettings::IniFormat); return s.value("test_catalog/last_file").toString(); }
+    static void setTestCatalogLastFile(const QString &file)
+    { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("test_catalog/last_file", file); }
 };
 
 #endif // SETTINGS_H

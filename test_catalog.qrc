@@ -1,0 +1,6 @@
+<!-- Session 231: RDSO SIF 0533 v4.22, every clause (scripts/sif_catalog.py). -->
+<RCC>
+    <qresource prefix="/">
+        <file>test_catalog/sif0533_v4_22.json</file>
+    </qresource>
+</RCC>
