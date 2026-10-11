@@ -11,6 +11,57 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-226"></a>
+## Session 226 — Station Layout: compare with another station file
+
+Abhinav's pick 5 of 7.
+
+- **Open ▸ Compare with**: a file (.json or .xlsx), the default layout,
+  or any layout of the built-in library. **Stop comparing** ends it.
+- A **Compare** tab lists what changed from that file to the layout open:
+  - each tag **added** (where), **removed** (where it was), **moved**
+    (from, to, by how many metres: only its location differs), or
+    **changed** (each field that differs by its schema name, e.g.
+    "tin_nom 7 → 8", or "CRC-30" when only the CRC differs);
+  - then signals, lines (tags added / removed, or "the order changed"),
+    points, the station and texts, added, removed or changed.
+
+  Double-click a tag's row to select the tag.
+- **In the drawing**, added tags get a dotted ring in the ok colour, and
+  moved or changed ones in the warning colour.
+- The comparison **follows edits** (and Undo) until stopped. A file that
+  cannot be read leaves the comparison as it was.
+
+Seen on the real files: the default station.xlsx and
+station_8_MAY_2026.xlsx differ by seven tags on DM:
+- 910 at 164610 m, and 400 to 410 every 500 m to 167500 m, which the
+  default has;
+- four signals at them;
+- line DM 39 → 46 tags.
+
+station_to_be_updated.xlsx is the same as the default.
+
+### Files
+
+`stationlayout.{h,cpp}` (`TagChange`, `Diff`, `diff()`),
+`stationlayoutwindow.{h,cpp}` (`compareWith`, `clearCompare`,
+`comparison`, the Compare tab, `setDiffTags`, the menu); tests
+`test_session226.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session226` (17 checks), on the real built-in files:
+- the default against 8 May: the seven tags and their places, line DM,
+  the four signals, and the other way round;
+- to_be_updated: no difference;
+- 981 moved 30 m: "moved", 163960 → 163990 m;
+- the window: the list (12 rows), the tab's count, an edit joining the
+  comparison and Undo leaving it, an unreadable file, Stop comparing.
+
+`session208_window`, `210` and `220` to `224` pass unchanged.
+
+---
+
 <a id="session-225"></a>
 ## Session 225 — Serial terminal: a port without DTR / RTS no longer shows as failed
 

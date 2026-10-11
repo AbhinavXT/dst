@@ -515,4 +515,92 @@ bool save(const QString &path, const Layout &l, QString *err)
     return true;
 }
 
+// ---- session 226: comparing two layouts ------------------------------------------------
+
+Diff diff(const Layout &from, const Layout &to)
+{
+    Diff d;
+    QHash<QString, const Tag *> a, b;
+    for (const Tag &t : from.tags) a.insert(t.name, &t);
+    for (const Tag &t : to.tags) b.insert(t.name, &t);
+    auto locOf = [](const Tag &t) { return info(t).absLoc; };
+    for (const Tag &t : to.tags) {
+        if (!a.contains(t.name)) { d.tags << TagChange{ t.name, TagChange::Added, 0, locOf(t), {} }; continue; }
+        const Tag &o = *a.value(t.name);
+        if (o.pageX.compare(t.pageX, Qt::CaseInsensitive) == 0 && o.pageY.compare(t.pageY, Qt::CaseInsensitive) == 0) continue;
+        const QHash<QString, qint64> va = RfidTag::values(RfidTag::fromPages(o.pageX, o.pageY));
+        const QHash<QString, qint64> vb = RfidTag::values(RfidTag::fromPages(t.pageX, t.pageY));
+        TagChange c{ t.name, TagChange::Changed, locOf(o), locOf(t), {} };
+        if (va.isEmpty() || vb.isEmpty()) {
+            c.fields << QStringLiteral("page_x / page_y (%1 does not decode)").arg(va.isEmpty() ? QStringLiteral("the other file's") : QStringLiteral("this one"));
+        } else {
+            QStringList keys = va.keys() + vb.keys();
+            keys.removeDuplicates();
+            std::sort(keys.begin(), keys.end());
+            for (const QString &k : keys)
+                if (va.value(k, -1) != vb.value(k, -1))
+                    c.fields << QStringLiteral("%1 %2 → %3").arg(k, va.contains(k) ? QString::number(va.value(k)) : QStringLiteral("—"),
+                                                                     vb.contains(k) ? QString::number(vb.value(k)) : QStringLiteral("—"));
+            if (c.fields.isEmpty()) c.fields << QStringLiteral("CRC-30");
+            bool onlyLoc = true;
+            for (const QString &f : c.fields) onlyLoc = onlyLoc && f.startsWith(QLatin1String("abs_loc"));
+            if (onlyLoc) c.kind = TagChange::Moved;
+        }
+        d.tags << c;
+    }
+    for (const Tag &t : from.tags)
+        if (!b.contains(t.name)) d.tags << TagChange{ t.name, TagChange::Removed, locOf(t), 0, {} };
+
+    // The other sheets, by their key.
+    auto keyed = [&](const QString &what, const QStringList &x, const QStringList &y) {
+        for (const QString &k : y) if (!x.contains(k)) d.other << QStringLiteral("%1 added: %2").arg(what, k);
+        for (const QString &k : x) if (!y.contains(k)) d.other << QStringLiteral("%1 removed: %2").arg(what, k);
+    };
+    auto signalKeys = [](const Layout &l) {
+        QStringList out;
+        for (const Signal &s : l.signalList) out << QStringLiteral("%1 at tag %2 (sig_id %3)").arg(s.name, s.footTag).arg(s.sigId);
+        return out;
+    };
+    keyed(QStringLiteral("signal"), signalKeys(from), signalKeys(to));
+    QHash<QString, QStringList> la, lb;
+    for (const Line &l : from.lines) la.insert(l.line, l.tags);
+    for (const Line &l : to.lines) lb.insert(l.line, l.tags);
+    keyed(QStringLiteral("line"), la.keys(), lb.keys());
+    for (const Line &l : to.lines) {
+        if (!la.contains(l.line) || la.value(l.line) == l.tags) continue;
+        const QStringList &old = la.value(l.line);
+        QStringList plus, minus;
+        for (const QString &t : l.tags) if (!old.contains(t)) plus << t;
+        for (const QString &t : old) if (!l.tags.contains(t)) minus << t;
+        d.other << QStringLiteral("line %1: %2 tags → %3%4%5").arg(l.line).arg(old.size()).arg(l.tags.size())
+                       .arg(plus.isEmpty() ? QString() : QStringLiteral("; added ") + plus.join(QStringLiteral(", ")))
+                       .arg(minus.isEmpty() && plus.isEmpty() ? QStringLiteral("; the order changed")
+                            : minus.isEmpty() ? QString() : QStringLiteral("; removed ") + minus.join(QStringLiteral(", ")));
+    }
+    auto pointText = [](const Point &p) {
+        return QStringLiteral("%1 %2 m on %3 to %4 m on %5, tags %6").arg(p.name).arg(p.loc1).arg(p.line1).arg(p.loc2).arg(p.line2, p.tags);
+    };
+    QHash<QString, QString> pa, pb;
+    for (const Point &p : from.points) pa.insert(p.name, pointText(p));
+    for (const Point &p : to.points) pb.insert(p.name, pointText(p));
+    keyed(QStringLiteral("point"), pa.keys(), pb.keys());
+    for (auto it = pb.cbegin(); it != pb.cend(); ++it)
+        if (pa.contains(it.key()) && pa.value(it.key()) != it.value())
+            d.other << QStringLiteral("point changed: %1 (was %2)").arg(it.value(), pa.value(it.key()));
+    auto stationKeys = [](const Layout &l) {
+        QStringList out;
+        for (const Station &s : l.stations) out << QStringLiteral("%1 at %2 m").arg(s.id).arg(s.location);
+        return out;
+    };
+    keyed(QStringLiteral("station"), stationKeys(from), stationKeys(to));
+    auto textKeys = [](const Layout &l) {
+        QStringList out;
+        for (const Text &t : l.texts) out << QStringLiteral("“%1” at %2 m").arg(t.text).arg(t.location);
+        return out;
+    };
+    keyed(QStringLiteral("text"), textKeys(from), textKeys(to));
+    std::sort(d.other.begin(), d.other.end());
+    return d;
+}
+
 }  // namespace StationLayout

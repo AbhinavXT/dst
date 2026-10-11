@@ -52,6 +52,8 @@ public:
     explicit StationLayoutCanvas(QWidget *parent = nullptr);
     void setStation(const StationLayout::Layout &l);
     void setSelectedTag(const QString &name);
+    // Session 226: tags that differ from a compared file: ringed, by kind.
+    void setDiffTags(const QHash<QString, int> &kinds);   // name -> StationLayout::TagChange::Kind
     // Session 223: the tags selected together (highlighted like the selected one).
     void setMarkedTags(const QSet<QString> &names);
     // The tags whose marks fall inside `r` (canvas coordinates).
@@ -121,6 +123,7 @@ private:
     double m_zoom = 1.0;
     QString m_selected;
     QSet<QString> m_marked;            // session 223
+    QHash<QString, int> m_diffKinds;   // session 226
     QPoint  m_bandFrom;                // Shift + drag: the box's corner (canvas)
     QRect   m_band;                    // the box while it is drawn; null = none
     QVector<Hit> m_hits;
@@ -194,6 +197,13 @@ public:
     // main tags make the line, its signals the layout lacks are added. Refused
     // whole when the line id is used, or a tag of the same name differs.
     bool addLineFromRoute(const RfidTag::Route &r, const QString &lineId, const QString &name);
+    // Session 226: compare with another station file (.json / .xlsx, a built-in
+    // one): the Compare tab lists what differs, the drawing rings the tags.
+    // It follows edits until cleared. False when the file cannot be read.
+    bool compareWith(const QString &path);
+    void compareWith(const StationLayout::Layout &other, const QString &label);
+    void clearCompare();
+    const StationLayout::Diff &comparison() const { return m_diff; }
     // The menu a right-click on the drawing opens (built, not shown: tests).
     QMenu *contextMenuFor(const QString &tag, const QString &line, qint64 locM, bool aboveLanes);
 
@@ -225,6 +235,12 @@ private:
     QTabWidget *m_tabs = nullptr;
     QVector<QTableWidget *> m_tables;
     QListWidget *m_checks = nullptr;
+    QListWidget *m_compare = nullptr;              // session 226
+    bool m_comparing = false;
+    StationLayout::Layout m_compareTo;
+    QString m_compareLabel;
+    StationLayout::Diff m_diff;
+    void fillCompare();
     QLabel *m_other = nullptr;
     StatusLine *m_status = nullptr;
     UndoLog *m_undo = nullptr;

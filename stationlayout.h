@@ -116,6 +116,23 @@ QHash<QString, qint64> tagLocations(const Layout &l);
 // Tag name -> its line (from the lines sheet; first line wins).
 QHash<QString, QString> lineOfTag(const Layout &l);
 
+// --- comparing two layouts (session 226) -----------------------------------------
+// What changed from `from` (another file) to `to` (the layout open): tags by
+// name, then signals, lines, points, the station and texts, one line each.
+struct TagChange {
+    enum Kind { Added, Removed, Moved, Changed };
+    QString name;
+    Kind    kind = Changed;
+    qint64  fromLoc = 0, toLoc = 0;    // Moved (and Changed when the location changed too)
+    QStringList fields;                // Changed: "tin_nom 7 -> 8", ...; "CRC-30" when only the CRC differs
+};
+struct Diff {
+    QVector<TagChange> tags;
+    QStringList other;
+    bool isEmpty() const { return tags.isEmpty() && other.isEmpty(); }
+};
+Diff diff(const Layout &from, const Layout &to);
+
 }  // namespace StationLayout
 
 #endif // STATIONLAYOUT_H

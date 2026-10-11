@@ -382,6 +382,12 @@ bool StationLayoutCanvas::eventFilter(QObject *o, QEvent *e)
     return QWidget::eventFilter(o, e);
 }
 
+void StationLayoutCanvas::setDiffTags(const QHash<QString, int> &kinds)
+{
+    m_diffKinds = kinds;
+    update();
+}
+
 void StationLayoutCanvas::setMarkedTags(const QSet<QString> &names)
 {
     m_marked = names;
@@ -764,6 +770,13 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         const TinLayout::Shape shape = TinLayout::shapeOf(m_loc.value(t.name), m_loc.value(dup), !dup.isEmpty());
         const QChar letter = TinLayout::notation(in.type, in.placement);
         TinLayout::drawTag(p, QPointF(x, y), letter, shape, flagged ? UiColor::warning() : text, flagged ? 2 : 1.2);
+        // Session 226: a tag that differs from the compared file (added: ok; moved / changed: warning).
+        if (m_diffKinds.contains(t.name) || (!dup.isEmpty() && m_diffKinds.contains(dup))) {
+            const int k = m_diffKinds.value(t.name, m_diffKinds.value(dup));
+            p.setPen(QPen(k == StationLayout::TagChange::Added ? UiColor::ok() : UiColor::warning(), 2, Qt::DotLine));
+            p.setBrush(Qt::NoBrush);
+            p.drawEllipse(QPointF(x, y), 16, 16);
+        }
         if ((!m_selected.isEmpty() && (t.name == m_selected || dup == m_selected)) || m_marked.contains(t.name)) {
             p.setPen(QPen(UiColor::selectedMark(), 2));
             p.setBrush(Qt::NoBrush);
@@ -908,6 +921,18 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
         if (confirmDiscard()) openFile(path);
     }));
     QAction *newAct = openMenu->addAction(tr("New, empty"));
+    // Session 226: compare the open layout with another station file.
+    openMenu->addSeparator();
+    QMenu *cmpMenu = openMenu->addMenu(tr("Compare with"));
+    cmpMenu->addAction(tr("A file (.json or .xlsx)…"), this, [this]() {
+        const QString path = QFileDialog::getOpenFileName(this, tr("Compare with"), QFileInfo(m_path).path(),
+                                                          tr("Station layout (*.json *.xlsx)"));
+        if (!path.isEmpty()) compareWith(path);
+    });
+    cmpMenu->addAction(tr("Default layout (station.xlsx)"), this, [this]() { compareWith(StationLayout::defaultFile()); });
+    cmpMenu->addMenu(stationLibraryMenu(cmpMenu, [this](const QString &path) { compareWith(path); }));
+    cmpMenu->addSeparator();
+    cmpMenu->addAction(tr("Stop comparing"), this, [this]() { clearCompare(); });
     openBtn->setMenu(openMenu);
     auto *saveBtn = new QPushButton(tr("Save"), this);
     auto *saveAsBtn = new QPushButton(tr("Save as…"), this);
@@ -976,6 +1001,13 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     m_other->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     m_other->setMargin(8);
     m_tabs->addTab(m_other, tr("Other sheets"));
+    m_compare = new QListWidget(this);
+    m_compare->setToolTip(tr("What differs from the file compared with (Open ▸ Compare with). Double-click a tag's row to select it"));
+    m_tabs->addTab(m_compare, tr("Compare"));
+    connect(m_compare, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *it) {
+        const QString name = it->data(Qt::UserRole).toString();
+        if (tagIndexOf(name) >= 0) { selectTags({ name }); m_canvas->setSelectedTag(name); }
+    });
 
     auto *addBtn = new QPushButton(tr("Add row"), this);
     addBtn->setToolTip(tr("After the selected row. On Tags: a copy of the selected tag, to move or edit"));
@@ -1143,6 +1175,7 @@ void StationLayoutWindow::refreshAll()
     m_checks->clear();
     m_checks->addItems(found.isEmpty() ? QStringList{ tr("Nothing to report") } : found);
     m_tabs->setTabText(6, found.isEmpty() ? tr("Checks") : tr("Checks (%1)").arg(found.size()));
+    fillCompare();
     QStringList other;
     for (const XlsxBook::Sheet &s : m_layout.otherSheets)
         other << tr("%1: %2 rows").arg(s.name).arg(qMax(0, s.rows.size() - 1));
@@ -1682,6 +1715,67 @@ bool StationLayoutWindow::addLineFromRoute(const RfidTag::Route &r, const QStrin
     m_status->ok(tr("Line %1 made from route %2: %3 tags in it, %4 new to the layout")
                      .arg(lineId, r.name).arg(ln.tags.size()).arg(added.size()));
     return true;
+}
+
+bool StationLayoutWindow::compareWith(const QString &path)
+{
+    StationLayout::Layout other;
+    QString err;
+    if (!StationLayout::load(path, &other, &err)) {
+        m_status->fail(tr("Could not read %1: %2").arg(QFileInfo(path).fileName(), err));
+        return false;
+    }
+    compareWith(other, QFileInfo(path).fileName());
+    return true;
+}
+
+void StationLayoutWindow::compareWith(const StationLayout::Layout &other, const QString &label)
+{
+    m_comparing = true;
+    m_compareTo = other;
+    m_compareLabel = label;
+    fillCompare();
+    m_tabs->setCurrentWidget(m_compare);
+    m_status->state(m_diff.isEmpty() ? tr("Same as %1").arg(label)
+                                     : tr("%1 tag(s) and %2 other row(s) differ from %3").arg(m_diff.tags.size()).arg(m_diff.other.size()).arg(label));
+}
+
+void StationLayoutWindow::clearCompare()
+{
+    m_comparing = false;
+    m_compareTo = StationLayout::Layout();
+    fillCompare();
+}
+
+void StationLayoutWindow::fillCompare()
+{
+    m_diff = m_comparing ? StationLayout::diff(m_compareTo, m_layout) : StationLayout::Diff();
+    m_compare->clear();
+    QHash<QString, int> kinds;
+    if (!m_comparing) {
+        m_compare->addItem(tr("Not comparing. Open ▸ Compare with: a file, the default or a library layout"));
+    } else if (m_diff.isEmpty()) {
+        m_compare->addItem(tr("Same as %1").arg(m_compareLabel));
+    } else {
+        m_compare->addItem(tr("From %1 to this layout:").arg(m_compareLabel));
+        const char *kindText[] = { QT_TR_NOOP("added"), QT_TR_NOOP("removed"), QT_TR_NOOP("moved"), QT_TR_NOOP("changed") };
+        for (const StationLayout::TagChange &c : m_diff.tags) {
+            QString t = tr("tag %1 %2").arg(c.name, tr(kindText[c.kind]));
+            if (c.kind == StationLayout::TagChange::Added) t += tr(" (at %1 m)").arg(c.toLoc);
+            if (c.kind == StationLayout::TagChange::Removed) t += tr(" (was at %1 m)").arg(c.fromLoc);
+            if (c.kind == StationLayout::TagChange::Moved) t += tr(": %1 m \u2192 %2 m (%3%4 m)").arg(c.fromLoc).arg(c.toLoc)
+                                                                   .arg(c.toLoc >= c.fromLoc ? QStringLiteral("+") : QString()).arg(c.toLoc - c.fromLoc);
+            if (c.kind == StationLayout::TagChange::Changed) t += QStringLiteral(": ") + c.fields.join(QStringLiteral(", "));
+            auto *it = new QListWidgetItem(t, m_compare);
+            it->setData(Qt::UserRole, c.name);
+            it->setForeground(c.kind == StationLayout::TagChange::Added ? UiColor::ok() : c.kind == StationLayout::TagChange::Removed ? UiColor::error() : UiColor::warning());
+            if (c.kind != StationLayout::TagChange::Removed) kinds.insert(c.name, c.kind);
+        }
+        m_compare->addItems(m_diff.other);
+    }
+    m_canvas->setDiffTags(kinds);
+    m_tabs->setTabText(m_tabs->indexOf(m_compare), !m_comparing ? tr("Compare")
+                                                  : tr("Compare (%1)").arg(m_diff.tags.size() + m_diff.other.size()));
 }
 
 void StationLayoutWindow::onTagCell(int row, int col)
