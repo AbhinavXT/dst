@@ -126,6 +126,7 @@ SOURCES += \
     $$PWD/testcatalogwindow.cpp \
     $$PWD/packetmatrix.cpp \
     $$PWD/packetmatrixdialog.cpp \
+    $$PWD/tagscenario.cpp \
     $$PWD/tinlayout.cpp \
     $$PWD/workspacesnapshot.cpp \
     $$PWD/settingsbundle.cpp \
@@ -284,6 +285,7 @@ HEADERS += \
     $$PWD/testcatalogwindow.h \
     $$PWD/packetmatrix.h \
     $$PWD/packetmatrixdialog.h \
+    $$PWD/tagscenario.h \
     $$PWD/tinlayout.h \
     $$PWD/workspacesnapshot.h \
     $$PWD/settingsbundle.h \

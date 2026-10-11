@@ -1,4 +1,5 @@
 #include "tagbuilderwindow.h"
+#include "tagscenario.h"
 
 #include <algorithm>
 
@@ -182,6 +183,38 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     rowBtns2->addWidget(dupBtn);
     rowBtns2->addWidget(shiftBtn);
     rowBtns2->addWidget(fixBtn);
+    // Session 235: the SIF's tag scenarios on the selected main / duplicate pair.
+    auto *scenBtn = new QToolButton(this);
+    scenBtn->setText(tr("Scenario"));
+    scenBtn->setPopupMode(QToolButton::InstantPopup);
+    scenBtn->setToolTip(tr("The SIF section 14 cases on the selected tag and its duplicate: one change here, or the "
+                           "whole set as files named by clause"));
+    auto *scenMenu = new QMenu(scenBtn);
+    for (int k = TagScenario::DuplicateMissing; k <= TagScenario::GapOver4; ++k) {
+        QAction *a = scenMenu->addAction(TagScenario::describe(TagScenario::Kind(k)).left(1).toUpper()
+                                         + TagScenario::describe(TagScenario::Kind(k)).mid(1));
+        connect(a, &QAction::triggered, this, [this, k]() {
+            const int row = currentRow();
+            if (row < 0) { m_status->warn(tr("Select a main tag or its duplicate first")); return; }
+            applyScenario(k, m_route.tags.at(row).name);
+        });
+    }
+    scenMenu->addSeparator();
+    QAction *jumbleAct = scenMenu->addAction(tr("Jumble the selected tags (read in reverse order)"));
+    connect(jumbleAct, &QAction::triggered, this, [this]() { jumbleSelected(); });
+    scenMenu->addSeparator();
+    QAction *setAct = scenMenu->addAction(tr("Make the section 14 set for this tag\u2026"));
+    setAct->setToolTip(tr("14.1-14.9 (duplicate in the nominal direction) or 14.11-14.19 (reverse): one route file "
+                          "per clause, in a folder you choose"));
+    connect(setAct, &QAction::triggered, this, [this]() {
+        const int row = currentRow();
+        if (row < 0) { m_status->warn(tr("Select a main tag or its duplicate first")); return; }
+        const QString folder = QFileDialog::getExistingDirectory(this, tr("Folder for the section 14 routes"));
+        if (!folder.isEmpty()) makeSection14(folder, m_route.tags.at(row).name);
+    });
+    scenMenu->setToolTipsVisible(true);
+    scenBtn->setMenu(scenMenu);
+    rowBtns2->addWidget(scenBtn);
     rowBtns2->addStretch(1);
     rowBtns2->addWidget(undoBtn);
 
@@ -1056,6 +1089,79 @@ void TagBuilderWindow::deleteSignal()
     const RfidTag::Route before = m_route;
     m_route.signalList.remove(at);
     changed(tr("Delete signal"), before, currentRow());
+}
+
+bool TagBuilderWindow::applyScenario(int kind, const QString &tag)
+{
+    const TagScenario::Result r = TagScenario::apply(m_route, TagScenario::Kind(kind), tag);
+    if (!r.ok) {
+        m_status->fail(tr("Not changed: %1").arg(r.why));
+        return false;
+    }
+    const RfidTag::Route before = m_route;
+    m_route = r.route;
+    int row = 0;
+    const QString main = tag.endsWith(QLatin1Char('D')) ? tag.chopped(1) : tag;
+    for (int i = 0; i < m_route.tags.size(); ++i)
+        if (m_route.tags.at(i).name == main || m_route.tags.at(i).name == main + QLatin1Char('D')) { row = i; break; }
+    changed(tr("Scenario: %1").arg(r.change), before, row);
+    m_status->ok(tr("Scenario: %1 (Ctrl+Z puts it back)").arg(r.change));
+    return true;
+}
+
+bool TagBuilderWindow::jumbleSelected()
+{
+    QStringList names;
+    for (int row : selectedRows()) names << m_route.tags.at(row).name;
+    const TagScenario::Result r = TagScenario::jumble(m_route, names);
+    if (!r.ok) {
+        m_status->warn(r.why);
+        return false;
+    }
+    const RfidTag::Route before = m_route;
+    m_route = r.route;
+    changed(tr("Jumble %1 tags").arg(names.size()), before, selectedRows().value(0, 0));
+    m_status->ok(tr("Jumbled: %1").arg(r.change));
+    return true;
+}
+
+QStringList TagBuilderWindow::makeSection14(const QString &folder, const QString &tag, QString *why)
+{
+    QStringList written;
+    QString err;
+    const QVector<TagScenario::Planned> plan = TagScenario::section14(m_route, tag, &err);
+    if (plan.isEmpty()) {
+        m_status->fail(tr("No set made: %1").arg(err));
+        if (why) *why = err;
+        return written;
+    }
+    const QDir dir(folder);
+    QStringList refused;
+    for (const TagScenario::Planned &p : plan) {
+        TagScenario::Result r = TagScenario::apply(m_route, p.kind, tag);
+        if (!r.ok) { refused << QStringLiteral("%1 (%2)").arg(p.clause, r.why); continue; }
+        r.route.name = QStringLiteral("%1 %2 %3").arg(m_route.name.isEmpty() ? QStringLiteral("route") : m_route.name,
+                                                     p.clause, TagScenario::describe(p.kind));
+        const QString file = dir.absoluteFilePath(p.clause + QStringLiteral(".tagroute.xml"));
+        if (!RfidTag::writeFile(file, RfidTag::toTagRouteXml(r.route), &err)) { refused << QStringLiteral("%1 (%2)").arg(p.clause, err); continue; }
+        written << file;
+        // tags_sim's route.xml too, for the RFID simulator, when the route has a direction
+        if (m_route.dir != RfidTag::DirUnset) {
+            const QByteArray xml = RfidTag::toRouteXml(r.route, &err);
+            const QString sim = dir.absoluteFilePath(p.clause + QStringLiteral("_route.xml"));
+            if (!xml.isEmpty() && RfidTag::writeFile(sim, xml, &err)) written << sim;
+        }
+    }
+    if (written.isEmpty()) {
+        m_status->fail(tr("No set made: %1").arg(refused.join(QStringLiteral("; "))));
+        if (why) *why = refused.join(QStringLiteral("; "));
+    } else {
+        m_status->ok(tr("Wrote %1 routes (%2 to %3) to %4%5")
+                         .arg(plan.size() - refused.size()).arg(plan.first().clause, plan.last().clause)
+                         .arg(QDir::toNativeSeparators(folder))
+                         .arg(m_route.dir == RfidTag::DirUnset ? tr("; no route.xml: the route has no direction") : QString()));
+    }
+    return written;
 }
 
 bool TagBuilderWindow::undo()

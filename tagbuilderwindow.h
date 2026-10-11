@@ -114,6 +114,14 @@ public:
     void addSignal();
     void deleteSignal();
     bool undo();
+    // Session 235: Scenario — one change on the selected tag's main /
+    // duplicate pair (tagscenario.h), one Undo step; the selected rows'
+    // order reversed; and the whole SIF section 14 set for the pair written
+    // to `folder` as <clause>.tagroute.xml (+ <clause>_route.xml for tags_sim
+    // when the route has a direction). The files written; *why when none.
+    bool applyScenario(int kind, const QString &tag);
+    bool jumbleSelected();
+    QStringList makeSection14(const QString &folder, const QString &tag, QString *why = nullptr);
     // Run tab.
     void setRunSource(const QString &key);
     QString runSource() const { return m_runKey; }

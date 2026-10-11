@@ -11,6 +11,62 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-235"></a>
+## Session 235 — Tag Builder ▸ Scenario: SIF section 14 on a tag pair
+
+Abhinav's pick 6 of the "faster test scenarios" list. SIF section 14 puts
+one main / duplicate tag pair through the same list twice:
+- once with the duplicate in the nominal direction from the main
+  (14.1-14.10);
+- once in the reverse (14.11-14.20).
+
+The cases are: duplicate missing, main missing, both missing,
+interchanged, same location, under 4 m, over 4 m. 14.25 jumbles the reads.
+Each was a copy of a working route edited by hand.
+
+- **Scenario ▾** (beside Fix CRCs) acts on the selected tag's pair, whichever
+  of the two is selected. Each change is one Undo step and the status says
+  what changed:
+  - **Duplicate tag missing / Main tag missing / Both tags missing**;
+  - **Main and duplicate interchanged**: the rows swap, the locations stay;
+  - **Both at the same location**: the duplicate says the main's location;
+  - **Under 4 m / Over 4 m**: the duplicate says 3 m or 5 m from the main,
+    on its own side. The tag is re-encoded, still the duplicate, CRC-30
+    recomputed;
+  - **Jumble the selected tags**: the selected rows are read in reverse
+    order.
+- **Make the section 14 set for this tag…** writes one route per clause into
+  a folder: `14.2.tagroute.xml`, … named "3.40 14.2 duplicate tag missing".
+  When the route has a direction, it also writes `14.2_route.xml` for
+  tags_sim / the RFID simulator. The duplicate's side picks 14.1-14.9 or
+  14.11-14.19. The open route is left as it was.
+- **Not made:** 14.8 / 14.10 / 14.18 / 14.20, the "actual position" cases.
+  They differ in where the tag is fixed on the track, not in what it says,
+  and a route holds what tags say.
+
+### Files
+
+- New: `tagscenario.{h,cpp}`.
+- Changed: `tagbuilderwindow.{h,cpp}` (the Scenario button, `applyScenario`,
+  `jumbleSelected`, `makeSection14`), `dlcore.pri`.
+- Tests: `test_session235.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session235` (21 checks) runs on the built-in library route 3.40 (pairs
+2 / 2D and 4D / 4):
+- every change, the locations and recomputed CRC;
+- the original route never changed; refusals said;
+- jumble;
+- each pair's side picks its set, without the actual-position clauses;
+- in the builder: a change and its Undo; jumble;
+- the set written as 8 routes + 8 route.xml, one read back with 2D missing
+  and its name; the open route untouched.
+
+Tag Builder suites 195-201 pass unchanged.
+
+---
+
 <a id="session-234"></a>
 ## Session 234 — Variation rules on sub-packet fields
 
