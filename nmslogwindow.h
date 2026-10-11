@@ -16,6 +16,8 @@
 //  a strip above the table, whatever the table scrolls to or filters.
 //  Session 254: Hide unchanging (the columns every packet so far reads the
 //  same in) and Columns… (show or hide any column by hand).
+//  Session 255 (fault log): Fault summary… — each fault from first listed
+//  to no longer listed, how long, in how many packets.
 // =============================================================================
 
 #include "logmodel.h"
@@ -31,6 +33,7 @@ class FrozenColumns;
 class QCheckBox;
 class QDialog;
 class QListWidget;
+class QTableWidget;
 class QLabel;
 class QPushButton;
 class QTableView;
@@ -103,6 +106,8 @@ public:
     void showAllColumns();
     QStringList hiddenColumns() const;  // by name, in display order
     QDialog *columnChooser();           // opened by Columns…; built on first use
+    QDialog *faultSummary();            // session 255, the fault log only; built on first use
+    bool saveFaultSummaryCsv(const QString &path, QString *err = nullptr) const;
 
     // The export buttons' work, without the file dialog (and for the tests).
     bool saveCsv(const QString &path, QString *err = nullptr) const;
@@ -124,6 +129,7 @@ private:
     void syncPinned();                  // the strip's columns, height, scroll follow the table
     void applyColumns();                // hide / show per the box and the chooser
     void fillChooser();
+    void fillFaultSummary();
 
     NmsLog::Kind        m_kind;
     QPointer<LogModel>  m_model;
@@ -141,6 +147,9 @@ private:
     QSet<QString>       m_userHidden;   // by column name: positions move as columns arrive
     QPointer<QDialog>   m_chooser;
     QListWidget        *m_chooserList = nullptr;
+    QPointer<QDialog>   m_faults;
+    QTableWidget       *m_faultTable = nullptr;
+    QLabel             *m_faultNote = nullptr;
     QVector<int>        m_need;         // by column id: the widest cell so far (session 254)
     QVector<int>        m_needChars;    // by column id: the longest text so far
     int                 m_needHex = 0, m_needHexChars = 0;   // the frame (hex) column

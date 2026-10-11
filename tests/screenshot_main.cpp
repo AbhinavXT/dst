@@ -241,6 +241,16 @@ int main(int argc, char **argv)
                     printf("  hidden: %d of %d columns: %s\n", int(w->hiddenColumns().size()), w->table().columnCount(),
                            qPrintable(w->hiddenColumns().join(QStringLiteral(", "))));
                 }
+                // SHOT_FAULTS=1: the fault summary dialog instead (session 255).
+                if (qEnvironmentVariableIsSet("SHOT_FAULTS")) {
+                    QDialog *fd = w->faultSummary();
+                    fd->resize(1250, 500);
+                    fd->show();
+                    QElapsedTimer t0;
+                    t0.start();
+                    while (t0.elapsed() < 500) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+                    fd->grab().save(QStringLiteral("%1/shot_nmsfaults.png").arg(dir));
+                }
                 // SHOT_FREEZE=n, SHOT_PIN=r,r (1-based packet numbers): session 253.
                 if (!qEnvironmentVariableIsEmpty("SHOT_FREEZE")) w->freezeColumns(qEnvironmentVariableIntValue("SHOT_FREEZE"));
                 for (const QString &r : qEnvironmentVariable("SHOT_PIN").split(QLatin1Char(','), Qt::SkipEmptyParts))

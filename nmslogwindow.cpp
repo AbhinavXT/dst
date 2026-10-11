@@ -19,6 +19,7 @@
 #include <QDialogButtonBox>
 #include <QLabel>
 #include <QListWidget>
+#include <QTableWidget>
 #include <QMenu>
 #include <QPushButton>
 #include <QScrollBar>
@@ -47,6 +48,8 @@ int NmsLogTableModel::append(NmsLog::Kind kind, const QVector<LogEntryPtr> &entr
     batch.order = m_table.order;
     batch.index = m_table.index;
     batch.carry = m_table.carry;   // "changed" and the gaps carry on from the table
+    batch.faultSpans = m_table.faultSpans;   // open spans are extended in place (session 255)
+    batch.rowBase = m_table.rows.size();
     for (const LogEntryPtr &e : entries) {
         if (e) NmsLog::append(batch, kind, *e);
     }
@@ -68,6 +71,7 @@ int NmsLogTableModel::append(NmsLog::Kind kind, const QVector<LogEntryPtr> &entr
     m_table.gapNote += batch.gapNote;
     m_table.gaps += batch.gaps;
     m_table.carry = batch.carry;
+    m_table.faultSpans = batch.faultSpans;
     if (widened) endResetModel();
     else endInsertRows();
     return added;
@@ -211,6 +215,13 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
     auto *columns = new QPushButton(tr("Columns…"), this);
     columns->setObjectName(QStringLiteral("nmsColumns"));
     columns->setToolTip(tr("Show or hide any column"));
+    QPushButton *faults = nullptr;
+    if (kind == NmsLog::Kind::Fault) {
+        faults = new QPushButton(tr("Fault summary…"), this);
+        faults->setObjectName(QStringLiteral("nmsFaultSummary"));
+        faults->setToolTip(tr("Each fault from the packet that first lists it to the first later packet from the "
+                              "same subsystem that no longer does: how long, in how many packets"));
+    }
     m_count = new QLabel(this);
     m_status = new StatusLine;
     auto *csv = new QPushButton(tr("Export CSV…"), this);
@@ -220,6 +231,7 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
 
     auto *top = new QHBoxLayout;
     top->addWidget(m_count, 1);
+    if (faults) top->addWidget(faults);
     top->addWidget(m_hideUnchanging);
     top->addWidget(columns);
     top->addWidget(m_changesOnly);
@@ -265,6 +277,11 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
     connect(m_view->verticalHeader(), &QHeaderView::geometriesChanged, this, [this]() { syncPinned(); });
     connect(m_filter, &QAbstractItemModel::modelReset, this, [this]() { syncPinned(); }, Qt::QueuedConnection);
     connect(m_hideUnchanging, &QCheckBox::toggled, this, [this]() { applyColumns(); });
+    if (faults) connect(faults, &QPushButton::clicked, this, [this]() {
+        QDialog *d = faultSummary();
+        d->show();
+        d->raise();
+    });
     connect(columns, &QPushButton::clicked, this, [this]() {
         QDialog *d = columnChooser();
         d->show();
@@ -536,6 +553,7 @@ void NmsLogWindow::applyColumns()
     syncPinned();
     showCount();
     if (m_chooser && m_chooser->isVisible()) fillChooser();
+    if (m_faults && m_faults->isVisible()) fillFaultSummary();
 }
 
 void NmsLogWindow::setHideUnchanging(bool on)
@@ -613,4 +631,93 @@ void NmsLogWindow::fillChooser()
         it->setCheckState(m_userHidden.contains(name) ? Qt::Unchecked : Qt::Checked);
     }
     m_chooserList->verticalScrollBar()->setValue(scroll);
+}
+
+// --- session 255: the fault summary -------------------------------------------
+
+QDialog *NmsLogWindow::faultSummary()
+{
+    if (m_faults) { fillFaultSummary(); return m_faults; }
+    auto *d = new QDialog(this);
+    d->setObjectName(QStringLiteral("nmsFaultSummaryDialog"));
+    d->setWindowTitle(tr("Fault summary — %1").arg(windowTitle()));
+    m_faultNote = new QLabel(d);
+    m_faultNote->setWordWrap(true);
+    m_faultTable = new QTableWidget(d);
+    m_faultTable->setObjectName(QStringLiteral("nmsFaultSpans"));
+    m_faultTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_faultTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_faultTable->verticalHeader()->hide();
+    m_faultTable->setToolTip(tr("A fault is listed from the packet that first lists it until the first later "
+                                "packet from the same subsystem that no longer does. Double-click: the packet "
+                                "that first listed it"));
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Close, d);
+    QPushButton *csv = buttons->addButton(tr("Export CSV…"), QDialogButtonBox::ActionRole);
+    auto *lay = new QVBoxLayout(d);
+    lay->addWidget(m_faultNote);
+    lay->addWidget(m_faultTable, 1);
+    lay->addWidget(buttons);
+    d->resize(1100, 420);
+    connect(buttons, &QDialogButtonBox::rejected, d, &QDialog::hide);
+    connect(m_faultTable, &QTableWidget::cellDoubleClicked, this, [this](int row) {
+        const NmsLog::Table &t = m_rows->table();
+        if (row >= 0 && row < t.faultSpans.size()) {
+            const int r = t.faultSpans.at(row).fromRow;
+            if (r >= 0 && r < t.epochMs.size()) emit jumpRequested(m_tabKey, t.epochMs.at(r));
+        }
+    });
+    connect(csv, &QPushButton::clicked, this, [this]() {
+        const QString path = QFileDialog::getSaveFileName(m_faults, tr("Export the fault summary"),
+                                                          QStringLiteral("nms_fault_summary_") + m_tabKey + QStringLiteral(".csv"),
+                                                          tr("CSV (*.csv)"));
+        if (path.isEmpty()) return;
+        QString err;
+        if (saveFaultSummaryCsv(path, &err))
+            m_status->ok(tr("Saved %1 faults to %2").arg(m_rows->table().faultSpans.size()).arg(path));
+        else
+            m_status->fail(tr("Could not write %1: %2").arg(path, err));
+    });
+    m_faults = d;
+    fillFaultSummary();
+    return d;
+}
+
+void NmsLogWindow::fillFaultSummary()
+{
+    if (!m_faultTable) return;
+    const NmsLog::Table &t = m_rows->table();
+    const QVector<QStringList> rows = NmsLog::faultSummary(t);
+    const QStringList head = NmsLog::faultSummaryHeader();
+    m_faultTable->setColumnCount(head.size());
+    m_faultTable->setHorizontalHeaderLabels(head);
+    m_faultTable->setRowCount(rows.size());
+    int open = 0;
+    QSet<QString> distinct;
+    for (int r = 0; r < rows.size(); ++r) {
+        if (t.faultSpans.at(r).toRow < 0) ++open;
+        const NmsLog::Table::FaultSpan &sp = t.faultSpans.at(r);
+        distinct.insert(sp.subsystem + QLatin1Char('|') + sp.module + QLatin1Char('|') + QString::number(sp.codeType)
+                        + QLatin1Char('|') + sp.fault);
+        for (int c = 0; c < head.size(); ++c) {
+            QTableWidgetItem *it = m_faultTable->item(r, c);
+            if (!it) m_faultTable->setItem(r, c, it = new QTableWidgetItem);
+            it->setText(rows.at(r).value(c));
+        }
+    }
+    m_faultTable->resizeColumnsToContents();
+    m_faultNote->setText(rows.isEmpty() ? tr("No fault listed in this tab yet.")
+                                        : tr("%1 distinct fault(s) in %2 packet(s), listed %3 time(s): a fault listed "
+                                             "again after a packet no longer listed it is a new line. %4 still listed "
+                                             "in the last packet.")
+                                              .arg(distinct.size()).arg(t.rows.size()).arg(rows.size()).arg(open));
+}
+
+bool NmsLogWindow::saveFaultSummaryCsv(const QString &path, QString *err) const
+{
+    QFile f(path);
+    if (f.open(QIODevice::WriteOnly) && f.write("\xEF\xBB\xBF") == 3
+        && f.write(NmsLog::faultSummaryCsv(m_rows->table()).toUtf8()) >= 0)
+        return true;
+    if (err) *err = f.errorString();
+    return false;
 }

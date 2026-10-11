@@ -75,7 +75,24 @@ struct Table {
         // read differently since (by column id; an empty cell does not count).
         QHash<int, QString> firstValue;
         QSet<int> varies;
+        // Session 255: per reporting subsystem, the faults its last packet
+        // listed; and the open span of each fault (by key).
+        QHash<int, QSet<QString>> listed;
+        QHash<QString, int> openSpan;
     } carry;
+    // Session 255 (@nmsflt): each fault from the packet that first lists it
+    // to the first later packet FROM THE SAME SUBSYSTEM that no longer does
+    // (the fault panel's and the fault timeline's rule). Rows are table rows.
+    struct FaultSpan {
+        QString subsystem, module, fault;
+        int codeType = 0;
+        int fromRow = -1;               // first listed
+        int lastRow = -1;               // last listed
+        int toRow = -1;                 // no longer listed; -1: still listed in the last packet
+        int packets = 0;                // packets that listed it
+    };
+    QVector<FaultSpan> faultSpans;      // in order of first listing
+    int rowBase = 0;                    // the first row's number (a batch decoded on its own)
     // Session 254: has every packet so far read the same in this column (by
     // display position)? The frame column never is.
     bool unchanging(int col) const;
@@ -103,6 +120,13 @@ Mark markOf(const QString &column, const QString &value, QString *why = nullptr)
 // False (and nothing added) otherwise. *newColumns set when the packet
 // brought a column the table did not have.
 bool append(Table &t, Kind kind, const LogEntry &entry, bool *newColumns = nullptr);
+
+// Session 255: the fault summary, one line per FaultSpan: module, fault,
+// code type, subsystem, first listed (PC time, rtc), no longer listed (PC
+// time), listed for, packets listing it.
+QStringList faultSummaryHeader();
+QVector<QStringList> faultSummary(const Table &t);
+QString faultSummaryCsv(const Table &t);
 
 // Header row, then one line per packet; RFC 4180 quoting, CRLF.
 QString toCsv(const Table &t);

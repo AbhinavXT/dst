@@ -197,7 +197,8 @@ bool append(Table &t, Kind kind, const LogEntry &entry, bool *newColumns)
         Group::Lead);
 
     QHash<QString, int> seen;   // a name twice in one frame gets "(2)", as the encoder keys it
-    for (const FieldRow &r : CaptureDecoder::describe(cap)) {
+    QHash<QString, qint64> raw;
+    for (const FieldRow &r : CaptureDecoder::describe(cap, nullptr, 0, &raw)) {
         const QString name = r.field.trimmed();
         if (name.isEmpty() || name == QLatin1String("type")) continue;   // the window is one type
         const int n = ++seen[name];
@@ -268,6 +269,50 @@ bool append(Table &t, Kind kind, const LogEntry &entry, bool *newColumns)
         }
     }
     if (!gapColumn.isEmpty()) { ++t.gaps; changed = true; }
+
+    // Session 255: the faults this packet lists, against what its subsystem
+    // listed last.
+    if (kind == Kind::Fault) {
+        const int at = t.rowBase + t.rows.size();
+        const QVector<ActiveFaultInfo> now = CaptureDecoder::faultsOf(cap);
+        const int sub = raw.contains(QStringLiteral("reporting_subsystem"))
+                            ? int(raw.value(QStringLiteral("reporting_subsystem")))
+                            : now.isEmpty() ? -1 : now.first().subsystem;
+        if (sub >= 0) {
+            QSet<QString> keys;
+            for (const ActiveFaultInfo &f : now) {
+                const QString key = QStringLiteral("%1:%2:%3:%4").arg(f.subsystem).arg(f.moduleId).arg(f.codeType).arg(f.faultId);
+                // A packet can list a fault twice (loco_1_1_29062026_134509 at
+                // 14:20:55 lists 17 / 0X02 / 100 twice): one packet, counted once.
+                if (keys.contains(key)) continue;
+                keys.insert(key);
+                auto it = t.carry.openSpan.constFind(key);
+                if (it == t.carry.openSpan.constEnd()) {
+                    Table::FaultSpan sp;
+                    sp.subsystem = f.subsystemName.isEmpty() ? QString::number(f.subsystem)
+                                                             : QStringLiteral("%1 (%2)").arg(f.subsystem).arg(f.subsystemName);
+                    sp.module = f.moduleName.isEmpty() ? QString::number(f.moduleId)
+                                                       : QStringLiteral("%1 (%2)").arg(f.moduleId).arg(f.moduleName);
+                    sp.fault = f.faultName.isEmpty() ? QString::number(f.faultId)
+                                                     : QStringLiteral("%1 (%2)").arg(f.faultId).arg(f.faultName);
+                    sp.codeType = f.codeType;
+                    sp.fromRow = sp.lastRow = at;
+                    sp.packets = 1;
+                    t.faultSpans << sp;
+                    t.carry.openSpan.insert(key, t.faultSpans.size() - 1);
+                } else {
+                    Table::FaultSpan &sp = t.faultSpans[it.value()];
+                    sp.lastRow = at;
+                    ++sp.packets;
+                }
+            }
+            for (const QString &key : t.carry.listed.value(sub)) {
+                if (keys.contains(key) || !t.carry.openSpan.contains(key)) continue;
+                t.faultSpans[t.carry.openSpan.take(key)].toRow = at;
+            }
+            t.carry.listed[sub] = keys;
+        }
+    }
     t.gapColumn << gapColumn;
     t.gapNote << gapNote;
     t.changed << changed;
@@ -276,6 +321,65 @@ bool append(Table &t, Kind kind, const LogEntry &entry, bool *newColumns)
     t.epochMs << entry.epochMs;
     if (newColumns) *newColumns = t.columns.size() != before;
     return true;
+}
+
+QStringList faultSummaryHeader()
+{
+    return { QStringLiteral("Module"), QStringLiteral("Fault"), QStringLiteral("Code type"),
+             QStringLiteral("Subsystem"), QStringLiteral("First listed (PC time)"),
+             QStringLiteral("First listed (rtc)"), QStringLiteral("No longer listed (PC time)"),
+             QStringLiteral("Listed for"), QStringLiteral("Packets listing it") };
+}
+
+namespace {
+
+QString pcTime(const Table &t, int row)
+{
+    const int r = row - t.rowBase;
+    return r >= 0 && r < t.epochMs.size()
+               ? QDateTime::fromMSecsSinceEpoch(t.epochMs.at(r)).toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz"))
+               : QString();
+}
+
+QString span(qint64 ms)
+{
+    const qint64 s = qMax<qint64>(0, ms / 1000);
+    return QStringLiteral("%1:%2:%3").arg(s / 3600).arg((s / 60) % 60, 2, 10, QLatin1Char('0'))
+                                     .arg(s % 60, 2, 10, QLatin1Char('0'));
+}
+
+}  // namespace
+
+QVector<QStringList> faultSummary(const Table &t)
+{
+    QVector<QStringList> out;
+    const int rtc = t.index.value(QStringLiteral("rtc"), -1);
+    for (const Table::FaultSpan &sp : t.faultSpans) {
+        const int from = sp.fromRow - t.rowBase;
+        const bool open = sp.toRow < 0;
+        const int to = (open ? t.rows.size() - 1 : sp.toRow - t.rowBase);
+        const qint64 ms = (to >= 0 && to < t.epochMs.size() && from >= 0 && from < t.epochMs.size())
+                              ? t.epochMs.at(to) - t.epochMs.at(from) : 0;
+        out << QStringList{ sp.module, sp.fault, QStringLiteral("0X%1").arg(sp.codeType, 2, 16, QLatin1Char('0')).toUpper(),
+                            sp.subsystem, pcTime(t, sp.fromRow), rtc >= 0 ? t.cell(from, rtc) : QString(),
+                            open ? QStringLiteral("still listed in the last packet") : pcTime(t, sp.toRow),
+                            open ? QStringLiteral("at least ") + span(ms) : span(ms), QString::number(sp.packets) };
+    }
+    return out;
+}
+
+QString faultSummaryCsv(const Table &t)
+{
+    QString out;
+    QStringList line;
+    for (const QString &h : faultSummaryHeader()) line << csvField(h);
+    out += line.join(QLatin1Char(',')) + QStringLiteral("\r\n");
+    for (const QStringList &row : faultSummary(t)) {
+        line.clear();
+        for (const QString &v : row) line << csvField(v);
+        out += line.join(QLatin1Char(',')) + QStringLiteral("\r\n");
+    }
+    return out;
 }
 
 QString toCsv(const Table &t)

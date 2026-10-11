@@ -11,6 +11,70 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-255"></a>
+## Session 255 — the NMS fault log: Fault summary
+
+Item 6 of Abhinav's list after patch 248 (fault durations).
+
+What the operator sees: a **Fault summary…** button in the NMS fault log
+(only there). It opens a table with one line per fault listing:
+
+| Module | Fault | Code type | Subsystem | First listed (PC time) | First listed (rtc) | No longer listed (PC time) | Listed for | Packets listing it |
+|---|---|---|---|---|---|---|---|---|
+| 2 (VCC Mc-2) | 26 (safety error) | 0X01 | 34 (VCC Card-1) | … | … | … | 0:00:08 | 2 |
+
+Above the table: "47 distinct fault(s) in 62 packet(s), listed 320
+time(s) …; 2 still listed in the last packet". A fault still listed at the
+end says so, and its time reads "at least h:mm:ss". Double-click a line:
+the packet that first listed it, in its tab. **Export CSV…** writes the
+table (UTF-8 with a BOM). The summary follows new packets while it is open.
+
+**The rule** is the one the Active Fault Panel and the Fault timeline
+already use: each `@nmsflt` lists what its reporting subsystem asserts now.
+A fault is listed from the packet that first lists it until the first later
+packet *from the same subsystem* that no longer lists it. Listed again
+after that, it is a new line. The words are "listed" / "no longer listed":
+what the packets show, not a verdict on the equipment.
+
+**Found in the data:** a packet can list the same fault twice.
+`loco_1_1_29062026_134509` at 14:20:55, 14:21:15 and 14:21:35 lists
+17 / 0X02 / 100 twice among its ten. Each packet counts once per fault.
+
+### Files
+
+`nmslog.h/.cpp` (`Table::FaultSpan`, `faultSpans`, built as each row is
+added; `Carry::listed / openSpan`; `Table::rowBase` so a live batch numbers
+its rows from where the table is; `faultSummaryHeader`, `faultSummary`,
+`faultSummaryCsv`; `describe()` now also hands back the raw values for the
+reporting subsystem); `nmslogwindow.h/.cpp` (the button, the dialog,
+`saveFaultSummaryCsv`); `tests/test_session255.cpp`, `tests/tests.pro`;
+the screenshot harness gains `SHOT_FAULTS=1`.
+
+### Tests
+
+`session255` (22 checks), on the fault logs of three real captures
+(`loco_1_1_26062026_162418`, `loco_1_1_29062026_134509`,
+`loco_2_1_27062026_140226`):
+- **Against the Fault timeline:** the spans match `FaultTimeline::build`'s
+  NMS bars one for one (same fault, first listed, no longer listed or still
+  open). That code applies the rule separately.
+- **Consistency:** packet counts and rows agree in every span; both closed
+  and still-open spans are seen; the duplicate listing gives one span.
+- **The summary lines:** module, fault, code type, subsystem, rtc, the
+  h:mm:ss duration and the "still listed" wording.
+- **Live:** built across a batch boundary, the spans are identical.
+- **The dialog:** lists the spans; the note counts distinct faults and
+  listings; double-click jumps to the first listing; the CSV export has a
+  header and one line per fault; it follows new packets while open; the
+  health log has no button.
+
+`./verify.sh` green on macOS (Qt 6.11.2): 13 validators, `dltests` 299
+suites / 7832 checks / 0 failed, menu audit (183 ok), smoke. Harness shot of
+the dialog on `loco_1_1_29062026_134509` checked. Not tested here: Windows /
+Qt 5.15 (CI after the push).
+
+---
+
 <a id="session-254"></a>
 ## Session 254 — the NMS tables: Hide unchanging, Columns…
 
