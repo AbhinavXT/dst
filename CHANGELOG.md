@@ -11,6 +11,62 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-222"></a>
+## Session 222 — Station Layout: new tag, signal, point, text and line from the drawing
+
+Abhinav's pick (1 of 7 Station Layout features, in his order).
+**Right-click the drawing** for a menu that fits the spot:
+
+- **on a tag:**
+  - **Edit tag N in Tag Builder…**, as a double-click does (221);
+  - **New signal at tag N…**, which asks for the name, sig_id and station
+    id (the layout's station by default).
+- **on a line's lane:**
+  - **New tag here (line L, X m)…** opens the RFID Tag Builder on a new
+    tag. It starts from the line's nearest main tag (its TINs, type and
+    placement), at the clicked location, with the lowest id the layout
+    does not use. Its button **Add this tag to line L** puts it in the
+    tags and in the line, in location order (either way round, as the
+    line already runs).
+  - **New point here…** asks for the name, the other line, the location
+    on it and its tags. The point starts at the clicked place on this line.
+- **anywhere:**
+  - **New text here…** puts the text above the lanes when you click above
+    them, below otherwise;
+  - **New line…** asks for the line id and name. The new line gets its
+    own lane at once, and you can right-click it to put tags on it.
+- **Refused, the status line saying why:**
+  - a signal on a tag the layout lacks, or without a name;
+  - a line id already used;
+  - a point with no name, with a name already used, to a line the layout
+    lacks, or from a line to itself;
+  - an empty text.
+- Each addition is one Undo step.
+
+Not built: the new tag's duplicate (4 m on) in the same step. Make it in
+the Tag Builder, or ask for it.
+
+### Files
+
+`stationlayoutwindow.{h,cpp}` (`lineAt`, `contextRequested`,
+`openNewTagAt`, `addSignal` / `addLine` / `addPoint` / `addText`,
+`contextMenuFor`); tests `test_session222.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session222` (22 checks), on the built-in station.xlsx:
+- a right-click on a tag reports the tag, its line and its place;
+- the menus on a tag and off the lanes;
+- a new tag between two tags of a line: an unused id, a good CRC, in the
+  line between them, at the clicked metre, removed by one Undo;
+- signals, lines, points and texts, each accepted and refused case;
+- the new line's lane;
+- four Undo steps back to the file.
+
+`session208` to `212`, `218`, `220` and `221` pass unchanged.
+
+---
+
 <a id="session-221"></a>
 ## Session 221 — Station Layout: edit or add a tag in the RFID Tag Builder
 

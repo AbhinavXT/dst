@@ -9,6 +9,11 @@
 #include "windowgeometry.h"
 
 #include <QCloseEvent>
+#include <QContextMenuEvent>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFormLayout>
+#include <QLineEdit>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
@@ -475,6 +480,22 @@ void StationLayoutCanvas::mouseDoubleClickEvent(QMouseEvent *e)
 {
     for (const Hit &h : m_hits)
         if (!h.tag.isEmpty() && h.rect.contains(e->pos())) { emit tagDoubleClicked(h.tag); return; }
+}
+
+QString StationLayoutCanvas::lineAt(double y) const
+{
+    for (auto it = m_laneOfLine.cbegin(); it != m_laneOfLine.cend(); ++it)
+        if (std::fabs(y - laneY(it.value())) <= kLaneGap / 2.0) return it.key();
+    return QString();
+}
+
+void StationLayoutCanvas::contextMenuEvent(QContextMenuEvent *e)
+{
+    QString tag;
+    for (const Hit &h : m_hits)
+        if (!h.tag.isEmpty() && h.rect.contains(e->pos())) { tag = h.tag; break; }
+    const qint64 loc = locAt(qBound(double(kLeft), double(e->pos().x()), double(width() - kRight)));
+    emit contextRequested(e->globalPos(), tag, lineAt(e->pos().y()), loc, e->pos().y() < laneY(0) - kLaneGap / 2.0);
 }
 
 void StationLayoutCanvas::wheelEvent(QWheelEvent *e)
@@ -1030,6 +1051,12 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
         openInTagBuilder(selectedTag());
     });
     connect(newTagBtn, &QPushButton::clicked, this, [this]() { openInTagBuilder(QString()); });
+    connect(m_canvas, &StationLayoutCanvas::contextRequested, this,
+            [this](const QPoint &at, const QString &tag, const QString &line, qint64 loc, bool above) {
+                QMenu *menu = contextMenuFor(tag, line, loc, above);
+                menu->setAttribute(Qt::WA_DeleteOnClose);
+                menu->popup(at);
+            });
     connect(m_canvas, &StationLayoutCanvas::tagDoubleClicked, this, [this](const QString &name) { openInTagBuilder(name); });
     connect(m_canvas, &StationLayoutCanvas::tagDragged, this, [this](const QString &name, qint64 loc) { moveTag(name, loc); });
     connect(m_undo, &UndoLog::undone, this, [this](const QString &label, bool restored) {
@@ -1165,6 +1192,7 @@ TagBuilderWindow *StationLayoutWindow::openInTagBuilder(const QString &name)
     for (const StationLayout::Tag &t : m_layout.tags)
         if (t.name == from) { m_builder->setPages(t.pageX, t.pageY); break; }
     m_builderTarget = name;
+    m_builderLine.clear();
     m_builder->offerApply(name.isEmpty() ? tr("Add this tag to the station layout") : tr("Apply to tag %1 in the station layout").arg(name),
                           name.isEmpty() ? tr("Adds the tag above to the layout, named by its bits")
                                          : tr("Replaces tag %1 in the layout with the tag above").arg(name));
@@ -1202,6 +1230,18 @@ bool StationLayoutWindow::applyTag(const QString &target, const QByteArray &byte
         const int r = m_tables.at(0)->currentRow();
         at = r >= 0 && r < m_layout.tags.size() ? r + 1 : m_layout.tags.size();
         m_layout.tags.insert(at, t);
+        // Session 222: a tag made at a place on a line goes into that line, in location order.
+        for (StationLayout::Line &ln : m_layout.lines) {
+            if (m_builderLine.isEmpty() || ln.line != m_builderLine) continue;
+            const QHash<QString, qint64> loc = StationLayout::tagLocations(m_layout);
+            // Lines run either way: keep the order the line already has.
+            const bool down = ln.tags.size() > 1 && loc.value(ln.tags.first()) > loc.value(ln.tags.last());
+            int k = 0;
+            while (k < ln.tags.size() && loc.contains(ln.tags.at(k))
+                   && (down ? loc.value(ln.tags.at(k)) >= loc.value(name) : loc.value(ln.tags.at(k)) <= loc.value(name))) ++k;
+            ln.tags.insert(k, name);
+            break;
+        }
     } else {
         m_layout.tags[at] = t;
         // shortcut: a point's "tags" cell is free text and is not renamed; rename it by hand.
@@ -1220,6 +1260,161 @@ bool StationLayoutWindow::applyTag(const QString &target, const QByteArray &byte
                  : name == target ? tr("Tag %1 updated from the Tag Builder").arg(name)
                                   : tr("Tag %1 is now %2 (its lines and signals follow)").arg(target, name));
     return true;
+}
+
+TagBuilderWindow *StationLayoutWindow::openNewTagAt(const QString &line, qint64 locM)
+{
+    // The nearest main tag of the line is the template: its TINs, type and placement.
+    const QHash<QString, qint64> loc = StationLayout::tagLocations(m_layout);
+    QString near;
+    for (const StationLayout::Line &ln : m_layout.lines) {
+        if (ln.line != line) continue;
+        for (const QString &n : ln.tags)
+            if (loc.contains(n) && !n.endsWith(QLatin1Char('D'))
+                && (near.isEmpty() || std::llabs(loc.value(n) - locM) < std::llabs(loc.value(near) - locM)))
+                near = n;
+    }
+    if (!near.isEmpty()) {
+        for (int i = 0; i < m_layout.tags.size(); ++i)
+            if (m_layout.tags.at(i).name == near) m_tables.at(0)->selectRow(i);
+    }
+    TagBuilderWindow *tb = openInTagBuilder(QString());
+    m_builderLine = line;
+    QSet<int> used;
+    for (const StationLayout::Tag &t : m_layout.tags) used.insert(t.name.endsWith(QLatin1Char('D')) ? t.name.chopped(1).toInt() : t.name.toInt());
+    int id = 1;
+    while (used.contains(id) && id < 1023) ++id;   // unique is a 10-bit field
+    tb->setField(QStringLiteral("unique"), id);
+    if (!tb->setField(QStringLiteral("abs_loc"), locM)) tb->setField(QStringLiteral("abs_loc_1"), locM);
+    tb->offerApply(tr("Add this tag to line %1 of the station layout").arg(line),
+                   tr("Adds the tag above to the layout and to line %1, in location order").arg(line));
+    m_builder->setWindowTitle(tr("RFID Tag Builder — new tag on line %1 at %2 m").arg(line).arg(locM));
+    return tb;
+}
+
+bool StationLayoutWindow::addSignal(const StationLayout::Signal &sg)
+{
+    bool found = false;
+    for (const StationLayout::Tag &t : m_layout.tags) found = found || t.name == sg.footTag;
+    if (!found || sg.name.trimmed().isEmpty()) {
+        m_status->fail(!found ? tr("Signal not added: tag %1 is not in the layout").arg(sg.footTag) : tr("Signal not added: give it a name"));
+        return false;
+    }
+    const StationLayout::Layout before = m_layout;
+    m_layout.signalList << sg;
+    changed(tr("add signal %1").arg(sg.name), before);
+    m_status->ok(tr("Signal %1 added at tag %2").arg(sg.name, sg.footTag));
+    return true;
+}
+
+bool StationLayoutWindow::addLine(const StationLayout::Line &ln)
+{
+    bool used = false;
+    for (const StationLayout::Line &o : m_layout.lines) used = used || o.line == ln.line.trimmed();
+    if (ln.line.trimmed().isEmpty() || used) {
+        m_status->fail(used ? tr("Line not added: the layout already has line %1").arg(ln.line) : tr("Line not added: give it a line id (DM, UL1, ...)"));
+        return false;
+    }
+    const StationLayout::Layout before = m_layout;
+    m_layout.lines << ln;
+    changed(tr("add line %1").arg(ln.line), before);
+    m_status->ok(tr("Line %1 added: right-click on it to put tags on it").arg(ln.line));
+    return true;
+}
+
+bool StationLayoutWindow::addPoint(const StationLayout::Point &p)
+{
+    QSet<QString> lines;
+    for (const StationLayout::Line &o : m_layout.lines) lines.insert(o.line);
+    bool used = false;
+    for (const StationLayout::Point &o : m_layout.points) used = used || o.name == p.name.trimmed();
+    QString why;
+    if (p.name.trimmed().isEmpty()) why = tr("give it a name");
+    else if (used) why = tr("the layout already has point %1").arg(p.name);
+    else if (!lines.contains(p.line1) || !lines.contains(p.line2)) why = tr("both lines must be lines of the layout");
+    else if (p.line1 == p.line2) why = tr("a point joins two different lines");
+    if (!why.isEmpty()) { m_status->fail(tr("Point not added: %1").arg(why)); return false; }
+    const StationLayout::Layout before = m_layout;
+    m_layout.points << p;
+    changed(tr("add point %1").arg(p.name), before);
+    m_status->ok(tr("Point %1 added, %2 to %3").arg(p.name, p.line1, p.line2));
+    return true;
+}
+
+bool StationLayoutWindow::addText(const StationLayout::Text &t)
+{
+    if (t.text.trimmed().isEmpty()) { m_status->fail(tr("Text not added: it is empty")); return false; }
+    const StationLayout::Layout before = m_layout;
+    m_layout.texts << t;
+    changed(tr("add text"), before);
+    m_status->ok(tr("Text added at %1 m").arg(t.location));
+    return true;
+}
+
+namespace {
+// A small form: one line edit per field; false when cancelled.
+bool askFields(QWidget *parent, const QString &title, const QStringList &labels, QStringList *values)
+{
+    QDialog d(parent);
+    d.setWindowTitle(title);
+    auto *form = new QFormLayout(&d);
+    QVector<QLineEdit *> edits;
+    for (int i = 0; i < labels.size(); ++i) {
+        edits << new QLineEdit(values->value(i), &d);
+        form->addRow(labels.at(i), edits.last());
+    }
+    auto *box = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &d);
+    form->addRow(box);
+    QObject::connect(box, &QDialogButtonBox::accepted, &d, &QDialog::accept);
+    QObject::connect(box, &QDialogButtonBox::rejected, &d, &QDialog::reject);
+    if (d.exec() != QDialog::Accepted) return false;
+    values->clear();
+    for (QLineEdit *e : edits) *values << e->text().trimmed();
+    return true;
+}
+}  // namespace
+
+QMenu *StationLayoutWindow::contextMenuFor(const QString &tag, const QString &line, qint64 locM, bool aboveLanes)
+{
+    auto *menu = new QMenu(this);
+    const qint64 station = m_layout.stations.isEmpty() ? 0 : m_layout.stations.first().id;
+    if (!tag.isEmpty()) {
+        menu->addAction(tr("Edit tag %1 in Tag Builder…").arg(tag), this, [this, tag]() { openInTagBuilder(tag); });
+        menu->addAction(tr("New signal at tag %1…").arg(tag), this, [this, tag, station]() {
+            QStringList v{ QString(), QString(), QString::number(station) };
+            if (!askFields(this, tr("New signal at tag %1").arg(tag), { tr("Name:"), tr("sig_id:"), tr("Station id:") }, &v)) return;
+            addSignal({ tag, v.at(0), v.at(1).toLongLong(), v.at(2).toLongLong() });
+        });
+        menu->addSeparator();
+    }
+    if (!line.isEmpty()) {
+        menu->addAction(tr("New tag here (line %1, %2 m)…").arg(line).arg(locM), this, [this, line, locM]() { openNewTagAt(line, locM); });
+        menu->addAction(tr("New point here (from line %1, %2 m)…").arg(line).arg(locM), this, [this, line, locM, station]() {
+            QStringList v{ QString(), QString(), QString::number(locM), QString() };
+            if (!askFields(this, tr("New point on line %1 at %2 m").arg(line).arg(locM),
+                           { tr("Name:"), tr("To line:"), tr("Location on that line (m):"), tr("Its tags (comma-separated):") }, &v)) return;
+            StationLayout::Point p;
+            p.name = v.at(0);
+            p.loc1 = locM;
+            p.line1 = line;
+            p.line2 = v.at(1);
+            p.loc2 = v.at(2).toLongLong();
+            p.tags = v.at(3);
+            p.stationId = station;
+            addPoint(p);
+        });
+    }
+    menu->addAction(tr("New text here (%1 m)…").arg(locM), this, [this, locM, aboveLanes]() {
+        QStringList v{ QString() };
+        if (!askFields(this, tr("New text at %1 m").arg(locM), { tr("Text:") }, &v)) return;
+        addText({ v.at(0), locM, aboveLanes ? -1 : 1 });
+    });
+    menu->addAction(tr("New line…"), this, [this]() {
+        QStringList v{ QString(), QString() };
+        if (!askFields(this, tr("New line"), { tr("Line id (DM, UM, DL1, UL2, ...):"), tr("Name:") }, &v)) return;
+        addLine({ v.at(1), v.at(0), {} });
+    });
+    return menu;
 }
 
 void StationLayoutWindow::onTagCell(int row, int col)

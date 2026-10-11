@@ -29,6 +29,7 @@ class QPainter;
 class QListWidget;
 class QScrollArea;
 class TagBuilderWindow;
+class QMenu;
 class QTabWidget;
 class QTableWidget;
 class StatusLine;
@@ -61,12 +62,18 @@ public:
     qint64 locAt(double x) const;
     QRectF tagRect(const QString &name) const;   // where a tag is drawn (tests)
 
+    // Session 222: the line whose lane is at canvas y (within half a lane), or "".
+    QString lineAt(double y) const;
+
     struct Hit { QRectF rect; QString tag; QString text; };
     const QVector<Hit> &hits() const { return m_hits; }
 
 signals:
     void tagClicked(const QString &name);
     void tagDoubleClicked(const QString &name);   // session 221
+    // Session 222: a right-click: the tag under it (or ""), the line whose lane
+    // it is on (or ""), the location under it, and whether it is above the lanes.
+    void contextRequested(const QPoint &globalPos, const QString &tag, const QString &line, qint64 locM, bool aboveLanes);
     void tagDragged(const QString &name, qint64 newLocM);
 
 protected:
@@ -76,6 +83,7 @@ protected:
     void mouseMoveEvent(QMouseEvent *e) override;
     void mouseReleaseEvent(QMouseEvent *e) override;
     void mouseDoubleClickEvent(QMouseEvent *e) override;
+    void contextMenuEvent(QContextMenuEvent *e) override;
     void wheelEvent(QWheelEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
     bool eventFilter(QObject *o, QEvent *e) override;
@@ -145,6 +153,19 @@ public:
     // tag, or a name another tag already has.
     bool applyTag(const QString &target, const QByteArray &bytes);
 
+    // Session 222: adding from the drawing (right-click). A new tag at `locM` on
+    // `line`: the Tag Builder starts from the nearest tag of that line, at that
+    // location, with the lowest id the layout does not use; Apply adds it and
+    // puts it in the line, in location order.
+    TagBuilderWindow *openNewTagAt(const QString &line, qint64 locM);
+    // Each is one Undo step; false (status says why) when refused.
+    bool addSignal(const StationLayout::Signal &s);   // its foot tag must be in the layout
+    bool addLine(const StationLayout::Line &ln);      // a line id not used yet
+    bool addPoint(const StationLayout::Point &p);     // a new name; two different lines of the layout
+    bool addText(const StationLayout::Text &t);       // some text
+    // The menu a right-click on the drawing opens (built, not shown: tests).
+    QMenu *contextMenuFor(const QString &tag, const QString &line, qint64 locM, bool aboveLanes);
+
 protected:
     void closeEvent(QCloseEvent *e) override;
 
@@ -163,6 +184,7 @@ private:
     StationLayout::Layout m_layout;
     QPointer<TagBuilderWindow> m_builder;   // session 221
     QString m_builderTarget;           // the tag it edits; "" = a new tag
+    QString m_builderLine;             // session 222: a new tag goes into this line
     QString m_path;                    // the .json being edited; empty after an import
     bool m_modified = false;
     bool m_updating = false;
