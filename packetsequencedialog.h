@@ -50,6 +50,20 @@ public:
     explicit PacketSequenceDialog(QWidget *parent = nullptr);
     ~PacketSequenceDialog() override;
 
+    // Session 231b: a sequence file, as the dialog saves it. The one writer of
+    // the format, shared with the Packet Matrix (packetmatrix.h).
+    struct FileStep {
+        QString preset;         // path to a .packet.json
+        int     repeats    = 1;
+        int     intervalMs = 200;
+        int     delayMs    = 500;
+    };
+    static bool writeFile(const QString &path, const QString &dest, bool loop,
+                          const QVector<FileStep> &steps, QString *err = nullptr);
+    // Load a sequence file into the table (Load… does this after asking).
+    bool loadSequence(const QString &path);
+    int  stepCount() const;
+
 protected:
     // Escape and the close box while a sequence is running — see sendguard.h.
     void reject() override;

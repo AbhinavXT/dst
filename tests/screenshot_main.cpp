@@ -36,6 +36,8 @@
 #include "trackdiagramwindow.h"
 #include "stationlayoutwindow.h"
 #include "testcatalogwindow.h"
+#include "packetmatrixdialog.h"
+#include <QTemporaryDir>
 #include "twolocowindow.h"
 #include "soswindow.h"
 #include "readerdirwindow.h"
@@ -208,6 +210,34 @@ int main(int argc, char **argv)
                 if (!qEnvironmentVariableIsEmpty("SHOT_SEARCH")) w->setSearch(qEnvironmentVariable("SHOT_SEARCH"));
                 w->select(qEnvironmentVariableIsEmpty("SHOT_SELECT") ? QStringLiteral("22.1") : qEnvironmentVariable("SHOT_SELECT"));
                 win = w;
+            }
+            if (which == QLatin1String("packetmatrix")) {
+                // Session 232. SHOT_SELECT: the case (default 31.23); the base preset is
+                // the bufferload suite's real SLRP reference frame 6.
+                static QTemporaryDir tmp;
+                PacketBuilder pb;
+                const QByteArray frame = QByteArray::fromHex(QByteArray(
+                    "91 B9 AA E6 04 1E 80 00 08 40 6F 8E 68 01 80 00 00 00 00 01 7C AA 08 20 "
+                    "00 11 63 0D 0C 58 10 B1 00 F4 84 00 22 05 09 BA 20 14 00 00 34 C6 08 5A "
+                    "40 F4 93 00 54 E8 60 00 00 87 BC 04 99 E0 1A 3E 80 80 F1 02 84 38 0C 11 "
+                    "30 38 22 41 08 7A 04 83 23 8A 29 0E 08 41 38 40 95 0A 60 61 64 E0 00 03 "
+                    "43 38 68 60 42 C0 3E A4 18 46 67 50 A7 6E").replace(' ', ""));
+                const Schema::ParsedPacket pp = pb.encoder().parseBody(QStringLiteral("slrp"), frame);
+                PacketPreset base;
+                base.captype = QStringLiteral("slrp");
+                base.header = pp.header;
+                base.subs = pp.subs;
+                const QString basePath = tmp.filePath(QStringLiteral("slrp_base.packet.json"));
+                base.save(basePath);
+                const QString id = qEnvironmentVariableIsEmpty("SHOT_SELECT") ? QStringLiteral("31.23") : qEnvironmentVariable("SHOT_SELECT");
+                const TestCatalog::Catalog &b = TestCatalog::builtin();
+                QVector<TestCatalog::Case> ops;
+                for (const QString &k : TestCatalog::childrenOf(b, id)) ops << b.cases.at(TestCatalog::indexOf(b, k));
+                auto *d = new PacketMatrixDialog(b.cases.at(TestCatalog::indexOf(b, id)), ops);
+                d->setAttribute(Qt::WA_DeleteOnClose, false);
+                d->setBasePreset(basePath);
+                d->setFolder(tmp.path());
+                win = d;
             }
             if (which == QLatin1String("twoloco")) {
                 // Two real locos recorded at the same time (SHOT_CAP picks

@@ -75,6 +75,13 @@ public:
     bool restoreCurrent();              // a clause deleted from the SIF, put back
     bool undo();
 
+    // Session 232: the case the Packet Matrix would make presets for — the
+    // selected clause when it has operations, its case when it is one.
+    QString matrixCase() const;
+    class PacketMatrixDialog *openMatrix();
+    // "Preset: <file>" into each clause's notes, one undo step.
+    void notePresets(const QHash<QString, QString> &files);
+
     QTreeWidget *tree() const { return m_tree; }
     QPlainTextEdit *editor(Field f) const { return m_edit[f]; }
     QLineEdit *idEdit() const { return m_idEdit; }
@@ -128,6 +135,7 @@ private:
     QLabel *m_figure = nullptr;
     QPushButton *m_revert = nullptr;
     QPushButton *m_restore = nullptr;
+    QPushButton *m_matrix = nullptr;
     QCheckBox *m_allFields = nullptr;
     QLabel *m_label[FieldCount] = {};
     QPlainTextEdit *m_edit[FieldCount] = {};

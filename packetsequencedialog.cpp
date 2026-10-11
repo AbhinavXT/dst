@@ -427,34 +427,57 @@ void PacketSequenceDialog::onSaveSequence()
         tr("Packet sequence (*.seq.json *.json);;All files (*)"));
     if (path.isEmpty()) { return; }
 
-    QJsonArray steps;
+    QVector<FileStep> steps;
     for (int row = 0; row < m_table->rowCount(); ++row) {
         QTableWidgetItem *pi = m_table->item(row, kColPath);
         if (!pi) { continue; }
-        QJsonObject o;
-        o["preset"]      = pi->data(Qt::UserRole).toString();
-        o["repeats"]     = m_table->item(row, kColRepeats)  ? m_table->item(row, kColRepeats)->text().toInt()  : 1;
-        o["interval_ms"] = m_table->item(row, kColInterval) ? m_table->item(row, kColInterval)->text().toInt() : 200;
-        o["delay_ms"]    = m_table->item(row, kColDelay)    ? m_table->item(row, kColDelay)->text().toInt()    : 0;
-        steps.append(o);
+        FileStep s;
+        s.preset     = pi->data(Qt::UserRole).toString();
+        s.repeats    = m_table->item(row, kColRepeats)  ? m_table->item(row, kColRepeats)->text().toInt()  : 1;
+        s.intervalMs = m_table->item(row, kColInterval) ? m_table->item(row, kColInterval)->text().toInt() : 200;
+        s.delayMs    = m_table->item(row, kColDelay)    ? m_table->item(row, kColDelay)->text().toInt()    : 0;
+        steps << s;
     }
+    QString err;
+    if (!writeFile(path, m_dest->text(), m_loop->isChecked(), steps, &err)) {
+        QMessageBox::warning(this, windowTitle(), err);
+        return;
+    }
+    m_status->setText(tr("Saved %1 (preset paths are referenced, not copied; "
+                         "the session key is not stored).").arg(path));
+}
 
+bool PacketSequenceDialog::writeFile(const QString &path, const QString &dest, bool loop,
+                                     const QVector<FileStep> &steps, QString *err)
+{
+    QJsonArray arr;
+    for (const FileStep &s : steps) {
+        QJsonObject o;
+        o["preset"]      = s.preset;
+        o["repeats"]     = s.repeats;
+        o["interval_ms"] = s.intervalMs;
+        o["delay_ms"]    = s.delayMs;
+        arr.append(o);
+    }
     QJsonObject root;
     root["format"]  = QStringLiteral("dlconsole.sequence");
     root["version"] = 1;
-    root["dest"]    = m_dest->text();
-    root["loop"]    = m_loop->isChecked();
-    root["steps"]   = steps;
+    root["dest"]    = dest;
+    root["loop"]    = loop;
+    root["steps"]   = arr;
 
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-        QMessageBox::warning(this, windowTitle(), tr("Could not write %1").arg(path));
-        return;
+        if (err) { *err = tr("Could not write %1").arg(path); }
+        return false;
     }
     f.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
-    f.close();
-    m_status->setText(tr("Saved %1 (preset paths are referenced, not copied; "
-                         "the session key is not stored).").arg(path));
+    return true;
+}
+
+int PacketSequenceDialog::stepCount() const
+{
+    return m_table->rowCount();
 }
 
 void PacketSequenceDialog::onLoadSequence()
@@ -462,12 +485,15 @@ void PacketSequenceDialog::onLoadSequence()
     const QString path = QFileDialog::getOpenFileName(
         this, tr("Load sequence"), QString(),
         tr("Packet sequence (*.seq.json *.json);;All files (*)"));
-    if (path.isEmpty()) { return; }
+    if (!path.isEmpty()) { loadSequence(path); }
+}
 
+bool PacketSequenceDialog::loadSequence(const QString &path)
+{
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) {
         QMessageBox::warning(this, windowTitle(), tr("Could not read %1").arg(path));
-        return;
+        return false;
     }
     QJsonParseError pe;
     const QJsonDocument doc = QJsonDocument::fromJson(f.readAll(), &pe);
@@ -475,7 +501,7 @@ void PacketSequenceDialog::onLoadSequence()
     if (pe.error != QJsonParseError::NoError || !doc.isObject()
         || doc.object().value("format").toString() != QLatin1String("dlconsole.sequence")) {
         QMessageBox::warning(this, windowTitle(), tr("%1 is not a sequence file").arg(path));
-        return;
+        return false;
     }
 
     const QJsonObject root = doc.object();
@@ -510,6 +536,7 @@ void PacketSequenceDialog::onLoadSequence()
         m_status->warn(tr("Loaded %1, but these presets are missing: %2")
                            .arg(path, missing.join(QStringLiteral(", "))));
     }
+    return true;
 }
 
 // =============================================================================

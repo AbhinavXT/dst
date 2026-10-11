@@ -1,5 +1,6 @@
 #include "testcatalogwindow.h"
 
+#include "packetmatrixdialog.h"
 #include "settings.h"
 #include "statusline.h"
 #include "uicolors.h"
@@ -307,12 +308,17 @@ TestCatalogWindow::TestCatalogWindow(QWidget *parent)
     m_restore = new QPushButton(tr("Restore"), this);
     m_restore->setToolTip(tr("Put this clause back in the catalog, as the SIF prints it"));
     connect(m_restore, &QPushButton::clicked, this, [this]() { restoreCurrent(); });
+    m_matrix = new QPushButton(tr("Make presets\u2026"), this);
+    m_matrix->setToolTip(tr("One Packet Maker preset per operation of this case, with the value the SIF names, and "
+                            "a sequence to send them in order"));
+    connect(m_matrix, &QPushButton::clicked, this, [this]() { openMatrix(); });
     m_allFields = new QCheckBox(tr("Every field"), this);
     m_allFields->setToolTip(tr("Show the fields this clause leaves empty too (purpose, methodology, set-up, "
                                "expected result, observed column) to fill them in"));
     connect(m_allFields, &QCheckBox::toggled, this, [this]() { showCurrent(); });
     auto *originRow = new QHBoxLayout;
     originRow->addWidget(m_origin, 1);
+    originRow->addWidget(m_matrix);
     originRow->addWidget(m_allFields);
     originRow->addWidget(m_revert);
     originRow->addWidget(m_restore);
@@ -759,6 +765,7 @@ void TestCatalogWindow::showClause(const Case &k, bool deleted)
     m_origin->setPalette(op);
     m_revert->setVisible(!deleted && o == Origin::Changed);
     m_restore->setVisible(deleted);
+    m_matrix->setVisible(!deleted && !matrixCase().isEmpty());
     m_allFields->setVisible(!deleted);
 
     m_figure->setVisible(!k.figurePages.isEmpty());
@@ -1048,4 +1055,52 @@ bool TestCatalogWindow::restoreCurrent()
 bool TestCatalogWindow::undo()
 {
     return m_undo->undo();
+}
+
+// ---- the Packet Matrix (session 232) -----------------------------------------------------------
+
+QString TestCatalogWindow::matrixCase() const
+{
+    if (indexOf(m_cat, m_current) < 0) return QString();
+    if (!childrenOf(m_cat, m_current).isEmpty()) return m_current;
+    const QString parent = parentOf(m_current);
+    return !parent.isEmpty() && indexOf(m_cat, parent) >= 0 ? parent : QString();
+}
+
+PacketMatrixDialog *TestCatalogWindow::openMatrix()
+{
+    const QString id = matrixCase();
+    if (id.isEmpty()) return nullptr;
+    QVector<Case> ops;
+    for (const QString &k : childrenOf(m_cat, id)) ops << m_cat.cases.at(indexOf(m_cat, k));
+    auto *d = new PacketMatrixDialog(m_cat.cases.at(indexOf(m_cat, id)), ops, this);
+    connect(d, &PacketMatrixDialog::presetsMade, this, &TestCatalogWindow::notePresets);
+    d->show();
+    d->raise();
+    return d;
+}
+
+void TestCatalogWindow::notePresets(const QHash<QString, QString> &files)
+{
+    bool pushed = false;
+    for (auto it = files.cbegin(); it != files.cend(); ++it) {
+        const int i = indexOf(m_cat, it.key());
+        if (i < 0) continue;
+        const QString line = tr("Preset: %1").arg(QDir::toNativeSeparators(it.value()));
+        if (m_cat.cases.at(i).notes.split(QLatin1Char('\n')).contains(line)) continue;
+        if (!pushed) {
+            // the snapshot first: a reference taken into m_cat before it would
+            // write into the snapshot's shared copy too
+            pushUndo(tr("note %1 presets").arg(files.size()));
+            pushed = true;
+        }
+        QString &notes = m_cat.cases[i].notes;
+        notes = notes.isEmpty() ? line : notes + QLatin1Char('\n') + line;
+        updateItem(it.key());
+    }
+    if (!pushed) return;
+    m_editKey.clear();
+    setModified(true);
+    showCurrent();
+    m_status->ok(tr("Noted %1 presets in their clauses' notes: Save keeps them").arg(files.size()));
 }

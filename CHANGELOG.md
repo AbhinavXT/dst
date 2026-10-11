@@ -11,6 +11,81 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-232"></a>
+## Session 232 — Packet Matrix: one preset per SIF operation
+
+Abhinav's pick 2 of the "faster test scenarios" list. SIF sections 31-32
+test a receiver one field value at a time: "31.6.1 Stationary KAVACH should
+send a packet with PKT_TYPE as 1000", 31.6.2 "… as 1010", about 570 rows.
+Each row was one Packet Maker edit and Save.
+
+- **Test Case Catalog ▸ Make presets…** on a case with operations (or on
+  one of them) opens the **Packet Matrix**: a base preset (any Packet Maker
+  preset of the packet the case tests), the field, and one row per
+  operation.
+- **The field and values come from the SIF's text.** "PKT_TYPE as 1000" in
+  a 4-bit field is binary: 8. The row says how it read each value.
+- A value the reading is not sure of is marked **check** and kept
+  ticked. 31.23 prints CUR_SIG_ASPECT as 0, 1, 10, 11, … in a 6-bit field;
+  "10" is read as 2 because the other rows count in binary, and the tooltip
+  says so. Never silently picked.
+- A row that names another field, has no value, or **is sent by the other
+  side** starts unticked, and says why. For 31.6.5-31.6.10 the Onboard sends
+  the packet, so an SLRP base is the wrong one for them.
+- The value column takes 8, 0b1000 or 0x8. A value that does not fit the
+  field is refused.
+- **Make presets** writes `31.6.1.packet.json` …, each **built and verified
+  by PacketBuilder first**, exactly as Build does. It writes `31.6.seq.json`
+  to run them in clause order, with a delay of your choice after each.
+- A row that does not build is refused by name. Files already there are
+  replaced only when asked.
+- **Open the sequence** loads it into Packet Sequence, and each written
+  preset is noted in its clause's notes in the catalog (one Undo step).
+- Sub-packet fields work too: the value goes into every sub-packet of
+  that type, and a base with none is refused by name. A variation rule on
+  the field is switched off in the copy. PKT_LENGTH, CRCs and counts are
+  not offered, because the builder sets them.
+
+Also fixed in the catalog (231): undoing "note presets" could keep the
+notes. A reference into the catalog was taken before the undo snapshot,
+and with Qt's implicit sharing the write reached the snapshot too.
+
+### Files
+
+New: `packetmatrix.{h,cpp}` (reading, fields, generation),
+`packetmatrixdialog.{h,cpp}`.
+
+Changed:
+- `packetsequencedialog.{h,cpp}`: `writeFile` (the one writer of the
+  sequence format, used by both) and `loadSequence(path)`;
+- `testcatalogwindow.{h,cpp}` (Make presets…, `notePresets`);
+- `settings.h` (`packet_matrix/base`, `/folder`);
+- `dlcore.pri`;
+- tests: `test_session232.cpp` (new), `tests.pro`, `screenshot_main.cpp`
+  (`SHOT_WINDOW=packetmatrix`).
+
+### Tests
+
+`session232` (43 checks) runs on a real SLRP frame (bufferload's reference
+frame 6, from replay/) as the base:
+- reading binary, decimal, hex and doubtful values, and typed values;
+- who sends what;
+- SLRP's fields (PKT_TYPE 4 bits, MovementAuthority.CUR_SIG_ASPECT 6; no
+  PKT_LENGTH);
+- PKT_TYPE 8 still builds; a missing sub-packet is refused;
+- on 31.6: the four station rows ticked, 31.6.5 unticked with its reason,
+  16 refused, typed values;
+- four presets and a 4-step sequence that Packet Sequence loads;
+- no overwrite unless asked;
+- on 31.23: CUR_SIG_ASPECT set in the MA of every preset;
+- the catalog: which case, notes, one Undo.
+
+Not tested: sending the presets to real equipment. What "should not
+process" looks like in the onboard's log is not derived here, so no test
+case entries are generated for these rows.
+
+---
+
 <a id="session-231"></a>
 ## Session 231 — Test Case Catalog: every clause of SIF 0533 v4.22
 
