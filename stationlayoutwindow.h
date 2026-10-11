@@ -152,6 +152,13 @@ public:
     // Session 212: the drawing as a printable sheet, .pdf (A3 landscape) or
     // .png, by extension.
     bool exportDrawing(const QString &path);
+    // Session 229: the tag table, one row per tag by line and location: id,
+    // line, location, kind (the RDSO notation), TIN nominal / reverse, the
+    // main tag of a duplicate, signals at it, the point it belongs to, CRC-30.
+    // .pdf (A4, for site teams) or .csv, by extension.
+    struct TagRow { QString name, line, kind, mainTag, signalNames, point, crc; qint64 locM = 0; int tinNom = 0, tinRev = 0; bool decodes = false; };
+    QVector<TagRow> tagTable() const;
+    bool exportTagTable(const QString &path);
     bool reopenLast();
     void setStation(const StationLayout::Layout &l);
     const StationLayout::Layout &station() const { return m_layout; }

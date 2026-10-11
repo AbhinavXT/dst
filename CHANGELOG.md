@@ -11,6 +11,48 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-229"></a>
+## Session 229 — Station Layout: the tag table, for site teams
+
+Abhinav's pick 8, the last of the Station Layout list.
+
+- **Export ▸ Tag table as PDF or CSV…** gives one row per tag, by line
+  (in the file's order) and then location. The columns:
+  - **Tag** and **Line** (a duplicate rides its main tag's line);
+  - **Location** in km;
+  - **Kind**, in the RDSO notation the drawing uses (signal foot, in line
+    section, …);
+  - **TIN nom** and **TIN rev**;
+  - **Duplicate of**;
+  - the **Signals** at the tag;
+  - the **Point** naming it;
+  - **CRC-30**: matches / does not match.
+
+  A tag that does not decode says so.
+- The **PDF** is A4 with the file name, the station, the tag count and
+  the date at the top, made with `QTextDocument`. It sits beside the
+  drawing's A3 export (212). The **CSV** has the same columns, quoted
+  where needed.
+
+### Files
+
+`stationlayoutwindow.{h,cpp}` (`TagRow`, `tagTable`, `exportTagTable`,
+the Export entry); tests `test_session229.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session229` (10 checks) on the built-in station.xlsx:
+- 211 rows, by line and location;
+- 910 on DM at 164.610 km with S1647 and a matching CRC;
+- 906D as 906's duplicate on DM;
+- every decoding tag has a kind;
+- the CSV (header + 211 rows, "910,DM,164.610,…");
+- the PDF (a "%PDF-" file).
+
+`contrastaudit` passes: the table's HTML carries no colour.
+
+---
+
 <a id="session-228"></a>
 ## Session 228 — Station Layout: Fix CRCs over the whole layout
 

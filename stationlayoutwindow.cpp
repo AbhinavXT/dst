@@ -14,6 +14,7 @@
 #include <QContextMenuEvent>
 #include <QDateTime>
 #include <QDialog>
+#include <QDir>
 #include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QInputDialog>
@@ -31,6 +32,8 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPdfWriter>
+#include <QSaveFile>
+#include <QTextDocument>
 #include <QPointer>
 #include <QPushButton>
 #include <QScrollArea>
@@ -44,6 +47,7 @@
 #include <QWheelEvent>
 
 #include <algorithm>
+#include <climits>
 #include <cmath>
 
 namespace {
@@ -974,6 +978,9 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     QAction *xlsxAct = exportMenu->addAction(tr("Python tool .xlsx…"));
     xlsxAct->setToolTip(tr("The Python tool's station file, every sheet it reads"));
     QAction *drawingAct = exportMenu->addAction(tr("Drawing as PDF or PNG…"));
+    // Session 229.
+    QAction *tableAct = exportMenu->addAction(tr("Tag table as PDF or CSV…"));
+    tableAct->setToolTip(tr("Every tag by line and location: id, km, kind, TIN nominal / reverse, signals, CRC-30"));
     drawingAct->setToolTip(tr("The drawing as a sheet: A3 landscape PDF, or a PNG image"));
     exportBtn->setMenu(exportMenu);
     auto *zoomIn = new QPushButton(QStringLiteral("+"), this);
@@ -1122,6 +1129,15 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     connect(saveAsBtn, &QPushButton::clicked, this, saveAs);
     connect(saveBtn, &QPushButton::clicked, this, [this, saveAs]() {
         if (m_path.isEmpty()) saveAs(); else saveFile(m_path);
+    });
+    connect(tableAct, &QAction::triggered, this, [this]() {
+        QString path = QFileDialog::getSaveFileName(this, tr("Export the tag table"),
+                                                    QFileInfo(m_path).completeBaseName() + QStringLiteral("_tags.pdf"),
+                                                    tr("PDF (*.pdf);;CSV (*.csv)"));
+        if (path.isEmpty()) return;
+        const QString suffix = QFileInfo(path).suffix().toLower();
+        if (suffix != QLatin1String("pdf") && suffix != QLatin1String("csv")) path += QStringLiteral(".pdf");
+        exportTagTable(path);
     });
     connect(drawingAct, &QAction::triggered, this, [this]() {
         QString path = QFileDialog::getSaveFileName(this, tr("Export the drawing"),
@@ -2072,6 +2088,104 @@ bool StationLayoutWindow::exportXlsx(const QString &path)
     QString err;
     if (!XlsxBook::writeFile(path, StationLayout::toSheets(m_layout), &err)) { m_status->fail(err); return false; }
     m_status->ok(tr("Exported %1").arg(path));
+    return true;
+}
+
+QVector<StationLayoutWindow::TagRow> StationLayoutWindow::tagTable() const
+{
+    const QHash<QString, QString> lineOf = StationLayout::lineOfTag(m_layout);
+    QHash<QString, int> lineRank;
+    for (const StationLayout::Line &l : m_layout.lines) if (!lineRank.contains(l.line)) lineRank.insert(l.line, lineRank.size());
+    QHash<QString, QStringList> sigs;
+    for (const StationLayout::Signal &sg : m_layout.signalList) sigs[sg.footTag] << sg.name;
+    QHash<QString, QString> pointOf;
+    for (const StationLayout::Point &p : m_layout.points)
+        for (QString n : p.tags.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+            n = n.trimmed();
+            if (n.endsWith(QLatin1String(".0"))) n.chop(2);
+            if (!pointOf.contains(n)) pointOf.insert(n, p.name);
+        }
+    QVector<TagRow> rows;
+    for (const StationLayout::Tag &t : m_layout.tags) {
+        TagRow r;
+        r.name = t.name;
+        const bool dup = t.name.endsWith(QLatin1Char('D'));
+        r.mainTag = dup ? t.name.chopped(1) : QString();
+        r.line = lineOf.value(t.name, dup ? lineOf.value(r.mainTag) : QString());
+        const StationLayout::TagInfo in = StationLayout::info(t);
+        r.decodes = in.ok;
+        if (in.ok) {
+            r.locM = in.absLoc;
+            r.tinNom = in.tinNom;
+            r.tinRev = in.tinRev;
+            r.kind = TinLayout::notationName(TinLayout::notation(in.type, in.placement));
+            r.crc = in.crcOk ? tr("matches") : tr("does not match");
+        } else {
+            r.kind = tr("does not decode");
+        }
+        r.signalNames = sigs.value(t.name).join(QStringLiteral(", "));
+        r.point = pointOf.value(t.name, pointOf.value(r.mainTag));
+        rows << r;
+    }
+    std::stable_sort(rows.begin(), rows.end(), [&](const TagRow &a, const TagRow &b) {
+        const int ra = lineRank.value(a.line, INT_MAX), rb = lineRank.value(b.line, INT_MAX);
+        if (ra != rb) return ra < rb;
+        return a.locM != b.locM ? a.locM < b.locM : a.name < b.name;
+    });
+    return rows;
+}
+
+bool StationLayoutWindow::exportTagTable(const QString &path)
+{
+    const QVector<TagRow> rows = tagTable();
+    const QStringList heads{ tr("Tag"), tr("Line"), tr("Location (km)"), tr("Kind"), tr("TIN nom"), tr("TIN rev"),
+                             tr("Duplicate of"), tr("Signals"), tr("Point"), tr("CRC-30") };
+    auto cells = [](const TagRow &r) {
+        return QStringList{ r.name, r.line, r.decodes ? QString::number(r.locM / 1000.0, 'f', 3) : QString(), r.kind,
+                            r.decodes ? QString::number(r.tinNom) : QString(), r.decodes ? QString::number(r.tinRev) : QString(),
+                            r.mainTag, r.signalNames, r.point, r.crc };
+    };
+    bool ok = false;
+    if (QFileInfo(path).suffix().compare(QLatin1String("csv"), Qt::CaseInsensitive) == 0) {
+        auto csv = [](QString v) {
+            return v.contains(QLatin1Char(',')) || v.contains(QLatin1Char('"')) ? QLatin1Char('"') + v.replace(QLatin1Char('"'), QStringLiteral("\"\"")) + QLatin1Char('"') : v;
+        };
+        QStringList lines{ heads.join(QLatin1Char(',')) };
+        for (const TagRow &r : rows) {
+            QStringList c = cells(r);
+            for (QString &v : c) v = csv(v);
+            lines << c.join(QLatin1Char(','));
+        }
+        QSaveFile f(path);
+        ok = f.open(QIODevice::WriteOnly) && f.write((lines.join(QLatin1Char('\n')) + QLatin1Char('\n')).toUtf8()) > 0 && f.commit();
+    } else {
+        QStringList stations;
+        for (const StationLayout::Station &st : m_layout.stations) stations << tr("%1 at %2 km").arg(st.id).arg(st.location / 1000.0, 0, 'f', 3);
+        QString h = QStringLiteral("<html><body><h3>%1</h3><p>%2</p><table border=\"1\" cellspacing=\"0\" cellpadding=\"3\"><tr>")
+                        .arg(tr("RFID tags — %1").arg((m_path.isEmpty() ? tr("untitled") : QFileInfo(m_path).fileName()).toHtmlEscaped()),
+                             tr("Station %1 · %2 tags · %3").arg(stations.isEmpty() ? tr("not given") : stations.join(QStringLiteral(", ")))
+                                 .arg(rows.size()).arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm"))).toHtmlEscaped());
+        for (const QString &c : heads) h += QStringLiteral("<th>%1</th>").arg(c.toHtmlEscaped());
+        h += QStringLiteral("</tr>");
+        for (const TagRow &r : rows) {
+            h += QStringLiteral("<tr>");
+            for (const QString &c : cells(r)) h += QStringLiteral("<td>%1</td>").arg(c.toHtmlEscaped());
+            h += QStringLiteral("</tr>");
+        }
+        h += QStringLiteral("</table></body></html>");
+        QTextDocument doc;
+        doc.setHtml(h);
+        QPdfWriter pdf(path);
+        pdf.setCreator(QStringLiteral("DLConsole"));
+        pdf.setTitle(tr("RFID tag table"));
+        pdf.setPageSize(QPageSize(QPageSize::A4));
+        pdf.setPageMargins(QMarginsF(12, 12, 12, 12), QPageLayout::Millimeter);
+        doc.setPageSize(QSizeF(pdf.width(), pdf.height()));
+        doc.print(&pdf);
+        ok = QFileInfo(path).size() > 0;
+    }
+    if (!ok) { m_status->fail(tr("Could not write %1").arg(path)); return false; }
+    m_status->ok(tr("Tag table (%1 tags) written to %2").arg(rows.size()).arg(QDir::toNativeSeparators(path)));
     return true;
 }
 
