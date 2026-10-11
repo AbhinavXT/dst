@@ -1065,6 +1065,12 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     rowBar->addWidget(delBtn);
     rowBar->addWidget(editTagBtn);
     rowBar->addWidget(newTagBtn);
+    // Session 228.
+    auto *fixCrcBtn = new QPushButton(tr("Fix CRCs"), this);
+    fixCrcBtn->setToolTip(tr("Every tag whose CRC-30 does not match its contents gets the one they give "
+                             "(only the CRC bits change; one Undo step)"));
+    rowBar->addWidget(fixCrcBtn);
+    connect(fixCrcBtn, &QPushButton::clicked, this, [this]() { fixAllCrcs(); });
     rowBar->addStretch(1);
     auto *bottom = new QWidget(this);
     auto *bl = new QVBoxLayout(bottom);
@@ -1848,6 +1854,33 @@ void StationLayoutWindow::fillRun()
     }
     m_run->resizeColumnsToContents();
     m_tabs->setTabText(m_tabs->indexOf(m_run), m_runModel ? tr("Run (%1)").arg(m_runKey) : tr("Run"));
+}
+
+int StationLayoutWindow::fixAllCrcs(QStringList *notFixed)
+{
+    StationLayout::Layout next = m_layout;
+    QStringList fixed, skipped;
+    for (StationLayout::Tag &t : next.tags) {
+        const QByteArray b = RfidTag::fromPages(t.pageX, t.pageY);
+        if (b.size() != RfidTag::TagBytes) { skipped << t.name; continue; }
+        if (RfidTag::summary(b).crcOk) continue;
+        const QByteArray f = RfidTag::fixCrc(b);
+        t.pageX = RfidTag::pageX(f);
+        t.pageY = RfidTag::pageY(f);
+        fixed << t.name;
+    }
+    if (notFixed) *notFixed = skipped;
+    const QString left = skipped.isEmpty() ? QString()
+                         : tr("; %n tag(s) do not decode and are left as they are: ", nullptr, skipped.size()) + skipped.join(QStringLiteral(", "));
+    if (fixed.isEmpty()) {
+        m_status->ok(tr("Every CRC-30 already matches") + left);
+        return 0;
+    }
+    const StationLayout::Layout before = m_layout;
+    m_layout = next;
+    changed(tr("fix %n CRC(s)", nullptr, fixed.size()), before);
+    m_status->ok(tr("CRC-30 fixed on %n tag(s): ", nullptr, fixed.size()) + fixed.join(QStringLiteral(", ")) + left);
+    return fixed.size();
 }
 
 bool StationLayoutWindow::compareWith(const QString &path)

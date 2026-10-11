@@ -11,6 +11,43 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-228"></a>
+## Session 228 — Station Layout: Fix CRCs over the whole layout
+
+Abhinav's pick 7 of the Station Layout list. Many station files carry CRC 0
+or a stale CRC. The Tag Builder could fix a route's CRCs (199); the station
+layout could not.
+
+- **Fix CRCs** (under the sheets): every tag whose CRC-30 does not match
+  its contents gets the one they give. Only the CRC bits change: page_x,
+  every field and the tag's name stay. One Undo step.
+- The status names the tags fixed. A tag whose page_x / page_y do not
+  make a tag is left as it is and named. "Every CRC-30 already matches"
+  when there is nothing to fix.
+
+On the real built-in `station_lingampalli.xlsx`, every "CRC-30 does not
+match" finding in Checks goes, and nothing else changes.
+
+### Files
+
+`stationlayoutwindow.{h,cpp}` (`fixAllCrcs`, the button); tests
+`test_session228.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session228` (10 checks) on station_lingampalli.xlsx:
+- the fix count equals Checks' CRC findings, and none are left after;
+- every tag keeps its fields, name and page_x;
+- a second Fix finds nothing;
+- one Undo restores every CRC;
+- an undecodable tag is left and named;
+- the button is there.
+
+`session210`'s width check holds: 801 px here, so about 890 px with
+Linux's wider fonts, under 1000.
+
+---
+
 <a id="session-227"></a>
 ## Session 227 — Station Layout: a loco's run over the layout
 

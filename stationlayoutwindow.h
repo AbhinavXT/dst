@@ -222,6 +222,11 @@ public:
     struct RunTag { QString name, line; PlanRun::State state = PlanRun::State::NotRead; qint64 firstMs = 0; QString detail; };
     const QVector<RunTag> &runTags() const { return m_runTags; }
     const QStringList &runNotInLayout() const { return m_runExtra; }
+    // Session 228: every tag whose CRC-30 does not match its contents gets the
+    // one they give (only the CRC bits change). The number fixed (0: none to
+    // fix); one Undo step. *notFixed: the tags whose page_x / page_y do not
+    // make a tag, left as they are.
+    int fixAllCrcs(QStringList *notFixed = nullptr);
     // The menu a right-click on the drawing opens (built, not shown: tests).
     QMenu *contextMenuFor(const QString &tag, const QString &line, qint64 locM, bool aboveLanes);
 
