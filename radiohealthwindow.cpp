@@ -8,11 +8,14 @@
 #include <QDateTime>
 #include <QFileDialog>
 #include <QHBoxLayout>
+#include <QHeaderView>
 #include <QLabel>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPushButton>
+#include <QSplitter>
+#include <QTableWidget>
 #include <QToolTip>
 #include <QVBoxLayout>
 #include <cmath>
@@ -280,9 +283,39 @@ RadioHealthWindow::RadioHealthWindow(LogModel *model, const QString &tabKey, con
     buttons->addWidget(m_status, 1);
     buttons->addWidget(rebuildBtn);
     buttons->addWidget(save);
+    // Session 214: frames lost per link, under the strips.
+    m_linksText = new QLabel(this);
+    m_linksText->setWordWrap(true);
+    m_linksTable = new QTableWidget(this);
+    m_linksTable->setColumnCount(10);
+    m_linksTable->setHorizontalHeaderLabels({ tr("Link"), tr("Frames"), tr("Cycle (s)"), tr("Expected"), tr("Lost"),
+                                              tr("Lost %"), tr("Gaps"), tr("Outages"), tr("Longest gap"),
+                                              tr("Age on arrival (s)") });
+    m_linksTable->verticalHeader()->hide();
+    m_linksTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_linksTable->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_linksTable->horizontalHeader()->setStretchLastSection(true);
+    m_linksTable->setMinimumHeight(m_linksTable->horizontalHeader()->sizeHint().height()
+                                   + 2 * m_linksTable->verticalHeader()->defaultSectionSize());   // header + two rows; scrolls below that
+    m_linksTable->setToolTip(tr("Counted by FRAME_NUM. Expected: the FRAME_NUM span in contact over the cycle. "
+                                "Gaps: steps of two cycles or more. Outage: a step over %1 s (no contact), not counted "
+                                "as lost. Age: the loco's clock at arrival minus the frame's; over 4 s old or 2 s early "
+                                "the loco would not process it").arg(RadioLinks::kOutageS));
+    auto *linksBox = new QWidget(this);
+    auto *linksLayout = new QVBoxLayout(linksBox);
+    linksLayout->setContentsMargins(0, 0, 0, 0);
+    linksLayout->addWidget(m_linksText);
+    linksLayout->addWidget(m_linksTable, 1);
+    auto *split = new QSplitter(Qt::Vertical, this);
+    split->addWidget(m_canvas);
+    split->addWidget(linksBox);
+    split->setStretchFactor(0, 3);
+    split->setStretchFactor(1, 1);
+    split->setChildrenCollapsible(false);
+
     auto *root = new QVBoxLayout(this);
     root->addWidget(m_summary);
-    root->addWidget(m_canvas, 1);
+    root->addWidget(split, 1);
     root->addLayout(buttons);
 
     connect(rebuildBtn, &QPushButton::clicked, this, &RadioHealthWindow::rebuild);
@@ -299,6 +332,8 @@ RadioHealthWindow::RadioHealthWindow(LogModel *model, const QString &tabKey, con
 
 QString RadioHealthWindow::summary() const { return m_summary->text(); }
 
+QString RadioHealthWindow::linksSummary() const { return m_linksText->text(); }
+
 void RadioHealthWindow::rebuild()
 {
     QApplication::setOverrideCursor(Qt::WaitCursor);
@@ -306,6 +341,27 @@ void RadioHealthWindow::rebuild()
     QApplication::restoreOverrideCursor();
     m_canvas->setReport(m_report);
     m_summary->setText(RadioHealth::summaryText(m_report));
+
+    m_links = RadioLinks::build(m_model);
+    m_linksText->setText(RadioLinks::summaryText(m_links));
+    m_linksTable->setRowCount(m_links.links.size());
+    for (int i = 0; i < m_links.links.size(); ++i) {
+        const RadioLinks::Link &l = m_links.links.at(i);
+        QStringList outages;
+        for (const RadioLinks::Outage &o : l.outages) outages << tr("%1 for %2 s").arg(hms(o.fromMs)).arg((o.toMs - o.fromMs) / 1000);
+        const QStringList cells{ l.name, QString::number(l.frames), QString::number(l.cycleS), QString::number(l.expected),
+                                 QString::number(l.lost), QString::number(l.lostPercent(), 'f', 1), QString::number(l.gaps),
+                                 QString::number(l.outages.size()), tr("%1 s").arg(l.longestGapMs / 1000.0, 0, 'f', 1),
+                                 l.ages.isEmpty() ? QString()
+                                     : tr("median %1, up to %2; %3 not processed").arg(l.ageMedian).arg(l.ageMax).arg(l.stale + l.ahead) };
+        for (int c = 0; c < cells.size(); ++c) {
+            auto *it = new QTableWidgetItem(cells.at(c));
+            it->setFlags(Qt::ItemIsEnabled | Qt::ItemIsSelectable);
+            if (c == 7 && !outages.isEmpty()) it->setToolTip(outages.join(QLatin1Char('\n')));
+            if (c == 9 && l.stale + l.ahead > 0) it->setForeground(UiColor::warning());
+            m_linksTable->setItem(i, c, it);
+        }
+    }
     m_status->state(tr("%1 @dmi · %2 radio-hole announcements · %3 radio-not-OK spells")
                         .arg(m_report.signal.ms.size()).arg(m_report.radioHole.size()).arg(m_report.radioFail.size()));
 }

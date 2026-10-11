@@ -7,12 +7,14 @@
 // Hover for the values at a moment; click to jump the log there.
 
 #include "radiohealth.h"
+#include "radiolinks.h"
 
 #include <QWidget>
 
 class LogModel;
 class QLabel;
 class StatusLine;
+class QTableWidget;
 
 class RadioHealthCanvas : public QWidget
 {
@@ -50,6 +52,10 @@ public:
     const RadioHealth::Report &report() const { return m_report; }
     RadioHealthCanvas *canvas() const { return m_canvas; }
     QString summary() const;
+    // Session 214: frames lost per radio link, under the strips.
+    const RadioLinks::Report &links() const { return m_links; }
+    QTableWidget *linksTable() const { return m_linksTable; }
+    QString linksSummary() const;
 
 public slots:
     void rebuild();
@@ -64,6 +70,9 @@ private:
     RadioHealthCanvas *m_canvas = nullptr;
     QLabel     *m_summary = nullptr;
     StatusLine *m_status = nullptr;
+    RadioLinks::Report m_links;
+    QLabel       *m_linksText = nullptr;
+    QTableWidget *m_linksTable = nullptr;
 };
 
 #endif // RADIOHEALTHWINDOW_H

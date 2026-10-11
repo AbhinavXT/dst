@@ -11,6 +11,61 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-214"></a>
+## Session 214 — radio frames lost, per link
+
+Asked for by Abhinav (item 4 of his pick): count the radio frames that
+never arrived. Scope he picked: SLRP received, per station, as a section of
+the Radio and GPS health window; the loco's own LSRP / ARP cadence beside.
+
+**How it is counted** (by FRAME_NUM, the sender's seconds since midnight
++ 1, never by arrival time alone):
+- **cycle**: the median FRAME_NUM step, read from the traffic (2 s in
+  every link of every field log so far), not assumed;
+- **lost**: within contact, the FRAME_NUM span over the cycle, + 1, minus
+  the frames received. Over the span, not gap by gap: station 527's steps
+  jitter 1 / 3 around 2 (372 of each in a day), and that is no loss;
+- **gaps**: steps of two cycles or more within contact;
+- **outage**: a step over 30 s (or backwards: a restart). No contact:
+  listed with its time and length, not counted as lost frames, so a loco
+  parked out of range is not thousands of "lost" frames;
+- **age on arrival** (SLRP): the loco's clock at arrival (its last own
+  LSRP / ARP FRAME_NUM within 10 s, moved on by the time since) minus the
+  frame's, whole seconds; over 4 s old or 2 s early the loco would not
+  process it (`FrameClock::classify`). The run report's clock skew is the
+  same comparison without the moving-on, for the whole tab.
+
+**What the operator sees:** Tools ▸ Monitor ▸ Radio and GPS health…, under
+the strips (a splitter): one line per station ("SLRP from station 527: 115
+received, 7 lost in contact (5.7 %), 2 outage(s) over 30 s. Age on arrival
+2 s (median), up to 5 s; 1 the loco would not process …") and a table, one
+row per link: SLRP by station, LSRP (sent), ARP (sent): frames, cycle,
+expected, lost, lost %, gaps, outages (times in the tooltip), longest gap,
+age. In the 81_1 log of 2026-10-08 the LSRP stops at the same moments as
+the SLRP: the outages are the loco's radio, not the station.
+
+**Not done:** received ARP from other locos (offered, not picked); no strip
+for losses over time; not in the run or mission report.
+
+**Files:** `radiolinks.{h,cpp}` (new), `radiohealthwindow.{h,cpp}`,
+`mainwindow_menus.cpp` (the tooltip), `dlcore.pri`;
+`tests/test_session214.cpp`, `tests/tests.pro`;
+`replay/2026-10-08/loco_1_1_radiolinks.log` (new fixture: the @slrp, @lsrp
+and @arp lines of 81_1.001.log, 04:55-05:03 UTC, unchanged).
+
+**Tests:** session214, 14 checks against a schema/engine.py oracle on the
+same lines: 115 SLRP, cycle 2, 122 expected, 7 lost, 8 gaps, the two
+outages to the ms, the age figures; LSRP and ARP; the rules on frames set
+by hand (jitter, a loss of one and two, a repeat, an outage, a restart,
+midnight); the table in the window, which still fits a laptop (sessions
+173 and 177 unchanged).
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators **13/13**;
+`dltests` **264 suites / 7056 checks, 1 failed** (the `session156` pty
+check, as before); menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-213"></a>
 ## Session 213 — odometry at the tags
 

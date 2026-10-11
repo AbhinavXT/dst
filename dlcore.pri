@@ -90,6 +90,7 @@ SOURCES += \
     $$PWD/radiohealthwindow.cpp \
     $$PWD/odometry.cpp \
     $$PWD/odometrywindow.cpp \
+    $$PWD/radiolinks.cpp \
     $$PWD/faulttimeline.cpp \
     $$PWD/faulttimelinewindow.cpp \
     $$PWD/iotimeline.cpp \
@@ -241,6 +242,7 @@ HEADERS += \
     $$PWD/radiohealthwindow.h \
     $$PWD/odometry.h \
     $$PWD/odometrywindow.h \
+    $$PWD/radiolinks.h \
     $$PWD/faulttimeline.h \
     $$PWD/faulttimelinewindow.h \
     $$PWD/iotimeline.h \

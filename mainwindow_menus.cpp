@@ -484,7 +484,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     QAction *actRadioHealth = monitorMenu->addAction(tr("Radio and GPS &health…"));
     actRadioHealth->setObjectName(QStringLiteral("actRadioHealth"));
     actRadioHealth->setToolTip(tr("The current tab's radio over time: DMI signal bars, no-radio spells against "
-                                  "the radio holes announced, radios not OK, temperatures, power, GSM RSSI, GPS satellites / C/N0 / link"));
+                                  "the radio holes announced, radios not OK, temperatures, power, GSM RSSI, GPS satellites / C/N0 / link; frames lost per link (SLRP by station, LSRP, ARP)"));
     connect(actRadioHealth, &QAction::triggered, this, &MainWindow::onActionRadioHealth);
 
     // Session 213: the loco's own location against each tag it read.
