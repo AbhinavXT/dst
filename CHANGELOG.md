@@ -11,6 +11,52 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-218"></a>
+## Session 218 — Station Layout arranged like the RDSO sheets
+
+Asked for by Abhinav: "the station layout is confusing, can we not make it
+look like" the Annexure-H Tag-TIN layouts (Lingampalli, Gullaguda), "up and
+down main in centre and loop line going around"; loops "close +
+diagonals". Session 212 gave the RDSO symbols, colours and boxes; what still
+confused was the arrangement and the scale.
+
+**What the operator sees** in Tools ▸ Station Layout:
+- DN main and UP main in the middle; the DN loops above DN main (DL1
+  nearest, then DL2, DL3), the UP loops below UP main (UL1 nearest),
+  whatever order the file lists the lines in (the default station.xlsx
+  lists DM UM DL3 DL2 DL1 UL1). Other line ids follow, in file order;
+- a point is a band in the TIN colour of its turnout tag, a short
+  diagonal from line to line, and a loop runs on to the points at its ends;
+- a turnout tag that is on no line but named in a point's tags (Lingampalli
+  54-62, Gullaguda's T tags) is drawn on that point's diagonal, its "R-…"
+  and km beside it, not on a "(no line)" lane; its tooltip names the point;
+- the yard (first point to last, plus a quarter of that, at least 200 m, for
+  the signals) takes 60 % of the width when it is less to scale; the block
+  sections on either side share the rest. The km scale has a tick step per
+  part and a mark where the scale changes; the legend says so. Dragging a
+  tag still moves it by metres.
+
+**Not done:** DL2/DL3 points whose two ends are on the same line (P21, P26,
+P34 at Lingampalli) still join nothing: the file does not say what they
+join. Station files that span two stations (the default station.xlsx:
+points 153-161 km) are not stretched: their points already cover most of
+the span. The Tag Builder strip and the Track diagram overlay are unchanged.
+No signal, LC gate or board symbols in the RDSO style (as at 212).
+
+**Files:** `stationlayoutwindow.{h,cpp}`; `tests/test_session218.cpp`,
+`tests/tests.pro`.
+
+**Tests:** session218, 9 checks, on the built-in Lingampalli and Gullaguda:
+the lane order, tag 60 on P30 between DL1 and DM, the yard over 40 % of
+the width, x ↔ location both ways in and outside the yard, no Gullaguda
+tag left on "(no line)". Sessions 208-212 pass unchanged.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators **13/13**;
+`dltests` **266 suites / 7082 checks, 1 failed** (the Mac-only
+`session156` pty check, as at 217); menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-217"></a>
 ## Session 217 — the Tag Builder's Undo button no longer widens the window
 

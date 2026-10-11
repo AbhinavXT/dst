@@ -115,17 +115,57 @@ void StationLayoutCanvas::layoutLanes()
     m_lane.clear();
     m_laneNames.clear();
     m_laneOfLine.clear();
-    for (const StationLayout::Line &ln : m_l.lines) {
-        if (m_laneOfLine.contains(ln.line)) continue;
-        m_laneOfLine.insert(ln.line, m_laneNames.size());
-        m_laneNames << (ln.name.isEmpty() || ln.name == ln.line ? ln.line : ln.name + QStringLiteral("  ") + ln.line);
+    // Session 218: as on the RDSO layouts, DN and UP main in the middle, the
+    // DN loops above DN main (DL1 nearest), the UP loops below UP main (UL1
+    // nearest); any other line after them, in file order.
+    QVector<const StationLayout::Line *> order;
+    for (const StationLayout::Line &ln : m_l.lines) order << &ln;
+    auto rank = [](const QString &line) {
+        const QString u = line.toUpper();
+        if (u == QLatin1String("DM")) return 1000;
+        if (u == QLatin1String("UM")) return 2000;
+        bool ok = false;
+        const int n = u.mid(2).toInt(&ok);
+        if (ok && n > 0 && n < 100 && u.startsWith(QLatin1String("DL"))) return 1000 - n;
+        if (ok && n > 0 && n < 100 && u.startsWith(QLatin1String("UL"))) return 2000 + n;
+        return 3000;
+    };
+    std::stable_sort(order.begin(), order.end(), [&](const StationLayout::Line *a, const StationLayout::Line *b) {
+        return rank(a->line) < rank(b->line);
+    });
+    for (const StationLayout::Line *ln : order) {
+        if (m_laneOfLine.contains(ln->line)) continue;
+        m_laneOfLine.insert(ln->line, m_laneNames.size());
+        m_laneNames << (ln->name.isEmpty() || ln->name == ln->line ? ln->line : ln->name + QStringLiteral("  ") + ln->line);
+    }
+    // A turnout tag (named in a point's tags) is drawn on the point's diagonal.
+    m_pointOfTag.clear();
+    for (int i = 0; i < m_l.points.size(); ++i) {
+        const StationLayout::Point &pt = m_l.points.at(i);
+        if (!m_laneOfLine.contains(pt.line1) || !m_laneOfLine.contains(pt.line2)) continue;
+        for (QString n : pt.tags.split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+            n = n.trimmed();
+            if (n.endsWith(QLatin1String(".0"))) n.chop(2);
+            if (!n.isEmpty() && !m_pointOfTag.contains(n)) m_pointOfTag.insert(n, i);
+        }
     }
     const QHash<QString, QString> lineOf = StationLayout::lineOfTag(m_l);
+    // A tag on a line keeps its lane, even when a point names it too.
+    for (auto it = m_pointOfTag.begin(); it != m_pointOfTag.end();) {
+        if (!lineOf.value(it.key()).isEmpty()) it = m_pointOfTag.erase(it);
+        else ++it;
+    }
     bool orphan = false;
     for (const StationLayout::Tag &t : m_l.tags) {
         // A duplicate tag rides its main tag's line.
         QString line = lineOf.value(t.name);
         if (line.isEmpty() && isDuplicateName(t.name)) line = lineOf.value(t.name.chopped(1));
+        const QString main = isDuplicateName(t.name) ? t.name.chopped(1) : t.name;
+        if (line.isEmpty() && (m_pointOfTag.contains(t.name) || m_pointOfTag.contains(main))) {
+            const int pi = m_pointOfTag.value(t.name, m_pointOfTag.value(main));
+            m_pointOfTag.insert(t.name, pi);
+            line = m_l.points.at(pi).line1;
+        }
         if (m_laneOfLine.contains(line)) m_lane.insert(t.name, m_laneOfLine.value(line));
         else { m_lane.insert(t.name, -1); orphan = true; }
     }
@@ -157,6 +197,46 @@ void StationLayoutCanvas::layoutLanes()
     const qint64 pad = qMax<qint64>(50, (m_max - m_min) / 50);
     m_min -= pad;
     m_max += pad;
+
+    // The yard: from the first point to the last, plus room for the signals
+    // beyond them. When it is under kYard of the span, it gets kYard of the
+    // width and the block sections on either side share the rest.
+    constexpr double kYard = 0.6;
+    qint64 ya = 0, yb = 0;
+    bool yard = false;
+    for (const StationLayout::Point &pt : m_l.points) {
+        if (!m_laneOfLine.contains(pt.line1) || !m_laneOfLine.contains(pt.line2)) continue;
+        for (const qint64 v : { pt.loc1, pt.loc2 }) {
+            if (v <= 0) continue;
+            if (!yard) { ya = yb = v; yard = true; }
+            ya = qMin(ya, v);
+            yb = qMax(yb, v);
+        }
+    }
+    m_knots = { { m_min, 0.0 }, { m_max, 1.0 } };
+    if (yard) {
+        const qint64 room = qMax<qint64>(200, (yb - ya) / 4);
+        ya = qMax(m_min, ya - room);
+        yb = qMin(m_max, yb + room);
+        const double span = double(m_max - m_min), share = (yb - ya) / span;
+        if (share < kYard) {
+            const double out = span - (yb - ya);
+            const double fa = out > 0 ? (ya - m_min) / out * (1 - kYard) : 0;
+            m_knots = { { m_min, 0.0 }, { ya, fa }, { yb, fa + kYard }, { m_max, 1.0 } };
+        }
+    }
+}
+
+QPointF StationLayoutCanvas::tagPos(const QString &name, double x) const
+{
+    if (m_pointOfTag.contains(name)) {
+        const StationLayout::Point &pt = m_l.points.at(m_pointOfTag.value(name));
+        const double xa = xOf(pt.loc1), xb = xOf(pt.loc2);
+        const double ya = laneY(m_laneOfLine.value(pt.line1)), yb = laneY(m_laneOfLine.value(pt.line2));
+        const double f = std::fabs(xb - xa) < 1 ? 0.5 : qBound(0.0, (x - xa) / (xb - xa), 1.0);
+        return QPointF(x, ya + f * (yb - ya));
+    }
+    return QPointF(x, laneY(m_lane.value(name, 0)));
 }
 
 int StationLayoutCanvas::laneY(int lane) const { return kTop + kAbove + lane * kLaneGap; }
@@ -215,7 +295,8 @@ int StationLayoutCanvas::legend(QPainter *p, int top, int w) const
     items.append({ NonKavach, QChar(), tr("TIN 0: non-Kavach") });
     items.append({ Flagged, QLatin1Char('N'), tr("named in Checks") });
     items.append({ Centre, QChar(), tr("station centre line") });
-    items.append({ Note, QChar(), tr("To scale by absolute location. Drag a tag along its line to move it") });
+    items.append({ Note, QChar(), m_knots.size() > 2 ? tr("To scale by absolute location, the yard wider than the block sections (see the km scale). Drag a tag along its line to move it")
+                                         : tr("To scale by absolute location. Drag a tag along its line to move it") });
 
     const QString head = tr("LEGEND");
     QFont bold = small;
@@ -279,21 +360,31 @@ void StationLayoutCanvas::setSelectedTag(const QString &name)
 double StationLayoutCanvas::xOf(qint64 locM) const
 {
     const double w = qMax(1, width() - kLeft - kRight);
-    return kLeft + double(locM - m_min) / double(qMax<qint64>(1, m_max - m_min)) * w;
+    if (m_knots.size() < 2) return kLeft;
+    int i = 0;
+    while (i + 2 < m_knots.size() && locM > m_knots.at(i + 1).first) ++i;
+    const auto &a = m_knots.at(i), &b = m_knots.at(i + 1);
+    const double f = a.second + double(locM - a.first) / double(qMax<qint64>(1, b.first - a.first)) * (b.second - a.second);
+    return kLeft + f * w;
 }
 
 qint64 StationLayoutCanvas::locAt(double x) const
 {
     const double w = qMax(1, width() - kLeft - kRight);
-    return m_min + qint64(std::llround((x - kLeft) / w * double(m_max - m_min)));
+    if (m_knots.size() < 2) return m_min;
+    const double f = (x - kLeft) / w;
+    int i = 0;
+    while (i + 2 < m_knots.size() && f > m_knots.at(i + 1).second) ++i;
+    const auto &a = m_knots.at(i), &b = m_knots.at(i + 1);
+    const double span = qMax(1e-9, b.second - a.second);
+    return a.first + qint64(std::llround((f - a.second) / span * double(b.first - a.first)));
 }
 
 QRectF StationLayoutCanvas::tagRect(const QString &name) const
 {
     if (!m_loc.contains(name)) return QRectF();
-    const double x = xOf(m_loc.value(name));
-    const int y = laneY(m_lane.value(name, 0));
-    return QRectF(x - 8, y - 7, 16, 14);
+    const QPointF c = tagPos(name, xOf(m_loc.value(name)));
+    return QRectF(c.x() - 8, c.y() - 7, 16, 14);
 }
 
 bool StationLayoutCanvas::event(QEvent *e)
@@ -427,7 +518,11 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         if (!m_laneOfLine.contains(pt.line1) || !m_laneOfLine.contains(pt.line2)) continue;
         const QPointF a(xOf(pt.loc1), laneY(m_laneOfLine.value(pt.line1)));
         const QPointF b(xOf(pt.loc2), laneY(m_laneOfLine.value(pt.line2)));
-        p.setPen(QPen(UiColor::frame(), 2));
+        // Session 218: in the TIN of the point's tag, as a band like the lines.
+        QColor c;
+        for (auto it = m_pointOfTag.constBegin(); it != m_pointOfTag.constEnd() && !c.isValid(); ++it)
+            if (m_l.points.at(it.value()).name == pt.name) c = TinLayout::tinColor(m_info.value(it.key()).tinNom);
+        p.setPen(c.isValid() ? QPen(c, 7, Qt::SolidLine, Qt::FlatCap) : QPen(UiColor::frame(), 2));
         p.drawLine(a, b);
         const QPointF mid = (a + b) / 2.0;
         const int w = fm.horizontalAdvance(pt.name) + 4;
@@ -460,8 +555,29 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
                    fm.elidedText(m_laneNames.at(lane), Qt::ElideRight, kLeft - 12));
         QVector<QPair<qint64, QString>> along;
         for (auto it = m_lane.constBegin(); it != m_lane.constEnd(); ++it)
-            if (it.value() == lane && m_loc.contains(it.key())) along.append({ m_loc.value(it.key()), it.key() });
+            if (it.value() == lane && m_loc.contains(it.key()) && !m_pointOfTag.contains(it.key()))
+                along.append({ m_loc.value(it.key()), it.key() });
         std::sort(along.begin(), along.end());
+        // Session 218: a loop runs on to the points at its ends, in the TIN
+        // a loco leaving its end tag goes into.
+        if (!along.isEmpty()) {
+            qint64 lo = along.first().first, hi = along.last().first;
+            for (const StationLayout::Point &pt : m_l.points) {
+                if (m_laneOfLine.value(pt.line1, -1) == lane && pt.loc1 > 0) { lo = qMin(lo, pt.loc1); hi = qMax(hi, pt.loc1); }
+                if (m_laneOfLine.value(pt.line2, -1) == lane && pt.loc2 > 0) { lo = qMin(lo, pt.loc2); hi = qMax(hi, pt.loc2); }
+            }
+            const QColor l = TinLayout::tinColor(m_info.value(along.first().second).tinRev);
+            const QColor r = TinLayout::tinColor(m_info.value(along.last().second).tinNom);
+            const QPen thin(UiColor::frame(), 1);
+            if (lo < along.first().first) {
+                const QRectF band(xOf(lo), y - 3.5, xOf(along.first().first) - xOf(lo), 7);
+                if (l.isValid()) p.fillRect(band, l); else { p.setPen(thin); p.setBrush(palette().base()); p.drawRect(band); }
+            }
+            if (hi > along.last().first) {
+                const QRectF band(xOf(along.last().first), y - 3.5, xOf(hi) - xOf(along.last().first), 7);
+                if (r.isValid()) p.fillRect(band, r); else { p.setPen(thin); p.setBrush(palette().base()); p.drawRect(band); }
+            }
+        }
         for (const auto &a : along) if (!inSet(a.second)) setsOfLane[lane].append(a);
         // Between two tags: the TIN a loco reading the left one goes into
         // travelling Nominal.
@@ -495,7 +611,7 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
     for (const StationLayout::Signal &s : m_l.signalList) {
         if (!m_loc.contains(s.footTag)) continue;
         const double x = xOf(m_loc.value(s.footTag));
-        const int y = laneY(m_lane.value(s.footTag, 0));
+        const double y = tagPos(s.footTag, x).y();
         p.setPen(QPen(UiColor::signalLamp(QStringLiteral("red")), 2));
         p.drawLine(QPointF(x, y + 8), QPointF(x, y + 18));
         p.setBrush(UiColor::signalLamp(QStringLiteral("red")));
@@ -539,7 +655,7 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         const QString dup = dupOf.value(t.name);
         const double x = xAt(t.name);
         const int lane = m_lane.value(t.name, 0);
-        const int y = laneY(lane);
+        const double y = tagPos(t.name, x).y();
         const StationLayout::TagInfo in = m_info.value(t.name);
         const bool flagged = m_flagged.contains(t.name) || (!dup.isEmpty() && m_flagged.contains(dup));
         const TinLayout::Shape shape = TinLayout::shapeOf(m_loc.value(t.name), m_loc.value(dup), !dup.isEmpty());
@@ -552,8 +668,13 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         }
         const QString id = TinLayout::idText(t.name), k = QString::number(m_loc.value(t.name) / 1000.0, 'f', 3);
         const int w = qMax(fm.horizontalAdvance(id) + 6, fm.horizontalAdvance(k) + 4);
-        const int row = placeLabel(labelEnds, lane, x, w, 2);
-        if (row >= 0) {
+        if (m_pointOfTag.contains(t.name)) {
+            // On a diagonal: "R-…" and km beside the tag, as on the RDSO layouts.
+            const double lx = x + 12 + w / 2.0;
+            TinLayout::drawIdBox(p, QPointF(lx, y + lh / 2.0 + 2), id);
+            p.setPen(t.name == m_selected ? text : ink);
+            p.drawText(QRectF(lx - w / 2.0, y - lh * 1.5 - 4, w, lh), Qt::AlignCenter, k);
+        } else if (const int row = placeLabel(labelEnds, lane, x, w, 2); row >= 0) {
             const double bottom = y - 9 - row * labelRow;
             TinLayout::drawIdBox(p, QPointF(x, bottom), id);
             p.setPen(t.name == m_selected ? text : ink);
@@ -561,7 +682,8 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         }
         QString tip = tr("Tag %1 (%2) at %3, line %4").arg(t.name, TinLayout::notationName(letter),
                                                           km(t.name == m_dragTag && m_dragX >= 0 ? locAt(x) : m_loc.value(t.name)),
-                                                          m_laneNames.value(lane));
+                                                          m_pointOfTag.contains(t.name) ? tr("point %1").arg(m_l.points.at(m_pointOfTag.value(t.name)).name)
+                                                                                        : m_laneNames.value(lane));
         tip += QLatin1Char('\n') + tr("TIN %1 Nominal / %2 Reverse").arg(in.tinNom).arg(in.tinRev);
         if (!dup.isEmpty())
             tip += QLatin1Char('\n') + (shape == TinLayout::Box ? tr("Duplicate %1 at the same location").arg(dup)
@@ -574,7 +696,7 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
     for (auto it = dupOf.constBegin(); it != dupOf.constEnd(); ++it) {
         if (m_loc.value(it.value()) == m_loc.value(it.key())) continue;
         const double x = xAt(it.value());
-        const int y = laneY(m_lane.value(it.value(), 0));
+        const double y = tagPos(it.value(), x).y();
         p.setPen(QPen(m_flagged.contains(it.value()) ? UiColor::warning() : text, 1.2));
         p.setBrush(palette().base());
         p.drawEllipse(QPointF(x, y), 3, 3);
@@ -605,15 +727,25 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
     const int sy = height() - lh - 12;
     p.setPen(QPen(UiColor::frame(), 1));
     p.drawLine(kLeft, sy, width() - kRight, sy);
-    const double perPx = double(m_max - m_min) / qMax(1, width() - kLeft - kRight);
-    double step = 1;
-    while (step / perPx < 90) step *= (QString::number(step).startsWith(QLatin1Char('2')) ? 2.5 : 2.0);
-    for (double m = std::ceil(m_min / step) * step; m <= m_max; m += step) {
-        const double x = xOf(qint64(m));
-        p.drawLine(QPointF(x, sy), QPointF(x, sy + 4));
-        p.setPen(ink);
-        p.drawText(QRectF(x - 50, sy + 5, 100, lh), Qt::AlignCenter, km(qint64(m)));
-        p.setPen(QPen(UiColor::frame(), 1));
+    // One tick step per scale (session 218: the yard has its own).
+    double lastX = -1e9;
+    for (int k = 0; k + 1 < m_knots.size(); ++k) {
+        const qint64 a = m_knots.at(k).first, b = m_knots.at(k + 1).first;
+        const double perPx = double(b - a) / qMax(1.0, xOf(b) - xOf(a));
+        double step = 1;
+        while (step / perPx < 90) step *= (QString::number(step).startsWith(QLatin1Char('2')) ? 2.5 : 2.0);
+        if (k > 0) {   // where the scale changes
+            p.drawLine(QPointF(xOf(a), sy - 5), QPointF(xOf(a), sy + 5));
+        }
+        for (double m = std::ceil(a / step) * step; m <= b; m += step) {
+            const double x = xOf(qint64(m));
+            if (x - lastX < 100) continue;
+            lastX = x;
+            p.drawLine(QPointF(x, sy), QPointF(x, sy + 4));
+            p.setPen(ink);
+            p.drawText(QRectF(x - 50, sy + 5, 100, lh), Qt::AlignCenter, km(qint64(m)));
+            p.setPen(QPen(UiColor::frame(), 1));
+        }
     }
 }
 

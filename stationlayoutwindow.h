@@ -13,6 +13,8 @@
 //  Session 212: drawn as the RDSO Annexure-H Tag-TIN layouts are (tinlayout.h):
 //  TIN-coloured bands, one symbol per tag set with its letter, "R-…" and km
 //  above, gap dimensions, title, centre line, legend; Export ▸ PDF / PNG.
+//  Session 218: arranged as the RDSO sheets are: DN loops above DN main, UP
+//  loops below UP main, turnout tags on the points, the yard drawn wider.
 // =============================================================================
 
 #include "stationlayout.h"
@@ -74,6 +76,8 @@ protected:
 private:
     void layoutLanes();
     int laneY(int lane) const;
+    // Session 218: where a tag is drawn; a point's tag rides its diagonal.
+    QPointF tagPos(const QString &name, double x) const;
     QFont smallFont() const;
     int sheetHeight(int width) const;
     int legend(QPainter *p, int top, int width) const;
@@ -86,6 +90,10 @@ private:
     QHash<QString, int> m_laneOfLine;  // line id -> lane
     QSet<QString> m_flagged;           // tags checks() names
     qint64 m_min = 0, m_max = 1;
+    // Session 218: x is piecewise linear, (location, fraction of the width)
+    // knots: the yard between the points is drawn wider than the block sections.
+    QVector<QPair<qint64, double>> m_knots;
+    QHash<QString, int> m_pointOfTag;  // tag -> index into m_l.points (a turnout tag)
     double m_zoom = 1.0;
     QString m_selected;
     QVector<Hit> m_hits;
