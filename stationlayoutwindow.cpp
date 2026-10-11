@@ -13,6 +13,7 @@
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
+#include <QInputDialog>
 #include <QLineEdit>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -381,6 +382,20 @@ bool StationLayoutCanvas::eventFilter(QObject *o, QEvent *e)
     return QWidget::eventFilter(o, e);
 }
 
+void StationLayoutCanvas::setMarkedTags(const QSet<QString> &names)
+{
+    m_marked = names;
+    update();
+}
+
+QStringList StationLayoutCanvas::tagsIn(const QRectF &r) const
+{
+    QStringList out;
+    for (const Hit &h : m_hits)
+        if (!h.tag.isEmpty() && r.contains(h.rect.center()) && !out.contains(h.tag)) out << h.tag;
+    return out;
+}
+
 void StationLayoutCanvas::setSelectedTag(const QString &name)
 {
     m_selected = name;
@@ -433,8 +448,15 @@ bool StationLayoutCanvas::event(QEvent *e)
 void StationLayoutCanvas::mousePressEvent(QMouseEvent *e)
 {
     if (e->button() != Qt::LeftButton) return;
+    // Session 223: Shift + drag boxes tags; Ctrl + click adds or removes one.
+    if (e->modifiers() & Qt::ShiftModifier) {
+        m_bandFrom = e->pos();
+        m_band = QRect(m_bandFrom, QSize(1, 1));
+        return;
+    }
     for (const Hit &h : m_hits) {
         if (h.tag.isEmpty() || !h.rect.contains(e->pos())) continue;
+        if (e->modifiers() & Qt::ControlModifier) { emit tagToggled(h.tag); return; }
         m_dragTag = h.tag;
         m_dragX = -1;
         emit tagClicked(h.tag);
@@ -452,6 +474,11 @@ void StationLayoutCanvas::mousePressEvent(QMouseEvent *e)
 
 void StationLayoutCanvas::mouseMoveEvent(QMouseEvent *e)
 {
+    if (!m_band.isNull() && (e->buttons() & Qt::LeftButton)) {
+        m_band = QRect(m_bandFrom, e->pos()).normalized();
+        update();
+        return;
+    }
     if (m_panning && (e->buttons() & Qt::LeftButton)) {
         const QPoint d = mapToGlobal(e->pos()) - m_panFrom;
         scrollArea()->horizontalScrollBar()->setValue(m_panH - d.x());
@@ -466,6 +493,13 @@ void StationLayoutCanvas::mouseMoveEvent(QMouseEvent *e)
 
 void StationLayoutCanvas::mouseReleaseEvent(QMouseEvent *)
 {
+    if (!m_band.isNull()) {
+        const QRect band = m_band;
+        m_band = QRect();
+        update();
+        emit tagsBoxed(tagsIn(band));
+        return;
+    }
     const QString tag = m_dragTag;
     const double x = m_dragX;
     m_dragTag.clear();
@@ -730,7 +764,7 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         const TinLayout::Shape shape = TinLayout::shapeOf(m_loc.value(t.name), m_loc.value(dup), !dup.isEmpty());
         const QChar letter = TinLayout::notation(in.type, in.placement);
         TinLayout::drawTag(p, QPointF(x, y), letter, shape, flagged ? UiColor::warning() : text, flagged ? 2 : 1.2);
-        if (!m_selected.isEmpty() && (t.name == m_selected || dup == m_selected)) {
+        if ((!m_selected.isEmpty() && (t.name == m_selected || dup == m_selected)) || m_marked.contains(t.name)) {
             p.setPen(QPen(UiColor::selectedMark(), 2));
             p.setBrush(Qt::NoBrush);
             p.drawEllipse(QPointF(x, y), 12, 12);
@@ -769,7 +803,7 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         p.setPen(QPen(m_flagged.contains(it.value()) ? UiColor::warning() : text, 1.2));
         p.setBrush(palette().base());
         p.drawEllipse(QPointF(x, y), 3, 3);
-        if (it.value() == m_selected) {
+        if (it.value() == m_selected || m_marked.contains(it.value())) {
             p.setPen(QPen(UiColor::selectedMark(), 2));
             p.setBrush(Qt::NoBrush);
             p.drawEllipse(QPointF(x, y), 8, 8);
@@ -815,6 +849,12 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
             p.drawText(QRectF(x - 50, sy + 5, 100, lh), Qt::AlignCenter, km(qint64(m)));
             p.setPen(QPen(UiColor::frame(), 1));
         }
+    }
+    // Session 223: the box being drawn (Shift + drag).
+    if (!m_band.isNull()) {
+        p.setPen(QPen(UiColor::selectedMark(), 1, Qt::DashLine));
+        p.setBrush(Qt::NoBrush);
+        p.drawRect(m_band);
     }
 }
 
@@ -1032,6 +1072,17 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     connect(m_tables.at(0), &QTableWidget::itemSelectionChanged, this, [this]() {
         const int r = m_tables.at(0)->currentRow();
         m_canvas->setSelectedTag(r >= 0 && r < m_layout.tags.size() ? m_layout.tags.at(r).name : QString());
+        const QStringList sel = selectedTags();
+        m_canvas->setMarkedTags(QSet<QString>(sel.cbegin(), sel.cend()));
+    });
+    connect(m_canvas, &StationLayoutCanvas::tagsBoxed, this, [this](const QStringList &names) {
+        selectTags(names);
+        m_status->state(tr("%n tag(s) selected: right-click for Shift, Set a field, Delete", nullptr, names.size()));
+    });
+    connect(m_canvas, &StationLayoutCanvas::tagToggled, this, [this](const QString &name) {
+        QStringList sel = selectedTags();
+        if (!sel.removeOne(name)) sel << name;
+        selectTags(sel);
     });
     connect(m_canvas, &StationLayoutCanvas::tagClicked, this, [this](const QString &name) {
         for (int i = 0; i < m_layout.tags.size(); ++i)
@@ -1378,6 +1429,31 @@ QMenu *StationLayoutWindow::contextMenuFor(const QString &tag, const QString &li
 {
     auto *menu = new QMenu(this);
     const qint64 station = m_layout.stations.isEmpty() ? 0 : m_layout.stations.first().id;
+    // Session 223: the tags selected together.
+    const QStringList sel = selectedTags();
+    if (sel.size() > 1) {
+        menu->addAction(tr("Shift the %1 selected tags…").arg(sel.size()), this, [this, sel]() {
+            bool ok = false;
+            const int m = QInputDialog::getInt(this, tr("Shift %1 tags").arg(sel.size()),
+                                               tr("Metres (negative: towards lower locations):"), 0, -100000, 100000, 1, &ok);
+            if (ok && m != 0) shiftTags(sel, m);
+        });
+        menu->addAction(tr("Set a field on the %1 selected tags…").arg(sel.size()), this, [this, sel]() {
+            QStringList fields;
+            for (const RfidTag::Field &f : RfidTag::fieldsOf(StationLayout::info(m_layout.tags.value(tagIndexOf(sel.first()))).type))
+                fields << f.name;
+            bool ok = false;
+            const QString field = QInputDialog::getItem(this, tr("Set a field"), tr("Field:"), fields, 0, false, &ok);
+            if (!ok) return;
+            const QString v = QInputDialog::getText(this, tr("Set %1").arg(field), tr("Value (a number):"), QLineEdit::Normal, QString(), &ok);
+            bool num = false;
+            const qint64 value = v.trimmed().toLongLong(&num, 0);
+            if (ok && num) setFieldOnTags(sel, field, value);
+            else if (ok) m_status->fail(tr("Not set: \"%1\" is not a number").arg(v));
+        });
+        menu->addAction(tr("Delete the %1 selected tags").arg(sel.size()), this, [this, sel]() { deleteTags(sel); });
+        menu->addSeparator();
+    }
     if (!tag.isEmpty()) {
         menu->addAction(tr("Edit tag %1 in Tag Builder…").arg(tag), this, [this, tag]() { openInTagBuilder(tag); });
         menu->addAction(tr("New signal at tag %1…").arg(tag), this, [this, tag, station]() {
@@ -1415,6 +1491,99 @@ QMenu *StationLayoutWindow::contextMenuFor(const QString &tag, const QString &li
         addLine({ v.at(1), v.at(0), {} });
     });
     return menu;
+}
+
+int StationLayoutWindow::tagIndexOf(const QString &name) const
+{
+    for (int i = 0; i < m_layout.tags.size(); ++i) if (m_layout.tags.at(i).name == name) return i;
+    return -1;
+}
+
+QStringList StationLayoutWindow::selectedTags() const
+{
+    QList<int> rows;
+    for (const QModelIndex &i : m_tables.at(0)->selectionModel()->selectedRows()) rows << i.row();
+    std::sort(rows.begin(), rows.end());
+    QStringList out;
+    for (int r : rows) if (r < m_layout.tags.size()) out << m_layout.tags.at(r).name;
+    return out;
+}
+
+void StationLayoutWindow::selectTags(const QStringList &names)
+{
+    QTableWidget *t = m_tables.at(0);
+    t->clearSelection();
+    QItemSelection sel;
+    for (const QString &n : names) {
+        const int r = tagIndexOf(n);
+        if (r >= 0) sel.select(t->model()->index(r, 0), t->model()->index(r, t->columnCount() - 1));
+    }
+    t->selectionModel()->select(sel, QItemSelectionModel::Select);
+    if (!names.isEmpty() && tagIndexOf(names.last()) >= 0) {
+        t->selectionModel()->setCurrentIndex(t->model()->index(tagIndexOf(names.last()), 0), QItemSelectionModel::NoUpdate);
+        m_tabs->setCurrentIndex(0);
+    }
+}
+
+bool StationLayoutWindow::shiftTags(const QStringList &names, qint64 metres)
+{
+    StationLayout::Layout next = m_layout;
+    for (const QString &n : names) {
+        const int i = tagIndexOf(n);
+        const StationLayout::TagInfo in = StationLayout::info(m_layout.tags.value(i));
+        QString err;
+        if (i < 0 || !in.ok || !StationLayout::moveTag(&next.tags[i], in.absLoc + metres, &err)) {
+            m_status->fail(tr("Nothing shifted: tag %1: %2").arg(n, i < 0 || !in.ok ? tr("does not decode") : err));
+            return false;
+        }
+    }
+    const StationLayout::Layout before = m_layout;
+    m_layout = next;
+    changed(tr("shift %n tag(s)", nullptr, names.size()), before);
+    selectTags(names);
+    m_status->ok(tr("%1 tags shifted %2 m, CRC-30 recomputed").arg(names.size()).arg(metres));
+    return true;
+}
+
+bool StationLayoutWindow::setFieldOnTags(const QStringList &names, const QString &field, qint64 value)
+{
+    StationLayout::Layout next = m_layout;
+    for (const QString &n : names) {
+        const int i = tagIndexOf(n);
+        const QByteArray bytes = i < 0 ? QByteArray() : RfidTag::fromPages(m_layout.tags.at(i).pageX, m_layout.tags.at(i).pageY);
+        QHash<QString, qint64> v = RfidTag::values(bytes);
+        QString err;
+        if (!v.contains(field)) err = tr("has no field %1").arg(field);
+        v.insert(field, value);
+        const QByteArray b = err.isEmpty() ? RfidTag::build(v, &err) : QByteArray();
+        if (err.isEmpty() && RfidTag::nameOf(b) != n) err = tr("would become tag %1: change ids one at a time in the Tag Builder").arg(RfidTag::nameOf(b));
+        if (!err.isEmpty() || b.isEmpty()) {
+            m_status->fail(tr("Nothing set: tag %1 %2").arg(n, err));
+            return false;
+        }
+        next.tags[i].pageX = RfidTag::pageX(b);
+        next.tags[i].pageY = RfidTag::pageY(b);
+    }
+    const StationLayout::Layout before = m_layout;
+    m_layout = next;
+    changed(tr("set %1 on %n tag(s)", nullptr, names.size()).arg(field), before);
+    selectTags(names);
+    m_status->ok(tr("%1 = %2 on %3 tags, CRC-30 recomputed").arg(field).arg(value).arg(names.size()));
+    return true;
+}
+
+bool StationLayoutWindow::deleteTags(const QStringList &names)
+{
+    if (names.isEmpty()) return false;
+    const StationLayout::Layout before = m_layout;
+    for (const QString &n : names) {
+        const int i = tagIndexOf(n);
+        if (i >= 0) m_layout.tags.remove(i);
+        for (StationLayout::Line &ln : m_layout.lines) ln.tags.removeAll(n);
+    }
+    changed(tr("delete %n tag(s)", nullptr, names.size()), before);
+    m_status->ok(tr("%1 tags deleted (Undo brings them back)").arg(names.size()));
+    return true;
 }
 
 void StationLayoutWindow::onTagCell(int row, int col)

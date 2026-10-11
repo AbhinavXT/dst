@@ -11,6 +11,52 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-223"></a>
+## Session 223 — Station Layout: several tags at once
+
+Abhinav's pick 2 of 7. In the drawing:
+
+- **Shift + drag** draws a dashed box. The tags in it are selected.
+- **Ctrl + click** on a tag adds it to the selection, or takes it out.
+- The selection is the **Tags table's** (rows selected there show in the
+  drawing too), and every selected tag gets the selection ring.
+
+With more than one tag selected, **right-click** offers:
+
+- **Shift the N selected tags…**: by N m (negative towards lower
+  locations), each re-encoded with its CRC-30 recomputed. If one tag
+  cannot take the shift, nothing moves.
+- **Set a field on the N selected tags…**: pick a field by its schema
+  name (tin_nom, placement, …) and type a value. It is refused whole if a
+  tag lacks the field, will not take the value, or would change its id.
+  Ids are changed one at a time in the Tag Builder (221).
+- **Delete the N selected tags**: from the tags and from their lines.
+  Signals at them stay, and Checks names them.
+
+Each is one Undo step. The Tags table's own **Delete rows** is unchanged.
+
+### Files
+
+`stationlayoutwindow.{h,cpp}` (`setMarkedTags`, `tagsIn`, `tagsBoxed` /
+`tagToggled`, `selectedTags` / `selectTags`, `shiftTags`, `setFieldOnTags`,
+`deleteTags`); tests `test_session223.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session223` (20 checks), on the built-in station.xlsx, with three
+neighbouring tags of one line:
+- Shift + drag selects what the box holds;
+- Ctrl + click takes one out;
+- the menu offers the three actions;
+- a shift of 25 m (CRC good), an impossible shift refused whole, Undo;
+- tin_nom set on all three (CRC good); the id, and a field they lack,
+  refused;
+- delete, out of their line, Undo.
+
+`session208_window`, `220`, `221` and `222` pass unchanged.
+
+---
+
 <a id="session-222"></a>
 ## Session 222 — Station Layout: new tag, signal, point, text and line from the drawing
 

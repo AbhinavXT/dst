@@ -51,6 +51,10 @@ public:
     explicit StationLayoutCanvas(QWidget *parent = nullptr);
     void setStation(const StationLayout::Layout &l);
     void setSelectedTag(const QString &name);
+    // Session 223: the tags selected together (highlighted like the selected one).
+    void setMarkedTags(const QSet<QString> &names);
+    // The tags whose marks fall inside `r` (canvas coordinates).
+    QStringList tagsIn(const QRectF &r) const;
     // Session 220: 1 = the drawing fits the window; each step widens what is seen.
     // `anchorX` (canvas x) stays under the same place; -1 = the visible middle.
     void setZoom(double z, double anchorX = -1);
@@ -71,6 +75,9 @@ public:
 signals:
     void tagClicked(const QString &name);
     void tagDoubleClicked(const QString &name);   // session 221
+    // Session 223: Shift + drag drew a box round these tags; Ctrl + click toggled one.
+    void tagsBoxed(const QStringList &names);
+    void tagToggled(const QString &name);
     // Session 222: a right-click: the tag under it (or ""), the line whose lane
     // it is on (or ""), the location under it, and whether it is above the lanes.
     void contextRequested(const QPoint &globalPos, const QString &tag, const QString &line, qint64 locM, bool aboveLanes);
@@ -112,6 +119,9 @@ private:
     QHash<QString, int> m_pointOfTag;  // tag -> index into m_l.points (a turnout tag)
     double m_zoom = 1.0;
     QString m_selected;
+    QSet<QString> m_marked;            // session 223
+    QPoint  m_bandFrom;                // Shift + drag: the box's corner (canvas)
+    QRect   m_band;                    // the box while it is drawn; null = none
     QVector<Hit> m_hits;
     QString m_dragTag;
     double  m_dragX = -1;
@@ -163,6 +173,16 @@ public:
     bool addLine(const StationLayout::Line &ln);      // a line id not used yet
     bool addPoint(const StationLayout::Point &p);     // a new name; two different lines of the layout
     bool addText(const StationLayout::Text &t);       // some text
+    // Session 223: several tags at once. The selection is the Tags table's.
+    QStringList selectedTags() const;
+    void selectTags(const QStringList &names);
+    // Every one moved by `metres` (CRC-30 recomputed); refused whole if one will not take it.
+    bool shiftTags(const QStringList &names, qint64 metres);
+    // One field set on every one (CRC recomputed); refused whole if one lacks the
+    // field or will not take the value, or if a tag's name (its id) would change.
+    bool setFieldOnTags(const QStringList &names, const QString &field, qint64 value);
+    // The tags, and their places in the lines (signals naming them stay, and Checks says so).
+    bool deleteTags(const QStringList &names);
     // The menu a right-click on the drawing opens (built, not shown: tests).
     QMenu *contextMenuFor(const QString &tag, const QString &line, qint64 locM, bool aboveLanes);
 
@@ -171,6 +191,7 @@ protected:
 
 private:
     void refreshAll();
+    int  tagIndexOf(const QString &name) const;   // -1 when absent
     void fillTags();
     void fillSheet(int sheet);
     void onTagCell(int row, int col);
