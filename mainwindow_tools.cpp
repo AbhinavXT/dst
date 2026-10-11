@@ -612,6 +612,8 @@ void MainWindow::onActionTagBuilder()
 void MainWindow::onActionStationLayout()
 {
     auto *w = new StationLayoutWindow(this);
+    w->setDispatcher(m_dispatcher);
+    connect(w, &StationLayoutWindow::jumpRequested, this, [this](const QString &tabKey, qint64 ms) { jumpToEntry(tabKey, ms); });
     w->reopenLast();
     w->show();
     w->raise();

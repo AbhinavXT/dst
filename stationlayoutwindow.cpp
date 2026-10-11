@@ -1,5 +1,7 @@
 #include "stationlayoutwindow.h"
 
+#include "logmodel.h"
+#include "messagedispatcher.h"
 #include "settings.h"
 #include "statusline.h"
 #include "tagbuilderwindow.h"
@@ -10,6 +12,7 @@
 
 #include <QCloseEvent>
 #include <QContextMenuEvent>
+#include <QDateTime>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -380,6 +383,12 @@ bool StationLayoutCanvas::eventFilter(QObject *o, QEvent *e)
     if (e->type() == QEvent::Resize && m_zoom > 1.0 && scrollArea() && o == scrollArea()->viewport())
         setZoom(m_zoom);
     return QWidget::eventFilter(o, e);
+}
+
+void StationLayoutCanvas::setRunStates(const QHash<QString, int> &states)
+{
+    m_runStates = states;
+    update();
 }
 
 void StationLayoutCanvas::setDiffTags(const QHash<QString, int> &kinds)
@@ -770,6 +779,14 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         const TinLayout::Shape shape = TinLayout::shapeOf(m_loc.value(t.name), m_loc.value(dup), !dup.isEmpty());
         const QChar letter = TinLayout::notation(in.type, in.placement);
         TinLayout::drawTag(p, QPointF(x, y), letter, shape, flagged ? UiColor::warning() : text, flagged ? 2 : 1.2);
+        // Session 227: the run: read (ok), read but different (warning), not read (error).
+        if (m_runStates.contains(t.name)) {
+            const int st = m_runStates.value(t.name);
+            p.setPen(QPen(st == int(PlanRun::State::NotRead) ? UiColor::error()
+                          : st == int(PlanRun::State::Different) ? UiColor::warning() : UiColor::ok(), 2));
+            p.setBrush(Qt::NoBrush);
+            p.drawEllipse(QPointF(x, y), 20, 20);
+        }
         // Session 226: a tag that differs from the compared file (added: ok; moved / changed: warning).
         if (m_diffKinds.contains(t.name) || (!dup.isEmpty() && m_diffKinds.contains(dup))) {
             const int k = m_diffKinds.value(t.name, m_diffKinds.value(dup));
@@ -933,6 +950,18 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     cmpMenu->addMenu(stationLibraryMenu(cmpMenu, [this](const QString &path) { compareWith(path); }));
     cmpMenu->addSeparator();
     cmpMenu->addAction(tr("Stop comparing"), this, [this]() { clearCompare(); });
+    // Session 227: a loco's log over the layout.
+    QMenu *runMenu = openMenu->addMenu(tr("Show a loco's run"));
+    connect(runMenu, &QMenu::aboutToShow, this, [this, runMenu]() {
+        runMenu->clear();
+        QStringList keys = m_dispatcher ? m_dispatcher->knownKeys() : QStringList();
+        keys.sort();
+        for (const QString &k : keys)
+            runMenu->addAction(k, this, [this, k]() { showRun(m_dispatcher->modelForKey(k), k); });
+        if (keys.isEmpty()) runMenu->addAction(tr("(no loco logs open)"))->setEnabled(false);
+        runMenu->addSeparator();
+        runMenu->addAction(tr("Hide the run"), this, [this]() { clearRun(); });
+    });
     openBtn->setMenu(openMenu);
     auto *saveBtn = new QPushButton(tr("Save"), this);
     auto *saveAsBtn = new QPushButton(tr("Save as…"), this);
@@ -1001,9 +1030,21 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     m_other->setAlignment(Qt::AlignTop | Qt::AlignLeft);
     m_other->setMargin(8);
     m_tabs->addTab(m_other, tr("Other sheets"));
+    m_run = makeTable(this);
+    m_run->setColumnCount(5);
+    m_run->setHorizontalHeaderLabels({ tr("Tag"), tr("Line"), tr("Run"), tr("First read"), tr("Detail") });
+    m_run->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_run->setToolTip(tr("A loco's run over the layout (Open ▸ Show a loco's run). Double-click a row: the tag, and the read in its log"));
+    connect(m_run, &QTableWidget::cellDoubleClicked, this, [this](int row, int) {
+        if (row < 0 || row >= m_runTags.size()) return;
+        const RunTag &t = m_runTags.at(row);
+        if (tagIndexOf(t.name) >= 0) { selectTags({ t.name }); m_canvas->setSelectedTag(t.name); }
+        if (t.firstMs) emit jumpRequested(m_runKey, t.firstMs);
+    });
     m_compare = new QListWidget(this);
     m_compare->setToolTip(tr("What differs from the file compared with (Open ▸ Compare with). Double-click a tag's row to select it"));
     m_tabs->addTab(m_compare, tr("Compare"));
+    m_tabs->addTab(m_run, tr("Run"));
     connect(m_compare, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *it) {
         const QString name = it->data(Qt::UserRole).toString();
         if (tagIndexOf(name) >= 0) { selectTags({ name }); m_canvas->setSelectedTag(name); }
@@ -1176,6 +1217,7 @@ void StationLayoutWindow::refreshAll()
     m_checks->addItems(found.isEmpty() ? QStringList{ tr("Nothing to report") } : found);
     m_tabs->setTabText(6, found.isEmpty() ? tr("Checks") : tr("Checks (%1)").arg(found.size()));
     fillCompare();
+    fillRun();
     QStringList other;
     for (const XlsxBook::Sheet &s : m_layout.otherSheets)
         other << tr("%1: %2 rows").arg(s.name).arg(qMax(0, s.rows.size() - 1));
@@ -1715,6 +1757,97 @@ bool StationLayoutWindow::addLineFromRoute(const RfidTag::Route &r, const QStrin
     m_status->ok(tr("Line %1 made from route %2: %3 tags in it, %4 new to the layout")
                      .arg(lineId, r.name).arg(ln.tags.size()).arg(added.size()));
     return true;
+}
+
+void StationLayoutWindow::showRun(const LogModel *model, const QString &key)
+{
+    m_runModel = const_cast<LogModel *>(model);   // read only here; QPointer wants a non-const QObject
+    m_runKey = key;
+    fillRun();
+    m_tabs->setCurrentWidget(m_run);
+    int counts[4] = { 0, 0, 0, 0 };
+    for (const RunTag &t : m_runTags) ++counts[int(t.state)];
+    m_status->state(m_runTags.isEmpty() && m_runExtra.isEmpty()
+                        ? tr("%1: no RFID tag read").arg(key)
+                        : tr("%1 over the layout: %2 read, %3 different, %4 not read; %5 read that the layout lacks")
+                              .arg(key).arg(counts[int(PlanRun::State::Read)]).arg(counts[int(PlanRun::State::Different)])
+                              .arg(counts[int(PlanRun::State::NotRead)]).arg(m_runExtra.size()));
+}
+
+void StationLayoutWindow::clearRun()
+{
+    m_runModel = nullptr;
+    m_runKey.clear();
+    fillRun();
+}
+
+void StationLayoutWindow::fillRun()
+{
+    m_runTags.clear();
+    m_runExtra.clear();
+    QHash<QString, int> states;
+    if (m_runModel) {
+        // The plan: every tag of the layout, by location (the order does not matter here:
+        // out of order counts as read).
+        const QHash<QString, qint64> loc = StationLayout::tagLocations(m_layout);
+        RfidTag::Route all;
+        for (const StationLayout::Tag &t : m_layout.tags) {
+            const QByteArray b = RfidTag::fromPages(t.pageX, t.pageY);
+            if (b.size() == RfidTag::TagBytes) all.tags << RfidTag::Tag{ t.name, b, {} };
+        }
+        const PlanRun::Result r = PlanRun::compare(all, PlanRun::readsOf(m_runModel));
+        QHash<QString, PlanRun::Planned> byName;
+        for (const PlanRun::Planned &p : r.planned) byName.insert(p.name, p);
+        m_runExtra = r.notPlanned;
+        // Where the run went: per line, the span of the tags it read.
+        const QHash<QString, QString> lineOf = StationLayout::lineOfTag(m_layout);
+        auto lineFor = [&](const QString &n) {
+            const QString l = lineOf.value(n);
+            return l.isEmpty() && n.endsWith(QLatin1Char('D')) ? lineOf.value(n.chopped(1)) : l;
+        };
+        QHash<QString, QPair<qint64, qint64>> span;
+        for (const PlanRun::Planned &p : r.planned) {
+            if (p.state == PlanRun::State::NotRead || lineFor(p.name).isEmpty()) continue;
+            auto &s = span[lineFor(p.name)];
+            const qint64 m = loc.value(p.name);
+            s = s.first == 0 && s.second == 0 ? qMakePair(m, m) : qMakePair(qMin(s.first, m), qMax(s.second, m));
+        }
+        for (const StationLayout::Line &ln : m_layout.lines) {
+            if (!span.contains(ln.line)) continue;
+            QStringList names;
+            for (const QString &n : ln.tags) { names << n; if (!n.endsWith(QLatin1Char('D'))) names << n + QLatin1Char('D'); }
+            names.removeDuplicates();
+            for (const QString &n : names) {
+                if (!byName.contains(n)) continue;
+                const PlanRun::Planned &p = byName.value(n);
+                const qint64 m = loc.value(n);
+                if (p.state == PlanRun::State::NotRead && (m < span.value(ln.line).first || m > span.value(ln.line).second)) continue;
+                const PlanRun::State st = p.state == PlanRun::State::OutOfOrder ? PlanRun::State::Read : p.state;
+                m_runTags << RunTag{ n, ln.line, st, p.firstMs, st == PlanRun::State::Different ? p.detail : QString() };
+                states.insert(n, int(st));
+            }
+        }
+    }
+    m_canvas->setRunStates(states);
+    m_run->setRowCount(m_runTags.size());
+    for (int i = 0; i < m_runTags.size(); ++i) {
+        const RunTag &t = m_runTags.at(i);
+        auto *st = readOnly(PlanRun::stateText(t.state));
+        st->setForeground(t.state == PlanRun::State::NotRead ? UiColor::error() : t.state == PlanRun::State::Different ? UiColor::warning() : UiColor::ok());
+        m_run->setItem(i, 0, readOnly(t.name));
+        m_run->setItem(i, 1, readOnly(t.line));
+        m_run->setItem(i, 2, st);
+        m_run->setItem(i, 3, readOnly(t.firstMs ? QDateTime::fromMSecsSinceEpoch(t.firstMs).toString(QStringLiteral("HH:mm:ss.zzz")) : QString()));
+        m_run->setItem(i, 4, readOnly(t.detail));
+    }
+    if (!m_runExtra.isEmpty()) {
+        const int r = m_run->rowCount();
+        m_run->insertRow(r);
+        m_run->setItem(r, 0, readOnly(tr("Read, not in the layout: %1").arg(m_runExtra.join(QStringLiteral(", ")))));
+        m_run->setSpan(r, 0, 1, 5);
+    }
+    m_run->resizeColumnsToContents();
+    m_tabs->setTabText(m_tabs->indexOf(m_run), m_runModel ? tr("Run (%1)").arg(m_runKey) : tr("Run"));
 }
 
 bool StationLayoutWindow::compareWith(const QString &path)

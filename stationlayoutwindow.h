@@ -17,6 +17,7 @@
 //  loops below UP main, turnout tags on the points, the yard drawn wider.
 // =============================================================================
 
+#include "planrun.h"
 #include "rfidtag.h"
 #include "stationlayout.h"
 
@@ -30,6 +31,8 @@ class QPainter;
 class QListWidget;
 class QScrollArea;
 class TagBuilderWindow;
+class MessageDispatcher;
+class LogModel;
 class QMenu;
 class QTabWidget;
 class QTableWidget;
@@ -54,6 +57,8 @@ public:
     void setSelectedTag(const QString &name);
     // Session 226: tags that differ from a compared file: ringed, by kind.
     void setDiffTags(const QHash<QString, int> &kinds);   // name -> StationLayout::TagChange::Kind
+    // Session 227: a loco's run over the layout: name -> PlanRun::State, ringed.
+    void setRunStates(const QHash<QString, int> &states);
     // Session 223: the tags selected together (highlighted like the selected one).
     void setMarkedTags(const QSet<QString> &names);
     // The tags whose marks fall inside `r` (canvas coordinates).
@@ -124,6 +129,7 @@ private:
     QString m_selected;
     QSet<QString> m_marked;            // session 223
     QHash<QString, int> m_diffKinds;   // session 226
+    QHash<QString, int> m_runStates;   // session 227
     QPoint  m_bandFrom;                // Shift + drag: the box's corner (canvas)
     QRect   m_band;                    // the box while it is drawn; null = none
     QVector<Hit> m_hits;
@@ -204,14 +210,30 @@ public:
     void compareWith(const StationLayout::Layout &other, const QString &label);
     void clearCompare();
     const StationLayout::Diff &comparison() const { return m_diff; }
+    // Session 227: a loco's run over the layout. Every @rfid read of the log
+    // against the layout's tags: read (the same 16 bytes), different (the same
+    // id, other bytes: the fields named), not read. "Not read" is judged only
+    // on the lines the run read a tag of, between the first and last such
+    // tags: a tag the loco never went past is not marked. Reads of tags the
+    // layout lacks are listed. The Run tab; the drawing rings them.
+    void setDispatcher(MessageDispatcher *dispatcher) { m_dispatcher = dispatcher; }
+    void showRun(const LogModel *model, const QString &key);
+    void clearRun();
+    struct RunTag { QString name, line; PlanRun::State state = PlanRun::State::NotRead; qint64 firstMs = 0; QString detail; };
+    const QVector<RunTag> &runTags() const { return m_runTags; }
+    const QStringList &runNotInLayout() const { return m_runExtra; }
     // The menu a right-click on the drawing opens (built, not shown: tests).
     QMenu *contextMenuFor(const QString &tag, const QString &line, qint64 locM, bool aboveLanes);
+
+signals:
+    void jumpRequested(const QString &tabKey, qint64 ms);   // session 227: a read, in its log
 
 protected:
     void closeEvent(QCloseEvent *e) override;
 
 private:
     void refreshAll();
+    void fillRun();
     int  tagIndexOf(const QString &name) const;   // -1 when absent
     void fillTags();
     void fillSheet(int sheet);
@@ -236,6 +258,12 @@ private:
     QVector<QTableWidget *> m_tables;
     QListWidget *m_checks = nullptr;
     QListWidget *m_compare = nullptr;              // session 226
+    QTableWidget *m_run = nullptr;                 // session 227
+    MessageDispatcher *m_dispatcher = nullptr;
+    QPointer<LogModel> m_runModel;      // gone when its tab closes: the run is then hidden
+    QString m_runKey;
+    QVector<RunTag> m_runTags;
+    QStringList m_runExtra;
     bool m_comparing = false;
     StationLayout::Layout m_compareTo;
     QString m_compareLabel;

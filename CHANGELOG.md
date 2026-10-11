@@ -11,6 +11,61 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-227"></a>
+## Session 227 — Station Layout: a loco's run over the layout
+
+Abhinav's pick 6 of 7. The Track diagram already laid a layout over a run
+(209). This brings the run into Station Layout, where the layout is
+edited.
+
+- **Open ▸ Show a loco's run ▸ (an open log)** matches every @rfid read in
+  that log against the layout's tags, using the Tag Builder's
+  plan-vs-run logic (198):
+  - **read**: the same 16 bytes;
+  - **different**: the same id and main/duplicate, other bytes, with the
+    fields named (e.g. "placement 2 → 0");
+  - **not read**.
+- **Only where the loco went.** "Not read" is judged only on the lines
+  the run read a tag of, between the first and last such tags. A tag
+  further along a line, never passed, is not marked.
+- The **Run** tab lists them by line with the first read time. Reads of
+  tags the layout lacks are listed on its last row. **Double-click** a row
+  to select the tag and show the read in its log tab.
+- **In the drawing**, each judged tag gets a solid ring: read in the ok
+  colour, different in warning, not read in error.
+- The run follows edits and Undo. If the log's tab closes, the run is
+  hidden (a guarded pointer). **Hide the run** clears it.
+
+Seen on the real run (`replay/loco_1_1_27062026_170217.cap` over the
+default layout):
+- DM tags 12, 14, 18, 906 / 906D and 898 / 898D were read as laid out;
+- tag 16 was read with placement 0 where the layout says 2;
+- no duplicate of 12, 14, 16 or 18 was read.
+
+### Files
+
+`stationlayoutwindow.{h,cpp}` (`showRun`, `clearRun`, `runTags`,
+`runNotInLayout`, `setDispatcher`, `jumpRequested`, the Run tab,
+`setRunStates`), `mainwindow_tools.cpp` (the dispatcher and the jump);
+tests `test_session227.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session227` (24 checks). Expected values are from `schema/engine.py`
+over the capture's @rfid frames:
+- each tag's state and first read;
+- tag 16's placement;
+- the four unread duplicates;
+- 981 (never passed) not judged;
+- the tab;
+- a double-click selecting 16 and asking for its read at 17:04:14;
+- an edit making 14 "different (abs_loc …)";
+- a deleted log hiding the run, and Hide.
+
+`session209`, `210` and `226` pass unchanged.
+
+---
+
 <a id="session-226"></a>
 ## Session 226 — Station Layout: compare with another station file
 
