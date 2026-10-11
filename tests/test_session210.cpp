@@ -81,6 +81,6 @@ TEST_SUITE(session210)
     CHECK(sigs.contains(QStringLiteral("S48")) && sigs.contains(QStringLiteral("S43")), "S48 and S43 at their foot tags");
     bool menu = false;
     for (QPushButton *b : tw.findChildren<QPushButton *>())
-        if (b->text() == QStringLiteral("Station layout\u2026") && b->menu() && b->menu()->actions().size() == 2) menu = true;
-    CHECK(menu, "Station layout... offers the default and a file");
+        if (b->text() == QStringLiteral("Station layout\u2026") && b->menu() && b->menu()->actions().size() == 3) menu = true;
+    CHECK(menu, "Station layout... offers the default, the library and a file");
 }

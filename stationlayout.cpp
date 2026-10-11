@@ -2,6 +2,8 @@
 
 #include "rfidtag.h"
 
+#include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -9,6 +11,8 @@
 #include <QJsonObject>
 #include <QRegularExpression>
 #include <QSaveFile>
+
+#include <algorithm>
 
 namespace StationLayout {
 namespace {
@@ -457,6 +461,25 @@ bool fromJson(const QByteArray &json, Layout *out, QString *err, QStringList *no
 }
 
 QString defaultFile() { return QStringLiteral(":/station_layouts/station.xlsx"); }
+
+QStringList library()
+{
+    QStringList out;
+    QDirIterator it(QStringLiteral(":/station_layouts"), { QStringLiteral("*.xlsx") }, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) out << it.next();
+    std::sort(out.begin(), out.end(), [](const QString &a, const QString &b) {
+        const QString ga = libraryGroup(a), gb = libraryGroup(b);
+        if (ga != gb) return ga < gb;   // the top level ("") first
+        return a.compare(b, Qt::CaseInsensitive) < 0;
+    });
+    return out;
+}
+
+QString libraryGroup(const QString &path)
+{
+    const QString rel = path.mid(QStringLiteral(":/station_layouts/").size());
+    return rel.contains(QLatin1Char('/')) ? rel.section(QLatin1Char('/'), 0, 0) : QString();
+}
 
 // ---- by extension ------------------------------------------------------------------
 

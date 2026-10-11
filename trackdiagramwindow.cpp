@@ -3,6 +3,7 @@
 #include "dmipanel.h"
 #include "logmodel.h"
 #include "settings.h"
+#include "stationlayoutwindow.h"
 #include "statusline.h"
 #include "uicolors.h"
 #include "windowgeometry.h"
@@ -628,6 +629,7 @@ TrackDiagramWindow::TrackDiagramWindow(LogModel *model, const QString &tabKey, c
     // Session 210: the built-in default, or a file.
     auto *layoutMenu = new QMenu(layoutBtn);
     layoutMenu->addAction(tr("Default layout (station.xlsx)"), this, [this]() { loadLayout(StationLayout::defaultFile()); });
+    layoutMenu->addMenu(stationLibraryMenu(layoutMenu, [this](const QString &path) { loadLayout(path); }));
     layoutMenu->addAction(tr("Open file…"), this, [this]() {
         const QString last = Settings::stationLayoutLastFile();
         const QString path = QFileDialog::getOpenFileName(this, tr("Station layout"),

@@ -11,6 +11,45 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-211"></a>
+## Session 211 — the station layout library
+
+Asked for by Abhinav, after session 210: build in the zip's other station
+files too, so a layout starts from a real station rather than from
+scratch.
+
+**What the operator sees:** **Open ▸ Library** in Tools ▸ Station Layout,
+and **Library** in the Track diagram's Station layout… menu, list the 47
+station files of the old Python tool. The top-level files (Lingampalli,
+Gullaguda, T_L_H, the Test 20.x layouts, the adjusted and shifted
+variants, RIU Extended, …) come first, then a submenu for each of the
+zip's folders: ajay, Originals and sOs_adj. The default is marked
+"(default)". Opening one is not a change; Save asks for a `.json` of your
+own, so the built-in copy stays as it is.
+
+**How it is made:** `scripts/station_layout_library.py <config/station>
+station_layouts --qrc station_layouts.qrc` copies the files byte for byte.
+It leaves out the circuits sheets, the "(copy)" files and "New Folder",
+makes names Windows-safe (anything but letters, digits and `. _ + -`
+becomes `_`), and writes the .qrc. 1.4 MB in all.
+
+**Files:** `station_layouts/` (47 .xlsx), `station_layouts.qrc`,
+`scripts/station_layout_library.py`, `stationlayout.{h,cpp}` (`library`,
+`libraryGroup`), `stationlayoutwindow.{h,cpp}` (`stationLibraryMenu`),
+`trackdiagramwindow.cpp`; `tests/test_session211.cpp`;
+`tests/test_session210.cpp` (the menu has three entries now).
+
+**Tests:** session211, 10 checks: 47 files, default included, the four
+groups with the top level first; every file reads as a layout with tags,
+under a safe name; the menu (47 entries, three submenus, picking returns
+the path); Lingampalli opens from the library unmodified with 175 tags.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators **13/13**;
+`dltests` **261 suites / 7007 checks, 1 failed** (the `session156` pty
+check, as at 194 and 206); menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-210"></a>
 ## Session 210 — the default station layout, built in
 

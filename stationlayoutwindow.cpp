@@ -64,6 +64,26 @@ int placeLabel(QHash<int, QVector<double>> &ends, int band, double x, int w, int
 
 }  // namespace
 
+QMenu *stationLibraryMenu(QWidget *parent, const std::function<void(const QString &)> &pick)
+{
+    auto *menu = new QMenu(QObject::tr("Library"), parent);
+    QHash<QString, QMenu *> groups;
+    for (const QString &path : StationLayout::library()) {
+        const QString g = StationLayout::libraryGroup(path);
+        QMenu *m = menu;
+        if (!g.isEmpty()) {
+            if (!groups.contains(g)) groups.insert(g, menu->addMenu(g));
+            m = groups.value(g);
+        }
+        QString name = QFileInfo(path).completeBaseName();
+        if (path == StationLayout::defaultFile()) name += QObject::tr(" (default)");
+        QAction *a = m->addAction(name);
+        a->setData(path);
+        QObject::connect(a, &QAction::triggered, menu, [pick, path]() { pick(path); });
+    }
+    return menu;
+}
+
 // =============================================================================
 //  StationLayoutCanvas
 // =============================================================================
@@ -449,6 +469,9 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     QAction *openFileAct = openMenu->addAction(tr("Open file…"));
     openFileAct->setToolTip(tr("A DLConsole station layout (.json)"));
     QAction *defaultAct = openMenu->addAction(tr("Default layout (station.xlsx)"));
+    openMenu->addMenu(stationLibraryMenu(openMenu, [this](const QString &path) {
+        if (confirmDiscard()) openFile(path);
+    }));
     QAction *newAct = openMenu->addAction(tr("New, empty"));
     openBtn->setMenu(openMenu);
     auto *saveBtn = new QPushButton(tr("Save"), this);
@@ -819,6 +842,8 @@ bool StationLayoutWindow::openFile(const QString &path)
     Settings::setStationLayoutLastFile(path);
     const QString what = path == StationLayout::defaultFile()
         ? tr("The built-in default layout (station.xlsx): save it as a .json to keep your changes")
+        : path.startsWith(QStringLiteral(":/"))
+        ? tr("Built-in layout %1: save it as a .json to keep your changes").arg(QFileInfo(path).fileName())
         : imported ? tr("Imported %1: save it as a .json to keep editing it").arg(QFileInfo(path).fileName())
                    : tr("Opened %1").arg(QFileInfo(path).fileName());
     if (notes.isEmpty()) m_status->ok(what);

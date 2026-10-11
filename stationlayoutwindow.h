@@ -26,6 +26,15 @@ class QTableWidget;
 class StatusLine;
 class UndoLog;
 
+#include <functional>
+
+class QMenu;
+
+// Session 211: Library ▸ a submenu per group of built-in station files;
+// `pick` gets the chosen resource path. Shared by Station Layout and the
+// Track diagram.
+QMenu *stationLibraryMenu(QWidget *parent, const std::function<void(const QString &)> &pick);
+
 class StationLayoutCanvas : public QWidget
 {
     Q_OBJECT
