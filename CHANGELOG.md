@@ -11,6 +11,77 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-253"></a>
+## Session 253 — the NMS tables: freeze columns, pin rows
+
+Item 4 of Abhinav's list after patch 248 ("freeze particular coloumn or
+row").
+
+What the operator sees, all on the right-click menu:
+
+- **Freeze columns up to "…"** (on a cell or a column header): that column
+  and every one left of it stay put while the rest scroll sideways, e.g.
+  PC time … CRC while scrolling out to the DMI link status. **Unfreeze
+  columns** undoes it. The status line says what is frozen.
+- **Pin row N at the top** (on a cell or a row number): the row is copied
+  into a strip above the table and stays there whatever the table scrolls
+  to, and whether or not Changes only would show it. The strip uses the
+  table's columns, widths and frozen columns, and scrolls sideways with it,
+  so a pinned packet reads against the live ones under it. In the strip:
+  **Unpin row N**, **Unpin all**; double-click opens the frame, as in the
+  table. Pins are dropped when the tab is cleared (the rows they named are
+  gone).
+
+### How
+
+`FrozenColumns` (new, `frozencolumns.h/.cpp`, reusable for any
+QTableView) is Qt's frozen-column technique: a second view over the left of
+the table, on the same model and selection, showing only the frozen
+columns. Two bugs the shots found are fixed in it, and the test covers both:
+
+- the overlay's header has to be set from `isHidden()`, not `isVisible()`
+  (the table is built before it is shown);
+- the overlay must follow the table's vertical scroll one way only. Qt
+  moves a view's scroll bar itself on the first layout, and a value sent
+  back scrolled the table to the top. The overlay is now put back whenever
+  it moves on its own, and a wheel on it goes to the table.
+
+The pinned strip is a second view on the same table, filtered to the pinned
+rows (`NmsLogFilter::setOnlyRows`), with the header hidden.
+
+### Files
+
+`frozencolumns.h/.cpp` (new, in `dlcore.pri`); `nmslogwindow.h/.cpp` (the
+strip, the menus, `freezeColumns`, `setPinned`, `pinnedRows`);
+`tests/test_session253.cpp`, `tests/tests.pro`; the screenshot harness
+gains `SHOT_FREEZE=n`, `SHOT_PIN=r,r`.
+
+### Tests
+
+`session253` (27 checks, 2081 real health packets of
+`loco_1_1_29062026_134509`):
+- **Freeze 6:** exactly the first six columns at the table's widths, right
+  of the row numbers. Scrolled to the far right they stay at the left from
+  PC time, and scrolled down the rows follow. Still six after a packet
+  brings a new column live.
+- **Pins:** rows 11 and 2036 are pinned in order, with the table's widths,
+  scrolling sideways with it and staying under Changes only; a
+  double-click jumps to that packet.
+- **Menus**, driven for real: Pin from a cell; Freeze from a cell (9) and
+  from the seq header (3); Unpin all from the strip; Unfreeze.
+- **Clearing the tab** drops the pins.
+- **Regression:** scrolled to packet 2036 before the window is shown, then
+  settled, the frozen rows are the table's rows. This check fails without
+  the fix.
+
+`./verify.sh` green on macOS (Qt 6.11.2): 13 validators, `dltests` 297
+suites / 7787 checks / 0 failed, menu audit (183 ok), smoke. Harness shot
+(frozen 6, pinned 1 and 2036, scrolled to the DMI links at 2036) checked.
+Not tested here: Windows / Qt 5.15 (CI after the push), a real mouse wheel
+over the frozen columns.
+
+---
+
 <a id="session-252"></a>
 ## Session 252 — the NMS tables: packets missing
 

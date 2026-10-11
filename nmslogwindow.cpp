@@ -1,5 +1,6 @@
 #include "nmslogwindow.h"
 
+#include "frozencolumns.h"
 #include "statusline.h"
 #include "uicolors.h"
 #include "windowgeometry.h"
@@ -13,8 +14,10 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QLabel>
+#include <QMenu>
 #include <QPushButton>
 #include <QScrollBar>
+#include <algorithm>
 #include <QTableView>
 #include <QVBoxLayout>
 
@@ -119,8 +122,16 @@ void NmsLogFilter::setChangesOnly(bool on)
     invalidateFilter();
 }
 
+void NmsLogFilter::setOnlyRows(const QSet<int> &rows)
+{
+    m_onlyListed = true;
+    m_only = rows;
+    invalidateFilter();
+}
+
 bool NmsLogFilter::filterAcceptsRow(int sourceRow, const QModelIndex &) const
 {
+    if (m_onlyListed) return m_only.contains(sourceRow);
     if (m_changesOnly && !m_rows->table().changed.value(sourceRow, true)) return false;
     return true;
 }
@@ -152,6 +163,32 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
                           "Double-click a row: the frame in its tab")
                            .arg(NmsLog::token(kind)));
 
+    m_view->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_view->horizontalHeader()->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_view->verticalHeader()->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_frozen = new FrozenColumns(m_view);
+    m_frozen->overlay()->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_frozen->overlay()->horizontalHeader()->setContextMenuPolicy(Qt::CustomContextMenu);
+
+    // Session 253: pinned rows, above the table, in its columns.
+    m_pinFilter = new NmsLogFilter(m_rows, this);
+    m_pinFilter->setOnlyRows({});
+    m_pinned = new QTableView(this);
+    m_pinned->setObjectName(QStringLiteral("nmsPinned"));
+    m_pinned->setModel(m_pinFilter);
+    m_pinned->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_pinned->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_pinned->horizontalHeader()->hide();
+    m_pinned->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_pinned->verticalHeader()->setDefaultSectionSize(m_view->verticalHeader()->defaultSectionSize());
+    m_pinned->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_pinned->verticalHeader()->setContextMenuPolicy(Qt::CustomContextMenu);
+    m_pinned->setToolTip(tr("Pinned rows: they stay here whatever the table below scrolls to or shows. "
+                            "Right-click to unpin"));
+    m_pinned->hide();
+    m_pinFrozen = new FrozenColumns(m_pinned);
+    m_pinFrozen->overlay()->setContextMenuPolicy(Qt::CustomContextMenu);
+
     m_follow = new QCheckBox(tr("Follow new packets"), this);
     m_follow->setObjectName(QStringLiteral("nmsFollow"));
     m_follow->setChecked(true);
@@ -177,6 +214,7 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
     bottom->addWidget(xlsx);
     auto *root = new QVBoxLayout(this);
     root->addLayout(top);
+    root->addWidget(m_pinned);
     root->addWidget(m_view, 1);
     root->addLayout(bottom);
 
@@ -186,6 +224,30 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
         const int r = tableRow(i);
         if (r >= 0) emit jumpRequested(m_tabKey, m_rows->table().epochMs.at(r));
     });
+    connect(m_pinned, &QTableView::doubleClicked, m_view, &QTableView::doubleClicked);
+    // Right-click: freeze columns, pin rows (session 253).
+    auto menuOn = [this](QWidget *w, QTableView *v, bool header) {
+        connect(w, &QWidget::customContextMenuRequested, this, [this, w, v, header](const QPoint &p) {
+            contextMenuAt(v, v->viewport()->mapFromGlobal(w->mapToGlobal(p)), header);
+        });
+    };
+    menuOn(m_view, m_view, false);
+    menuOn(m_view->horizontalHeader(), m_view, true);
+    menuOn(m_view->verticalHeader(), m_view, false);
+    menuOn(m_frozen->overlay(), m_frozen->overlay(), false);
+    menuOn(m_frozen->overlay()->horizontalHeader(), m_frozen->overlay(), true);
+    menuOn(m_pinned, m_pinned, false);
+    menuOn(m_pinned->verticalHeader(), m_pinned, false);
+    menuOn(m_pinFrozen->overlay(), m_pinFrozen->overlay(), false);
+    // The strip follows the table: column widths, sideways scroll, header width.
+    connect(m_view->horizontalHeader(), &QHeaderView::sectionResized, this, [this](int col, int, int size) {
+        m_pinned->setColumnWidth(col, size);
+    });
+    connect(m_view->horizontalScrollBar(), &QAbstractSlider::valueChanged,
+            m_pinned->horizontalScrollBar(), &QAbstractSlider::setValue);
+    connect(m_view->horizontalScrollBar(), &QAbstractSlider::rangeChanged, this, [this]() { syncPinned(); });
+    connect(m_view->verticalHeader(), &QHeaderView::geometriesChanged, this, [this]() { syncPinned(); });
+    connect(m_filter, &QAbstractItemModel::modelReset, this, [this]() { syncPinned(); }, Qt::QueuedConnection);
     connect(m_changesOnly, &QCheckBox::toggled, this, [this](bool on) {
         m_filter->setChangesOnly(on);
         if (m_follow->isChecked()) m_view->scrollToBottom();
@@ -205,6 +267,8 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
 
 void NmsLogWindow::rebuild()
 {
+    m_pins.clear();                     // the rows they named are gone
+    m_pinFilter->setOnlyRows(m_pins);
     m_rows->reset(NmsLog::Table());
     if (m_model) {
         QVector<LogEntryPtr> all;
@@ -215,6 +279,7 @@ void NmsLogWindow::rebuild()
     m_view->resizeColumnsToContents();
     if (m_follow->isChecked()) m_view->scrollToBottom();
     showCount();
+    syncPinned();
     if (m_rows->table().rows.isEmpty())
         m_status->state(tr("No @%1 packet in this tab yet; new ones are added as they arrive.")
                             .arg(NmsLog::token(m_kind)));
@@ -266,7 +331,8 @@ void NmsLogWindow::showCount()
 int NmsLogWindow::tableRow(const QModelIndex &viewIndex) const
 {
     if (!viewIndex.isValid()) return -1;
-    const int r = m_filter->mapToSource(viewIndex).row();
+    const auto *proxy = qobject_cast<const QSortFilterProxyModel *>(viewIndex.model());
+    const int r = proxy ? proxy->mapToSource(viewIndex).row() : viewIndex.row();
     return r >= 0 && r < m_rows->table().rows.size() ? r : -1;
 }
 
@@ -303,4 +369,90 @@ void NmsLogWindow::exportTo(bool xlsx)
     const bool ok = xlsx ? saveXlsx(path, &err) : saveCsv(path, &err);
     if (ok) m_status->ok(tr("Saved %1 packets to %2").arg(m_rows->table().rows.size()).arg(path));
     else m_status->fail(tr("Could not write %1: %2").arg(path, err));
+}
+
+// --- session 253: frozen columns, pinned rows ----------------------------------
+
+void NmsLogWindow::freezeColumns(int n)
+{
+    m_frozen->setCount(n);
+    m_pinFrozen->setCount(n);
+    m_status->state(n > 0 ? tr("Columns up to “%1” frozen").arg(m_rows->table().header(n - 1)) : QString());
+}
+
+int NmsLogWindow::frozenColumns() const
+{
+    return m_frozen->count();
+}
+
+void NmsLogWindow::setPinned(int tableRow, bool pinned)
+{
+    if (tableRow < 0 || tableRow >= m_rows->table().rows.size()) return;
+    if (pinned) m_pins.insert(tableRow);
+    else m_pins.remove(tableRow);
+    m_pinFilter->setOnlyRows(m_pins);
+    syncPinned();
+}
+
+QList<int> NmsLogWindow::pinnedRows() const
+{
+    QList<int> out = m_pins.values();
+    std::sort(out.begin(), out.end());
+    return out;
+}
+
+void NmsLogWindow::syncPinned()
+{
+    const int n = m_pinFilter->rowCount();
+    m_pinned->setVisible(n > 0);
+    if (n == 0) return;
+    // The same columns, widths and row-number width, so the strip's cells sit
+    // over the table's; the same right edge whether or not the table has a
+    // vertical scroll bar.
+    for (int c = 0; c < m_filter->columnCount(); ++c) {
+        m_pinned->setColumnHidden(c, m_view->isColumnHidden(c));
+        m_pinned->setColumnWidth(c, m_view->columnWidth(c));
+    }
+    m_pinned->verticalHeader()->setFixedWidth(m_view->verticalHeader()->width());
+    m_pinned->setVerticalScrollBarPolicy(m_view->verticalScrollBar()->isVisible() || n > 6 ? Qt::ScrollBarAlwaysOn
+                                                                                           : Qt::ScrollBarAlwaysOff);
+    const int rowH = m_pinned->verticalHeader()->defaultSectionSize();
+    m_pinned->setFixedHeight(qMin(n, 6) * rowH + 2 * m_pinned->frameWidth());
+    m_pinned->horizontalScrollBar()->setRange(m_view->horizontalScrollBar()->minimum(),
+                                              m_view->horizontalScrollBar()->maximum());
+    m_pinned->horizontalScrollBar()->setValue(m_view->horizontalScrollBar()->value());
+}
+
+void NmsLogWindow::contextMenuAt(QTableView *v, const QPoint &pos, bool header)
+{
+    const bool inStrip = v == m_pinned || v == m_pinFrozen->overlay();
+    const QModelIndex at = header ? QModelIndex() : v->indexAt(pos);
+    const int col = header ? v->horizontalHeader()->logicalIndexAt(pos.x()) : at.column();
+    const int row = tableRow(at);
+    QMenu menu(this);
+    if (row >= 0) {
+        const bool pinned = m_pins.contains(row);
+        QAction *pin = menu.addAction(pinned ? tr("Unpin row %1").arg(row + 1) : tr("Pin row %1 at the top").arg(row + 1));
+        pin->setObjectName(QStringLiteral("nmsPinRow"));
+        connect(pin, &QAction::triggered, this, [this, row, pinned]() { setPinned(row, !pinned); });
+    }
+    if (!m_pins.isEmpty() && inStrip) {
+        QAction *all = menu.addAction(tr("Unpin all"));
+        connect(all, &QAction::triggered, this, [this]() {
+            m_pins.clear();
+            m_pinFilter->setOnlyRows(m_pins);
+            syncPinned();
+        });
+    }
+    if (!menu.isEmpty()) menu.addSeparator();
+    if (col >= 0 && col < m_rows->table().columnCount() - 1) {
+        QAction *freeze = menu.addAction(tr("Freeze columns up to “%1”").arg(m_rows->table().header(col)));
+        freeze->setObjectName(QStringLiteral("nmsFreeze"));
+        connect(freeze, &QAction::triggered, this, [this, col]() { freezeColumns(col + 1); });
+    }
+    if (frozenColumns() > 0) {
+        QAction *unfreeze = menu.addAction(tr("Unfreeze columns"));
+        connect(unfreeze, &QAction::triggered, this, [this]() { freezeColumns(0); });
+    }
+    if (!menu.isEmpty()) menu.exec(v->viewport()->mapToGlobal(pos));
 }

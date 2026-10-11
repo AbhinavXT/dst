@@ -90,6 +90,7 @@ SOURCES += \
     $$PWD/radiohealthwindow.cpp \
     $$PWD/nmslog.cpp \
     $$PWD/nmslogwindow.cpp \
+    $$PWD/frozencolumns.cpp \
     $$PWD/odometry.cpp \
     $$PWD/odometrywindow.cpp \
     $$PWD/radiolinks.cpp \
@@ -251,6 +252,7 @@ HEADERS += \
     $$PWD/radiohealthwindow.h \
     $$PWD/nmslog.h \
     $$PWD/nmslogwindow.h \
+    $$PWD/frozencolumns.h \
     $$PWD/odometry.h \
     $$PWD/odometrywindow.h \
     $$PWD/radiolinks.h \

@@ -11,6 +11,9 @@
 //  rebuilt if the tab is cleared. Rows the tab trims at capacity stay here.
 //  Export: CSV or .xlsx. Double-click a row: the frame in its tab.
 //  Changes only (session 251): the rows where an event changed.
+//  Session 253: right-click to freeze the columns up to one (they stay put
+//  while the rest scroll sideways) or to pin a row: pinned rows are shown in
+//  a strip above the table, whatever the table scrolls to or filters.
 // =============================================================================
 
 #include "logmodel.h"
@@ -19,8 +22,10 @@
 #include <QAbstractTableModel>
 #include <QSortFilterProxyModel>
 #include <QPointer>
+#include <QSet>
 #include <QWidget>
 
+class FrozenColumns;
 class QCheckBox;
 class QLabel;
 class QPushButton;
@@ -55,6 +60,8 @@ public:
     explicit NmsLogFilter(NmsLogTableModel *rows, QObject *parent = nullptr);
     void setChangesOnly(bool on);
     bool changesOnly() const { return m_changesOnly; }
+    // Session 253: only these table rows (the pinned strip's filter).
+    void setOnlyRows(const QSet<int> &rows);
 
 protected:
     bool filterAcceptsRow(int sourceRow, const QModelIndex &sourceParent) const override;
@@ -62,6 +69,8 @@ protected:
 private:
     NmsLogTableModel *m_rows;
     bool m_changesOnly = false;
+    bool m_onlyListed = false;
+    QSet<int> m_only;
 };
 
 class NmsLogWindow : public QWidget
@@ -76,6 +85,13 @@ public:
     NmsLogFilter *filter() const { return m_filter; }
     // The table row (in table()) a view row shows; -1 if none.
     int tableRow(const QModelIndex &viewIndex) const;
+
+    // Session 253: frozen columns (the first n stay put) and pinned rows.
+    void freezeColumns(int n);
+    int  frozenColumns() const;
+    void setPinned(int tableRow, bool pinned);
+    QList<int> pinnedRows() const;      // ascending
+    QTableView *pinnedView() const { return m_pinned; }
 
     // The export buttons' work, without the file dialog (and for the tests).
     bool saveCsv(const QString &path, QString *err = nullptr) const;
@@ -92,6 +108,8 @@ private:
     void widenToFit(int firstRow, int lastRow);
     void exportTo(bool xlsx);
     void showCount();
+    void contextMenuAt(QTableView *v, const QPoint &pos, bool header);
+    void syncPinned();                  // the strip's columns, height, scroll follow the table
 
     NmsLog::Kind        m_kind;
     QPointer<LogModel>  m_model;
@@ -100,6 +118,11 @@ private:
     NmsLogFilter       *m_filter = nullptr;
     QCheckBox          *m_changesOnly = nullptr;
     QTableView         *m_view = nullptr;
+    QTableView         *m_pinned = nullptr;
+    NmsLogFilter       *m_pinFilter = nullptr;
+    QSet<int>           m_pins;
+    FrozenColumns      *m_frozen = nullptr;
+    FrozenColumns      *m_pinFrozen = nullptr;
     QCheckBox          *m_follow = nullptr;
     QLabel             *m_count = nullptr;
     StatusLine         *m_status = nullptr;

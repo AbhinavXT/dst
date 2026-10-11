@@ -235,6 +235,10 @@ int main(int argc, char **argv)
                     w->findChild<QCheckBox *>(QStringLiteral("nmsChangesOnly"))->setChecked(true);
                     printf("  changes only: %d of %d shown\n", w->view()->model()->rowCount(), w->table().rows.size());
                 }
+                // SHOT_FREEZE=n, SHOT_PIN=r,r (1-based packet numbers): session 253.
+                if (!qEnvironmentVariableIsEmpty("SHOT_FREEZE")) w->freezeColumns(qEnvironmentVariableIntValue("SHOT_FREEZE"));
+                for (const QString &r : qEnvironmentVariable("SHOT_PIN").split(QLatin1Char(','), Qt::SkipEmptyParts))
+                    w->setPinned(r.toInt() - 1, true);
                 // SHOT_SCROLLTO=<column>: the view at that column's first marked cell (session 250).
                 if (!qEnvironmentVariableIsEmpty("SHOT_SCROLLTO")) {
                     w->findChild<QCheckBox *>(QStringLiteral("nmsFollow"))->setChecked(false);
@@ -248,6 +252,10 @@ int main(int argc, char **argv)
                             w->view()->scrollTo(w->filter()->mapFromSource(w->filter()->sourceModel()->index(r, c)),
                                                 QAbstractItemView::PositionAtCenter);
                             printf("  scrolled to row %d, %s\n", r + 1, qPrintable(w->table().cell(r, c)));
+                            if (auto *fz = w->findChild<QTableView *>(QStringLiteral("frozenColumns")))
+                                printf("  table vbar %d/%d, frozen vbar %d/%d visible %d\n", w->view()->verticalScrollBar()->value(),
+                                       w->view()->verticalScrollBar()->maximum(), fz->verticalScrollBar()->value(),
+                                       fz->verticalScrollBar()->maximum(), fz->isVisible());
                             break;
                         }
                 }
@@ -776,6 +784,10 @@ int main(int argc, char **argv)
             QElapsedTimer settle;
             settle.start();
             while (settle.elapsed() < 800) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (auto *fz = win->findChild<QTableView *>(QStringLiteral("frozenColumns")))   // session 253
+                if (auto *tv = qobject_cast<QTableView *>(fz->parentWidget()))
+                    printf("  settled: table vbar %d, frozen vbar %d, frozen top row %d\n", tv->verticalScrollBar()->value(),
+                           fz->verticalScrollBar()->value(), fz->rowAt(0));
             if (qEnvironmentVariableIsSet("SHOT_WIDE"))
                 for (QWidget *c : win->findChildren<QWidget *>())
                     if ((c->isVisible() || qEnvironmentVariableIsSet("SHOT_HIDDEN")) && c->minimumSizeHint().width() > qEnvironmentVariable("SHOT_WIDE").toInt())
