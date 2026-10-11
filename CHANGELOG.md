@@ -11,6 +11,27 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-217"></a>
+## Session 217 — the Tag Builder's Undo button no longer widens the window
+
+The rest of "fix the ci". After 216, Linux CI failed one check:
+session196 "fits a laptop (minimum 1107)". After an edit, the Tags tab's
+Undo button took the action's text, "Undo shift all tags …", which grows
+with what it would undo; after a shift that pushed the window past 1100
+px on Linux. The button now always reads "Undo"; what it would undo is in
+its tooltip, and it is enabled when the action is (Ctrl+Z and the menu
+text are unchanged). On the Mac, the Tags tab after session196's edits
+was 632 px wide, against 554 with no route.
+
+**Files:** `tagbuilderwindow.cpp`. **Tests:** session196 is the check that
+failed; sessions 195-206 pass on the Mac.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators **13/13**;
+`dltests` **265 suites / 7073 checks, 1 failed** (the Mac-only
+`session156` pty check); menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-216"></a>
 ## Session 216 — CI green again: the Tag Builder on Linux and Windows
 

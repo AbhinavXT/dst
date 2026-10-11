@@ -162,9 +162,18 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     m_undo = new UndoLog(this);
     QAction *undoAct = m_undo->createAction(this);
     addAction(undoAct);
+    // Not setDefaultAction(): the action's text grows with what it would undo
+    // ("Undo shift all tags -1000 m"), which widened the window past a laptop
+    // on Linux. The button stays "Undo"; the step is in its tooltip.
     auto *undoBtn = new QToolButton(this);
-    undoBtn->setDefaultAction(undoAct);
-    undoBtn->setToolButtonStyle(Qt::ToolButtonTextOnly);
+    undoBtn->setText(tr("Undo"));
+    connect(undoBtn, &QToolButton::clicked, undoAct, &QAction::trigger);
+    auto syncUndo = [undoBtn, undoAct]() {
+        undoBtn->setEnabled(undoAct->isEnabled());
+        undoBtn->setToolTip(undoAct->text().remove(QLatin1Char('&')));
+    };
+    connect(undoAct, &QAction::changed, undoBtn, syncUndo);
+    syncUndo();
     auto *rowBtns = new QHBoxLayout;
     for (QPushButton *b : { addBtn, insBtn, repBtn, delBtn, upBtn, downBtn }) rowBtns->addWidget(b);
     rowBtns->addStretch(1);
