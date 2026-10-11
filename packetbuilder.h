@@ -52,6 +52,8 @@ public:
         bool       crcVerified = false;   // recomputed CRC matched
         bool       roundTripped = false;  // decoder reproduced the frame
         QVector<FieldRow> decoded;        // what the decoder read back
+        QHash<QString, qint64> raw;       // the header, as numbers (reject rules)
+        QVector<Schema::SubEntry> subs;   // sub-packets as read back from the frame
         QStringList notes;                // non-fatal caveats for the UI
     };
 

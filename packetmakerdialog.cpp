@@ -1,5 +1,7 @@
 #include "packetmakerdialog.h"
 #include "framenumberwatch.h"
+#include "frameclock.h"
+#include "rejectrules.h"
 #include "windowgeometry.h"
 #include "statusline.h"
 #include <QCloseEvent>
@@ -196,6 +198,76 @@ qint64 PacketMakerDialog::seedFrameNumber(const FrameNumberWatch *watch, int bit
     // caller is told which it got rather than being left to assume.
     if (fromLive) { *fromLive = false; }
     return secondsSinceMidnight(bits);
+}
+
+QVector<PacketMakerDialog::ReceiverLine> PacketMakerDialog::receiverCheck(
+    const QString &captype, const QHash<QString, qint64> &raw,
+    const QVector<Schema::SubEntry> &subs, bool macPlaceholder,
+    const FrameNumberWatch::Seen &live, qint64 nowMs, int localSecs)
+{
+    QVector<ReceiverLine> out;
+    const auto fnIt = raw.constFind(QStringLiteral("FRAME_NUM"));
+    if (fnIt != raw.constEnd()) {
+        const qint64 fn = fnIt.value();
+        const qint64 liveAge = live.valid() ? nowMs - live.atMs : -1;
+        qint64 equipNow; QString against;
+        if (liveAge >= 0 && liveAge <= 10000) {
+            equipNow = live.value + liveAge / 1000;
+            against = tr("the loco's frame number (%1, seen %2 s ago)")
+                          .arg(live.value).arg(liveAge / 1000);
+        } else {
+            equipNow = FrameClock::frameNumFor(localSecs);
+            against = tr("this laptop's clock (no live frame number in the last 10 s)");
+        }
+        qint64 age = equipNow - fn;
+        // Midnight: take the shorter way round, as FrameClock::skewSeconds does.
+        if (age >  FrameClock::kSecondsPerDay / 2) { age -= FrameClock::kSecondsPerDay; }
+        if (age < -FrameClock::kSecondsPerDay / 2) { age += FrameClock::kSecondsPerDay; }
+        const FrameClock::Accept a = FrameClock::classify(int(age));   // within ±12 h after the wrap
+        ReceiverLine l;
+        l.notProcessed = a == FrameClock::Accept::Stale || a == FrameClock::Accept::Ahead;
+        if (a == FrameClock::Accept::Stale) {
+            l.text = tr("FRAME_NUM %1 is %2 s old against %3 — would not be processed "
+                        "(more than 4 s old)").arg(fn).arg(age).arg(against);
+        } else if (a == FrameClock::Accept::Ahead) {
+            l.text = tr("FRAME_NUM %1 is %2 s early against %3 — would not be processed "
+                        "(2 s or more early)").arg(fn).arg(-age).arg(against);
+        } else {
+            l.text = tr("FRAME_NUM %1, age %2 s against %3 — %4")
+                         .arg(fn).arg(age).arg(against, FrameClock::acceptText(a));
+        }
+        out << l;
+    }
+    if (macPlaceholder) {
+        out << ReceiverLine{ true, tr("MAC is a zero placeholder (no session key) — a receiver "
+                                      "checking the MAC would not process it") };
+    }
+    QStringList headerFindings;
+    for (const RejectRules::Finding &f : kavachRejectRules().evaluate(raw, captype)) {
+        headerFindings << f.text;
+        out << ReceiverLine{ true, tr("would not be processed: %1").arg(f.text) };
+    }
+    for (int i = 0; i < subs.size(); ++i) {
+        QHash<QString, qint64> scope = raw;
+        for (auto it = subs[i].values.cbegin(); it != subs[i].values.cend(); ++it) {
+            scope.insert(it.key(), it.value());
+        }
+        for (const RejectRules::Finding &f : kavachRejectRules().evaluate(scope, captype)) {
+            if (headerFindings.contains(f.text)) { continue; }
+            out << ReceiverLine{ true, tr("would not be processed: sub-packet %1 (type %2): %3")
+                                           .arg(i + 1).arg(subs[i].type).arg(f.text) };
+        }
+    }
+    return out;
+}
+
+QVector<PacketMakerDialog::ReceiverLine>
+PacketMakerDialog::receiverLinesFor(const PacketBuilder::Result &r) const
+{
+    return receiverCheck(m_packetCombo->currentText(), r.raw, r.subs, r.hasMac && !r.macKeyed,
+                         m_frameWatch ? m_frameWatch->latest() : FrameNumberWatch::Seen(),
+                         QDateTime::currentMSecsSinceEpoch(),
+                         QTime::currentTime().msecsSinceStartOfDay() / 1000);
 }
 
 qint64 PacketMakerDialog::readEditor(QWidget *w)
@@ -513,6 +585,7 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     m_lowerTabs = new QTabWidget(this);
     m_lowerTabs->setDocumentMode(true);
     m_preview = new QPlainTextEdit(m_lowerTabs);
+    m_preview->setObjectName(QStringLiteral("pmOutput"));
     m_preview->setReadOnly(true);
     m_preview->setFont(UiStyle::monoFont());
     m_preview->setMinimumHeight(3 * m_preview->fontMetrics().lineSpacing());
@@ -1314,6 +1387,15 @@ void PacketMakerDialog::refreshPreview(const PacketBuilder::Result &r)
                .arg(r.pktLength).arg(r.crcHex)
                .arg(r.hasMac ? r.macHex : tr("(none)"))
                .arg(r.macKeyed ? QString() : tr(" [placeholder]"));
+    out += tr("receiver would (at build time):\n");
+    const QVector<ReceiverLine> recv = receiverLinesFor(r);
+    for (const ReceiverLine &l : recv) {
+        out += QStringLiteral("  %1 %2\n").arg(l.notProcessed ? QStringLiteral("✗") : QStringLiteral("·"), l.text);
+    }
+    bool anyNot = false;
+    for (const ReceiverLine &l : recv) { anyNot |= l.notProcessed; }
+    if (!anyNot) { out += tr("  no reject condition matched (%1 rules checked)\n").arg(kavachRejectRules().count()); }
+    out += QLatin1Char('\n');
     out += tr("decoded back:\n");
     for (const FieldRow &fr : r.decoded) {
         out += QStringLiteral("  %1  %2\n").arg(fr.field, -28).arg(fr.value);
@@ -1397,7 +1479,14 @@ void PacketMakerDialog::onBuild()
         if (exLen > 0) { st << tr("+%1 B extra header fields").arg(exLen); }
     }
     for (const QString &n : r.notes) { st << n; }
-    m_status->ok(st.join(QStringLiteral("  ·  ")));
+    int notProcessed = 0;
+    for (const ReceiverLine &l : receiverLinesFor(r)) { notProcessed += l.notProcessed ? 1 : 0; }
+    if (notProcessed > 0) {
+        st << tr("receiver would not process it: %n reason(s), see Output", nullptr, notProcessed);
+        m_status->warn(st.join(QStringLiteral("  ·  ")));
+    } else {
+        m_status->ok(st.join(QStringLiteral("  ·  ")));
+    }
     setSendEnabled(true);
 }
 

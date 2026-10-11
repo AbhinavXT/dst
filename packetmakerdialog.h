@@ -18,6 +18,7 @@
 #include <QByteArray>
 #include <QJsonObject>
 
+#include "framenumberwatch.h"
 #include "packetbuilder.h"
 #include "udpsender.h"
 #include "packetvariation.h"
@@ -26,7 +27,6 @@
 
 class SessionKeyStore;
 class QComboBox;
-class FrameNumberWatch;
 class QLineEdit;
 class QSpinBox;
 class QListWidget;
@@ -117,6 +117,21 @@ public:
     // must not look alike.
     // `watch` may be nullptr (no live traffic): the clock is used then.
     static qint64 seedFrameNumber(const FrameNumberWatch *watch, int bits, bool *fromLive = nullptr);
+
+    // Session 239: what the far end would do with a built frame, one line
+    // each, phrased as the receiver's action. Empty means nothing matched,
+    // never "valid". Each sub-packet is judged with the header's values
+    // beside its own, so two TSRs are two findings, not the last one's.
+    // FRAME_NUM is aged against `live` when it was seen in
+    // the last 10 s (the loco's counter), else against `localSecs` (this
+    // laptop's clock, seconds since midnight). `nowMs` is epoch ms.
+    struct ReceiverLine { bool notProcessed = false; QString text; };
+    static QVector<ReceiverLine> receiverCheck(const QString &captype,
+                                               const QHash<QString, qint64> &raw,
+                                               const QVector<Schema::SubEntry> &subs,
+                                               bool macPlaceholder,
+                                               const FrameNumberWatch::Seen &live,
+                                               qint64 nowMs, int localSecs);
 
     static QByteArray parseBuffer(const QString &text, QString *captypeHint);
 
@@ -229,6 +244,7 @@ private:
     static QWidget *makeEditor(const Schema::FieldInfo &f, const Schema::Encoder &enc,
                                QWidget *parent);
     static qint64 readEditor(QWidget *w);
+    QVector<ReceiverLine> receiverLinesFor(const PacketBuilder::Result &r) const;
     static void   writeEditor(QWidget *w, qint64 v);
 
     PacketBuilder m_builder;

@@ -11,6 +11,69 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-239"></a>
+## Session 239 — Packet Maker: what the receiver would do
+
+Item 3 of the Packet Maker list. Build & Verify now ends its Output with
+**receiver would (at build time):**, one line per check:
+
+- **FRAME_NUM's age.** Measured against the loco's frame number if ARP/LSRP
+  was seen in the last 10 s (plus the time since), otherwise against this
+  laptop's clock (FRAME_NUM = seconds since midnight + 1). The window is
+  `FrameClock::classify`'s: more than 4 s old, or 2 s or more early, would
+  not be processed. Across midnight the shorter way round is taken.
+- **A zero MAC placeholder** (no session key): a receiver checking the MAC
+  would not process it.
+- **Every rejectrules.xml finding**, worded "would not be processed: … [clause]".
+  The header is judged on its own, then **each sub-packet with the header's
+  values beside it**, so two TSRs with reserved status are named as
+  sub-packet 2 and sub-packet 3, not merged.
+- Nothing matched: "no reject condition matched (31 rules checked)". It
+  never says valid.
+
+The status line turns to a warning, "receiver would not process it: N
+reason(s), see Output", when any line says so. A build without a session
+key now always warns (the MAC line); before, it said OK with "MAC is a
+placeholder".
+
+### Found on the way
+
+- **Rule 31.31.1 removed** from `schema/rejectrules.xml` (left as a
+  comment). TRN_LEN_INFO_STS = 0 is not a reject: the clause reads "should
+  receive the packet and shall not process for **train length**". It
+  flagged every real SLRP in replay/. All 31 other rules were checked
+  against their clause's expected text in the catalog: each says the packet
+  is not processed (31.19.5 is the guarded "process if …" one).
+- **Not changed: the decoder never puts sub-packet fields into its numeric
+  values.** `Decoder::walkStruct` takes its `Ctx` by value, so CUR_SIG_ASPECT,
+  NEXT_SIG_ASPECT, TSR_STATUS, AUTHORITY_TYPE, ROUTE_RFID_CNT, ADJ_LINE_CNT,
+  TRAIN_SECTION_TYPE, DEST_LOCO_SOS ... never reach `RejectRules::evaluate`
+  in the Field Inspector or the run report. Those rules have never fired
+  there. The Packet Maker sidesteps it (it judges the encoder's read-back
+  sub-packets). Fixing the decoder changes what the inspector reports, so
+  it is left for Abhinav to decide.
+
+### Files
+
+`packetmakerdialog.{h,cpp}` (`receiverCheck`, `receiverLinesFor`, Output,
+status), `packetbuilder.{h,cpp}` (`Result::raw`, `Result::subs`),
+`schema/rejectrules.xml`, `REJECT_RULES_REVIEW.md`; tests
+`test_session239.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session239` (14 checks): 4 s old processed, 5 s old and 2 s early not, 1 s
+early processed; a minute-old live number falls back to the clock; 11 s
+behind the clock not processed; across midnight 2 s; the MAC line; nothing
+to check says nothing; the real SLRP reference frame 6 (replay/) built
+fresh matches no rule; a TSR sub-packet with status 3 is named once with
+31.55.5; the window's Output shows the section.
+
+Gate: Qt 5.15 and Qt 6.11 green (285 suites, 7531 checks, validators, menu
+audit, smoke). Not checked: against a live loco.
+
+---
+
 <a id="session-238"></a>
 ## Session 238 — Packet Maker: named enum choices
 

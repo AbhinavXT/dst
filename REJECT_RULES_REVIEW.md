@@ -34,7 +34,7 @@ is worse than no reject reason.
 | 31.24.20 | `NEXT_SIG_ASPECT` | 6 | `011001` | binary | `== 25` |
 | 31.24.21 | `NEXT_SIG_ASPECT` | 6 | `011111` | binary | `== 31` |
 | 31.26.1 | `AUTHORITY_TYPE` | 2 | `00` | binary | `== 0` |
-| 31.31.1 | `TRN_LEN_INFO_STS` | 1 | `0` | binary | `== 0` |
+| ~~31.31.1~~ | `TRN_LEN_INFO_STS` | 1 | `0` | binary | removed in 239: "shall not process for train length", the packet is processed |
 | 31.32.4 | `APPR_STN_ILC_IBS_ID` | 16 | `65539` | decimal | `== 65539` |
 | 31.36.2 | `ROUTE_RFID_CNT` | 6 | `0` | decimal | `== 0` |
 | 31.39.52 | `ADJ_LINE_CNT` | 3 | `6` | decimal | `== 6` |

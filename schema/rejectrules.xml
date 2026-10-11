@@ -67,8 +67,11 @@
         note="spare next signal aspect"/>
   <rule clause="31.26.1" field="AUTHORITY_TYPE" op="eq" value="0" doc="00" bits="2"
         note="authority type unidentified"/>
-  <rule clause="31.31.1" field="TRN_LEN_INFO_STS" op="eq" value="0" doc="0" bits="1"
-        note="no train length info when it is required"/>
+  <!-- 31.31.1 (TRN_LEN_INFO_STS = 0) is not a reject: "The Onboard KAVACH
+       should receive the packet and shall not process for train length."
+       The packet is processed; only the train length is not. Removed in
+       session 239, when the Packet Maker began judging sub-packet fields
+       and flagged every real SLRP in replay/ that carries 0. -->
   <rule clause="31.36.2" field="ROUTE_RFID_CNT" op="eq" value="0" doc="0" bits="6"
         note="no route RFIDs"/>
   <rule clause="31.39.52" field="ADJ_LINE_CNT" op="eq" value="6" doc="6" bits="3"

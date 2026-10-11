@@ -146,7 +146,7 @@ PacketBuilder::Result PacketBuilder::build(const QString &captype,
     // asked for. PKT_LENGTH and MAC_CODE are excluded: this builder computes
     // both, so they are outputs, not requests.
     const Schema::Decoder &dec = kavachSchema();
-    r.decoded = dec.decode(frame, {}, captype, bodyOffsetType ? 0 : -1);
+    r.decoded = dec.decode(frame, {}, captype, bodyOffsetType ? 0 : -1, &r.raw);
 
     r.roundTripped = false;
     if (r.decoded.isEmpty()) {
@@ -159,6 +159,7 @@ PacketBuilder::Result PacketBuilder::build(const QString &captype,
         r.error = QStringLiteral("built frame did not read back: %1").arg(back.error);
         return r;
     }
+    r.subs = back.subs;
     struct Shape { int bits = 64; bool isSigned = false; };
     QHash<QString, Shape> shapeOf;
     for (const Schema::FieldInfo &f : pi.header) {
