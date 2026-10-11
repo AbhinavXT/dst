@@ -804,13 +804,18 @@ void MainWindow::onEntriesAppended(QString tabKey, QVector<LogEntryPtr> entries)
     // ARP and LSRP carry the frame number the equipment is actually using.
     // The Packet Maker follows it so a built frame is not minutes away from
     // the live counter — see framenumberwatch.h.
-    for (const LogEntryPtr &e : entries) { m_frameWatch->observe(e); }
+    // Not the Packet Maker's own loopback frames (session 242): it would then
+    // seed new frames from itself.
+    const auto loopback = [](const LogEntryPtr &e) {
+        return e->header.source_id == PacketMakerDialog::kLoopbackSourceId;
+    };
+    for (const LogEntryPtr &e : entries) { if (!loopback(e)) m_frameWatch->observe(e); }
 
     // A running field sweep scores each value it sent by what came back, so it
     // needs every entry, not just the visible tab's. It ignores them unless a
     // step is actually in flight.
     if (m_fieldSweep) {
-        for (const LogEntryPtr &e : entries) { m_fieldSweep->observe(e); }
+        for (const LogEntryPtr &e : entries) { if (!loopback(e)) m_fieldSweep->observe(e); }
     }
 
     auto it = m_tabs.find(tabKey);

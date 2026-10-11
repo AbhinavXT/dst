@@ -696,6 +696,10 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     m_buildBtn = new QPushButton(tr("Build && Verify"), this);
     UiStyle::makePrimary(m_buildBtn);          // session 125: the window's primary action
     m_sendOnceBtn = new QPushButton(tr("Send Once"), this);
+    m_loopbackBtn = new QPushButton(tr("Show in tab"), this);
+    m_loopbackBtn->setToolTip(tr("Rebuild and put the frame into a \"Packet Maker loopback\" tab,\n"
+                                 "decoded as a received frame would be. Nothing is sent."));
+    m_loopbackBtn->setVisible(false);
     m_intervalSpin = new QSpinBox(this);
     m_intervalSpin->setRange(10, 600000);
     m_intervalSpin->setValue(1000);
@@ -704,6 +708,7 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     auto *saveBtn = new QPushButton(tr("Save preset…"), this);
     auto *loadBtn2 = new QPushButton(tr("Load preset…"), this);
     btns->addWidget(m_buildBtn);
+    btns->addWidget(m_loopbackBtn);
     btns->addStretch();
 
     m_armed = new QCheckBox(tr("Arm to enable sending"), this);
@@ -739,6 +744,7 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     connect(loadBtn,  &QPushButton::clicked, this, &PacketMakerDialog::onLoadBuffer);
     connect(clearBtn, &QPushButton::clicked, this, &PacketMakerDialog::onClearBuffer);
     connect(m_sendOnceBtn, &QPushButton::clicked, this, &PacketMakerDialog::onSendOnce);
+    connect(m_loopbackBtn, &QPushButton::clicked, this, &PacketMakerDialog::onLoopback);
     connect(m_intervalBtn, &QPushButton::clicked, this, &PacketMakerDialog::onToggleInterval);
     connect(m_varyAddBtn,  &QPushButton::clicked, this, &PacketMakerDialog::onVaryAdd);
     connect(m_varyDelBtn,  &QPushButton::clicked, this, &PacketMakerDialog::onVaryRemove);
@@ -1603,6 +1609,7 @@ void PacketMakerDialog::refreshArmState()
     // Stop stays reachable whatever the arm switch says: disarming must
     // never be able to strand a run that is already transmitting.
     m_sendOnceBtn->setEnabled(live);
+    m_loopbackBtn->setEnabled(m_builtOk);     // nothing leaves the laptop: no arming
     m_intervalBtn->setEnabled(live || m_sender.isRunning());
 
     if (m_armed) {
@@ -1726,6 +1733,56 @@ QString PacketMakerDialog::sendLogCsv() const
         out += cells.join(QLatin1Char(',')) + QLatin1Char('\n');
     }
     return out;
+}
+
+void PacketMakerDialog::setLoopbackAvailable(bool on) { m_loopbackBtn->setVisible(on); }
+
+QString PacketMakerDialog::loopbackLine(const QString &captype, const QByteArray &frame,
+                                        const QByteArray &envelope, int bodyOffsetBytes,
+                                        const QDateTime &at, QString *err, QString *note)
+{
+    QByteArray bytes = frame;
+    if (bodyOffsetBytes > 0) {
+        if (envelope.size() > bodyOffsetBytes) {
+            if (err) {
+                *err = tr("%1 is logged with a %2-byte envelope in front; this window's is %3 B. "
+                          "Untick extra header fields to fit.")
+                           .arg(captype).arg(bodyOffsetBytes).arg(envelope.size());
+            }
+            return QString();
+        }
+        const int pad = bodyOffsetBytes - envelope.size();
+        if (pad > 0 && note) {
+            *note = tr("the log envelope's last %1 byte(s) are zero (this window sends %2 B, %3 is logged with %4)")
+                        .arg(pad).arg(envelope.size()).arg(captype).arg(bodyOffsetBytes);
+        }
+        bytes.prepend(envelope + QByteArray(pad, '\0'));
+    }
+    return QStringLiteral("@%1_0_0 %2 0 %3")
+        .arg(captype, at.toString(QStringLiteral("yyyy-MM-ddTHH:mm:ss")),
+             QString::fromLatin1(bytes.toHex(' ')).toUpper());
+}
+
+void PacketMakerDialog::onLoopback()
+{
+    // Rebuilt now, as Send Once does, so the frame number is the current one.
+    const PacketBuilder::Result r = buildNow();
+    if (!r.ok) {
+        m_status->fail(tr("Not shown — rebuild failed: %1").arg(r.error));
+        return;
+    }
+    m_lastFrame = r.frame;
+    refreshPreview(r);
+    const QString captype = currentCaptype();
+    const Schema::PacketInfo pi = m_builder.encoder().packet(captype);
+    QString err, note;
+    const QString line = loopbackLine(captype, r.frame, currentHeaderPreview(captype, r.frame.size()),
+                                      pi.ok ? pi.bodyOffsetBits / 8 : 0,
+                                      QDateTime::currentDateTime(), &err, &note);
+    if (line.isEmpty()) { m_status->fail(tr("Not shown — %1").arg(err)); return; }
+    emit loopbackRequested(line);
+    const QString done = tr("Shown in the \"Packet Maker loopback\" tab. Nothing was sent.");
+    if (note.isEmpty()) { m_status->ok(done); } else { m_status->warn(done + QStringLiteral("  ·  ") + note); }
 }
 
 void PacketMakerDialog::onSendOnce()

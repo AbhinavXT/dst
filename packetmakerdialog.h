@@ -38,6 +38,7 @@ class QWidget;
 class QPushButton;
 class QTableWidget;
 class QGroupBox;
+class QDateTime;
 class QCheckBox;
 class QTableWidget;
 
@@ -72,6 +73,25 @@ public:
     // reused for a different frame: rewriting the form under a live send
     // would change what goes on the wire without the operator saying so.
     bool isSending() const { return m_sender.isRunning(); }
+
+    // Session 242: local loopback. The window that owns the live pipeline
+    // (MainWindow) turns this on and connects loopbackRequested; the button
+    // stays hidden elsewhere (a recorded session has nowhere to show it).
+    void setLoopbackAvailable(bool on);
+    // The @-capture line a tab would receive for this frame: "@<captype>_0_0
+    // <time> 0 <hex>", with `envelope` in front when the packet is logged
+    // with one (body_offset). A short envelope is padded with zeros and
+    // *note says so (ARP/LSRP are logged with 10 B: header + station id; this
+    // window sends 8). A longer one: empty, with *err.
+    static QString loopbackLine(const QString &captype, const QByteArray &frame,
+                                const QByteArray &envelope, int bodyOffsetBytes,
+                                const QDateTime &at, QString *err, QString *note = nullptr);
+    static constexpr quint8 kLoopbackSourceId = 253;   // serial is 254
+
+signals:
+    void loopbackRequested(const QString &captureLine);
+
+public:
 
     // Pull the byte buffer out of whatever the operator pasted: bare hex,
     // a whole @slrp capture line, 0x-prefixed or comma-separated bytes.
@@ -333,6 +353,8 @@ private:
     QTableWidget *m_sendLog = nullptr;
     qint64 m_pendingFrameNum = -1;     // FRAME_NUM of the frame being sent
     void onDatagramSent(const QByteArray &datagram, const QStringList &reached);
+    QPushButton *m_loopbackBtn = nullptr;
+    void onLoopback();
     void updateSendLogTitle();
 public:
     // The log as CSV, as Export writes it (public for the tests).

@@ -42,6 +42,10 @@
 #include <QDateTime>
 #include <QMouseEvent>
 #include "uicolors.h"
+#include "framenumberwatch.h"
+#include "messagedispatcher.h"
+#include "packetmakerdialog.h"
+#include <QPushButton>
 #include "workspacesnapshot.h"
 #include "clockskewalarm.h"
 #include "findbar.h"
@@ -573,6 +577,42 @@ int main(int argc, char **argv) {
     // The point of the group: nothing that sends may sit outside it.
     CHECK(!findAction(tools, "Packet Maker") && !findAction(tools, "Field Sweep"),
           "no transmitting tool is left loose in Tools");
+
+    // Session 242: Packet Maker's Show in tab reaches a tab through the real
+    // pipeline, and the frame-number watch does not learn from it.
+    if (QAction *pmAct = transmit ? findAction(transmit, "Packet Maker") : nullptr) {
+        pmAct->trigger();
+        QCoreApplication::processEvents();
+        PacketMakerDialog *pm = nullptr;
+        for (QWidget *top : QApplication::topLevelWidgets())
+            if (auto *d = qobject_cast<PacketMakerDialog *>(top)) if (d->isVisible()) pm = d;
+        CHECK(pm, "Transmit > Packet Maker opens");
+        auto *disp = w.findChild<MessageDispatcher *>();
+        auto *fw = w.findChild<FrameNumberWatch *>();
+        if (pm && disp && fw) {
+            // a real LSRP (replay/loco_1_1_27062026_170159.cap): the watch's own kind
+            pm->loadBuffer(QStringLiteral(
+                "@lsrp_1_1 2026-06-27T17:02:02 3998 02 07 0A 00 27 00 00 00 0F 02 A3 AE F8 B0 00 01 40 9D "
+                "6A 01 80 C0 7D 03 D0 C0 50 8D 00 40 00 68 7B BB 94 BC 54 0F 2D"));
+            QPushButton *build = nullptr, *show = nullptr;
+            for (QPushButton *b : pm->findChildren<QPushButton *>()) {
+                if (b->text() == QLatin1String("Build && Verify")) build = b;
+                if (b->text() == QLatin1String("Show in tab")) show = b;
+            }
+            CHECK(show && !show->isHidden(), "MainWindow's Packet Maker offers Show in tab");
+            const FrameNumberWatch::Seen before = fw->latest();
+            if (build && show) { build->click(); show->click(); }
+            disp->drainNow();
+            QCoreApplication::processEvents();
+            LogModel *lm = disp->modelForKey(QStringLiteral("253_0"));
+            CHECK(lm && lm->count() == 1 && lm->entryAt(0)->text.startsWith(QLatin1String("@lsrp_0_0 ")),
+                  "the frame is in the loopback tab");
+            const FrameNumberWatch::Seen after = fw->latest();
+            CHECK(after.value == before.value && after.atMs == before.atMs,
+                  "the frame-number watch did not take the loopback frame");
+        }
+        if (pm) pm->close();
+    }
 
     CHECK(schema && findAction(schema, "Reload schema"), "Schema > Reload schema");
     CHECK(schema && findAction(schema, "Use external schema"), "Schema > Use external schema file");

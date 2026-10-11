@@ -400,6 +400,7 @@ private:
     void applyTabTag(const QString &key);    // empty key: every tab
     void applyAllTabTags();
     QPointer<PacketMakerDialog> m_bufferPacketMaker;
+    void connectLoopback(PacketMakerDialog *pm);   // session 242: Show in tab
 
 
     class SearchWindow *m_searchWin = nullptr;   // non-modal, reused

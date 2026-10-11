@@ -11,6 +11,55 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-242"></a>
+## Session 242 — Packet Maker: Show in tab (local loopback)
+
+Item 6 of the Packet Maker list. **Show in tab**, next to Build & Verify,
+rebuilds the frame (current FRAME_NUM, as Send Once does) and puts it into
+a **"Packet Maker loopback"** tab as an @-capture line. It is decoded,
+inspected, recorded and searchable there as a received frame would be: the
+DMI, the Fields panel, reject findings. **Nothing is sent**, so the button
+needs no arming.
+
+- The line enters the pipeline the way serial lines do
+  (`MessageDispatcher::ingestLocal`), under **source 253** (serial is 254),
+  tab `253_0`.
+- **The frame-number watch and Field Sweep ignore source 253.** Otherwise
+  the Packet Maker would seed its next frame from its own loopback, and a
+  running sweep would score it as a reply.
+- **ARP and LSRP are logged with a 10-byte envelope** in front (the 8-byte
+  header plus a 2-byte station id); this window sends 8. The last 2 bytes
+  are zero, and the status line says so. An envelope longer than the log's
+  is refused, naming both sizes.
+- The button is shown only in Packet Makers MainWindow opens (Transmit ▸
+  Packet Maker, a buffer, a row). The recorded-session window has no live
+  pipeline, so it is hidden there.
+
+### Files
+
+`packetmakerdialog.{h,cpp}` (`loopbackLine`, `onLoopback`,
+`setLoopbackAvailable`, `loopbackRequested`), `mainwindow_tools.cpp`
+(`connectLoopback`), `mainwindow.{h,cpp}` (the source-253 exclusion);
+tests `test_session242.cpp` (new), `menuaudit_main.cpp` (3 checks),
+`tests.pro`.
+
+### Tests
+
+`session242` (14 checks): the SLRP line parses back to the same bytes; a
+real `@arp_1_2` (replay/) re-made from its body and an 8-byte envelope
+decodes the same FRAME_NUM and SOURCE_LOCO_ID as the logged line, with the
+padding noted; a longer envelope is refused; the line lands in tab 253_0,
+named; the button is hidden until connected, live after a build without
+arming, and hands over one line.
+
+Menu audit (+3): MainWindow's Packet Maker offers it; a real LSRP lands in
+the loopback tab; the frame-number watch is unchanged.
+
+Gate: Qt 5.15 and Qt 6.11 green (288 suites, 7567 checks, 178 menu-audit
+checks, validators, smoke). Not checked: by eye on Windows.
+
+---
+
 <a id="session-241"></a>
 ## Session 241 — Packet Maker: send log
 

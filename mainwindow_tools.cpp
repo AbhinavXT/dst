@@ -211,6 +211,17 @@ void MainWindow::onActionLocoConfig()
     m_locoConfig->activateWindow();
 }
 
+void MainWindow::connectLoopback(PacketMakerDialog *pm)
+{
+    // Session 242: the frame enters the pipeline as a serial line does, under
+    // its own source, so it decodes, tabs and records like a received one.
+    pm->setLoopbackAvailable(true);
+    connect(pm, &PacketMakerDialog::loopbackRequested, this, [this](const QString &line) {
+        m_dispatcher->ingestLocal(PacketMakerDialog::kLoopbackSourceId, 0, line.toUtf8(),
+                                  QDateTime::currentMSecsSinceEpoch(), tr("Packet Maker loopback"));
+    });
+}
+
 void MainWindow::onActionPacketMaker()
 {
     // Compose a station/loco packet, self-verify it, and (optionally) send it.
@@ -218,6 +229,7 @@ void MainWindow::onActionPacketMaker()
     // workbench, so more than one can be open.
     auto *pm = new PacketMakerDialog(this, m_frameWatch, m_sessionKeys);
     pm->setAttribute(Qt::WA_DeleteOnClose);
+    connectLoopback(pm);
     pm->show();
     pm->raise();
     pm->activateWindow();
@@ -257,6 +269,7 @@ void MainWindow::openBufferInPacketMaker(const QString &bufferText)
     if (!m_bufferPacketMaker) {
         m_bufferPacketMaker = new PacketMakerDialog(this, m_frameWatch, m_sessionKeys);
         m_bufferPacketMaker->setAttribute(Qt::WA_DeleteOnClose);
+        connectLoopback(m_bufferPacketMaker);
     }
     m_bufferPacketMaker->loadBuffer(bufferText);
     m_bufferPacketMaker->show();
