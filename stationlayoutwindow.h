@@ -17,6 +17,7 @@
 //  loops below UP main, turnout tags on the points, the yard drawn wider.
 // =============================================================================
 
+#include "rfidtag.h"
 #include "stationlayout.h"
 
 #include <QHash>
@@ -183,6 +184,16 @@ public:
     bool setFieldOnTags(const QStringList &names, const QString &field, qint64 value);
     // The tags, and their places in the lines (signals naming them stay, and Checks says so).
     bool deleteTags(const QStringList &names);
+    // Session 224: a line as a Tag Builder route and back. The route holds the
+    // line's tags in its order, each main tag's duplicate after it, and the
+    // signals at them; its direction is left unset (set it in the builder:
+    // route.xml export asks for it). Empty when the line is not in the layout.
+    RfidTag::Route lineAsRoute(const QString &line) const;
+    TagBuilderWindow *openLineInTagBuilder(const QString &line);
+    // A route as a new line `lineId`: its tags the layout lacks are added, its
+    // main tags make the line, its signals the layout lacks are added. Refused
+    // whole when the line id is used, or a tag of the same name differs.
+    bool addLineFromRoute(const RfidTag::Route &r, const QString &lineId, const QString &name);
     // The menu a right-click on the drawing opens (built, not shown: tests).
     QMenu *contextMenuFor(const QString &tag, const QString &line, qint64 locM, bool aboveLanes);
 

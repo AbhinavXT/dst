@@ -1465,6 +1465,7 @@ QMenu *StationLayoutWindow::contextMenuFor(const QString &tag, const QString &li
     }
     if (!line.isEmpty()) {
         menu->addAction(tr("New tag here (line %1, %2 m)…").arg(line).arg(locM), this, [this, line, locM]() { openNewTagAt(line, locM); });
+        menu->addAction(tr("Line %1 as a route in Tag Builder…").arg(line), this, [this, line]() { openLineInTagBuilder(line); });
         menu->addAction(tr("New point here (from line %1, %2 m)…").arg(line).arg(locM), this, [this, line, locM, station]() {
             QStringList v{ QString(), QString(), QString::number(locM), QString() };
             if (!askFields(this, tr("New point on line %1 at %2 m").arg(line).arg(locM),
@@ -1484,6 +1485,27 @@ QMenu *StationLayoutWindow::contextMenuFor(const QString &tag, const QString &li
         QStringList v{ QString() };
         if (!askFields(this, tr("New text at %1 m").arg(locM), { tr("Text:") }, &v)) return;
         addText({ v.at(0), locM, aboveLanes ? -1 : 1 });
+    });
+    menu->addAction(tr("New line from a route file…"), this, [this]() {
+        const QString path = QFileDialog::getOpenFileName(this, tr("Route for a new line"), QString(),
+                                                          tr("Routes (*.xml *.json);;All files (*)"));
+        if (path.isEmpty()) return;
+        QString err;
+        const QVector<RfidTag::Route> routes = RfidTag::readFile(path, &err);
+        if (routes.isEmpty()) { m_status->fail(tr("No route in %1: %2").arg(QFileInfo(path).fileName(), err)); return; }
+        int pick = 0;
+        if (routes.size() > 1) {
+            QStringList names;
+            for (const RfidTag::Route &r : routes) names << tr("%1 (%2 tags)").arg(r.name).arg(r.tags.size());
+            bool ok = false;
+            const QString got = QInputDialog::getItem(this, tr("Which route"), tr("Route:"), names, 0, false, &ok);
+            if (!ok) return;
+            pick = names.indexOf(got);
+        }
+        QStringList v{ QString(), routes.at(pick).name };
+        if (!askFields(this, tr("New line from route %1").arg(routes.at(pick).name),
+                       { tr("Line id (DM, UM, DL1, UL2, ...):"), tr("Name:") }, &v)) return;
+        addLineFromRoute(routes.at(pick), v.at(0), v.at(1));
     });
     menu->addAction(tr("New line…"), this, [this]() {
         QStringList v{ QString(), QString() };
@@ -1583,6 +1605,82 @@ bool StationLayoutWindow::deleteTags(const QStringList &names)
     }
     changed(tr("delete %n tag(s)", nullptr, names.size()), before);
     m_status->ok(tr("%1 tags deleted (Undo brings them back)").arg(names.size()));
+    return true;
+}
+
+RfidTag::Route StationLayoutWindow::lineAsRoute(const QString &line) const
+{
+    RfidTag::Route r;
+    const StationLayout::Line *ln = nullptr;
+    for (const StationLayout::Line &o : m_layout.lines) if (o.line == line) { ln = &o; break; }
+    if (!ln) return r;
+    r.name = ln->name.isEmpty() ? line : ln->name;
+    auto add = [&](const QString &name) {
+        const int i = tagIndexOf(name);
+        if (i < 0) return;
+        const QByteArray b = RfidTag::fromPages(m_layout.tags.at(i).pageX, m_layout.tags.at(i).pageY);
+        if (b.size() == RfidTag::TagBytes) r.tags << RfidTag::Tag{ name, b, {} };
+    };
+    for (const QString &n : ln->tags) {
+        add(n);
+        if (!n.endsWith(QLatin1Char('D')) && !ln->tags.contains(n + QLatin1Char('D'))) add(n + QLatin1Char('D'));
+    }
+    QSet<QString> in;
+    for (const RfidTag::Tag &t : r.tags) in.insert(t.name);
+    for (const StationLayout::Signal &sg : m_layout.signalList)
+        if (in.contains(sg.footTag)) r.signalList << RfidTag::Signal{ sg.footTag, sg.name, QString::number(sg.sigId) };
+    return r;
+}
+
+TagBuilderWindow *StationLayoutWindow::openLineInTagBuilder(const QString &line)
+{
+    const RfidTag::Route r = lineAsRoute(line);
+    if (r.tags.isEmpty()) { m_status->fail(tr("Line %1 has no tag that decodes").arg(line)); return nullptr; }
+    TagBuilderWindow *tb = openInTagBuilder(QString());
+    tb->setRoute(r);
+    m_builder->applyButton()->hide();   // a route goes out through the builder's own Save / Export
+    m_builder->setWindowTitle(tr("RFID Tag Builder — line %1 of the station layout").arg(line));
+    m_status->ok(tr("Line %1 opened as a route (%2 tags). Set its direction in the builder, then Save or Export")
+                     .arg(line).arg(r.tags.size()));
+    return tb;
+}
+
+bool StationLayoutWindow::addLineFromRoute(const RfidTag::Route &r, const QString &lineId, const QString &name)
+{
+    QString why;
+    for (const StationLayout::Line &o : m_layout.lines) if (o.line == lineId.trimmed()) why = tr("the layout already has line %1").arg(lineId);
+    if (lineId.trimmed().isEmpty()) why = tr("give it a line id");
+    if (r.tags.isEmpty()) why = tr("the route has no tags");
+    StationLayout::Layout next = m_layout;
+    StationLayout::Line ln{ name, lineId.trimmed(), {} };
+    QStringList added;
+    for (const RfidTag::Tag &t : r.tags) {
+        if (!why.isEmpty()) break;
+        const QString n = RfidTag::nameOf(t.bytes);
+        if (n.isEmpty()) { why = tr("route row %1 does not decode").arg(t.name); break; }
+        const StationLayout::Tag st{ n, RfidTag::pageX(t.bytes), RfidTag::pageY(t.bytes) };
+        const int i = tagIndexOf(n);
+        if (i >= 0 && (m_layout.tags.at(i).pageX.compare(st.pageX, Qt::CaseInsensitive) != 0
+                       || m_layout.tags.at(i).pageY.compare(st.pageY, Qt::CaseInsensitive) != 0)) {
+            why = tr("tag %1 differs from the layout's tag %1").arg(n);
+            break;
+        }
+        if (i < 0 && !added.contains(n)) { next.tags << st; added << n; }
+        if (!n.endsWith(QLatin1Char('D')) && !ln.tags.contains(n)) ln.tags << n;
+    }
+    if (!why.isEmpty()) { m_status->fail(tr("Line not made: %1").arg(why)); return false; }
+    next.lines << ln;
+    for (const RfidTag::Signal &sg : r.signalList) {
+        bool have = false;
+        for (const StationLayout::Signal &o : next.signalList) have = have || (o.footTag == sg.footTag && o.name == sg.name);
+        const qint64 station = next.stations.isEmpty() ? 0 : next.stations.first().id;
+        if (!have) next.signalList << StationLayout::Signal{ sg.footTag, sg.name, sg.sigId.toLongLong(), station };
+    }
+    const StationLayout::Layout before = m_layout;
+    m_layout = next;
+    changed(tr("line %1 from a route").arg(lineId), before);
+    m_status->ok(tr("Line %1 made from route %2: %3 tags in it, %4 new to the layout")
+                     .arg(lineId, r.name).arg(ln.tags.size()).arg(added.size()));
     return true;
 }
 

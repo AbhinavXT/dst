@@ -11,6 +11,53 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-224"></a>
+## Session 224 — Station Layout: a line as a route, a route as a line
+
+Abhinav's pick 3 of 7. This joins the station file to the simulator files
+the RFID Tag Builder makes.
+
+- **Right-click a line's lane ▸ Line L as a route in Tag Builder…**
+  opens the builder on a route made of the line:
+  - its tags in the line's order, each main tag's duplicate right after
+    it, the layout's own bytes;
+  - the signals at those tags.
+
+  From there the builder's Save / Export make the tag route, route.xml,
+  Configuration1.xml or the text files. **The direction is left unset**
+  (Nominal / Reverse is not derived from the drawing), and route.xml
+  export asks for it, as before. The builder's Apply button is hidden:
+  the route goes out through the builder.
+- **Right-click ▸ New line from a route file…** reads a DLConsole route,
+  a tags_sim route.xml or a Configuration1.xml (asking which route when
+  there are several) and a line id. It makes the line:
+  - the route's tags the layout lacks are added;
+  - its main tags, in order, make the line;
+  - its signals the layout lacks are added, at the layout's station.
+
+  It is **refused whole** when the line id is used, or when a route tag
+  differs from the layout's tag of the same name (the status names it).
+  One Undo step.
+
+### Files
+
+`stationlayoutwindow.{h,cpp}` (`lineAsRoute`, `openLineInTagBuilder`,
+`addLineFromRoute`, two menu entries); tests `test_session224.cpp` (new),
+`tests.pro`.
+
+### Tests
+
+`session224` (15 checks):
+- the built-in station.xlsx's longest line as a route: its main tags in
+  order, duplicates after their mains, the layout's bytes, no direction;
+- the builder opens on it without Apply;
+- the route back as UL9: no new tags, the same main tags;
+- a used id, and a tag differing by 7 m, refused;
+- tags_sim's built-in `3.40.tagroute.xml` into an empty layout: its
+  tags added, line DM made, Checks clean on line membership.
+
+---
+
 <a id="session-223"></a>
 ## Session 223 — Station Layout: several tags at once
 
