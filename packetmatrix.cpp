@@ -173,7 +173,7 @@ bool apply(const PacketPreset &base, const FieldRef &f, qint64 value, PacketPres
     }
     // A variation rule on the field would replace the value on every send.
     for (PacketVary::Rule &r : p.vary)
-        if (r.field == f.name) r.enabled = false;
+        if (r.field == f.name && r.sub == (f.subType < 0 ? QString() : f.structName)) r.enabled = false;
     *out = p;
     return true;
 }

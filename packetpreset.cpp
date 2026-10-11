@@ -165,25 +165,52 @@ QHash<QString, qint64> PacketPreset::headerFor(int sendIndex,
                                                const Schema::Encoder &enc) const
 {
     QHash<QString, qint64> out = header;
-    if (sendIndex < 0 || vary.isEmpty()) { return out; }
-
-    const Schema::PacketInfo pi = enc.packet(captype);
-    for (const PacketVary::Rule &r : vary) {
-        if (!r.enabled || r.field.isEmpty() || !out.contains(r.field)) { continue; }
-        int bits = 0;
-        if (pi.ok) {
-            for (const Schema::FieldInfo &f : pi.header) {
-                if (!f.isPad && f.name == r.field) { bits = f.bits; break; }
-            }
-        }
-        out.insert(r.field, r.valueFor(sendIndex, bits));
-    }
+    if (sendIndex >= 0) { applyVary(vary, sendIndex, enc, captype, &out, nullptr); }
     return out;
 }
 
 PacketBuilder::Result PacketPreset::build(PacketBuilder &builder, int sendIndex,
                                           const QByteArray &sessionKey) const
 {
-    return builder.build(captype, headerFor(sendIndex, builder.encoder()),
-                         subs, sessionKey);
+    QHash<QString, qint64> h = header;
+    QVector<Schema::SubEntry> s = subs;
+    if (sendIndex >= 0) { applyVary(vary, sendIndex, builder.encoder(), captype, &h, &s); }
+    return builder.build(captype, h, s, sessionKey);
+}
+
+void applyVary(const QVector<PacketVary::Rule> &rules, int sendIndex, const Schema::Encoder &enc,
+               const QString &captype, QHash<QString, qint64> *header, QVector<Schema::SubEntry> *subs,
+               const PacketVary::LiveFrame &live)
+{
+    if (sendIndex < 0 || rules.isEmpty()) { return; }
+    const Schema::PacketInfo pi = enc.packet(captype);
+    for (const PacketVary::Rule &r : rules) {
+        if (!r.enabled || r.field.isEmpty()) { continue; }
+        if (r.sub.isEmpty()) {
+            if (!header || !header->contains(r.field)) { continue; }
+            int bits = 0;
+            for (const Schema::FieldInfo &f : pi.header) {
+                if (!f.isPad && f.name == r.field) { bits = f.bits; break; }
+            }
+            header->insert(r.field, r.valueFor(sendIndex, bits, live));
+            continue;
+        }
+        if (!subs) { continue; }
+        int type = -1;
+        for (const Schema::CaseInfo &c : pi.cases) {
+            if (c.structName == r.sub) { type = c.type; break; }
+        }
+        if (type < 0) { continue; }
+        int bits = 0;
+        for (const Schema::FieldInfo &f : enc.structLayout(r.sub).scalarFields) {
+            if (!f.isPad && f.name == r.field) { bits = f.bits; break; }
+        }
+        if (bits == 0) { continue; }            // not a scalar field of that struct
+        // One value per send, the same in every sub-packet of the type: they
+        // describe one thing (the MA, the TSR list) and must not disagree.
+        const qint64 v = r.valueFor(sendIndex, bits, live);
+        for (Schema::SubEntry &se : *subs) {
+            if (se.type == type) { se.values.insert(r.field, v); }
+        }
+    }
 }

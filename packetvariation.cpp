@@ -82,22 +82,22 @@ QString Rule::describe(int bits) const
     case Increment: {
         const qint64 top = (max > start) ? max : maxForBits(bits);
         return QStringLiteral("%1: %2 then +%3, wrap at %4")
-            .arg(field).arg(start).arg(step == 0 ? 1 : step).arg(top);
+            .arg(target()).arg(start).arg(step == 0 ? 1 : step).arg(top);
     }
     case Sweep:
         return QStringLiteral("%1: sweep %2..%3 step %4")
-            .arg(field).arg(start).arg(max > start ? max : start)
+            .arg(target()).arg(start).arg(max > start ? max : start)
             .arg(step == 0 ? 1 : step);
     case Random:
         return QStringLiteral("%1: random %2..%3")
-            .arg(field).arg(start).arg(max > start ? max : maxForBits(bits));
+            .arg(target()).arg(start).arg(max > start ? max : maxForBits(bits));
     case Live:
         return step == 0
-            ? QStringLiteral("%1: from live ARP/LSRP").arg(field)
+            ? QStringLiteral("%1: from live ARP/LSRP").arg(target())
             : QStringLiteral("%1: from live ARP/LSRP, +%2 per send until it moves")
-                  .arg(field).arg(step);
+                  .arg(target()).arg(step);
     }
-    return field;
+    return target();
 }
 
 QString modeName(Rule::Mode m)
@@ -126,6 +126,7 @@ QJsonArray toJson(const QVector<Rule> &rules)
     for (const Rule &r : rules) {
         QJsonObject o;
         o["field"]   = r.field;
+        if (!r.sub.isEmpty()) { o["sub"] = r.sub; }
         o["mode"]    = modeName(r.mode);
         o["start"]   = double(r.start);
         o["step"]    = double(r.step);
@@ -145,6 +146,7 @@ QVector<Rule> fromJson(const QJsonArray &arr)
         if (field.isEmpty()) { continue; }
         Rule r;
         r.field   = field;
+        r.sub     = o.value("sub").toString();     // absent in presets before session 234: a header rule
         r.mode    = modeFromName(o.value("mode").toString());
         r.start   = qint64(o.value("start").toDouble());
         r.step    = qint64(o.value("step").toDouble(1));

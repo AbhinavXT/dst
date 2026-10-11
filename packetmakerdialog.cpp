@@ -979,12 +979,11 @@ PacketBuilder::Result PacketMakerDialog::buildNow(int sendIndex)
         live.sendsSinceChange = m_sendsAtSameLiveNum;
         ++m_sendsAtSameLiveNum;
 
-        for (const PacketVary::Rule &r : readVaryRules()) {
-            if (!r.enabled || r.field.isEmpty()) { continue; }
-            if (!header.contains(r.field))       { continue; }
-            header.insert(r.field,
-                          r.valueFor(sendIndex, headerFieldBits(r.field), live));
-        }
+        // Session 234: header and sub-packet fields, the way a preset's
+        // build() and Packet Sequence apply them (packetpreset.h).
+        QVector<Schema::SubEntry> subs = m_subs;
+        applyVary(readVaryRules(), sendIndex, m_builder.encoder(), m_packetCombo->currentText(), &header, &subs, live);
+        return m_builder.build(m_packetCombo->currentText(), header, subs, sessionKey());
     }
     return m_builder.build(m_packetCombo->currentText(), header, m_subs, sessionKey());
 }
@@ -1010,7 +1009,10 @@ QVector<PacketVary::Rule> PacketMakerDialog::readVaryRules() const
         auto *modeCombo  = qobject_cast<QComboBox *>(m_varyTable->cellWidget(row, 1));
         if (!fieldCombo || !modeCombo) { continue; }
         PacketVary::Rule r;
-        r.field = fieldCombo->currentText();
+        // "MovementAuthority.CUR_SIG_ASPECT" is a sub-packet field (session 234)
+        const QString target = fieldCombo->currentText();
+        r.field = target.section(QLatin1Char('.'), -1);
+        if (target.contains(QLatin1Char('.'))) { r.sub = target.section(QLatin1Char('.'), 0, 0); }
         r.mode  = PacketVary::modeFromName(modeCombo->currentData().toString());
         auto num = [this, row](int col) -> qint64 {
             QTableWidgetItem *it = m_varyTable->item(row, col);
@@ -1033,7 +1035,7 @@ void PacketMakerDialog::setVaryRules(const QVector<PacketVary::Rule> &rules)
         const int row = m_varyTable->rowCount() - 1;
         if (row < 0) { break; }
         if (auto *fc = qobject_cast<QComboBox *>(m_varyTable->cellWidget(row, 0))) {
-            const int idx = fc->findText(r.field);
+            const int idx = fc->findText(r.target());
             if (idx >= 0) { fc->setCurrentIndex(idx); }
         }
         if (auto *mc = qobject_cast<QComboBox *>(m_varyTable->cellWidget(row, 1))) {
@@ -1059,6 +1061,16 @@ void PacketMakerDialog::onVaryAdd()
         if (f.name == QLatin1String("PKT_LENGTH") || f.name == QLatin1String("MAC_CODE")) { continue; }
         fieldCombo->addItem(f.name);
     }
+    // Session 234: and every scalar field of the packet's sub-packets, as
+    // "Struct.FIELD". A rule sets it in every sub-packet of that struct.
+    for (const Schema::CaseInfo &c : pi.cases) {
+        const Schema::StructLayout lay = m_builder.encoder().structLayout(c.structName);
+        for (const Schema::FieldInfo &f : lay.scalarFields) {
+            if (f.isPad || f.isCrc) { continue; }
+            fieldCombo->addItem(c.structName + QLatin1Char('.') + f.name);
+        }
+    }
+    fieldCombo->setToolTip(tr("A header field, or Struct.FIELD: that field in every sub-packet of the struct"));
     if (fieldCombo->count() == 0) { delete fieldCombo; return; }
 
     auto *modeCombo = new QComboBox(m_varyTable);
@@ -1940,7 +1952,13 @@ QString PacketMakerDialog::varySummary() const
     QStringList parts;
     for (const PacketVary::Rule &r : readVaryRules()) {
         if (!r.enabled || r.field.isEmpty()) { continue; }
-        parts << r.describe(headerFieldBits(r.field));
+        int bits = headerFieldBits(r.field);
+        if (!r.sub.isEmpty()) {
+            bits = 0;
+            for (const Schema::FieldInfo &f : m_builder.encoder().structLayout(r.sub).scalarFields)
+                if (f.name == r.field) { bits = f.bits; break; }
+        }
+        parts << r.describe(bits);
     }
     if (parts.isEmpty()) {
         return tr("\n\nNo fields vary — every datagram will carry identical "

@@ -26,9 +26,11 @@
 //  because a truncated value is a different value and the operator should see
 //  the one that was actually sent.
 //
-//  Header fields only, for now. Sub-packet repeats have per-row values with no
-//  single name to address, and no obvious meaning for "advance" — that needs
-//  its own design rather than being bolted on here.
+//  Session 234: a rule may name a sub-packet field too ("MovementAuthority.
+//  CUR_SIG_ASPECT"): it then sets that field in every sub-packet of that type
+//  (packetpreset.h, applyVary). Fields inside a sub-packet's repeats are not
+//  addressable: each row has its own value and no single name, and "advance"
+//  has no obvious meaning across rows.
 // =============================================================================
 
 #include <QJsonArray>
@@ -64,6 +66,7 @@ struct Rule {
     };
 
     QString field;
+    QString sub;            // session 234: the sub-packet's struct; "" = a header field
     Mode    mode    = Increment;
     qint64  start   = 0;    // Increment: first value.  Sweep/Random: low bound
     qint64  step    = 1;    // Increment/Sweep step.    Ignored for Random
@@ -76,6 +79,9 @@ struct Rule {
     // not one this program chooses at all. With nothing observed the rule
     // falls back to `start`, so a run does not silently send zeros.
     qint64 valueFor(int sendIndex, int bits, const LiveFrame &live = LiveFrame()) const;
+
+    // "FRAME_NUM" or "MovementAuthority.CUR_SIG_ASPECT": how the UI names it.
+    QString target() const { return sub.isEmpty() ? field : sub + QLatin1Char('.') + field; }
 
     // One-line description for the UI, e.g. "FRAME_NUM += 1 (wrap at 17 bits)".
     QString describe(int bits) const;

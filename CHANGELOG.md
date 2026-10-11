@@ -11,6 +11,56 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-234"></a>
+## Session 234 — Variation rules on sub-packet fields
+
+Abhinav's pick 3 of the "faster test scenarios" list. Until now a "Vary per
+send" rule could only name a header field (FRAME_NUM, …), so a value inside
+a sub-packet (the MA's signal aspect, a TSR's status) could not walk across
+its range on an interval send.
+
+- **Packet Maker ▸ Vary per send** offers every scalar field of the packet's
+  sub-packets as **Struct.FIELD** ("MovementAuthority.CUR_SIG_ASPECT")
+  beside the header fields. A rule on one sets that field in **every
+  sub-packet of that struct**, with the same value per send. They describe
+  one thing and must not disagree.
+- **Behaviour is unchanged otherwise.** The value is held to the field's
+  width, as for header fields. Send −1 (Build / Send once) is the form's own
+  value. A struct the frame does not carry is left alone.
+- **One place applies rules:** `applyVary()` (packetpreset.h). The Packet
+  Maker's interval send, a preset's `build()` (Packet Sequence) and the
+  Packet Matrix (232) all go through it, so they cannot drift apart.
+- **Presets:** a rule saves its struct as `"sub"`. A rule saved before has
+  none and stays a header rule, written as before.
+- **Not addressable:** fields inside a sub-packet's repeats. Each row has its
+  own value and no single name.
+
+### Files
+
+- `packetvariation.{h,cpp}` (`Rule::sub`, `target()`, JSON);
+- `packetpreset.{h,cpp}` (`applyVary`, `build` and `headerFor` through it);
+- `packetmakerdialog.{h,cpp}` (the field list, reading rules, build,
+  summary; `setVaryRulesForTest` / `buildSendForTest`);
+- `packetmatrix.cpp` (switches off only the rule on the same struct's
+  field);
+- tests: `test_session234.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session234` (16 checks) uses the real SLRP reference frame 6:
+- the rule's name and JSON; an old rule stays a header rule;
+- applyVary: 1, 2, 3, 4, 1 across sends with only the MA's field changing;
+  send −1 untouched; the 6-bit wrap; an absent struct ignored;
+- a preset's sends 0-3 decode off the wire with CUR_SIG_ASPECT 1-4, and
+  it saves its rule;
+- the Packet Maker offers and reads back the rule; its interval send 2
+  carries 3 and Build carries the form's value.
+
+packetvary, packetpreset, intervalsend, varylive and session232 pass
+unchanged.
+
+---
+
 <a id="session-233"></a>
 ## Session 233 — Station Layout: points drawn, signals and points selectable, Measure
 

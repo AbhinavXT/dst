@@ -94,6 +94,11 @@ public:
     // question the staleness bug turned on.
     QHash<QString, qint64> headerForTest() const { return readHeader(); }
 
+    // Session 234: rules set as loading a preset sets them, and what send N
+    // would build with them (tests: a sub-packet rule reaches the wire).
+    void setVaryRulesForTest(const QVector<PacketVary::Rule> &rules) { setVaryRules(rules); }
+    PacketBuilder::Result buildSendForTest(int sendIndex) { return buildNow(sendIndex); }
+
     static qint64 secondsSinceMidnight(int bits);
 
     // The extra header fields as the table currently holds them, and the

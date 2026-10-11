@@ -70,4 +70,14 @@ struct PacketPreset {
                                 const QByteArray &sessionKey) const;
 };
 
+// Session 234: every enabled rule in `rules` for send `sendIndex`, on a
+// header field or on a field of every sub-packet of its struct, each value
+// held to its field's width. The one place rules are applied: the Packet
+// Maker, Packet Sequence and a preset's build() all come through here. A rule
+// whose field is not there (no such header field, no such sub-packet) does
+// nothing. `subs` may be null (headerFor).
+void applyVary(const QVector<PacketVary::Rule> &rules, int sendIndex, const Schema::Encoder &enc,
+               const QString &captype, QHash<QString, qint64> *header, QVector<Schema::SubEntry> *subs,
+               const PacketVary::LiveFrame &live = PacketVary::LiveFrame());
+
 #endif  // PACKETPRESET_H
