@@ -374,6 +374,10 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     editorLayout->addLayout(nameRow);
     editorLayout->addWidget(m_crc);
     editorLayout->addWidget(scroll, 1);
+    m_apply = new QPushButton(editor);
+    m_apply->hide();
+    editorLayout->addWidget(m_apply);
+    connect(m_apply, &QPushButton::clicked, this, [this]() { emit applyRequested(m_tag); });
 
     auto *split = new QSplitter(Qt::Horizontal, this);
     split->addWidget(left);
@@ -625,6 +629,13 @@ void TagBuilderWindow::fillForm()
         if (auto *c = qobject_cast<QComboBox *>(it.value())) c->setCurrentIndex(c->findData(x));
         else if (auto *s = qobject_cast<QSpinBox *>(it.value())) s->setValue(int(x));
     }
+}
+
+void TagBuilderWindow::offerApply(const QString &text, const QString &tip)
+{
+    m_apply->setText(text);
+    m_apply->setToolTip(tip);
+    m_apply->show();
 }
 
 void TagBuilderWindow::showTag()

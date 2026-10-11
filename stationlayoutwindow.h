@@ -20,6 +20,7 @@
 #include "stationlayout.h"
 
 #include <QHash>
+#include <QPointer>
 #include <QSet>
 #include <QWidget>
 
@@ -27,6 +28,7 @@ class QLabel;
 class QPainter;
 class QListWidget;
 class QScrollArea;
+class TagBuilderWindow;
 class QTabWidget;
 class QTableWidget;
 class StatusLine;
@@ -64,6 +66,7 @@ public:
 
 signals:
     void tagClicked(const QString &name);
+    void tagDoubleClicked(const QString &name);   // session 221
     void tagDragged(const QString &name, qint64 newLocM);
 
 protected:
@@ -72,6 +75,7 @@ protected:
     void mousePressEvent(QMouseEvent *e) override;
     void mouseMoveEvent(QMouseEvent *e) override;
     void mouseReleaseEvent(QMouseEvent *e) override;
+    void mouseDoubleClickEvent(QMouseEvent *e) override;
     void wheelEvent(QWheelEvent *e) override;
     void resizeEvent(QResizeEvent *e) override;
     bool eventFilter(QObject *o, QEvent *e) override;
@@ -130,6 +134,16 @@ public:
     bool undo();
     // Move a tag (what a drag does).
     bool moveTag(const QString &name, qint64 locM);
+    // Session 221: the RFID Tag Builder on one of the layout's tags (`name`),
+    // or on a new one ("": started from the selected tag, if any). Its Apply
+    // button comes back to applyTag().
+    TagBuilderWindow *openInTagBuilder(const QString &name);
+    TagBuilderWindow *tagBuilder() const;
+    // `bytes` into the layout: replaces tag `target` ("" = adds it), named by
+    // its bits; the lines and signals naming `target` follow a new name. One
+    // Undo step. Refused (false, status says why) for bytes that are not a
+    // tag, or a name another tag already has.
+    bool applyTag(const QString &target, const QByteArray &bytes);
 
 protected:
     void closeEvent(QCloseEvent *e) override;
@@ -147,6 +161,8 @@ private:
     bool confirmDiscard();
 
     StationLayout::Layout m_layout;
+    QPointer<TagBuilderWindow> m_builder;   // session 221
+    QString m_builderTarget;           // the tag it edits; "" = a new tag
     QString m_path;                    // the .json being edited; empty after an import
     bool m_modified = false;
     bool m_updating = false;

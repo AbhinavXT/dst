@@ -2,6 +2,7 @@
 
 #include "settings.h"
 #include "statusline.h"
+#include "tagbuilderwindow.h"
 #include "uicolors.h"
 #include "undolog.h"
 #include "tinlayout.h"
@@ -470,6 +471,12 @@ void StationLayoutCanvas::mouseReleaseEvent(QMouseEvent *)
     update();
 }
 
+void StationLayoutCanvas::mouseDoubleClickEvent(QMouseEvent *e)
+{
+    for (const Hit &h : m_hits)
+        if (!h.tag.isEmpty() && h.rect.contains(e->pos())) { emit tagDoubleClicked(h.tag); return; }
+}
+
 void StationLayoutCanvas::wheelEvent(QWheelEvent *e)
 {
     // Session 220: the wheel zooms about the pointer; Shift + wheel scrolls.
@@ -912,9 +919,18 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     auto *addBtn = new QPushButton(tr("Add row"), this);
     addBtn->setToolTip(tr("After the selected row. On Tags: a copy of the selected tag, to move or edit"));
     auto *delBtn = new QPushButton(tr("Delete rows"), this);
+    // Session 221: the RFID Tag Builder on a tag of the layout.
+    auto *editTagBtn = new QPushButton(tr("Edit in Tag Builder…"), this);
+    editTagBtn->setToolTip(tr("Open the selected tag in the RFID Tag Builder: every field by name, CRC-30 computed. "
+                              "Its Apply button puts it back here (double-click a tag in the drawing does the same)"));
+    auto *newTagBtn = new QPushButton(tr("New tag in Tag Builder…"), this);
+    newTagBtn->setToolTip(tr("Make a new tag in the RFID Tag Builder, starting from the selected tag; "
+                             "its Apply button adds it to the layout"));
     auto *rowBar = new QHBoxLayout;
     rowBar->addWidget(addBtn);
     rowBar->addWidget(delBtn);
+    rowBar->addWidget(editTagBtn);
+    rowBar->addWidget(newTagBtn);
     rowBar->addStretch(1);
     auto *bottom = new QWidget(this);
     auto *bl = new QVBoxLayout(bottom);
@@ -1005,6 +1021,16 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
                 break;
             }
     });
+    auto selectedTag = [this]() {
+        const int r = m_tables.at(0)->currentRow();
+        return r >= 0 && r < m_layout.tags.size() ? m_layout.tags.at(r).name : QString();
+    };
+    connect(editTagBtn, &QPushButton::clicked, this, [this, selectedTag]() {
+        if (selectedTag().isEmpty()) { m_status->warn(tr("Select a tag first (in the Tags tab or the drawing)")); return; }
+        openInTagBuilder(selectedTag());
+    });
+    connect(newTagBtn, &QPushButton::clicked, this, [this]() { openInTagBuilder(QString()); });
+    connect(m_canvas, &StationLayoutCanvas::tagDoubleClicked, this, [this](const QString &name) { openInTagBuilder(name); });
     connect(m_canvas, &StationLayoutCanvas::tagDragged, this, [this](const QString &name, qint64 loc) { moveTag(name, loc); });
     connect(m_undo, &UndoLog::undone, this, [this](const QString &label, bool restored) {
         if (restored) m_status->ok(tr("Undone: %1").arg(label));
@@ -1120,6 +1146,80 @@ bool StationLayoutWindow::moveTag(const QString &name, qint64 locM)
         return true;
     }
     return false;
+}
+
+TagBuilderWindow *StationLayoutWindow::tagBuilder() const { return m_builder; }
+
+TagBuilderWindow *StationLayoutWindow::openInTagBuilder(const QString &name)
+{
+    if (!m_builder) {
+        m_builder = new TagBuilderWindow(nullptr, this);
+        m_builder->setWindowFlag(Qt::Window);
+        m_builder->setAttribute(Qt::WA_DeleteOnClose);
+        connect(m_builder, &TagBuilderWindow::applyRequested, this,
+                [this](const QByteArray &tag) { applyTag(m_builderTarget, tag); });
+    }
+    // A new tag starts from the selected one (same TINs and line, a location to change).
+    const int r = m_tables.at(0)->currentRow();
+    const QString from = !name.isEmpty() ? name : r >= 0 && r < m_layout.tags.size() ? m_layout.tags.at(r).name : QString();
+    for (const StationLayout::Tag &t : m_layout.tags)
+        if (t.name == from) { m_builder->setPages(t.pageX, t.pageY); break; }
+    m_builderTarget = name;
+    m_builder->offerApply(name.isEmpty() ? tr("Add this tag to the station layout") : tr("Apply to tag %1 in the station layout").arg(name),
+                          name.isEmpty() ? tr("Adds the tag above to the layout, named by its bits")
+                                         : tr("Replaces tag %1 in the layout with the tag above").arg(name));
+    m_builder->setWindowTitle(name.isEmpty() ? tr("RFID Tag Builder — new tag for the station layout")
+                                             : tr("RFID Tag Builder — tag %1 of the station layout").arg(name));
+    m_builder->show();
+    m_builder->raise();
+    m_builder->activateWindow();
+    return m_builder;
+}
+
+bool StationLayoutWindow::applyTag(const QString &target, const QByteArray &bytes)
+{
+    const QString name = RfidTag::nameOf(bytes);
+    if (bytes.size() != RfidTag::TagBytes || name.isEmpty()) {
+        m_status->fail(tr("Not applied: the Tag Builder's tag does not decode"));
+        return false;
+    }
+    int at = -1;
+    for (int i = 0; i < m_layout.tags.size(); ++i) {
+        const QString n = m_layout.tags.at(i).name;
+        if (n == target && !target.isEmpty()) at = i;
+        else if (n == name) {
+            m_status->fail(tr("Not applied: the layout already has a tag %1. Open that one to change it").arg(name));
+            return false;
+        }
+    }
+    if (!target.isEmpty() && at < 0) {
+        m_status->fail(tr("Not applied: tag %1 is no longer in the layout").arg(target));
+        return false;
+    }
+    const StationLayout::Layout before = m_layout;
+    const StationLayout::Tag t{ name, RfidTag::pageX(bytes), RfidTag::pageY(bytes) };
+    if (at < 0) {
+        const int r = m_tables.at(0)->currentRow();
+        at = r >= 0 && r < m_layout.tags.size() ? r + 1 : m_layout.tags.size();
+        m_layout.tags.insert(at, t);
+    } else {
+        m_layout.tags[at] = t;
+        // shortcut: a point's "tags" cell is free text and is not renamed; rename it by hand.
+        if (name != target) {
+            for (StationLayout::Line &ln : m_layout.lines)
+                for (QString &n : ln.tags) if (n == target) n = name;
+            for (StationLayout::Signal &sg : m_layout.signalList)
+                if (sg.footTag == target) sg.footTag = name;
+        }
+    }
+    changed(target.isEmpty() ? tr("add tag %1").arg(name) : tr("edit tag %1").arg(target), before);
+    m_tables.at(0)->selectRow(at);
+    m_canvas->setSelectedTag(name);
+    if (!target.isEmpty()) m_builderTarget = name;   // a second Apply edits the same tag
+    m_status->ok(target.isEmpty() ? tr("Tag %1 added from the Tag Builder").arg(name)
+                 : name == target ? tr("Tag %1 updated from the Tag Builder").arg(name)
+                                  : tr("Tag %1 is now %2 (its lines and signals follow)").arg(target, name));
+    return true;
 }
 
 void StationLayoutWindow::onTagCell(int row, int col)

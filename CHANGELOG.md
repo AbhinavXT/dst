@@ -11,6 +11,55 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-221"></a>
+## Session 221 — Station Layout: edit or add a tag in the RFID Tag Builder
+
+Asked for by Abhinav: open the Tag Builder (tags_sim) from Station Layout
+to edit a tag or add one.
+
+- **Opening it.** Any of these opens the RFID Tag Builder on a tag:
+  - **double-click a tag** in the drawing;
+  - **Edit in Tag Builder…** (under the sheets) on the selected tag;
+  - **New tag in Tag Builder…**, which starts from the selected tag (same
+    TINs, change the id and place) or from the builder's default.
+
+  The builder shows every field by name and computes the CRC-30. Under
+  its tag editor it now has one more button: **Apply to tag N in the
+  station layout** (or **Add this tag to the station layout**).
+- **What Apply does:**
+  - **Edit:** the tag's page_x / page_y are replaced. The tag is named by
+    its bits, so a changed id renames it, and the lines and signals naming
+    it follow. A point's free-text "tags" cell is not renamed.
+  - **Add:** the tag goes in after the selected tag, named by its bits.
+  - **Refused** (the status line says why): bytes that do not decode, or a
+    name another tag of the layout already has.
+  - Each Apply is one Undo step, and the drawing, the Tags table and
+    Checks follow.
+- One builder per Station Layout window; opening another tag reuses it.
+  Opened from here, the builder's Run tab has no logs. Open it from Tools
+  for that.
+
+### Files
+
+`stationlayoutwindow.{h,cpp}` (`openInTagBuilder`, `applyTag`, the two
+buttons, double-click), `tagbuilderwindow.{h,cpp}` (`offerApply`,
+`applyRequested`); tests `test_session221.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session221` (18 checks), on the built-in station.xlsx:
+- 981 opens with its own page values, moves to 164010 m in the builder,
+  and is applied (CRC good), then undone;
+- a new tag from 981 is refused until its id changes, then added after
+  981 at 164100 m, then undone;
+- a main tag on a line is renamed, and its line follows;
+- renaming 981 onto another tag's id is refused;
+- a double-click in the drawing opens 981.
+
+`session195`, `196`, `200`, `208`, `210` and `220` pass unchanged.
+
+---
+
 <a id="session-220"></a>
 ## Session 220 — Station Layout: zoom with the wheel, grab the sheet, "+" and "−" fixed
 

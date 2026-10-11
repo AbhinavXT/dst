@@ -38,6 +38,8 @@
 //    (session 201) Library…: tags_sim's KAV_CONFIG routes, built in and in a
 //                 folder (taglibrary.h); the route last opened is reopened
 //                 when the builder opens from the menu.
+//    (session 221) opened from Station Layout to edit or add one of its tags:
+//                 an Apply button sends the editor's tag back.
 //    (session 203) a Simulator tab: what the RFID simulator (LocoTcasSimulator)
 //                 would send for this route, at a speed, from a start tag, tick
 //                 by tick, on reader 1 and reader 2 (simpreview.h).
@@ -143,12 +145,17 @@ public:
     RouteStrip *strip() const { return m_strip; }
     UndoLog *undoLog() const { return m_undo; }
     QLabel *crcLabel() const { return m_crc; }
+    // Session 221: a button under the tag editor that sends the editor's tag
+    // back (applyRequested); hidden until a caller offers it (Station Layout).
+    void offerApply(const QString &text, const QString &tip);
+    QPushButton *applyButton() const { return m_apply; }
     QLineEdit *pageXEdit() const { return m_pageX; }
     QLineEdit *pageYEdit() const { return m_pageY; }
     StatusLine *status() const { return m_status; }
 
 signals:
     void jumpRequested(const QString &key, qint64 ms);
+    void applyRequested(const QByteArray &tag);
 
 protected:
     void closeEvent(QCloseEvent *e) override;
@@ -186,6 +193,7 @@ private:
     QLineEdit *m_pageY = nullptr;
     QLabel *m_name = nullptr;
     QLabel *m_crc = nullptr;
+    QPushButton *m_apply = nullptr;
 
     QLineEdit *m_routeName = nullptr;
     QComboBox *m_dir = nullptr;
