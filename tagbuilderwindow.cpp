@@ -229,11 +229,11 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     // ---- run ---------------------------------------------------------------------------------
     m_runPicker = new QComboBox(this);
     m_runPicker->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    m_runPicker->setMinimumContentsLength(14);
+    m_runPicker->setMinimumContentsLength(8);       // the whole name is in the list; Linux fonts made 14 too wide
     m_runPicker->setToolTip(tr("The loco log (tab) to compare the route with: its @rfid frames"));
     auto *compareBtn = new QPushButton(tr("Compare"), this);
     compareBtn->setToolTip(tr("Each tag of the route against what the loco read: first read only"));
-    auto *fromRunBtn = new QPushButton(tr("Make a route from this run"), this);
+    auto *fromRunBtn = new QPushButton(tr("Route from run"), this);
     fromRunBtn->setToolTip(tr("A new route of the tags the loco read, in the order first read, exactly as read"));
     m_runSummary = new QLabel(this);
     m_runSummary->setWordWrap(true);
@@ -303,13 +303,13 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     simBar->addWidget(m_simStart, 1);
     simBar->addWidget(m_simReader1);
     simBar->addWidget(m_simReader2);
-    simBar->addWidget(simBtn);
     auto *simPage = new QWidget(this);
     auto *simLayout = new QVBoxLayout(simPage);
     simLayout->setContentsMargins(0, 0, 0, 0);
     simLayout->addLayout(simBar);
     auto *simBar2 = new QHBoxLayout;
     simBar2->addWidget(m_simMissing, 1);
+    simBar2->addWidget(simBtn);              // on this row, not the first: Linux fonts made that one too wide
     simBar2->addWidget(simRunBtn);
     simLayout->addLayout(simBar2);
     simLayout->addWidget(m_simSummary);
@@ -1124,9 +1124,11 @@ bool TagBuilderWindow::exportIntoConfiguration(const QString &configPath, const 
         m_status->fail(tr("Not exported: %1: %2").arg(QFileInfo(configPath).fileName(), in.errorString()));
         return false;
     }
+    const QByteArray original = in.readAll();
+    in.close();                 // Windows will not replace a file that is open (exporting into itself)
     QString err;
     QStringList notes;
-    const QByteArray merged = RfidExport::mergeIntoConfiguration(in.readAll(), m_route, &err, &notes);
+    const QByteArray merged = RfidExport::mergeIntoConfiguration(original, m_route, &err, &notes);
     if (merged.isEmpty() || !RfidTag::writeFile(outPath, merged, &err)) {
         m_status->fail(tr("Not exported: %1").arg(err));
         return false;
@@ -1275,9 +1277,11 @@ bool TagBuilderWindow::fixFileCrcs(const QString &inPath, const QString &outPath
         m_status->fail(tr("Not fixed: %1: %2").arg(QFileInfo(inPath).fileName(), in.errorString()));
         return false;
     }
+    const QByteArray original = in.readAll();
+    in.close();                 // Windows will not replace a file that is open (fixing in place)
     QString err;
     QStringList lines;
-    const QByteArray out = RfidExport::fixCrcs(in.readAll(), &lines, &err);
+    const QByteArray out = RfidExport::fixCrcs(original, &lines, &err);
     if (out.isEmpty() || !RfidTag::writeFile(outPath, out, &err)) {
         m_status->fail(tr("Not fixed: %1").arg(err));
         return false;

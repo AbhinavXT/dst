@@ -11,6 +11,43 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-216"></a>
+## Session 216 — CI green again: the Tag Builder on Linux and Windows
+
+Asked for by Abhinav: "fix the ci". The Linux and Windows jobs had failed
+on every push since patch 206/207 (linux-qt6 passed), with the same two
+causes each time; neither came from the patches since.
+
+**Windows: exporting into the file you opened failed.** Export ▸ Into
+Configuration1.xml read the file and wrote the result back while the
+input was still open; Windows will not replace an open file, so writing
+to the same path failed with "Not exported" (session197's check). Fix the
+CRCs in a file, written back in place, had the same pattern. Both now
+close the input before writing. That was a real bug for the operator, not
+only for the test: on Windows, a route could not be exported into the
+Configuration1.xml it was taken from.
+
+**Linux: the Tag Builder was 1121 px at its narrowest** (the laptop limit
+is 1100; Linux CI's fonts are about 10 % wider than the Mac's).
+Sessions 195, 196, 198, 200 and 201 failed "fits a laptop". The Run tab's
+bar set the width: the loco-log picker now asks for 8 characters, not 14
+(the full names are in its list), and "Make a route from this run" reads
+"Route from run" (the tooltip says the rest). The Simulator tab's Preview
+button moved to its second row, beside "Against the run". On the Mac the
+minimum went from 1008 to 916 px; the Tags tab now sets it.
+
+**Files:** `tagbuilderwindow.cpp`.
+
+**Tests:** no new suite: session197 (Windows) and 195-201 (Linux) are the
+checks that failed, unchanged; sessions 195-206 pass on the Mac.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators **13/13**;
+`dltests` **265 suites / 7073 checks, 1 failed** (the `session156` pty
+check, which fails on the Mac only; CI's three jobs below); menu audit
+passed; headless smoke alive.
+
+---
+
 <a id="session-215"></a>
 ## Session 215 — the fleet summary
 
