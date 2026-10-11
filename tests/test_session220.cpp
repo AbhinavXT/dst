@@ -42,7 +42,8 @@ TEST_SUITE(session220)
     CHECK(c && sa && in && out, "canvas, scroll area, + and −");
     if (!c || !sa || !in || !out) return;
     const int view = sa->viewport()->width();
-    CHECK(view > 1000 && c->width() == view, QByteArray("at 1 the sheet fits a wide window (") + QByteArray::number(view) + ")");
+    // Over 900 px (1.5 × the old 600 px minimum) so the old code fails the + below; Windows CI gives 994.
+    CHECK(view > 900 && c->width() == view, QByteArray("at 1 the sheet fits a wide window (") + QByteArray::number(view) + ")");
 
     // The reported case: − at the start, then + zooms at once.
     for (int i = 0; i < 6; ++i) out->click();

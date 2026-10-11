@@ -38,7 +38,7 @@ the start meant pressing "+" six times before anything zoomed.
 
 ### Tests
 
-`session220` (9 checks) uses the built-in station.xlsx in a 1600 px window.
+`session220` (9 checks) uses the built-in station.xlsx in a window asked for at 1600 px (Windows CI gives 994; over 900 is needed).
 It checks:
 - at 1 the sheet fits the window;
 - six "−" stay at fit, then one "+" is 1.5× at once, and one "−" is back to fit;
