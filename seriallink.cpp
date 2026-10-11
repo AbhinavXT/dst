@@ -390,13 +390,21 @@ qint64 SerialPortWorker::writeBytes(const QByteArray &bytes)
 
 bool SerialPortWorker::setDtr(bool on)
 {
-    return m_port->isOpen() && m_port->setDataTerminalReady(on);
+    m_quiet = true;
+    const bool ok = m_port->isOpen() && m_port->setDataTerminalReady(on);
+    m_quiet = false;
+    if (!ok) m_port->clearError();
+    return ok;
 }
 
 bool SerialPortWorker::setRts(bool on, bool hardwareFlow)
 {
     // RTS belongs to the driver under hardware flow control.
-    return m_port->isOpen() && !hardwareFlow && m_port->setRequestToSend(on);
+    m_quiet = true;
+    const bool ok = m_port->isOpen() && !hardwareFlow && m_port->setRequestToSend(on);
+    m_quiet = false;
+    if (!ok) m_port->clearError();
+    return ok;
 }
 
 void SerialPortWorker::onReadyRead()
@@ -420,7 +428,7 @@ void SerialPortWorker::onIdleTick()
 SerialErrorOutcome SerialPortWorker::judgeError(QSerialPort::SerialPortError e)
 {
     SerialErrorOutcome o;
-    if (e == QSerialPort::NoError) return o;
+    if (e == QSerialPort::NoError || m_quiet) return o;   // m_quiet: a refused DTR / RTS, said by its caller
     ++errors;
 
     // An error that repeats in a burst is a port that is gone but still

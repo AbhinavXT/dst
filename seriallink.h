@@ -263,6 +263,9 @@ private:
     SerialLineSplitter  m_split;
 
     // Error-storm guard, see judgeError().
+    // Session 225: set while DTR / RTS are set. A port without those lines (a
+    // pty, some virtual ports) refuses with an error that is not the port failing.
+    bool                m_quiet = false;
     static constexpr qint64 kErrorBurstWindowMs = 100;
     static constexpr int    kErrorBurstLimit    = 20;
     qint64              m_errorBurstStartMs = 0;

@@ -744,12 +744,16 @@ bool SerialConsoleWindow::openPort()
 
 void SerialConsoleWindow::afterOpened(const SerialConfig &c)
 {
-    m_link->setDtr(m_dtr->isChecked());
-    m_link->setRts(m_rts->isChecked());
+    // Session 225: a port without DTR / RTS lines still works: said here, not as a failure.
+    const bool dtr = m_link->setDtr(m_dtr->isChecked());
+    const bool rts = m_link->setRts(m_rts->isChecked());
     m_hex.reset();                                 // hex offsets count from the open
     saveSettings();
     appendView(tr("── opened %1 %2 at %3 ──").arg(c.portName, c.summary(), stamp(QDateTime::currentMSecsSinceEpoch())));
     if (!m_link->latencyNote().isEmpty()) appendView(tr("── %1 ──").arg(m_link->latencyNote()));
+    if (!dtr || (!rts && c.flow != QSerialPort::HardwareControl))
+        appendView(tr("── this port does not take %1 (a virtual port, or one without those lines) ──")
+                       .arg(!dtr && !rts ? tr("DTR or RTS") : !dtr ? tr("DTR") : tr("RTS")));
     updateState();
 }
 

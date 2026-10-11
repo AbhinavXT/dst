@@ -11,6 +11,42 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-225"></a>
+## Session 225 — Serial terminal: a port without DTR / RTS no longer shows as failed
+
+Found while watching CI for 221 to 224: `session156` failed on every
+Mac run and on some Linux CI runs, reading "✕ Inappropriate ioctl for
+device" while the port was open.
+
+- **The cause.** After a port opens, the terminal sets DTR and RTS from
+  its check boxes. A port without those lines refuses: a pty, as in the
+  test, and also some virtual or Bluetooth COM ports. The refusal came
+  back as a port error on the reader thread. Whether its red "✕" landed
+  before or after the "open" status depended on timing, hence the flake.
+  The port itself was fine and kept reading.
+- **Now** a refused DTR / RTS is not a port error, and is not counted as
+  a driver error either. The terminal says it once, in the log view:
+  "── this port does not take DTR or RTS (a virtual port, or one without
+  those lines) ──". The status says the port is open. Under hardware flow
+  control RTS belongs to the driver, as before, and is not mentioned. The
+  check boxes still return whether the change took.
+
+### Files
+
+`seriallink.{h,cpp}` (`SerialPortWorker::setDtr` / `setRts` quiet,
+`judgeError`), `serialconsolewindow.cpp` (`afterOpened`).
+
+### Tests
+
+`session156` passes 3 runs out of 3 on the Mac, where it failed every
+time before. `session111` and `session122` pass. Not tested: a real USB
+adapter (a working DTR changes nothing here).
+
+Also seen on CI, not fixed: `session111` ("the probe's garbage never
+reached the console tab") failed once on Linux and passed on the rerun.
+
+---
+
 <a id="session-224"></a>
 ## Session 224 — Station Layout: a line as a route, a route as a line
 
