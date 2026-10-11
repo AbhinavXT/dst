@@ -71,8 +71,10 @@ TEST_SUITE(session128)
     QTabWidget *tabs = nullptr;
     for (QTabWidget *t : dlg.findChildren<QTabWidget *>())
         if (t->isAncestorOf(vary)) tabs = t;
-    CHECK(tabs && tabs->count() == 2 && tabs->tabText(0) == QLatin1String("Output"),
-          "Output and Vary per send share one pane as tabs");
+    // session 241 added the Send log as the third tab
+    CHECK(tabs && tabs->count() == 3 && tabs->tabText(0) == QLatin1String("Output")
+              && tabs->tabText(2).startsWith(QLatin1String("Send log")),
+          "Output, Vary per send and Send log share one pane as tabs");
     CHECK(boxTitled(&dlg, "Vary per send") == nullptr, "Vary per send is no longer a box of its own");
     if (!tabs) return;
 

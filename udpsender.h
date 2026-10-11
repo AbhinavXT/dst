@@ -102,6 +102,8 @@ public:
 
 signals:
     void sent(int totalCount);        // a datagram went out (once or periodic)
+    // Session 241: the same moment, with the bytes and where they reached.
+    void datagramSent(const QByteArray &datagram, const QStringList &reached);
     void error(const QString &what);
     void runningChanged(bool running);
 

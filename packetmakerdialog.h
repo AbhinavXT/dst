@@ -329,6 +329,16 @@ private:
     int m_hexBytes = 0;
     QVector<QPair<int, FieldRow>> m_rowLines;   // block number, its row
     void onOutputCursor();
+    // Session 241: every datagram sent from this window, newest last.
+    QTableWidget *m_sendLog = nullptr;
+    qint64 m_pendingFrameNum = -1;     // FRAME_NUM of the frame being sent
+    void onDatagramSent(const QByteArray &datagram, const QStringList &reached);
+    void updateSendLogTitle();
+public:
+    // The log as CSV, as Export writes it (public for the tests).
+    QString sendLogCsv() const;
+    static const int kSendLogMax = 5000;
+private:
     StatusLine   *m_status      = nullptr;
 
     // "Fill from buffer": paste bytes, get every header and sub-packet field

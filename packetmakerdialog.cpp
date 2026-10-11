@@ -47,6 +47,7 @@
 #include <QStringList>
 #include <QRegularExpression>
 #include <QSet>
+#include <QFile>
 #include <QTextBlock>
 
 // ---- small helpers ---------------------------------------------------------
@@ -630,6 +631,49 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     connect(vm, &QAbstractItemModel::rowsRemoved,  this, &PacketMakerDialog::updateVaryTabTitle);
     connect(vm, &QAbstractItemModel::modelReset,   this, &PacketMakerDialog::updateVaryTabTitle);
     updateVaryTabTitle();
+
+    // Send log (session 241): what went out, when, where — enough to repeat a run.
+    auto *logPage = new QWidget(m_lowerTabs);
+    auto *logLay = new QVBoxLayout(logPage);
+    logLay->setContentsMargins(0, 4, 0, 0);
+    m_sendLog = new QTableWidget(0, 7, logPage);
+    m_sendLog->setObjectName(QStringLiteral("pmSendLog"));
+    m_sendLog->setHorizontalHeaderLabels({ tr("Time"), tr("#"), tr("Packet"), tr("FRAME_NUM"),
+                                           tr("To"), tr("Bytes"), tr("Datagram (hex)") });
+    m_sendLog->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_sendLog->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_sendLog->verticalHeader()->setVisible(false);
+    m_sendLog->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_sendLog->horizontalHeader()->setStretchLastSection(true);
+    logLay->addWidget(m_sendLog, 1);
+    auto *logBtns = new QHBoxLayout;
+    auto *logClear  = new QPushButton(tr("Clear"), logPage);
+    auto *logExport = new QPushButton(tr("Export CSV…"), logPage);
+    logBtns->addWidget(logClear);
+    logBtns->addWidget(logExport);
+    logBtns->addWidget(new QLabel(tr("The datagram is what went on the wire, header included."), logPage), 1);
+    logLay->addLayout(logBtns);
+    m_lowerTabs->addTab(logPage, QString());
+    updateSendLogTitle();
+    connect(logClear, &QPushButton::clicked, this, [this]() {
+        m_sendLog->setRowCount(0);
+        updateSendLogTitle();
+    });
+    connect(logExport, &QPushButton::clicked, this, [this]() {
+        const QString path = QFileDialog::getSaveFileName(
+            this, tr("Export send log"),
+            QStringLiteral("sendlog_%1.csv").arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss"))),
+            tr("CSV (*.csv)"));
+        if (path.isEmpty()) { return; }
+        QFile f(path);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            m_status->fail(tr("Could not write %1").arg(path));
+            return;
+        }
+        f.write(sendLogCsv().toUtf8());
+        m_status->ok(tr("Send log: %1 row(s) written to %2").arg(m_sendLog->rowCount()).arg(path));
+    });
+    connect(&m_sender, &UdpSender::datagramSent, this, &PacketMakerDialog::onDatagramSent);
 
     // A tab widget's floor is its largest page's (the Vary table and its
     // buttons, 150 px), which capped the field editors above it. Four lines
@@ -1638,6 +1682,52 @@ QString PacketMakerDialog::destinationSummary() const
                            : parts.join(QStringLiteral(", "));
 }
 
+void PacketMakerDialog::updateSendLogTitle()
+{
+    const int n = m_sendLog ? m_sendLog->rowCount() : 0;
+    m_lowerTabs->setTabText(2, n == 0 ? tr("Send log") : tr("Send log (%1)").arg(n));
+}
+
+void PacketMakerDialog::onDatagramSent(const QByteArray &datagram, const QStringList &reached)
+{
+    // Oldest dropped past the cap: an interval run at 100 ms is 36000 rows an hour.
+    if (m_sendLog->rowCount() >= kSendLogMax) { m_sendLog->removeRow(0); }
+    const int row = m_sendLog->rowCount();
+    m_sendLog->insertRow(row);
+    const QStringList cells = {
+        QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz")),
+        QString::number(m_sender.sentCount()),
+        m_packetCombo->currentText(),
+        m_pendingFrameNum >= 0 ? QString::number(m_pendingFrameNum) : QString(),
+        reached.join(QStringLiteral("; ")),
+        QString::number(datagram.size()),
+        QString::fromLatin1(datagram.toHex(' ')).toUpper(),
+    };
+    for (int c = 0; c < cells.size(); ++c) { m_sendLog->setItem(row, c, new QTableWidgetItem(cells[c])); }
+    updateSendLogTitle();
+}
+
+QString PacketMakerDialog::sendLogCsv() const
+{
+    const auto quote = [](QString v) {
+        if (v.contains(QLatin1Char(',')) || v.contains(QLatin1Char('"')) || v.contains(QLatin1Char(';'))) {
+            v.replace(QLatin1String("\""), QLatin1String("\"\""));
+            v = QLatin1Char('"') + v + QLatin1Char('"');
+        }
+        return v;
+    };
+    QString out = QStringLiteral("time,send,packet,frame_num,to,bytes,datagram_hex\n");
+    for (int r = 0; r < m_sendLog->rowCount(); ++r) {
+        QStringList cells;
+        for (int c = 0; c < m_sendLog->columnCount(); ++c) {
+            const QTableWidgetItem *it = m_sendLog->item(r, c);
+            cells << quote(it ? it->text() : QString());
+        }
+        out += cells.join(QLatin1Char(',')) + QLatin1Char('\n');
+    }
+    return out;
+}
+
 void PacketMakerDialog::onSendOnce()
 {
     if (m_lastFrame.isEmpty()) { return; }
@@ -1666,6 +1756,7 @@ void PacketMakerDialog::onSendOnce()
         return;
     }
     m_lastFrame = r.frame;
+    m_pendingFrameNum = r.raw.value(QStringLiteral("FRAME_NUM"), -1);
     refreshPreview(r);
 
     if (MessageHeader::applies(captype)) {
@@ -1723,6 +1814,7 @@ void PacketMakerDialog::onToggleInterval()
                 return QByteArray();
             }
             m_lastFrame = r.frame;
+            m_pendingFrameNum = r.raw.value(QStringLiteral("FRAME_NUM"), -1);
             return r.frame;
         },
         dests, m_intervalSpin->value(), headerPrefix(captype, m_lastFrame.size()));

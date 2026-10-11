@@ -11,6 +11,45 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-241"></a>
+## Session 241 — Packet Maker: send log
+
+Item 7 of the Packet Maker list. A third tab under the form, **Send log**,
+gets one row per datagram that leaves the window, from Send Once and from
+interval sends:
+
+| Time | # | Packet | FRAME_NUM | To | Bytes | Datagram (hex) |
+|---|---|---|---|---|---|---|
+
+- **Datagram** is what went on the wire, message header and extra fields
+  included, so a run can be repeated byte for byte.
+- **To** lists the destinations the write reached; a failed one is left out
+  (and reported on the status line, as before).
+- **Export CSV…** writes `time,send,packet,frame_num,to,bytes,datagram_hex`.
+  **Clear** empties it. The tab title counts the rows.
+- The log keeps the last 5000 rows: an interval run at 100 ms is 36000 an
+  hour.
+
+`UdpSender` has a new signal, `datagramSent(datagram, reached)`, emitted just
+before `sent()`.
+
+### Files
+
+`udpsender.{h,cpp}`, `packetmakerdialog.{h,cpp}` (the tab,
+`onDatagramSent`, `sendLogCsv`); tests `test_session241.cpp` (new),
+`test_session128.cpp` (the pane has three tabs now), `tests.pro`.
+
+### Tests
+
+`session241` (12 checks): two Send Onces of the real SLRP reference frame 6
+(replay/) over loopback; two rows; the logged bytes equal the bytes
+received; size, packet, To and FRAME_NUM columns; the CSV; Clear.
+
+Gate: Qt 5.15 and Qt 6.11 green (287 suites, 7553 checks, validators, menu
+audit, smoke). Not checked: an interval run filling past 5000 rows.
+
+---
+
 <a id="session-240"></a>
 ## Session 240 — Packet Maker: byte ↔ field map
 

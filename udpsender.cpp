@@ -36,10 +36,10 @@ int UdpSender::writeAll(const QByteArray &frame, const PrefixFn &prefix)
     datagram += frame;
 
     int ok = 0;
-    QStringList failed;
+    QStringList failed, reached;
     for (const Resolved &t : m_targets) {
         const qint64 n = m_sock.writeDatagram(datagram, t.addr, t.port);
-        if (n == datagram.size()) { ++ok; }
+        if (n == datagram.size()) { ++ok; reached << t.shown; }
         else { failed << t.shown; }
     }
 
@@ -49,6 +49,7 @@ int UdpSender::writeAll(const QByteArray &frame, const PrefixFn &prefix)
     }
     if (ok > 0) {
         ++m_sent;
+        emit datagramSent(datagram, reached);
         emit sent(m_sent);
     }
     return ok;
