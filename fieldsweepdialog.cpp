@@ -355,7 +355,7 @@ FieldSweep::Spec FieldSweepDialog::currentSpec(QString *err) const
             s.bits = f.bits;
             s.isSigned = f.isSigned;
             if (!f.enumName.isEmpty()) {
-                s.enumChoices = m_builder.encoder().enumChoices(f.enumName);
+                s.enumChoices = m_builder.encoder().enumChoices(f.enumName, true);
             }
             break;
         }

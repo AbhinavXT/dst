@@ -11,6 +11,49 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-238"></a>
+## Session 238 — Packet Maker: named enum choices
+
+First of the Packet Maker items Abhinav picked (1, 2, 3, 5, 6, 7, 8 of the
+list given on 2026-10-11).
+
+- **The cause.** `Schema::Encoder::enumChoices` only read top-level `<enum>`
+  elements. kavach.xml nests them in `<enums>` (the decoder reads them
+  there), so the encoder found none. Every enum field in Packet Maker and
+  the sub-packet window was a bare number box, and Field Sweep's
+  *Enum codes* refused every field ("no declared enum values").
+- **Now** an enum field (LOCO_MODE, CUR_SIG_ASPECT, TSR_STATUS, ...) is a
+  picker of its named codes, e.g. `4 (Full_Supervision)`. It is still
+  editable: a raw number is taken as before.
+- **A field still starts at 0**, named when 0 is declared. That was the
+  reason this was left alone in patch 195: picking the first item would
+  have changed the defaults.
+- `%v` in a label is filled in. From/to range maps (speed6's 1-50 ×5 km/h)
+  are not listed in the picker; type the number. Field Sweep's Enum codes
+  counts them as declared, so "undefined code" is a value no map covers.
+- Long labels stay in the popup; the box keeps a field's width (20
+  characters).
+
+### Files
+
+`schema/schemaencoder.{h,cpp}` (`enumChoices(name, withRanges)`, `<enums>`
+read), `packetmakerdialog.cpp` (`makeEditor`), `fieldsweepdialog.cpp`,
+`rfidtag.cpp` (comment), `docs/RFID_TAG_BUILDER.md`; tests
+`test_session238.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session238` (16 checks): locoMode's codes and labels; speed6 with and
+without ranges (3 / 64); the editor starts at 0, named; picking 4 gives 4; a
+typed 13 is taken; an enum without 0 still starts at 0; Field Sweep's Enum
+codes plans LOCO_MODE. `session139` (sub-packet editor widths) caught the
+first, 385-px-wide picker.
+
+Gate: Qt 5.15 and Qt 6.11 green (284 suites, 7517 checks, validators, menu
+audit, smoke). Not checked: the pickers by eye on Windows.
+
+---
+
 <a id="session-237"></a>
 ## Session 237 — a station made from scratch opens in the Python tool
 

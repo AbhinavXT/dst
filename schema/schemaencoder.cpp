@@ -321,6 +321,13 @@ bool Encoder::load(const QString &xmlPath, QString *err)
         if (t == "packet")      { m_packets.push_back(e); }
         else if (t == "struct") { m_structs.insert(e.attribute("name"), e); }
         else if (t == "enum")   { m_enums.insert(e.attribute("name"), e); }
+        else if (t == "enums") {
+            // kavach.xml nests its enums here, as the decoder reads them.
+            for (QDomElement n = e.firstChildElement("enum"); !n.isNull();
+                 n = n.nextSiblingElement("enum")) {
+                m_enums.insert(n.attribute("name"), n);
+            }
+        }
     }
     m_loaded = !m_packets.isEmpty();
     if (!m_loaded && err) { *err = QStringLiteral("schema has no <packet> definitions"); }
@@ -546,16 +553,30 @@ StructLayout Encoder::structLayout(const QString &structName) const
     return sl;
 }
 
-QVector<QPair<qint64, QString>> Encoder::enumChoices(const QString &enumName) const
+QVector<QPair<qint64, QString>> Encoder::enumChoices(const QString &enumName,
+                                                     bool withRanges) const
 {
     QVector<QPair<qint64, QString>> out;
     if (!m_enums.contains(enumName)) { return out; }
     const QDomElement en = m_enums.value(enumName);
+    const auto label = [](const QDomElement &m, qint64 v) {
+        QString l = m.attribute("label", m.attribute("name"));
+        if (l.isEmpty()) {
+            l = (m.attribute("formula") + QLatin1Char(' ') + m.attribute("unit")).trimmed();
+        }
+        return l.replace(QLatin1String("%v"), QString::number(v));
+    };
     for (QDomElement m = en.firstChildElement("map"); !m.isNull();
          m = m.nextSiblingElement("map")) {
-        const QString vs = m.attribute("v");
-        bool ok = false; const qint64 v = vs.toLongLong(&ok);
-        if (ok) { out.push_back({ v, m.attribute("label", m.attribute("name")) }); }
+        bool ok = false;
+        const qint64 v = m.attribute("v").toLongLong(&ok);
+        if (ok) { out.push_back({ v, label(m, v) }); continue; }
+        if (!withRanges || !m.hasAttribute("from")) { continue; }
+        bool okF = false, okT = false;
+        const qint64 from = m.attribute("from").toLongLong(&okF);
+        const qint64 to   = m.attribute("to").toLongLong(&okT);
+        if (!okF || !okT) { continue; }
+        for (qint64 r = from; r <= to; ++r) { out.push_back({ r, label(m, r) }); }
     }
     return out;
 }

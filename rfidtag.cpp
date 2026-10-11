@@ -134,8 +134,7 @@ QVector<Field> fieldsOf(int type)
 
 QString enumLabel(const QString &enumName, qint64 v)
 {
-    // The decoder's labels, not the encoder's: Schema::Encoder::enumChoices
-    // finds no enum in a schema that nests them in <enums> (kavach.xml does).
+    // The decoder's labels, so formula ranges read as the decode view shows them.
     return kavachSchema().enumLabel(enumName, v);
 }
 

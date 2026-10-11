@@ -60,9 +60,8 @@ same commit as each patch.
 ### A — tag codec, tag editor, route.xml import/export
 Status: **done, patch 195** (CHANGELOG session 195). Notes for B:
 `RfidTag::Route` already carries `signalList` (read and saved, not yet
-editable in the window). `Schema::Encoder::enumChoices` returns nothing for
-kavach.xml (enums sit in `<enums>`), so use `RfidTag::enumLabel` (the
-decoder's). Window test hooks: `TagBuilderWindow::setPages / setField /
+editable in the window). `RfidTag::enumLabel` uses the decoder's labels
+(`Schema::Encoder::enumChoices` reads `<enums>` since patch 238). Window test hooks: `TagBuilderWindow::setPages / setField /
 setType / loadFile(path, routeIndex)`.
 
 - `rfidtag.{h,cpp}`: page_x/page_y <-> 16 tag bytes <-> field values, via the
@@ -128,10 +127,8 @@ read by the simulator's pulse arithmetic (`SimPreview::speedsOf`). No real
 `@speed` frame and no log of a simulator run have been seen yet.
 
 All four phases are built. Open threads, none started:
-- `Schema::Encoder::enumChoices` finds no enum in kavach.xml (they sit in
-  `<enums>`), so Packet Maker and Field sweep never offer named choices.
-  Left alone on purpose (fixing it changes Packet Maker's defaults); ask
-  Abhinav.
+- ~~`Schema::Encoder::enumChoices` finds no enum in kavach.xml~~ — fixed in
+  patch 238; Packet Maker fields still start at 0.
 - The checks read `dir_corr_1` for nominal and `dir_corr_2` for reverse,
   as tags_sim does: not confirmed against firmware.
 - Nothing has been loaded into the RFID simulator itself yet.

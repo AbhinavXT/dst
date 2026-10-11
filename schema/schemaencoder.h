@@ -132,9 +132,11 @@ public:
     QVector<FieldInfo> structFields(const QString &structName) const;
     StructLayout       structLayout(const QString &structName) const;
 
-    // Enum helpers for the UI (exact-value labels only; range/formula enums
-    // fall back to the raw number, which is still a valid entry).
-    QVector<QPair<qint64, QString>> enumChoices(const QString &enumName) const;
+    // Enum helpers for the UI: exact-value maps, "%v" filled in. withRanges
+    // also lists every value of a from/to map (Field Sweep's "declared codes");
+    // a picker leaves them out and takes the raw number instead.
+    QVector<QPair<qint64, QString>> enumChoices(const QString &enumName,
+                                                bool withRanges = false) const;
 
     // Pack header + sub-packets into an msb-first body. Does NOT append MAC or
     // CRC. `header` supplies the flat field values (PKT_LENGTH included —

@@ -148,11 +148,19 @@ QWidget *PacketMakerDialog::makeEditor(const Schema::FieldInfo &f,
         if (!choices.isEmpty()) {
             auto *cb = new QComboBox(parent);
             cb->setEditable(true);                 // still allow a raw number
+            // Long labels stay in the popup; the box keeps a field's size.
+            cb->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+            cb->setMinimumContentsLength(20);
             for (const auto &c : choices) {
-                cb->addItem(QStringLiteral("%1 — %2").arg(c.first).arg(c.second),
+                // kavach.xml labels mostly lead with the value ("1 (Stand_By)").
+                const QString num = QString::number(c.first);
+                cb->addItem(c.second.startsWith(num) ? c.second
+                                                     : QStringLiteral("%1 — %2").arg(num, c.second),
                             QVariant(qlonglong(c.first)));
             }
-            cb->setCurrentIndex(0);
+            // Start at 0 like a plain field does, named if 0 is declared.
+            const int zero = cb->findData(QVariant(qlonglong(0)));
+            if (zero >= 0) { cb->setCurrentIndex(zero); } else { cb->setEditText(QStringLiteral("0")); }
             return cb;
         }
     }
