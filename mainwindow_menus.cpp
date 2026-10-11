@@ -110,6 +110,7 @@
 #include "dlrplayerdialog.h"
 #include "sessionkeydialog.h"
 #include "sessionkeystore.h"
+#include "nmslog.h"
 
 // tshark -i any -f "udp port 50002" -T fields -e data
 
@@ -521,6 +522,26 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     actCabIo->setToolTip(tr("The current tab's DIO logs as a timeline: every input / output that changes "
                             "(DMI buttons, cab forward / reverse, horn, traction cut-off, brake relays), under the mode"));
     connect(actCabIo, &QAction::triggered, this, &MainWindow::onActionCabIo);
+
+    // Session 247: every NMS packet as a table row, exportable as CSV / .xlsx.
+    const struct { NmsLog::Kind kind; const char *text, *name, *tip; } nmsLogs[] = {
+        { NmsLog::Kind::Health, QT_TR_NOOP("&NMS health log…"), "actNmsHealthLog",
+          QT_TR_NOOP("Every @nmshlth packet of the current tab as a row, one column per health event; "
+                     "follows the tab; export CSV or Excel") },
+        { NmsLog::Kind::Fault, QT_TR_NOOP("NMS f&ault log…"), "actNmsFaultLog",
+          QT_TR_NOOP("Every @nmsflt packet of the current tab as a row: the reporting subsystem and each fault; "
+                     "follows the tab; export CSV or Excel") },
+        { NmsLog::Kind::Rssi, QT_TR_NOOP("NMS &RSSI log…"), "actNmsRssiLog",
+          QT_TR_NOOP("Every @nmsrssi packet of the current tab as a row: each radio's RSSI and reference tags; "
+                     "follows the tab; export CSV or Excel") },
+    };
+    for (const auto &n : nmsLogs) {
+        QAction *a = equipmentMenu->addAction(tr(n.text));
+        a->setObjectName(QLatin1String(n.name));
+        a->setToolTip(tr(n.tip));
+        const int kind = int(n.kind);
+        connect(a, &QAction::triggered, this, [this, kind]() { onActionNmsLog(kind); });
+    }
 
     // Session 97: one incident, read in one pass.
     QAction *actIncidentReport = reportsMenu->addAction(tr("&Incident report…"));

@@ -11,6 +11,65 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-247"></a>
+## Session 247 — NMS health, fault and RSSI logs
+
+Three new entries in **Tools ▸ Monitor ▸ Equipment**: *NMS health log…*,
+*NMS fault log…* and *NMS RSSI log…*. Each opens a window for the current
+tab that lists every packet of that type as one table row:
+
+| Window | Packet | Columns (after PC time, RTC, capture seq) |
+|---|---|---|
+| NMS health log | `@nmshlth` | one per health event, in the order first seen; a packet that did not carry an event leaves its cell empty |
+| NMS fault log | `@nmsflt` | `reporting_subsystem`, `fault_count`, then `fault[n] module / code_type / fault_id` for as many faults as any packet carried |
+| NMS RSSI log | `@nmsrssi` | its fixed fields |
+
+Every window then has the capture line's loco/ctrl, length, CRC result and
+NMS header columns, and the frame in hex last. Values appear as the decoder
+shows them (`1  (OK)`, `34 (VCC Card-1)`).
+
+What the operator sees: the table starts with every packet the tab already
+holds, then follows the tab, adding rows as packets arrive (live, serial,
+or a log loaded into the tab). A packet that brings a new column widens the
+table. Clearing the tab rebuilds the table, and rows the tab trims at
+capacity stay in the window. *Follow new packets* scrolls to each new row.
+Double-click a row to open that frame in its tab. **Export CSV…** writes
+UTF-8 with a BOM so Excel opens it cleanly, with RFC 4180 quoting.
+**Export Excel (.xlsx)…** writes one sheet named after the packet type,
+with whole numbers as numbers and codes such as `0X20` kept as text.
+Closing the tab leaves the window open with a warning that no more packets
+will be added.
+
+### Files
+
+New: `nmslog.h/.cpp` (the table: columns, rows, CSV, sheets),
+`nmslogwindow.h/.cpp` (the window and its table model), both in
+`dlcore.pri`. Changed: `mainwindow.h`, `mainwindow_menus.cpp` (the three
+actions), `mainwindow_tools.cpp` (`onActionNmsLog`), `tests/tests.pro`,
+`tests/menuaudit_main.cpp`.
+
+### Tests
+
+`tests/test_session247.cpp` (40 checks) uses real frames from `replay/`:
+`loco_1_2_27062026_170159.cap` for `@nmshlth` and `@nmsrssi`, and
+`loco_2_1_29062026_134128.cap` for `@nmsflt` (5 faults, then 1). The checks
+cover:
+- one row per packet line, and other packet types ignored
+- column order and the decoded values of the first rows
+- the hex column matching the capture line
+- CSV quoting, and the .xlsx round trip with its number/text typing
+- the window following the tab, widening on new columns, rebuilding on
+  clear, double-click jump, and saving to files
+
+Menu audit: all three entries are in Monitor ▸ Equipment.
+`./verify.sh` green on macOS (Qt 6.11.2): 13 validators, `dltests` 291
+suites / 7659 checks / 0 failed, menu audit (182 ok), smoke. Not tested
+here: Qt 5.15 / Windows (CI's MSVC job builds it after the push), and the
+window with a live serial or UDP feed (the test feeds the tab's model
+directly).
+
+---
+
 <a id="session-246"></a>
 ## Session 246 — Tools ▸ Monitor in four groups
 

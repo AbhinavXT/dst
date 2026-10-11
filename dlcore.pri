@@ -88,6 +88,8 @@ SOURCES += \
     $$PWD/missionreport.cpp \
     $$PWD/radiohealth.cpp \
     $$PWD/radiohealthwindow.cpp \
+    $$PWD/nmslog.cpp \
+    $$PWD/nmslogwindow.cpp \
     $$PWD/odometry.cpp \
     $$PWD/odometrywindow.cpp \
     $$PWD/radiolinks.cpp \
@@ -247,6 +249,8 @@ HEADERS += \
     $$PWD/missionreport.h \
     $$PWD/radiohealth.h \
     $$PWD/radiohealthwindow.h \
+    $$PWD/nmslog.h \
+    $$PWD/nmslogwindow.h \
     $$PWD/odometry.h \
     $$PWD/odometrywindow.h \
     $$PWD/radiolinks.h \

@@ -150,6 +150,7 @@ private slots:
     void onActionOdometry();
     void onActionFleetSummary();
     void onActionFaultTimeline();
+    void onActionNmsLog(int kind);   // Tools → Monitor → Equipment → NMS … log (session 247); NmsLog::Kind
     void onActionCabIo();     // Tools → Monitor → Equipment → Cab inputs and outputs… (session 176)
     void onActionIncidentReport(); // Tools → Monitor → Reports → Incident report… (session 97)
     void onActionTwoLocoView();    // Tools → Monitor → Running → Two-loco view… (session 98)

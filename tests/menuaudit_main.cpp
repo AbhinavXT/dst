@@ -377,6 +377,10 @@ int main(int argc, char **argv) {
         CHECK(allThere && total == 19, "every former Monitor entry is in its group (19)");
     }
     CHECK(monLive && findAction(monLive, "Live Loco Console"), "Monitor > Live > Live Loco Console");
+    // Session 247: the three NMS packet logs.
+    CHECK(monEquipment && findAction(monEquipment, "NMS health log")
+              && findAction(monEquipment, "NMS fault log") && findAction(monEquipment, "NMS RSSI log"),
+          "Monitor > Equipment > NMS health / fault / RSSI log");
 
     // View > Theme: every theme, exactly one ticked, and the toggle.
     {

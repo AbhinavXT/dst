@@ -98,6 +98,7 @@
 #endif
 #include "runreportwindow.h"
 #include "radiohealthwindow.h"
+#include "nmslogwindow.h"
 #include "odometrywindow.h"
 #include "fleetwindow.h"
 #include "faulttimelinewindow.h"
@@ -566,6 +567,22 @@ void MainWindow::onActionCabIo()
     QString name = m_tabs.value(key).friendlyName;
     auto *w = new IoTimelineWindow(model, key, name.isEmpty() ? key : name, this);
     connect(w, &IoTimelineWindow::jumpRequested, this, &MainWindow::jumpToEntry);
+    w->show();
+    w->raise();
+}
+
+// Session 247: one table per NMS packet type, following the tab.
+void MainWindow::onActionNmsLog(int kind)
+{
+    const QString key = currentTabKey();
+    LogModel *model = key.isEmpty() ? nullptr : m_dispatcher->modelForKey(key);
+    if (!model) {
+        notify(NoteLevel::Info, tr("Select a loco's tab first."));
+        return;
+    }
+    QString name = m_tabs.value(key).friendlyName;
+    auto *w = new NmsLogWindow(static_cast<NmsLog::Kind>(kind), model, key, name.isEmpty() ? key : name, this);
+    connect(w, &NmsLogWindow::jumpRequested, this, &MainWindow::jumpToEntry);
     w->show();
     w->raise();
 }
