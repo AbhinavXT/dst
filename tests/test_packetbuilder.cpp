@@ -136,11 +136,14 @@ TEST_SUITE(packetbuilder)
         CHECK(r.ok, "TSR with zero repeat rows builds (repeat now supported)");
     }
 
-    // ---- a packet whose header uses unsupported grammar is refused --------
+    // ---- a packet-level <repeat> builds (session 244) ----------------------
     {
-        // DOP1 is a <repeat> of pins — header-level unsupported grammar.
-        const PacketBuilder::Result r = pb.build("dop1", {}, {}, key);
-        CHECK(!r.ok, "dop1 refused (repeat header)");
+        // DOP1 is 16 fixed rows of pins; it was refused until session 244.
+        QHash<QString, qint64> h;
+        h["pin[3].output"] = 1;
+        const PacketBuilder::Result r = pb.build("dop1", h, {}, key);
+        CHECK(r.ok && r.frame.size() == 16 && quint8(r.frame[3]) == 0x10,
+              "dop1 builds: 16 pin bytes, pin 3's output bit set");
     }
 
     // ---- byte-identical to a REAL received frame ------------------------

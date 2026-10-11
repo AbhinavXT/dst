@@ -20,7 +20,8 @@ bool binaryDigits(const QString &s)
 
 bool settable(const Schema::FieldInfo &fi)
 {
-    return !fi.isPad && !fi.isCrc && fi.bits > 0 && fi.name != QLatin1String("PKT_LENGTH");
+    return !fi.isPad && !fi.isCrc && fi.bits > 0 && fi.type.isEmpty()   // typed: session 244
+           && fi.name != QLatin1String("PKT_LENGTH");
 }
 
 } // namespace

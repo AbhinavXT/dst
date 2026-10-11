@@ -11,6 +11,93 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-244"></a>
+## Session 244 — the encoder writes every packet in kavach.xml
+
+Item 2 of the Packet Maker list; Abhinav chose "all of them". Eight packet
+types were refused by name. All of them build now:
+
+| Packet | What it needed |
+|---|---|
+| DOP1, DOP2 | packet-level `<repeat>` (16 fixed pin rows) |
+| NMSFLT | packet-level `<repeat>` counted by `fault_count` |
+| NMSHLTH | `<eventstream>`: a count, then (id, value) records whose width comes from the event table |
+| ANALOG | typed `float` fields |
+| LINFO | typed `float` and `char[N]` fields |
+| UBA | typed `double` fields and a `<repeat>` of them |
+| SOS snapshot | `<repeat>`s inside the version `<when>` branches |
+
+### How it is written
+
+- **Typed fields** are written as `Decoder::readTyped` reads them: float as
+  4 bytes IEEE-754, double as low word then high word, char as one byte per
+  character. The value behind a float/double is its raw bit pattern; the
+  Packet Maker's box shows and takes a decimal number. A `char[40]` is five
+  8-byte text boxes (`name`, `name#2`, … as 71-bit flags are split).
+- **A packet-level repeat** is flattened into the form as `name[i].field`.
+  A literal count is that many rows. A counted one gives `cmax` rows, row
+  *i* written only when `count > i`, so the operator sets the count and
+  fills that many rows. A count outside `cmin..cmax` is refused by name,
+  because the decoder would read it as no rows at all.
+- **An eventstream** becomes `event_count` plus `event[i].id` /
+  `event[i].value`, one row per event the table knows (57). Each value is as
+  wide as its id's table entry; an unknown id is 1 byte, as the decoder
+  reads it.
+- **Still refused**, by name: a repeat inside a repeat, and a `<when>`
+  inside a packet-level repeat (it would need the row's own scope). Nothing
+  in kavach.xml uses either.
+- Typed fields are left out of Vary per send, Field Sweep and the Packet
+  Matrix: stepping a float's raw bits is not stepping the number.
+
+### Found on the way
+
+- **LINFO carries `speed_margin_warning`, `_nsb`, `_fsb` and `_eb` twice**
+  (bytes 28–31, and again in its national values at 357–360). Keyed by name,
+  the second copy overwrote the first, so no LINFO read back. A name used
+  twice **under the same condition** now gets a numbered key,
+  `speed_margin_warning (2)`. Copies in exclusive branches (RFID's `type==9`
+  / `type==10`, SOS's version 1 / 2) are never on the wire together and
+  keep one name. The same fix applies to **CCSYS**, whose two LCU health
+  groups both carry `v33`, `v12`, … (its keys for the second group are now
+  `v33 (2)` …). Today's CCSYS frames still don't rebuild byte for byte: 8
+  bytes from byte 40 differ (its embedded CRCs). That is the known issue noted in
+  session 172, not settled here.
+- **LINFO comes in two lengths.** The June captures are 370 B (older
+  firmware), October's 371 B, which is what the schema describes. The
+  370-byte ones are refused as too short rather than rebuilt into a 371-byte
+  frame that would say something else.
+
+### Files
+
+`schema/schemaencoder.{h,cpp}` (`FieldInfo::type`, `eventTable`,
+`PacketInfo::headerRepeats`, event tables loaded, flattening, write and read,
+count checks, duplicate names), `packetmakerdialog.cpp` (float/double/char
+editors), `fieldsweepdialog.cpp`, `packetmatrix.cpp`; tests
+`test_session244.cpp` (new), `test_session92.cpp`, `test_packetbuilder.cpp`,
+`test_roundtrip.cpp` (the "not encodable" path now uses a schema with a
+nested repeat), `tests.pro`.
+
+### Tests
+
+`session244` (35 checks). **The corpus:** every frame in replay/ of DOP1,
+DOP2, ANALOG top and bottom, NMSFLT, NMSHLTH and the 371-byte LINFO (up to
+2000 a type) is parsed and rebuilt byte for byte by `RoundTrip::check`; SOS
+and UBA, which have no real capture yet, on their synthetic fixtures; every
+370-byte LINFO is refused as short. **Shapes:** UBA's 2 + 9×6
+doubles; a 40-char array in five pieces; a counted row gated on its count.
+**Values:** 1.5 written as `00 00 C0 3F`; `fault_count` 64 refused; two
+fault rows written and a third left out; an eventstream's 1-byte and
+unknown-id values. **The form:** a real LINFO loaded into the Packet Maker
+shows its float as a number and its text in 8-character boxes, has a box
+for `speed_margin_warning (2)`, rebuilds byte for byte, and an edited
+`mr_pressure` of 2.5 decodes as 2.5.
+
+Gate: Qt 5.15 and Qt 6.11 green (290 suites, 7619 checks, 178 menu-audit
+checks, validators, smoke). Not checked: sending any of these to real
+equipment; a real @sos or @uba capture.
+
+---
+
 <a id="session-243"></a>
 ## Session 243 — Packet Maker: reply watch
 

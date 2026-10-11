@@ -178,8 +178,8 @@ TEST_SUITE(session92)
             CHECK(builtCrcOk == total, QByteArray("@") + type.toLatin1() + ": every rebuilt frame's CRC passes");
         }
         const Schema::PacketInfo linfo = enc.packet(QStringLiteral("linfo"));
-        CHECK(!linfo.unsupported.isEmpty() && linfo.unsupported.join(QLatin1Char(' ')).contains(QLatin1String("typed")),
-              "LINFO (float and text fields) is still refused, and says why");
+        // Session 244: float and text fields are written now (session244 has the corpus).
+        CHECK(linfo.ok && linfo.unsupported.isEmpty(), "LINFO (float and text fields) is buildable");
 
         // Through the packet maker's builder: a real @dmi rebuilt from its fields.
         if (!frames.value(QStringLiteral("dmi")).isEmpty()) {

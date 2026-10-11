@@ -301,7 +301,7 @@ static bool parseStruct(BitReader &br, const QDomElement &st,
 bool Encoder::load(const QString &xmlPath, QString *err)
 {
     m_loaded = false;
-    m_structs.clear(); m_enums.clear(); m_packets.clear();
+    m_structs.clear(); m_enums.clear(); m_packets.clear(); m_eventTables.clear();
 
     QFile f(xmlPath);
     if (!f.open(QIODevice::ReadOnly)) {
@@ -321,6 +321,19 @@ bool Encoder::load(const QString &xmlPath, QString *err)
         if (t == "packet")      { m_packets.push_back(e); }
         else if (t == "struct") { m_structs.insert(e.attribute("name"), e); }
         else if (t == "enum")   { m_enums.insert(e.attribute("name"), e); }
+        else if (t == "eventtables") {
+            for (QDomElement et = e.firstChildElement("eventtable"); !et.isNull();
+                 et = et.nextSiblingElement("eventtable")) {
+                QHash<int, EventDef> tbl;
+                for (QDomElement ev = et.firstChildElement("event"); !ev.isNull();
+                     ev = ev.nextSiblingElement("event")) {
+                    tbl.insert(ev.attribute("id").toInt(),
+                               EventDef{ ev.attribute("bytes", "1").toInt(),
+                                         ev.attribute("signed") == QLatin1String("true") });
+                }
+                m_eventTables.insert(et.attribute("name"), tbl);
+            }
+        }
         else if (t == "enums") {
             // kavach.xml nests its enums here, as the decoder reads them.
             for (QDomElement n = e.firstChildElement("enum"); !n.isNull();
@@ -358,32 +371,60 @@ QDomElement Encoder::packetElem(const QString &captype) const
     return QDomElement();
 }
 
-QVector<FieldInfo> Encoder::fieldsOf(const QDomElement &parent,
-                                     QStringList *unsupported)
+QVector<FieldInfo> Encoder::fieldsOf(const QDomElement &parent, QStringList *unsupported,
+                                     QVector<RepeatInfo> *repeats) const
 {
     QVector<FieldInfo> out;
-    collectFields(parent, QString(), out, unsupported);
+    collectFields(parent, QString(), out, unsupported, repeats);
     return out;
 }
 
+int Encoder::eventBytes(const QString &table, qint64 id, bool *isSigned) const
+{
+    const auto tbl = m_eventTables.value(table);
+    const auto it = tbl.constFind(int(id));
+    if (isSigned) { *isSigned = it != tbl.constEnd() && it->isSigned; }
+    return it != tbl.constEnd() ? it->bytes : 1;   // unknown id: 1 byte, as the decoder
+}
+
 void Encoder::collectFields(const QDomElement &parent, const QString &whenCtx,
-                            QVector<FieldInfo> &out, QStringList *unsupported)
+                            QVector<FieldInfo> &out, QStringList *unsupported,
+                            QVector<RepeatInfo> *repeats) const
 {
     auto combine = [](const QString &a, const QString &b) -> QString {
         if (a.isEmpty()) { return b; }
         if (b.isEmpty()) { return a; }
         return a + QStringLiteral(" && ") + b;   // condOk splits on &&
     };
+    auto refuse = [unsupported](const QString &what) {
+        if (unsupported && !unsupported->contains(what)) { *unsupported << what; }
+    };
 
     for (QDomElement e = parent.firstChildElement(); !e.isNull();
          e = e.nextSiblingElement()) {
         const QString t = e.tagName();
         if (t == "field" && e.hasAttribute("type")) {
-            // float / double / char arrays (ANALOG, LINFO, UBA): not an
-            // integer the form can take, so the packet is refused, named.
-            if (unsupported) {
-                const QString what = QStringLiteral("typed %1 field").arg(e.attribute("type"));
-                if (!unsupported->contains(what)) { *unsupported << what; }
+            // Session 244: float / double / char arrays (ANALOG, LINFO, UBA),
+            // read by Decoder::readTyped; written as its exact inverse.
+            const QString ty = e.attribute("type");
+            const QString nm = e.attribute("name");
+            const QString when = combine(whenCtx, e.attribute("when"));
+            if (ty == QLatin1String("float") || ty == QLatin1String("double")) {
+                FieldInfo fi;
+                fi.name = nm; fi.type = ty; fi.when = when;
+                fi.bits = ty == QLatin1String("float") ? 32 : 64;
+                out.push_back(fi);
+            } else if (ty == QLatin1String("char") && e.attribute("count").toInt() > 0) {
+                const int n = e.attribute("count").toInt();
+                for (int done = 0, k = 1; done < n; done += 8, ++k) {
+                    FieldInfo fi;
+                    fi.name = k == 1 ? nm : QStringLiteral("%1#%2").arg(nm).arg(k);
+                    fi.type = ty; fi.when = when;
+                    fi.bits = 8 * qMin(8, n - done);
+                    out.push_back(fi);
+                }
+            } else {
+                refuse(QStringLiteral("typed %1 field").arg(ty));
             }
         } else if (t == "field") {
             FieldInfo fi;
@@ -393,6 +434,77 @@ void Encoder::collectFields(const QDomElement &parent, const QString &whenCtx,
             fi.enumName = e.attribute("enum");
             fi.when     = combine(whenCtx, e.attribute("when"));
             out.push_back(fi);
+        } else if (t == "repeat" && repeats) {
+            // Session 244: a packet-level repeat. Rows are flattened into the
+            // header as "name[i].field": a literal count is that many rows; a
+            // count field gives cmax rows, row i present when "count > i" —
+            // the operator sets the count, as the decoder reads it.
+            RepeatInfo ri;
+            ri.name = e.attribute("name");
+            ri.cmin = e.attribute("cmin", "0").toInt();
+            ri.cmax = e.attribute("cmax", "63").toInt();
+            ri.when = whenCtx;
+            const QString cattr = e.attribute("count");
+            bool isNum = false;
+            const int lit = cattr.toInt(&isNum);
+            if (!isNum) { ri.countField = cattr; }
+            const bool expand = e.attribute("expand") == QLatin1String("true");
+            QVector<FieldInfo> tmpl;
+            collectFields(e, QString(), tmpl, unsupported, nullptr);
+            for (const FieldInfo &f : tmpl) {
+                // A row-local condition would need the row's own scope; the
+                // decoder has one, this flattening does not. Refuse it.
+                if (!f.when.isEmpty()) { refuse(QStringLiteral("<when> inside a packet-level repeat")); }
+                // expand="true" rows are read field by field: pads are not consumed.
+                if (expand && f.isPad) { continue; }
+                ri.fields.push_back(f);
+            }
+            const int rows = isNum ? lit : ri.cmax;
+            for (int i = 0; i < rows; ++i) {
+                const QString rowWhen = isNum ? QString() : QStringLiteral("%1 > %2").arg(cattr).arg(i);
+                for (FieldInfo f : ri.fields) {
+                    if (!f.name.isEmpty()) { f.name = QStringLiteral("%1[%2].%3").arg(ri.name).arg(i).arg(f.name); }
+                    f.when = combine(whenCtx, rowWhen);
+                    out.push_back(f);
+                }
+            }
+            repeats->push_back(ri);
+        } else if (t == "eventstream" && repeats) {
+            // Session 244: NMSHLTH. A count, then (id, value) records whose
+            // value width the event table gives per id.
+            const QString table = e.attribute("table");
+            if (!m_eventTables.contains(table)) {
+                refuse(QStringLiteral("eventstream without its table"));
+                continue;
+            }
+            const auto tbl = m_eventTables.value(table);
+            int widest = 1;
+            for (const EventDef &d : tbl) { widest = qMax(widest, d.bytes); }
+            RepeatInfo ri;
+            ri.name = e.attribute("name");
+            ri.countField = ri.name + QStringLiteral("_count");
+            ri.cmax = tbl.size();          // the form holds one row per known event
+            ri.when = whenCtx;
+            FieldInfo cnt;
+            cnt.name = ri.countField;
+            cnt.bits = e.attribute("count_bits", "8").toInt();
+            cnt.when = whenCtx;
+            out.push_back(cnt);
+            for (int i = 0; i < ri.cmax; ++i) {
+                const QString rowWhen = combine(whenCtx, QStringLiteral("%1 > %2").arg(ri.countField).arg(i));
+                FieldInfo id;
+                id.name = QStringLiteral("%1[%2].id").arg(ri.name).arg(i);
+                id.bits = e.attribute("id_bits", "16").toInt();
+                id.when = rowWhen;
+                FieldInfo val;
+                val.name = QStringLiteral("%1[%2].value").arg(ri.name).arg(i);
+                val.bits = widest * 8;
+                val.eventTable = table;
+                val.eventIdField = id.name;
+                val.when = rowWhen;
+                out << id << val;
+            }
+            repeats->push_back(ri);
         } else if (t == "flags") {
             // A flags block is N raw bits; the operator supplies the bitmap.
             // order="lsb" only affects how the decoder labels individual bits.
@@ -429,9 +541,9 @@ void Encoder::collectFields(const QDomElement &parent, const QString &whenCtx,
             fi.when = whenCtx;
             out.push_back(fi);
         } else if (t == "group") {
-            collectFields(e, whenCtx, out, unsupported);          // inline the group's fields
+            collectFields(e, whenCtx, out, unsupported, repeats);   // inline the group's fields
         } else if (t == "when") {
-            collectFields(e, combine(whenCtx, e.attribute("test")), out, unsupported);
+            collectFields(e, combine(whenCtx, e.attribute("test")), out, unsupported, repeats);
         } else if (t == "note" || t == "row") {
             // display-only; emits no bits. <row> renders other fields'
             // captured ids through a template — the decoder consumes
@@ -451,8 +563,9 @@ void Encoder::collectFields(const QDomElement &parent, const QString &whenCtx,
             break;                              // handled by the caller
         } else if (unsupported) {
             // Anything else emits bits this encoder does not know how to
-            // write — `repeat` (DOP, NMSFLT) and `eventstream` (NMSHLTH)
-            // today, whatever is added tomorrow. Skipping it silently is the
+            // write — a <repeat> inside a repeat today (packet-level repeats
+            // and eventstreams are flattened since session 244), whatever is
+            // added tomorrow. Skipping it silently is the
             // dangerous option: the field walk would simply be short, and
             // every later field would be written at the wrong bit offset
             // while still producing a frame that decodes and CRCs. Name it
@@ -473,7 +586,22 @@ PacketInfo Encoder::packet(const QString &captype) const
     pi.wire = p.attribute("wire");
     pi.crc  = p.attribute("crc");
     pi.bodyOffsetBits = p.attribute("body_offset").toInt();
-    pi.header = fieldsOf(p, &pi.unsupported);
+    pi.header = fieldsOf(p, &pi.unsupported, &pi.headerRepeats);
+    // Session 244: a name used twice in one packet under the same condition
+    // (LINFO's four speed_margin_* at byte 28 and again in its national
+    // values; CCSYS's two LCU health groups) is two values on the wire, not
+    // one: the second is "name (2)". Keyed by name alone, the second
+    // overwrote the first and the frame did not read back. Copies in
+    // exclusive branches (RFID type==9 / type==10, SOS version 1 / 2) are
+    // never on the wire together and keep sharing the name.
+    QHash<QString, QStringList> whensOf;
+    for (FieldInfo &f : pi.header) {
+        if (f.isPad || f.isCrc || f.name.isEmpty()) { continue; }
+        QStringList &w = whensOf[f.name];
+        const bool clash = w.contains(f.when);
+        w << f.when;
+        if (clash) { f.name = QStringLiteral("%1 (%2)").arg(f.name).arg(w.size()); }
+    }
 
     // Until session 92 the writer was msb-first only. An lsb-first packet (DMI, LINFO, RFID,
     // CCSYS, DLSYS) would be packed in the wrong bit order and the result
@@ -594,6 +722,18 @@ QByteArray Encoder::encodeBody(const QString &captype,
         return {};
     }
 
+    // Session 244: a count outside its range is read by the decoder as no
+    // rows at all, so the frame would not say what the form does. Refuse.
+    for (const RepeatInfo &ri : pi.headerRepeats) {
+        if (ri.countField.isEmpty() || !condOk(ri.when, header)) { continue; }
+        const qint64 n = header.value(ri.countField, 0);
+        if (n < ri.cmin || n > ri.cmax) {
+            if (err) { *err = QStringLiteral("%1 = %2, outside %3..%4 for '%5'")
+                                  .arg(ri.countField).arg(n).arg(ri.cmin).arg(ri.cmax).arg(ri.name); }
+            return {};
+        }
+    }
+
     BitWriter bw;
     bw.lsb = (pi.wire == QLatin1String("lsb-first"));
     struct CrcSlot { int pos; FieldInfo f; };
@@ -616,10 +756,18 @@ QByteArray Encoder::encodeBody(const QString &captype,
         if (f.isPad && f.fillFrameLen) { lenSlots.push_back({ bw.nbits, f.bits }); bw.put(0, f.bits); continue; }
         if (f.isPad) { bw.put(f.fill, f.bits); continue; }
         if (!condOk(f.when, header)) { continue; }
-        const quint64 masked = (f.bits >= 64)
-            ? quint64(header.value(f.name, 0))
-            : (quint64(header.value(f.name, 0)) & ((quint64(1) << f.bits) - 1));
-        bw.put(masked, f.bits);
+        // Session 244: typed fields and event values, as Decoder::readTyped
+        // and the eventstream walk read them.
+        const quint64 u = quint64(header.value(f.name, 0));
+        if (f.type == QLatin1String("float")) { bw.put(u & 0xFFFFFFFFu, 32); continue; }
+        if (f.type == QLatin1String("double")) { bw.put(u & 0xFFFFFFFFu, 32); bw.put(u >> 32, 32); continue; }
+        if (f.type == QLatin1String("char")) {
+            for (int k = 0; k < f.bits / 8; ++k) { bw.put((u >> (8 * k)) & 0xFF, 8); }
+            continue;
+        }
+        const int bits = f.eventTable.isEmpty()
+            ? f.bits : 8 * eventBytes(f.eventTable, header.value(f.eventIdField, 0));
+        bw.put(bits >= 64 ? u : (u & ((quint64(1) << bits) - 1)), bits);
     }
 
     // Sub-packets: each starts byte-aligned, [type][len][struct...], padded to
@@ -700,8 +848,38 @@ ParsedPacket Encoder::parseBody(const QString &captype, const QByteArray &frame)
         if (f.isPad && f.bits < 0) { br.alignByte(); continue; }
         if (f.isPad)               { br.take(f.bits); continue; }
         if (!condOk(f.when, pp.header)) { continue; }
+        if (f.type == QLatin1String("float")) { pp.header.insert(f.name, qint64(br.take(32))); continue; }
+        if (f.type == QLatin1String("double")) {
+            const quint64 lo = br.take(32);
+            const quint64 hi = br.take(32);
+            pp.header.insert(f.name, qint64((hi << 32) | lo));
+            continue;
+        }
+        if (f.type == QLatin1String("char")) {
+            quint64 u = 0;
+            for (int k = 0; k < f.bits / 8; ++k) { u |= br.take(8) << (8 * k); }
+            pp.header.insert(f.name, qint64(u));
+            continue;
+        }
+        if (!f.eventTable.isEmpty()) {
+            bool sgn = false;
+            const int bits = 8 * eventBytes(f.eventTable, pp.header.value(f.eventIdField, 0), &sgn);
+            pp.header.insert(f.name, sgn ? br.takeSigned(bits) : qint64(br.take(bits)));
+            continue;
+        }
         pp.header.insert(f.name, f.isSigned ? br.takeSigned(f.bits)
                                             : qint64(br.take(f.bits)));
+        // Session 244: a count the flattened rows cannot hold is refused by
+        // name, before the walk reads the rest as if it were rows.
+        for (const RepeatInfo &ri : pi.headerRepeats) {
+            if (ri.countField != f.name) { continue; }
+            const qint64 n = pp.header.value(f.name);
+            if (n < ri.cmin || n > ri.cmax) {
+                pp.error = QStringLiteral("%1 = %2, outside %3..%4 for '%5'")
+                               .arg(f.name).arg(n).arg(ri.cmin).arg(ri.cmax).arg(ri.name);
+                return pp;
+            }
+        }
     }
     if (br.over) {
         pp.error = QStringLiteral("buffer is too short for the %1 header (%2 B given)")

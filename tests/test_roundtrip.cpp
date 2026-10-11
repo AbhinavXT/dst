@@ -57,6 +57,26 @@ CaptureLine line(const QString &s) { return CaptureDecoder::parseLine(s); }
 
 }  // namespace
 
+
+// Session 244: nothing in kavach.xml is refused any more, so the "not
+// encodable" path is exercised on a schema with a repeat inside a repeat.
+static const Schema::Encoder &nestedEncoder()
+{
+    static QTemporaryDir tmp;
+    static Schema::Encoder enc;
+    if (!enc.isLoaded()) {
+        QFile x(tmp.filePath(QStringLiteral("nested.xml")));
+        x.open(QIODevice::WriteOnly);
+        x.write("<schema><packet name=\"N\" match=\"captype==nested\" wire=\"lsb-first\">"
+                "<repeat name=\"a\" count=\"2\"><repeat name=\"b\" count=\"2\"><field name=\"v\" bits=\"8\"/>"
+                "</repeat></repeat></packet></schema>");
+        x.close();
+        enc.load(x.fileName());
+    }
+    return enc;
+}
+static const char kNested[] = "@nested_1_1 2026-06-26T16:29:16 1 00 00 00 00";
+
 TEST_SUITE(roundtrip)
 {
     Schema::Encoder enc;
@@ -135,9 +155,14 @@ TEST_SUITE(roundtrip)
 
     // ---- outcomes that are about the schema, not the frame -----------------
     {
+        // Session 244: dop1's repeat is written now, and reproduced.
         const CaptureLine c = line(kDop1);
-        const Result r = check(enc, c.typeToken, c.bytes);
-        CHECK(r.outcome == Outcome::NotEncodable, "dop1 uses a repeat the encoder can't emit");
+        CHECK(check(enc, c.typeToken, c.bytes).outcome == Outcome::Identical, "dop1 is reproduced byte for byte");
+
+        // A repeat inside a repeat is still grammar the encoder can't emit.
+        CHECK(nestedEncoder().isLoaded(), "fixture: a schema with a nested repeat");
+        const Result r = check(nestedEncoder(), QStringLiteral("nested"), QByteArray(4, '\0'));
+        CHECK(r.outcome == Outcome::NotEncodable, "a nested repeat is not encodable");
         CHECK(r.detail.contains(QLatin1String("repeat")), "and says so");
         CHECK(!isFrameVerdict(r.outcome),
               "'not encodable' is not a verdict on this frame");
@@ -153,12 +178,12 @@ TEST_SUITE(roundtrip)
         CHECK(r.outcome != Outcome::NotEncodable, "and is no longer refused");
     }
     {
-        // NMSHLTH is a single <eventstream>, which the encoder has no writer
-        // for. It used to be skipped silently, leaving a zero-field packet
-        // that "parsed" every buffer and encoded to nothing.
+        // NMSHLTH is a single <eventstream>. Until session 244 it was refused
+        // (before that, skipped silently into a zero-field packet). Now a
+        // zero count reads as no events and is rebuilt as just the count.
         const Result r = check(enc, QStringLiteral("nmshlth"), QByteArray(40, '\0'));
-        CHECK(r.outcome == Outcome::NotEncodable,
-              "an eventstream packet is refused, not silently emptied");
+        CHECK(r.outcome == Outcome::Identical && r.bodyBytes == 1,
+              "an eventstream packet with no events: its count byte, reproduced");
     }
     {
         const Result r = check(enc, QStringLiteral("nosuchtype"), QByteArray(8, '\0'));
@@ -216,22 +241,22 @@ TEST_SUITE(roundtrip)
     {
         Report rep;
         const CaptureLine slrp = line(kSlrp);
-        const CaptureLine dop  = line(kDop1);
+        const CaptureLine dop  = line(kNested);
         rep.add(slrp, check(enc, slrp.typeToken, slrp.bytes), 4);
         rep.add(slrp, check(enc, slrp.typeToken, slrp.bytes), 4);
-        rep.add(dop,  check(enc, dop.typeToken,  dop.bytes),  4);
+        rep.add(dop,  check(nestedEncoder(), dop.typeToken, dop.bytes), 4);
 
         const Tally &s = rep.byType.value(QStringLiteral("slrp"));
         CHECK(s.frames == 2 && s.identical == 2, "both slrp frames counted as reproduced");
         CHECK(s.crcChecked == 2 && s.crcOk == 2, "and their CRCs were checked and passed");
         CHECK(s.samples.isEmpty(), "a reproduced frame is not kept as a sample");
 
-        const Tally &d = rep.byType.value(QStringLiteral("dop1"));
-        CHECK(d.notEncodable == 1, "the dop1 frame is counted as not encodable");
+        const Tally &d = rep.byType.value(QStringLiteral("nested"));
+        CHECK(d.notEncodable == 1, "the nested-repeat frame is counted as not encodable");
         CHECK(d.differs == 0, "and NOT as a frame that came back wrong");
         CHECK(d.answerable() == 0, "the question does not apply to it at all");
 
-        CHECK(rep.captypes() == QStringList({ "dop1", "slrp" }), "types come back sorted");
+        CHECK(rep.captypes() == QStringList({ "nested", "slrp" }), "types come back sorted");
         CHECK(rep.totalIdentical() == 2 && rep.totalAnswerable() == 2, "totals");
     }
 
@@ -263,15 +288,15 @@ TEST_SUITE(roundtrip)
         const CaptureLine dmi  = line(kDmi);
         rep.add(slrp, check(enc, slrp.typeToken, slrp.bytes), 4);
         rep.add(dmi,  check(enc, dmi.typeToken,  dmi.bytes),  4);
-        const CaptureLine dop1 = line(kDop1);   // still not encodable: a <repeat>
-        rep.add(dop1, check(enc, dop1.typeToken, dop1.bytes), 4);
+        const CaptureLine nested = line(kNested);   // not encodable: a repeat in a repeat
+        rep.add(nested, check(nestedEncoder(), nested.typeToken, nested.bytes), 4);
         const QString txt = rep.toText();
         CHECK(txt.contains(QLatin1String("slrp")) && txt.contains(QLatin1String("dmi")),
               "both types appear in the report");
         CHECK(txt.contains(QLatin1String("built into the binary")),
               "the report names the schema it used");
         CHECK(txt.contains(QLatin1String("not encodable")),
-              "and says outright that dop1 could not be built");
+              "and says outright that the nested-repeat packet could not be built");
         CHECK(txt.contains(QLatin1String("Reproduction is not correctness")),
               "the report states its own limit");
     }
@@ -331,9 +356,9 @@ TEST_SUITE(roundtrip)
         CHECK(done, "and emits its report");
         CHECK(got.filesScanned == 1, "one file read");
         CHECK(got.framesSeen == 3, "three capture frames in it");
-        CHECK(got.totalIdentical() == 2, "the two radio frames reproduce");
-        CHECK(got.byType.value(QStringLiteral("dop1")).notEncodable == 1,
-              "and dop1 is reported as not encodable");
+        CHECK(got.totalIdentical() == 3, "the two radio frames and dop1 reproduce (dop1 since session 244)");
+        CHECK(got.byType.value(QStringLiteral("dop1")).notEncodable == 0,
+              "dop1 is no longer reported as not encodable");
         CHECK(!got.cancelled, "an uninterrupted scan is not marked cancelled");
     }
     {
@@ -452,14 +477,23 @@ TEST_SUITE(roundtripwindow)
                   "slrp is shown as reproduced");
         }
         if (dopRow >= 0) {
-            // The distinction the whole report rests on: a type nothing can
-            // be built for shows a dash, not a zero. A zero in the
-            // "reproduced" column reads as a failed check.
-            CHECK(table->item(dopRow, 2)->text() == QString::fromUtf8("—"),
-                  "a not-encodable type shows no reproduction count");
-            CHECK(table->item(dopRow, 3)->text() == QLatin1String("0"),
-                  "and is not counted as a frame that came back wrong");
+            CHECK(table->item(dopRow, 2)->text() == QLatin1String("1"),
+                  "dop1 is shown as reproduced (encodable since session 244)");
         }
+
+        // The distinction the whole report rests on: a type nothing can be
+        // built for shows a dash, not a zero. A zero in the "reproduced"
+        // column reads as a failed check. Nothing in kavach.xml is refused
+        // since session 244, so the report comes from the nested-repeat schema.
+        RoundTrip::Report rep;
+        const CaptureLine n = CaptureDecoder::parseLine(QString::fromLatin1(kNested));
+        rep.add(n, RoundTrip::check(nestedEncoder(), n.typeToken, n.bytes), 4);
+        QMetaObject::invokeMethod(&win, "onFinished", Q_ARG(RoundTrip::Report, rep));
+        const int nRow = rowFor(table, QStringLiteral("nested"));
+        CHECK(nRow >= 0 && table->item(nRow, 2)->text() == QString::fromUtf8("—"),
+              "a not-encodable type shows no reproduction count");
+        CHECK(nRow >= 0 && table->item(nRow, 3)->text() == QLatin1String("0"),
+              "and is not counted as a frame that came back wrong");
 
         // Selecting a row must produce a detail pane that says something.
         table->selectRow(0);

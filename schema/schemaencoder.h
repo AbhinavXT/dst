@@ -8,12 +8,13 @@
 //  packet the decoder can read can also be built. This is the engine
 //  behind the Packet Maker.
 //
-//  Scope: the grammar SLRP (and the other radio packets) need —
-//    <field bits signed when enum format>, <pad>, and the
-//    <subpackets>/<case struct> + <struct> dispatch with per-field
-//    `when` gating. Groups / repeat / flags (used by ARP, DOP, LSRP
-//    health) are not emitted yet; packet() reports them so the caller
-//    can refuse rather than silently mis-build. Extending is additive.
+//  Scope: every packet in kavach.xml (session 244) — fields, pads,
+//    flags, groups, <when>, typed float/double/char fields, packet-level
+//    <repeat> and <eventstream> (flattened into rows), and the
+//    <subpackets>/<case struct> + <struct> dispatch with its repeats.
+//    Grammar it cannot write (a repeat inside a repeat, a row-local
+//    <when>) is reported by packet() so the caller refuses rather than
+//    silently mis-builds.
 //
 //  It does NOT append the CRC or the CBC-MAC and does NOT know the
 //  transport envelope — PacketBuilder owns assembly, because the CRC
@@ -50,6 +51,17 @@ struct FieldInfo {
     // fillFrameLen for <pad fill="frame_len"/>: the finished frame's size.
     quint64 fill = 0;
     bool    fillFrameLen = false;
+    // Session 244: a typed field. "float"/"double": the value is the raw
+    // IEEE-754 bit pattern (the form shows it as a number). "char": up to 8
+    // ASCII bytes of the array, first character in the low byte; a longer
+    // array is split into pieces "name", "name#2", ... as flags are.
+    QString type;
+    // Session 244: one value of an <eventstream> row. Its width is not fixed:
+    // it is the event table's size for the id in `eventIdField` (1 byte for
+    // an id the table does not know, as the decoder reads it). `bits` is the
+    // widest the table allows, for the form.
+    QString eventTable;
+    QString eventIdField;
 };
 
 struct CaseInfo { int type = 0; QString structName; };
@@ -62,6 +74,7 @@ struct RepeatInfo {
     QString countField;
     int     cmin = 0, cmax = 63;
     QVector<FieldInfo> fields;
+    QString when;          // session 244: packet level, the enclosing <when>
 };
 
 // A struct's editable shape for the UI: scalar fields the operator sets, plus
@@ -82,6 +95,10 @@ struct PacketInfo {
     QString crc;               // e.g. "anxc_jamcrc" ("" => none)
     int     bodyOffsetBits = 0;
     QVector<FieldInfo> header; // flat fields (and pads) before any subpackets
+    // Session 244: packet-level <repeat>s and <eventstream>s. Their rows are
+    // in `header`, flattened as "name[i].field" and each gated on
+    // "countField > i"; these carry the count ranges the encoder checks.
+    QVector<RepeatInfo> headerRepeats;
 
     bool    hasSub = false;
     int     subTypeBits = 0, subLenBits = 0, reserveTail = 8;
@@ -164,14 +181,20 @@ public:
 
 private:
     QDomElement packetElem(const QString &captype) const;
-    static QVector<FieldInfo> fieldsOf(const QDomElement &parent,
-                                       QStringList *unsupported);
-    static void collectFields(const QDomElement &parent, const QString &whenCtx,
-                              QVector<FieldInfo> &out, QStringList *unsupported);
+    QVector<FieldInfo> fieldsOf(const QDomElement &parent, QStringList *unsupported,
+                                QVector<RepeatInfo> *repeats = nullptr) const;
+    // `repeats` non-null: a packet's top level, where <repeat> and
+    // <eventstream> are flattened into rows (a struct's repeats are not).
+    void collectFields(const QDomElement &parent, const QString &whenCtx,
+                       QVector<FieldInfo> &out, QStringList *unsupported,
+                       QVector<RepeatInfo> *repeats) const;
+    int eventBytes(const QString &table, qint64 id, bool *isSigned = nullptr) const;
 
     QDomDocument m_doc;
     QHash<QString, QDomElement> m_structs;
     QHash<QString, QDomElement> m_enums;
+    struct EventDef { int bytes = 1; bool isSigned = false; };
+    QHash<QString, QHash<int, EventDef>> m_eventTables;   // session 244
     QVector<QDomElement>        m_packets;
     bool m_loaded = false;
 };

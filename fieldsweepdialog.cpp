@@ -290,7 +290,7 @@ void FieldSweepDialog::onPacketChanged()
     if (!pi.ok) { return; }
 
     for (const Schema::FieldInfo &f : pi.header) {
-        if (f.isPad) { continue; }
+        if (f.isPad || !f.type.isEmpty()) { continue; }   // typed (session 244): not a sweepable integer
         m_fieldBox->addItem(QStringLiteral("%1 (%2 bit%3)")
                                 .arg(f.name).arg(f.bits).arg(f.bits == 1 ? "" : "s"),
                             f.name);

@@ -48,6 +48,7 @@
 #include <QStringList>
 #include <QRegularExpression>
 #include <QSet>
+#include <cstring>
 #include <QTimer>
 #include <QFile>
 #include <QTextBlock>
@@ -150,6 +151,23 @@ QByteArray PacketMakerDialog::parseBuffer(const QString &text, QString *captypeH
 QWidget *PacketMakerDialog::makeEditor(const Schema::FieldInfo &f,
                                        const Schema::Encoder &enc, QWidget *parent)
 {
+    // Session 244: typed fields. The value behind the editor is the raw bit
+    // pattern (float/double) or the packed bytes (char); the box shows a
+    // number or text, and readEditor/writeEditor convert.
+    if (f.type == QLatin1String("float") || f.type == QLatin1String("double")) {
+        auto *le = new QLineEdit(QStringLiteral("0"), parent);
+        le->setProperty("pmType", f.type);
+        le->setToolTip(tr("IEEE-754 %1 — a decimal number").arg(f.type));
+        return le;
+    }
+    if (f.type == QLatin1String("char")) {
+        auto *le = new QLineEdit(parent);
+        le->setProperty("pmType", f.type);
+        le->setProperty("pmBytes", f.bits / 8);
+        le->setMaxLength(f.bits / 8);
+        le->setToolTip(tr("Up to %n ASCII character(s); the rest is zero", nullptr, f.bits / 8));
+        return le;
+    }
     if (!f.enumName.isEmpty()) {
         const auto choices = enc.enumChoices(f.enumName);
         if (!choices.isEmpty()) {
@@ -292,6 +310,23 @@ qint64 PacketMakerDialog::readEditor(QWidget *w)
         return ok ? v : (i >= 0 ? cb->itemData(i).toLongLong() : 0);
     }
     if (auto *le = qobject_cast<QLineEdit *>(w)) {
+        const QString type = le->property("pmType").toString();
+        if (type == QLatin1String("float")) {
+            const float f = float(le->text().trimmed().toDouble());
+            quint32 raw = 0; std::memcpy(&raw, &f, sizeof raw);
+            return qint64(raw);
+        }
+        if (type == QLatin1String("double")) {
+            const double d = le->text().trimmed().toDouble();
+            quint64 raw = 0; std::memcpy(&raw, &d, sizeof raw);
+            return qint64(raw);
+        }
+        if (type == QLatin1String("char")) {
+            const QByteArray b = le->text().toLatin1().left(le->property("pmBytes").toInt());
+            quint64 u = 0;
+            for (int k = 0; k < b.size(); ++k) { u |= quint64(uchar(b[k])) << (8 * k); }
+            return qint64(u);
+        }
         bool ok = false; const qint64 v = parseNum(le->text(), &ok); return ok ? v : 0;
     }
     return 0;
@@ -304,7 +339,26 @@ void PacketMakerDialog::writeEditor(QWidget *w, qint64 v)
         if (idx >= 0) { cb->setCurrentIndex(idx); } else { cb->setEditText(QString::number(v)); }
         return;
     }
-    if (auto *le = qobject_cast<QLineEdit *>(w)) { le->setText(QString::number(v)); }
+    if (auto *le = qobject_cast<QLineEdit *>(w)) {
+        const QString type = le->property("pmType").toString();
+        if (type == QLatin1String("float")) {
+            const quint32 raw = quint32(v); float f; std::memcpy(&f, &raw, sizeof f);
+            le->setText(QString::number(double(f), 'g', 9));
+        } else if (type == QLatin1String("double")) {
+            const quint64 raw = quint64(v); double d; std::memcpy(&d, &raw, sizeof d);
+            le->setText(QString::number(d, 'g', 17));
+        } else if (type == QLatin1String("char")) {
+            QByteArray b;
+            for (int k = 0; k < le->property("pmBytes").toInt(); ++k) {
+                const char c = char((quint64(v) >> (8 * k)) & 0xFF);
+                if (c == '\0') { break; }
+                b.append(c);
+            }
+            le->setText(QString::fromLatin1(b));
+        } else {
+            le->setText(QString::number(v));
+        }
+    }
 }
 
 // ---- construction ----------------------------------------------------------
@@ -1222,6 +1276,7 @@ void PacketMakerDialog::onVaryAdd()
         // PKT_LENGTH and MAC_CODE are recomputed by the builder on every
         // send, so varying them would be overwritten and misleading.
         if (f.isPad || f.isCrc) { continue; }
+        if (!f.type.isEmpty()) { continue; }   // a float's raw bits are not a number to step
         if (f.name == QLatin1String("PKT_LENGTH") || f.name == QLatin1String("MAC_CODE")) { continue; }
         fieldCombo->addItem(f.name);
     }
