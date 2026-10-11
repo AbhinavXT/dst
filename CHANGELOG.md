@@ -11,6 +11,64 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-215"></a>
+## Session 215 — the fleet summary
+
+Asked for by Abhinav (item 3 of his pick): point at a folder of logs, get
+one row per loco per day. Scope he picked: a sortable table in a window,
+exported as CSV.
+
+**What the operator sees:** Tools ▸ Monitor ▸ **Fleet summary…**: a folder
+(Browse…), Start (Stop while it runs), a progress bar "2 of 8", and one
+row per loco-day: files, hours, km, modes (time in each, as %), EB, FSB,
+the three commonest brake reasons, top km/h, faults raised, reject-rule
+frames, tags, missions, SLRP lost % (in contact), outages, odometry (the
+median error at the tags). Numbers sort as numbers. **Export CSV…** writes
+every column (the file names too). The window keeps painting while it
+reads: one group at a time on the GUI thread, Stop checked before each
+file and every 50,000 frames.
+
+**Where the numbers come from:** nothing new is measured. Each loco-day's
+files are read into a model of their own and given to what is already
+tested: `RunReport::summarise` (span, modes, brakes with reasons, top
+speed, faults, rejects, tags, missions), `RadioLinks` (214), `Odometry`
+(213); distance is the DMI (else LSRP) location's steps added up, steps
+over 500 m left out (relocations, SpeedDistance's rule).
+
+**Files read:** DLConsole `.log` (source from its header, time from its
+first column, to the ms) and `.cap` named `loco_<id>_<kvch>_…` (time from
+the @-line), in the folder and its subfolders. A file belongs to the day
+of its first frame. Other `.log` files are left out (the L1_V*/Fault_*
+logs in the 2026-10-08 folder are not DLConsole's). `.dlr` is not read:
+DLConsole writes a `.log` beside every `.dlr`. DIO, analog, linfo, NMS
+RSSI, CCSYS and DLSYS frames are skipped while reading (no column uses
+them; a day's logs then fit in memory).
+
+On the 2026-10-08 folder (36 files, about 1 GB): 8 loco-days in 43 s, at
+most 144 MB, on the Mac.
+
+**Not done:** no click-through to open a loco-day (offered, not picked);
+no per-file rows; mode time between two files of one day counts toward the
+mode the loco was in before the gap; no xlsx export; not tested on
+Windows by hand.
+
+**Files:** `fleetsummary.{h,cpp}`, `fleetwindow.{h,cpp}` (new),
+`mainwindow.h`, `mainwindow_menus.cpp`, `mainwindow_tools.cpp`,
+`dlcore.pri`; `tests/test_session215.cpp`, `tests/tests.pro`.
+
+**Tests:** session215, 17 checks on a scratch folder made of real
+fixtures (the two 81_1 excerpts of 213 / 214 as one loco-day, a 2_1 .cap
+in a subfolder, a stray .log left out): the grouping and file order; 81_1's
+SLRP, odometry, 10 EB / 0 FSB, 110 km/h and 6.444 km against
+schema/engine.py; Stop; the CSV; the window, its numeric sort data, a
+missing folder refused.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators **13/13**;
+`dltests` **265 suites / 7073 checks, 1 failed** (the `session156` pty
+check, as before); menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-214"></a>
 ## Session 214 — radio frames lost, per link
 

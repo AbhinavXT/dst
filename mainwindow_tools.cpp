@@ -99,6 +99,7 @@
 #include "runreportwindow.h"
 #include "radiohealthwindow.h"
 #include "odometrywindow.h"
+#include "fleetwindow.h"
 #include "faulttimelinewindow.h"
 #include "iotimelinewindow.h"
 #include "incidentreportdialog.h"
@@ -511,6 +512,13 @@ void MainWindow::onActionOdometry()
     QString name = m_tabs.value(key).friendlyName;
     auto *w = new OdometryWindow(model, key, name.isEmpty() ? key : name, this);
     connect(w, &OdometryWindow::jumpRequested, this, &MainWindow::jumpToEntry);
+    w->show();
+    w->raise();
+}
+
+void MainWindow::onActionFleetSummary()
+{
+    auto *w = new FleetWindow(this);
     w->show();
     w->raise();
 }

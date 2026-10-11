@@ -91,6 +91,8 @@ SOURCES += \
     $$PWD/odometry.cpp \
     $$PWD/odometrywindow.cpp \
     $$PWD/radiolinks.cpp \
+    $$PWD/fleetsummary.cpp \
+    $$PWD/fleetwindow.cpp \
     $$PWD/faulttimeline.cpp \
     $$PWD/faulttimelinewindow.cpp \
     $$PWD/iotimeline.cpp \
@@ -243,6 +245,8 @@ HEADERS += \
     $$PWD/odometry.h \
     $$PWD/odometrywindow.h \
     $$PWD/radiolinks.h \
+    $$PWD/fleetsummary.h \
+    $$PWD/fleetwindow.h \
     $$PWD/faulttimeline.h \
     $$PWD/faulttimelinewindow.h \
     $$PWD/iotimeline.h \

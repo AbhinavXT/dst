@@ -494,6 +494,13 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                                "the direction of travel, and per km since the tag before"));
     connect(actOdometry, &QAction::triggered, this, &MainWindow::onActionOdometry);
 
+    // Session 215: a folder of logs, one row per loco per day.
+    QAction *actFleet = monitorMenu->addAction(tr("Fleet s&ummary…"));
+    actFleet->setObjectName(QStringLiteral("actFleetSummary"));
+    actFleet->setToolTip(tr("A folder of .log / .cap files, one row per loco per day: hours, km, modes, EB / FSB and "
+                            "their reasons, top speed, faults, rejects, tags, missions, SLRP lost, odometry; export CSV"));
+    connect(actFleet, &QAction::triggered, this, &MainWindow::onActionFleetSummary);
+
     // Session 174: every fault as a bar, under the mode.
     QAction *actFaultTimeline = monitorMenu->addAction(tr("&Fault timeline…"));
     actFaultTimeline->setObjectName(QStringLiteral("actFaultTimeline"));
