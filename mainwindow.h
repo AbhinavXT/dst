@@ -147,6 +147,7 @@ private slots:
     void onActionRunReport();
     void onActionMissionReport();
     void onActionRadioHealth();
+    void onActionOdometry();
     void onActionFaultTimeline();
     void onActionCabIo();     // Tools → Monitor → Run summary report… (session 81)
     void onActionIncidentReport(); // Tools → Monitor → Incident report… (session 97)

@@ -11,6 +11,66 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-213"></a>
+## Session 213 — odometry at the tags
+
+Asked for by Abhinav (item 1 of the feature list he picked, with 3 and 4):
+how far the loco's own location had drifted from the track when it read
+each RFID tag. Scope he picked: the correction at each tag, in a window of
+its own.
+
+**How it is measured.** The DMI comes about once a second, 15-30 m apart at
+speed, so the location jump at a tag is hidden between two frames. For
+each main tag read (@rfid, CRC good, duplication 0; the other reader's read
+of the same tag within 10 s is the same pass), the last @dmi before it
+gives `abs_loco_loc` and `train_speed`; moved on by that speed for the time
+since that frame (the receive time, to the ms), it is the loco's own
+location at the read. Error = that minus the tag's `abs_loc`, signed along
+the direction of travel (+ = the loco thought it was further along). The
+spacing is from the tag before in the same run (same direction, within 10
+min), and the error per km of it. Not counted, with the reason in the row:
+the loco not localised, no @dmi in the 2 s before, speed 511, and an error
+over 50 m (a relocation or another tag under the id, not drift).
+
+**What the operator sees:** Tools ▸ Monitor ▸ **Odometry at the tags…**: a
+summary ("23 tag read(s), 20 measured. … 0.6 m from the tag (median; mean
+-0.4 m, largest 22.0 m) … Per km since the tag before: 1.7 m (median of
+18)"), one row per read, double-click to show it in the log, Copy table.
+Observed, not judged: no limit is graded. In the 81_1 field log of
+2026-10-08 the loco's own location sat 0-3 m ahead of most tags.
+
+**Not done:** no plot; no wheel-diameter figure (a median that grows with
+the spacing points at it, a constant one at a fixed offset: the window
+gives both numbers, not a verdict); @speed tacho pulses not used (none in
+a field log yet); not in the mission or incident report.
+
+**Files:** `odometry.{h,cpp}`, `odometrywindow.{h,cpp}` (new),
+`mainwindow.h`, `mainwindow_menus.cpp`, `mainwindow_tools.cpp`,
+`dlcore.pri`; `tests/test_session213.cpp`, `tests/tests.pro`;
+`replay/2026-10-08/loco_1_1_odometry.log` (new fixture: the @dmi and @rfid
+lines of 81_1.001.log, 05:28:30-05:34:30 and 08:22:30-08:27:00 UTC,
+unchanged, with their ms receive times).
+
+**Tests:** session213, 16 checks against a schema/engine.py oracle on the
+same lines: 23 reads, 800 and 802 not localised, tag 804 (159491 m, 110
+km/h, 249 ms before: -1.39 m), spacings and runs, the 195 m relocation not
+counted, median / mean / largest; the statistics on their own; the window
+and its jump.
+
+**Also fixed: a race in `session141`'s test.** The Qt 6 run failed it once
+("leaves 4 faults active (5)"); alone it passed 5 times out of 5. The
+Fault panel refreshes on a timer; under the full suite's load a tick fired
+mid-ingest and showed 5, and the test stopped waiting at the first
+non-empty table. It now waits (still up to 3 s) for the final 4. The
+product is unchanged.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators **13/13**;
+`dltests` **263 suites / 7042 checks, 1 failed** (the `session156` pty
+check, as at 194, 206, 211 and 212; on Qt 6 also `session141`, above);
+menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-212"></a>
 ## Session 212 — the RDSO Tag-TIN layout look
 

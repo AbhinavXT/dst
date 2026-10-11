@@ -88,6 +88,8 @@ SOURCES += \
     $$PWD/missionreport.cpp \
     $$PWD/radiohealth.cpp \
     $$PWD/radiohealthwindow.cpp \
+    $$PWD/odometry.cpp \
+    $$PWD/odometrywindow.cpp \
     $$PWD/faulttimeline.cpp \
     $$PWD/faulttimelinewindow.cpp \
     $$PWD/iotimeline.cpp \
@@ -237,6 +239,8 @@ HEADERS += \
     $$PWD/missionreport.h \
     $$PWD/radiohealth.h \
     $$PWD/radiohealthwindow.h \
+    $$PWD/odometry.h \
+    $$PWD/odometrywindow.h \
     $$PWD/faulttimeline.h \
     $$PWD/faulttimelinewindow.h \
     $$PWD/iotimeline.h \

@@ -487,6 +487,13 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                                   "the radio holes announced, radios not OK, temperatures, power, GSM RSSI, GPS satellites / C/N0 / link"));
     connect(actRadioHealth, &QAction::triggered, this, &MainWindow::onActionRadioHealth);
 
+    // Session 213: the loco's own location against each tag it read.
+    QAction *actOdometry = monitorMenu->addAction(tr("&Odometry at the tags…"));
+    actOdometry->setObjectName(QStringLiteral("actOdometry"));
+    actOdometry->setToolTip(tr("At each RFID tag read: how far the loco's own location (@dmi) was from the tag, along "
+                               "the direction of travel, and per km since the tag before"));
+    connect(actOdometry, &QAction::triggered, this, &MainWindow::onActionOdometry);
+
     // Session 174: every fault as a bar, under the mode.
     QAction *actFaultTimeline = monitorMenu->addAction(tr("&Fault timeline…"));
     actFaultTimeline->setObjectName(QStringLiteral("actFaultTimeline"));

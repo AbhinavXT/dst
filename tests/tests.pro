@@ -149,6 +149,7 @@ SOURCES += \
     test_session210.cpp \
     test_session211.cpp \
     test_session212.cpp \
+    test_session213.cpp \
     test_undolog.cpp \
     test_workspacesnapshot.cpp \
     test_settingsbundle.cpp \

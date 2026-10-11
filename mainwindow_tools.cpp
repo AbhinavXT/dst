@@ -98,6 +98,7 @@
 #endif
 #include "runreportwindow.h"
 #include "radiohealthwindow.h"
+#include "odometrywindow.h"
 #include "faulttimelinewindow.h"
 #include "iotimelinewindow.h"
 #include "incidentreportdialog.h"
@@ -495,6 +496,21 @@ void MainWindow::onActionRadioHealth()
     QString name = m_tabs.value(key).friendlyName;
     auto *w = new RadioHealthWindow(model, key, name.isEmpty() ? key : name, this);
     connect(w, &RadioHealthWindow::jumpRequested, this, &MainWindow::jumpToEntry);
+    w->show();
+    w->raise();
+}
+
+void MainWindow::onActionOdometry()
+{
+    const QString key = currentTabKey();
+    LogModel *model = key.isEmpty() ? nullptr : m_dispatcher->modelForKey(key);
+    if (!model || model->count() == 0) {
+        notify(NoteLevel::Info, tr("Select a tab with messages first."));
+        return;
+    }
+    QString name = m_tabs.value(key).friendlyName;
+    auto *w = new OdometryWindow(model, key, name.isEmpty() ? key : name, this);
+    connect(w, &OdometryWindow::jumpRequested, this, &MainWindow::jumpToEntry);
     w->show();
     w->raise();
 }

@@ -50,7 +50,9 @@ TEST_SUITE(session141)
     QElapsedTimer t;
     t.start();
     auto *table = w.findChild<QTableWidget *>(QStringLiteral("faultTable"));
-    while (t.elapsed() < 3000 && !(table && table->rowCount() > 0)) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+    // Session 213: wait for the refresh after the last frame, not the first
+    // non-empty one -- under load a tick mid-ingest showed 5 (a Qt 6 gate run).
+    while (t.elapsed() < 3000 && !(table && table->rowCount() == 4)) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
     CHECK(n > 9000 && table && table->rowCount() == 4, QByteArray("fixture: the real run leaves 4 faults active (")
                                                           + QByteArray::number(table ? table->rowCount() : -1) + ")");
 
