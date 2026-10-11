@@ -2,7 +2,7 @@
 #define FAULTTIMELINE_H
 
 // =============================================================================
-//  Fault timeline (session 174) — Tools ▸ Monitor ▸ Fault timeline…
+//  Fault timeline (session 174) — Tools ▸ Monitor ▸ Equipment ▸ Fault timeline…
 //  -----------------------------------------------------------------------------
 //  Every fault the tab shows, as a bar from raised to cleared, one row per
 //  card / module, under the loco's mode -- so "what was faulted when it went

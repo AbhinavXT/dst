@@ -11,6 +11,42 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-246"></a>
+## Session 246 — Tools ▸ Monitor in four groups
+
+Abhinav: "there are too many sub options inside the monitor sub menu". It
+had nineteen entries. They are now four submenus of Monitor, by what the
+window shows:
+
+| Group | Entries |
+|---|---|
+| **Live** | Compare tabs, Live Loco Console, Active Fault Panel, DMI (LP-OCIP) |
+| **Running** | Braking Curves, Plot field over time, Speed vs distance, Two-loco view, SoS, Track diagram |
+| **Equipment** | Radio and GPS health, Odometry at the tags, Fault timeline, Cab inputs and outputs, Reader direction |
+| **Reports** | Run summary report, Mission report, Fleet summary, Incident report |
+
+What the operator sees: one more step to each entry. Every shortcut is
+unchanged, and the command palette (Ctrl+P) still finds each entry by name.
+Within a group the entries keep their old relative order.
+
+### Files
+
+`mainwindow_menus.cpp` (the four submenus; each action attached to its
+group), `tests/menuaudit_main.cpp`; the `Tools ▸ Monitor ▸ …` paths in the
+comments of `mainwindow.h` (and `onActionCabIo`'s, which named the run
+report) and fifteen window headers.
+
+### Tests
+
+Menu audit: Monitor holds exactly the four groups and nothing loose; each
+of the nineteen entries is in its group; the existing Monitor checks
+(shortcuts, the DMI and track diagram opening) now look in their group.
+`./verify.sh` green on macOS (Qt 6.11.2): 13 validators, `dltests` 290
+suites / 7619 checks / 0 failed, menu audit (181 ok), smoke. Not run on
+Windows here; CI's MSVC job builds it after the push.
+
+---
+
 <a id="session-245"></a>
 ## Session 245 — the COM-port libraries link after the library
 

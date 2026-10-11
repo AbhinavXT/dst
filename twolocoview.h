@@ -2,7 +2,7 @@
 #define TWOLOCOVIEW_H
 
 // =============================================================================
-//  Two-loco view (session 98) — Tools ▸ Monitor ▸ Two-loco view…
+//  Two-loco view (session 98) — Tools ▸ Monitor ▸ Running ▸ Two-loco view…
 //  -----------------------------------------------------------------------------
 //  Two tabs (two locos), one timeline: both locos' location and speed, the
 //  gap between them, and SoS/collision/head-on/rear-end events, all against

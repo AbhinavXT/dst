@@ -3,7 +3,7 @@
 
 // =============================================================================
 //  Track diagram by absolute location (session 99) — Tools ▸ Monitor ▸
-//  Track diagram…
+//  Running ▸ Track diagram…
 //  -----------------------------------------------------------------------------
 //  One tab, one line: a linear diagram (no map, no internet) of the track the
 //  loco actually reported running on — RFID tags, signals, the movement

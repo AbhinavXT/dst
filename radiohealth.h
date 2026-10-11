@@ -2,7 +2,7 @@
 #define RADIOHEALTH_H
 
 // =============================================================================
-//  Radio health (session 173) — Tools ▸ Monitor ▸ Radio health…
+//  Radio health (session 173) — Tools ▸ Monitor ▸ Equipment ▸ Radio health…
 //  -----------------------------------------------------------------------------
 //  The loco's radio and GSM links over time, from what the tab already holds:
 //    @dmi     signal_strength (0..5 bars); "Approaching Radio Hole" in

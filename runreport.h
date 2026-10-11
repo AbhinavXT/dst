@@ -2,7 +2,7 @@
 #define RUNREPORT_H
 
 // =============================================================================
-//  Run summary report (session 81) — Tools ▸ Monitor ▸ Run summary report…
+//  Run summary report (session 81) — Tools ▸ Monitor ▸ Reports ▸ Run summary report…
 //  -----------------------------------------------------------------------------
 //  One page at the end of a run: what the capture of one tab shows, read in
 //  one pass rather than scrolled through. Written for the test record, so it

@@ -2,7 +2,7 @@
 #define ODOMETRY_H
 
 // =============================================================================
-//  Odometry at the tags (session 213) — Tools ▸ Monitor ▸ Odometry at the tags…
+//  Odometry at the tags (session 213) — Tools ▸ Monitor ▸ Equipment ▸ Odometry at the tags…
 //  -----------------------------------------------------------------------------
 //  How far the loco's own location had drifted from the track when it read
 //  each RFID tag. The loco relocates on every tag, so the difference is the

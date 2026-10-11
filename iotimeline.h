@@ -2,7 +2,7 @@
 #define IOTIMELINE_H
 
 // =============================================================================
-//  Cab inputs and outputs (session 176) — Tools ▸ Monitor ▸ Cab inputs and outputs…
+//  Cab inputs and outputs (session 176) — Tools ▸ Monitor ▸ Equipment ▸ Cab inputs and outputs…
 //  -----------------------------------------------------------------------------
 //  What the driver did, and what the unit drove, around an event: the DIO
 //  logs (@dip1/@dip2 inputs, @dop1/@dop2 outputs, from the IOA over serial)

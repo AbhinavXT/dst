@@ -2,7 +2,7 @@
 #define SPEEDDISTANCE_H
 
 // =============================================================================
-//  Speed vs distance (session 81) — Tools ▸ Monitor ▸ Speed vs distance…
+//  Speed vs distance (session 81) — Tools ▸ Monitor ▸ Running ▸ Speed vs distance…
 //  -----------------------------------------------------------------------------
 //  What an ATP run is judged on: the train's actual speed against where it
 //  was ON THE TRACK, with the ceiling it was held to. Plotted against time,

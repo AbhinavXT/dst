@@ -15,7 +15,7 @@
 //  line in its TIN colours with "(N-…)" under it, one symbol per main +
 //  duplicate set with its placement letter, "R-…" over it.
 //
-//  The Tools ▸ Monitor ▸ Track diagram draws what a loco REPORTED in a log;
+//  The Tools ▸ Monitor ▸ Running ▸ Track diagram draws what a loco REPORTED in a log;
 //  this draws a route being written, with no log behind it.
 // =============================================================================
 

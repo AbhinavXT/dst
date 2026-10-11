@@ -143,19 +143,19 @@ private slots:
     void onActionCopyRows();
     void onShowNotificationLog();
     void onActionPlotField();     // Tools → Plot field over time…
-    void onActionSpeedDistance(); // Tools → Monitor → Speed vs distance… (session 81)
+    void onActionSpeedDistance(); // Tools → Monitor → Running → Speed vs distance… (session 81)
     void onActionRunReport();
     void onActionMissionReport();
     void onActionRadioHealth();
     void onActionOdometry();
     void onActionFleetSummary();
     void onActionFaultTimeline();
-    void onActionCabIo();     // Tools → Monitor → Run summary report… (session 81)
-    void onActionIncidentReport(); // Tools → Monitor → Incident report… (session 97)
-    void onActionTwoLocoView();    // Tools → Monitor → Two-loco view… (session 98)
-    void onActionSosWindow();      // Tools → Monitor → SoS… (session 184)
-    void onActionReaderDirection(); // Tools → Monitor → Reader direction… (session 194)
-    void onActionTrackDiagram();   // Tools → Monitor → Track diagram… (session 99)
+    void onActionCabIo();     // Tools → Monitor → Equipment → Cab inputs and outputs… (session 176)
+    void onActionIncidentReport(); // Tools → Monitor → Reports → Incident report… (session 97)
+    void onActionTwoLocoView();    // Tools → Monitor → Running → Two-loco view… (session 98)
+    void onActionSosWindow();      // Tools → Monitor → Running → SoS… (session 184)
+    void onActionReaderDirection(); // Tools → Monitor → Equipment → Reader direction… (session 194)
+    void onActionTrackDiagram();   // Tools → Monitor → Running → Track diagram… (session 99)
     void onActionReloadSchema();  // Tools → Reload schema… (Ctrl+Shift+R)
     void onActionLoadTestCases(); // Tools → Test cases → Load…
     void onActionSaveTestReport();

@@ -2,7 +2,7 @@
 #define READERDIRWINDOW_H
 
 // =============================================================================
-//  Reader direction window (session 194) — Tools ▸ Monitor ▸ Reader direction…
+//  Reader direction window (session 194) — Tools ▸ Monitor ▸ Equipment ▸ Reader direction…
 //  -----------------------------------------------------------------------------
 //  The RFID readers' directions, read by read, from @rdir (readerdir.h):
 //

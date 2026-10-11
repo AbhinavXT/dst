@@ -2,7 +2,7 @@
 #define SOSWINDOW_H
 
 // =============================================================================
-//  SoS window (sessions 184, 185, 187) — Tools ▸ Monitor ▸ SoS…
+//  SoS window (sessions 184, 185, 187) — Tools ▸ Monitor ▸ Running ▸ SoS…
 //  -----------------------------------------------------------------------------
 //  What the loco's SoS logic knew and decided, moment by moment, from
 //  @sos / @sossrc / @sosev (soslog.h):

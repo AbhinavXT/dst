@@ -344,7 +344,39 @@ int main(int argc, char **argv) {
     CHECK(schema,   "Tools > Schema");
     CHECK(testcase, "Tools > Test cases");
 
-    CHECK(monitor && findAction(monitor, "Live Loco Console"), "Monitor > Live Loco Console");
+    // Session 246: Monitor's nineteen entries in four groups, nothing loose.
+    QMenu *monLive      = sub(monitor, "Live");
+    QMenu *monRunning   = sub(monitor, "Running");
+    QMenu *monEquipment = sub(monitor, "Equipment");
+    QMenu *monReports   = sub(monitor, "Reports");
+    CHECK(monLive && monRunning && monEquipment && monReports,
+          "Monitor > Live, Running, Equipment, Reports");
+    {
+        bool onlyGroups = monitor != nullptr;
+        if (monitor) for (QAction *a : monitor->actions())
+            if (!a->menu()) onlyGroups = false;
+        CHECK(onlyGroups && monitor->actions().size() == 4, "and nothing else in Monitor");
+        const struct { QMenu *menu; QStringList titles; } groups[] = {
+            { monLive,      { "Compare tabs", "Live Loco Console", "Active Fault Panel", "DMI (LP-OCIP)" } },
+            { monRunning,   { "Braking Curves", "Plot field over time", "Speed vs distance",
+                              "Two-loco view", "SoS", "Track diagram" } },
+            { monEquipment, { "Radio and GPS health", "Odometry at the tags", "Fault timeline",
+                              "Cab inputs and outputs", "Reader direction" } },
+            { monReports,   { "Run summary report", "Mission report", "Fleet summary", "Incident report" } },
+        };
+        int total = 0;
+        bool allThere = true;
+        for (const auto &g : groups) {
+            total += g.titles.size();
+            for (const QString &t : g.titles)
+                if (!g.menu || !findAction(g.menu, t)) {
+                    allThere = false;
+                    printf("      missing from its group: %s\n", qPrintable(t));
+                }
+        }
+        CHECK(allThere && total == 19, "every former Monitor entry is in its group (19)");
+    }
+    CHECK(monLive && findAction(monLive, "Live Loco Console"), "Monitor > Live > Live Loco Console");
 
     // View > Theme: every theme, exactly one ticked, and the toggle.
     {
@@ -537,7 +569,7 @@ int main(int argc, char **argv) {
     // The Live Loco Console has Find: a TableFindBar under its tabs and
     // Ctrl+F bound in the window.
     {
-        QAction *console = monitor ? findAction(monitor, "Live Loco Console") : nullptr;
+        QAction *console = monLive ? findAction(monLive, "Live Loco Console") : nullptr;
         if (console) {
             console->trigger();
             QWidget *window = nullptr;
@@ -562,9 +594,9 @@ int main(int argc, char **argv) {
             CHECK(hasCtrlF, "and Ctrl+F opens it");
         }
     }
-    CHECK(monitor && findAction(monitor, "Active Fault Panel"), "Monitor > Active Fault Panel");
-    CHECK(monitor && findAction(monitor, "Plot field"), "Monitor > Plot field over time");
-    CHECK(monitor && findAction(monitor, "Compare tabs"), "Monitor > Compare tabs");
+    CHECK(monLive && findAction(monLive, "Active Fault Panel"), "Monitor > Live > Active Fault Panel");
+    CHECK(monRunning && findAction(monRunning, "Plot field"), "Monitor > Running > Plot field over time");
+    CHECK(monLive && findAction(monLive, "Compare tabs"), "Monitor > Live > Compare tabs");
 
     CHECK(inspect && findAction(inspect, "Decode Workbench"), "Inspect > Decode Workbench");
     CHECK(inspect && findAction(inspect, "Selected row"), "Inspect > Selected row -> Workbench");
@@ -636,7 +668,7 @@ int main(int argc, char **argv) {
               "Firmware Flasher is on Ctrl+Alt+F");
         CHECK(!transmit || !findAction(transmit, "Firmware Flasher"),
               "and is not duplicated inside Transmit");
-        QAction *fault = monitor ? findAction(monitor, "Active Fault Panel") : nullptr;
+        QAction *fault = monLive ? findAction(monLive, "Active Fault Panel") : nullptr;
         CHECK(fault && fault->shortcut() == QKeySequence("Ctrl+Shift+F"),
               "Active Fault Panel keeps Ctrl+Shift+F");
         if (flasher) {
@@ -964,21 +996,18 @@ int main(int argc, char **argv) {
     // ---- session 81: speed vs distance, run report, clock-skew alarm ----
     {
         QMenu *toolsM = findMenu(bar, "Tools");
-        QMenu *monitorM = nullptr;
-        if (toolsM) for (QAction *a : toolsM->actions())
-            if (a->menu() && a->text().remove('&') == QLatin1String("Monitor")) monitorM = a->menu();
-        QAction *sd = monitorM ? findAction(monitorM, "Speed vs distance") : nullptr;
-        QAction *rr = monitorM ? findAction(monitorM, "Run summary report") : nullptr;
-        QAction *dmiAct = monitorM ? findAction(monitorM, "DMI (LP-OCIP)") : nullptr;
+        QAction *sd = monRunning ? findAction(monRunning, "Speed vs distance") : nullptr;
+        QAction *rr = monReports ? findAction(monReports, "Run summary report") : nullptr;
+        QAction *dmiAct = monLive ? findAction(monLive, "DMI (LP-OCIP)") : nullptr;
         // Session 97: Incident report opens a modal picker first (atMs +
         // before/after), so it is checked for presence/wiring only -- not
         // triggered, which would block this offscreen run on a dialog no
         // one can answer.
-        QAction *irAct = monitorM ? findAction(monitorM, "Incident report") : nullptr;
+        QAction *irAct = monReports ? findAction(monReports, "Incident report") : nullptr;
         CHECK(irAct && irAct->shortcut() == QKeySequence(QStringLiteral("Ctrl+Alt+I")),
-              "Tools > Monitor > Incident report, on Ctrl+Alt+I");
+              "Tools > Monitor > Reports > Incident report, on Ctrl+Alt+I");
         CHECK(dmiAct && dmiAct->shortcut() == QKeySequence(QStringLiteral("Ctrl+Alt+D")),
-              "Tools > Monitor > DMI (LP-OCIP), on Ctrl+Alt+D");
+              "Tools > Monitor > Live > DMI (LP-OCIP), on Ctrl+Alt+D");
         if (dmiAct) {
             dmiAct->trigger();
             for (int i = 0; i < 3; ++i) QApplication::processEvents();
@@ -1011,14 +1040,14 @@ int main(int argc, char **argv) {
             for (QWidget *t : QApplication::topLevelWidgets()) if (t->inherits("SerialConsoleWindow")) t->close();
         }
         CHECK(sd && sd->shortcut() == QKeySequence(QStringLiteral("Ctrl+Alt+V")),
-              "Tools > Monitor > Speed vs distance, on Ctrl+Alt+V");
+              "Tools > Monitor > Running > Speed vs distance, on Ctrl+Alt+V");
         CHECK(rr && rr->shortcut() == QKeySequence(QStringLiteral("Ctrl+Alt+R")),
-              "Tools > Monitor > Run summary report, on Ctrl+Alt+R");
+              "Tools > Monitor > Reports > Run summary report, on Ctrl+Alt+R");
         // Session 99: the track diagram, like Speed vs distance -- opens
         // straight into the window, no modal picker, so it is safe to trigger.
-        QAction *tdAct = monitorM ? findAction(monitorM, "Track diagram") : nullptr;
+        QAction *tdAct = monRunning ? findAction(monRunning, "Track diagram") : nullptr;
         CHECK(tdAct && tdAct->shortcut() == QKeySequence(QStringLiteral("Ctrl+Alt+K")),
-              "Tools > Monitor > Track diagram, on Ctrl+Alt+K");
+              "Tools > Monitor > Running > Track diagram, on Ctrl+Alt+K");
         auto countWindows = [](const char *cls) {
             int n = 0;
             for (QWidget *t : QApplication::topLevelWidgets()) if (t->inherits(cls) && t->isVisible()) ++n;

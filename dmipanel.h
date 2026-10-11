@@ -2,7 +2,7 @@
 #define DMIPANEL_H
 
 // =============================================================================
-//  DMI window (session 83) — Tools ▸ Monitor ▸ DMI (LP-OCIP)…
+//  DMI window (session 83) — Tools ▸ Monitor ▸ Live ▸ DMI (LP-OCIP)…
 //  -----------------------------------------------------------------------------
 //  The Loco Pilot's Operation-cum-Indication Panel, drawn from the loco's
 //  @dmi frames, laid out as RDSO/SPN/196/2020 Annexure-B (Amendment-3)

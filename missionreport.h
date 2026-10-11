@@ -2,7 +2,7 @@
 #define MISSIONREPORT_H
 
 // =============================================================================
-//  Missions (session 171) — Tools ▸ Monitor ▸ Mission report…
+//  Missions (session 171) — Tools ▸ Monitor ▸ Reports ▸ Mission report…
 //  -----------------------------------------------------------------------------
 //  A day's capture split into missions. A MISSION STARTS at a start of
 //  mission (session 168: the first ARP in Stand_By with no direction, tag

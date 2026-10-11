@@ -201,7 +201,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     connect(actCopySel, &QAction::triggered,
             this,       &MainWindow::onActionCopySelection);
 
-    // NOT Ctrl+Shift+C: Tools > Monitor > Compare tabs already holds it,
+    // NOT Ctrl+Shift+C: Tools > Monitor > Live > Compare tabs already holds it,
     // and two actions on one window sharing a key makes Qt report an
     // ambiguous overload and fire neither.
     QAction *actCopyRows = editMenu->addAction(tr("Copy selected &rows"));
@@ -413,27 +413,34 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     auto *monitorMenu  = toolsMenu->addMenu(tr("&Monitor"));      // watch it run
     auto *inspectMenu  = toolsMenu->addMenu(tr("&Inspect"));      // read a frame
     auto *transmitMenu = toolsMenu->addMenu(tr("&Transmit"));     // SENDS packets
+    // Session 246: Monitor had grown to nineteen entries. Four groups, by
+    // what the window shows: the run as it happens, the loco's running over
+    // time, its equipment over time, and a report to save.
+    auto *liveMenu      = monitorMenu->addMenu(tr("&Live"));
+    auto *runningMenu   = monitorMenu->addMenu(tr("&Running"));
+    auto *equipmentMenu = monitorMenu->addMenu(tr("&Equipment"));
+    auto *reportsMenu   = monitorMenu->addMenu(tr("Re&ports"));
     toolsMenu->addSeparator();
     auto *testMenu     = toolsMenu->addMenu(tr("Test &cases"));   // acceptance runs
     auto *schemaMenu   = toolsMenu->addMenu(tr("&Schema"));       // the decoder itself
     toolsMenu->addSeparator();
 
-    QAction *actCompare = monitorMenu->addAction(tr("&Compare tabs…"));
+    QAction *actCompare = liveMenu->addAction(tr("&Compare tabs…"));
     actCompare->setShortcut(QKeySequence("Ctrl+Shift+C"));
     connect(actCompare, &QAction::triggered,
             this,       &MainWindow::onActionCompareTabs);
 
-    QAction *actLocoConsole = monitorMenu->addAction(tr("&Live Loco Console…"));
+    QAction *actLocoConsole = liveMenu->addAction(tr("&Live Loco Console…"));
     actLocoConsole->setShortcut(QKeySequence("Ctrl+Shift+L"));
     connect(actLocoConsole, &QAction::triggered,
             this,           &MainWindow::onActionLocoConsole);
 
-    QAction *actFaultPanel = monitorMenu->addAction(tr("Active &Fault Panel…"));
+    QAction *actFaultPanel = liveMenu->addAction(tr("Active &Fault Panel…"));
     actFaultPanel->setShortcut(QKeySequence("Ctrl+Shift+F"));
     connect(actFaultPanel, &QAction::triggered,
             this,          &MainWindow::onActionFaultPanel);
 
-    QAction *actBraking = monitorMenu->addAction(tr("&Braking Curves…"));
+    QAction *actBraking = runningMenu->addAction(tr("&Braking Curves…"));
     // Ctrl+Shift+U (the @uba stream), not Ctrl+Shift+B: B has meant
     // "selected row -> Decode Workbench" since session 23, in this window,
     // the compare window and the session window. Session 57 bound it here
@@ -442,20 +449,20 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     connect(actBraking, &QAction::triggered,
             this,       &MainWindow::onActionBrakingPanel);
 
-    QAction *actPlotField = monitorMenu->addAction(tr("&Plot field over time…"));
+    QAction *actPlotField = runningMenu->addAction(tr("&Plot field over time…"));
     actPlotField->setShortcut(QKeySequence("Ctrl+Shift+P"));
     connect(actPlotField, &QAction::triggered,
             this,         &MainWindow::onActionPlotField);
 
     // Session 81: speed against track location, and the one-page summary.
-    QAction *actSpeedDistance = monitorMenu->addAction(tr("Speed vs &distance…"));
+    QAction *actSpeedDistance = runningMenu->addAction(tr("Speed vs &distance…"));
     actSpeedDistance->setShortcut(QKeySequence("Ctrl+Alt+V"));
     actSpeedDistance->setToolTip(tr("Actual and permitted speed against track location, with targets and "
                                     "the firmware's braking curve (@dmi, @uba)"));
     connect(actSpeedDistance, &QAction::triggered, this, &MainWindow::onActionSpeedDistance);
 
     // Session 83: the loco pilot's panel, as Annexure-B lays it out.
-    QAction *actDmi = monitorMenu->addAction(tr("D&MI (LP-OCIP)…"));
+    QAction *actDmi = liveMenu->addAction(tr("D&MI (LP-OCIP)…"));
     actDmi->setShortcut(QKeySequence("Ctrl+Alt+D"));
     actDmi->setToolTip(tr("The Loco Pilot's Operation-cum-Indication Panel, drawn from @dmi as "
                           "RDSO Annexure-B (Amdt-3) specifies it"));
@@ -465,14 +472,14 @@ MainWindow::MenuRoots MainWindow::buildMenus()
         w->raise();
     });
 
-    QAction *actRunReport = monitorMenu->addAction(tr("&Run summary report…"));
+    QAction *actRunReport = reportsMenu->addAction(tr("&Run summary report…"));
     actRunReport->setShortcut(QKeySequence("Ctrl+Alt+R"));
     actRunReport->setToolTip(tr("One page of what the current tab's capture shows: modes, speed, tags, "
                                 "silences, clock skew, faults, reject conditions"));
     connect(actRunReport, &QAction::triggered, this, &MainWindow::onActionRunReport);
 
     // Session 171: the day split into missions (start of mission to the next).
-    QAction *actMissionReport = monitorMenu->addAction(tr("&Mission report…"));
+    QAction *actMissionReport = reportsMenu->addAction(tr("&Mission report…"));
     actMissionReport->setObjectName(QStringLiteral("actMissionReport"));
     actMissionReport->setShortcut(QKeySequence("Ctrl+Alt+M"));
     actMissionReport->setToolTip(tr("Every mission in the current tab, start of mission to the next: start-up "
@@ -481,42 +488,42 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     connect(actMissionReport, &QAction::triggered, this, &MainWindow::onActionMissionReport);
 
     // Session 173: the radio and GSM links over time.
-    QAction *actRadioHealth = monitorMenu->addAction(tr("Radio and GPS &health…"));
+    QAction *actRadioHealth = equipmentMenu->addAction(tr("Radio and GPS &health…"));
     actRadioHealth->setObjectName(QStringLiteral("actRadioHealth"));
     actRadioHealth->setToolTip(tr("The current tab's radio over time: DMI signal bars, no-radio spells against "
                                   "the radio holes announced, radios not OK, temperatures, power, GSM RSSI, GPS satellites / C/N0 / link; frames lost per link (SLRP by station, LSRP, ARP)"));
     connect(actRadioHealth, &QAction::triggered, this, &MainWindow::onActionRadioHealth);
 
     // Session 213: the loco's own location against each tag it read.
-    QAction *actOdometry = monitorMenu->addAction(tr("&Odometry at the tags…"));
+    QAction *actOdometry = equipmentMenu->addAction(tr("&Odometry at the tags…"));
     actOdometry->setObjectName(QStringLiteral("actOdometry"));
     actOdometry->setToolTip(tr("At each RFID tag read: how far the loco's own location (@dmi) was from the tag, along "
                                "the direction of travel, and per km since the tag before"));
     connect(actOdometry, &QAction::triggered, this, &MainWindow::onActionOdometry);
 
     // Session 215: a folder of logs, one row per loco per day.
-    QAction *actFleet = monitorMenu->addAction(tr("Fleet s&ummary…"));
+    QAction *actFleet = reportsMenu->addAction(tr("Fleet s&ummary…"));
     actFleet->setObjectName(QStringLiteral("actFleetSummary"));
     actFleet->setToolTip(tr("A folder of .log / .cap files, one row per loco per day: hours, km, modes, EB / FSB and "
                             "their reasons, top speed, faults, rejects, tags, missions, SLRP lost, odometry; export CSV"));
     connect(actFleet, &QAction::triggered, this, &MainWindow::onActionFleetSummary);
 
     // Session 174: every fault as a bar, under the mode.
-    QAction *actFaultTimeline = monitorMenu->addAction(tr("&Fault timeline…"));
+    QAction *actFaultTimeline = equipmentMenu->addAction(tr("&Fault timeline…"));
     actFaultTimeline->setObjectName(QStringLiteral("actFaultTimeline"));
     actFaultTimeline->setToolTip(tr("The current tab's NMS faults and LCU elements as bars per card, under the "
                                     "loco's mode, with the faults raised at each System_Failure"));
     connect(actFaultTimeline, &QAction::triggered, this, &MainWindow::onActionFaultTimeline);
 
     // Session 176: the DIO inputs and outputs, under the mode.
-    QAction *actCabIo = monitorMenu->addAction(tr("&Cab inputs and outputs…"));
+    QAction *actCabIo = equipmentMenu->addAction(tr("&Cab inputs and outputs…"));
     actCabIo->setObjectName(QStringLiteral("actCabIo"));
     actCabIo->setToolTip(tr("The current tab's DIO logs as a timeline: every input / output that changes "
                             "(DMI buttons, cab forward / reverse, horn, traction cut-off, brake relays), under the mode"));
     connect(actCabIo, &QAction::triggered, this, &MainWindow::onActionCabIo);
 
     // Session 97: one incident, read in one pass.
-    QAction *actIncidentReport = monitorMenu->addAction(tr("&Incident report…"));
+    QAction *actIncidentReport = reportsMenu->addAction(tr("&Incident report…"));
     actIncidentReport->setShortcut(QKeySequence("Ctrl+Alt+I"));
     actIncidentReport->setToolTip(tr("Pick a moment: the DMI at the key moments around it, the speed/permitted/"
                                      "target plot, mode changes, EB/FSB applications, reject findings and the "
@@ -524,14 +531,14 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     connect(actIncidentReport, &QAction::triggered, this, &MainWindow::onActionIncidentReport);
 
     // Session 98: two locos, one timeline.
-    QAction *actTwoLoco = monitorMenu->addAction(tr("&Two-loco view…"));
+    QAction *actTwoLoco = runningMenu->addAction(tr("&Two-loco view…"));
     actTwoLoco->setShortcut(QKeySequence("Ctrl+Alt+T"));
     actTwoLoco->setToolTip(tr("Two tabs' location and speed over time, the gap between them, and SoS/"
                               "collision/head-on/rear-end events (@sos, else @lsos), and each loco as the other's SoS table had it"));
     connect(actTwoLoco, &QAction::triggered, this, &MainWindow::onActionTwoLocoView);
 
     // Session 184: the firmware's SoS table and decisions (@sos / @sossrc / @sosev).
-    QAction *actSos = monitorMenu->addAction(tr("S&oS…"));
+    QAction *actSos = runningMenu->addAction(tr("S&oS…"));
     actSos->setObjectName(QStringLiteral("actSos"));
     actSos->setShortcut(QKeySequence("Ctrl+Alt+O"));
     actSos->setToolTip(tr("What the loco's SoS logic knew and decided, moment by moment: every loco in its SoS "
@@ -540,7 +547,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     connect(actSos, &QAction::triggered, this, &MainWindow::onActionSosWindow);
 
     // Session 194: the RFID readers' directions, read by read, against RDSO FRS 18.
-    QAction *actReaderDir = monitorMenu->addAction(tr("Reader dir&ection…"));
+    QAction *actReaderDir = equipmentMenu->addAction(tr("Reader dir&ection…"));
     actReaderDir->setObjectName(QStringLiteral("actReaderDir"));
     actReaderDir->setShortcut(QKeySequence("Ctrl+Alt+E"));
     actReaderDir->setToolTip(tr("Each RFID tag read (@rdir): reader-1, reader-2 and OVK direction and the tag "
@@ -548,7 +555,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     connect(actReaderDir, &QAction::triggered, this, &MainWindow::onActionReaderDirection);
 
     // Session 99: the track, by absolute location.
-    QAction *actTrackDiagram = monitorMenu->addAction(tr("Trac&k diagram…"));
+    QAction *actTrackDiagram = runningMenu->addAction(tr("Trac&k diagram…"));
     actTrackDiagram->setShortcut(QKeySequence("Ctrl+Alt+K"));
     actTrackDiagram->setToolTip(tr("RFID tags, signals and the movement authority end on one line, by absolute "
                                    "location, with the loco riding it over a draggable time cursor"));
@@ -640,7 +647,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     // working and gets its own window.
     //
     // Ctrl+Alt+F, not the Ctrl+Shift+F the handoff suggested: that has been
-    // Monitor > Active Fault Panel for a long time, and Qt fires NEITHER
+    // Monitor > Live > Active Fault Panel for a long time, and Qt fires NEITHER
     // action on an ambiguous shortcut (the menu audit checks for exactly this).
     toolsMenu->addSeparator();
     QAction *actFlasher = toolsMenu->addAction(tr("Firmware &Flasher…"));
