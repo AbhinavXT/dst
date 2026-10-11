@@ -323,6 +323,12 @@ private:
     QPushButton  *m_sendOnceBtn = nullptr;
     QPushButton  *m_intervalBtn = nullptr;
     QPlainTextEdit *m_preview   = nullptr;
+    // Session 240: the byte <-> field map over Output. Where the frame's hex
+    // starts in the text, and which line holds which decoded field.
+    int m_hexStart = -1;
+    int m_hexBytes = 0;
+    QVector<QPair<int, FieldRow>> m_rowLines;   // block number, its row
+    void onOutputCursor();
     StatusLine   *m_status      = nullptr;
 
     // "Fill from buffer": paste bytes, get every header and sub-packet field

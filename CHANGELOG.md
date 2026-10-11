@@ -11,6 +11,38 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-240"></a>
+## Session 240 — Packet Maker: byte ↔ field map
+
+Item 5 of the Packet Maker list. In Output, after Build & Verify:
+
+- **Click a byte** of the frame's hex: every decoded field with a bit in that
+  byte is marked (bit-packed, so a byte often holds two or three), with all
+  of their bytes.
+- **Click a decoded field**: its line and its bytes are marked.
+- Clicking anywhere else clears the marks. A line under the hex says so.
+
+The spans are the decoder's own (`FieldRow::bitOffset/bitLength`), over the
+frame as built, sub-packet fields included. The message header and extra
+fields are not mapped; they are shown above the packet, not decoded.
+
+### Files
+
+`packetmakerdialog.{h,cpp}` (`onOutputCursor`, the map built in
+`refreshPreview`); tests `test_session240.cpp` (new), `tests.pro`.
+
+### Tests
+
+`session240` (10 checks) on the real SLRP reference frame 6 (replay/):
+FRAME_NUM and sub-packet fields carry spans; a click on FRAME_NUM marks its
+line and its 3 bytes; a click on its first byte marks FRAME_NUM and at
+least one neighbour; a click on the packet line clears.
+
+Gate: Qt 5.15 and Qt 6.11 green (286 suites, 7541 checks, validators, menu
+audit, smoke). Not checked: by eye, and on Windows.
+
+---
+
 <a id="session-239"></a>
 ## Session 239 — Packet Maker: what the receiver would do
 

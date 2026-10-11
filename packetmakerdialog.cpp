@@ -46,6 +46,8 @@
 #include <QDateTime>
 #include <QStringList>
 #include <QRegularExpression>
+#include <QSet>
+#include <QTextBlock>
 
 // ---- small helpers ---------------------------------------------------------
 
@@ -586,6 +588,7 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     m_lowerTabs->setDocumentMode(true);
     m_preview = new QPlainTextEdit(m_lowerTabs);
     m_preview->setObjectName(QStringLiteral("pmOutput"));
+    connect(m_preview, &QPlainTextEdit::cursorPositionChanged, this, &PacketMakerDialog::onOutputCursor);
     m_preview->setReadOnly(true);
     m_preview->setFont(UiStyle::monoFont());
     m_preview->setMinimumHeight(3 * m_preview->fontMetrics().lineSpacing());
@@ -1382,7 +1385,10 @@ void PacketMakerDialog::refreshPreview(const PacketBuilder::Result &r)
                .arg(r.frame.size())
                .arg(hdr.isEmpty() ? QString() : tr("  (datagram %1 with header)")
                                                     .arg(r.frame.size() + hdr.size()));
-    out += QString::fromLatin1(r.frame.toHex(' ')) + "\n\n";
+    m_hexStart = out.size();
+    m_hexBytes = r.frame.size();
+    out += QString::fromLatin1(r.frame.toHex(' ')) + "\n";
+    out += tr("  click a byte to see its field(s), or a decoded field to see its bytes\n\n");
     out += tr("PKT_LENGTH = %1   CRC = %2   MAC = %3%4\n\n")
                .arg(r.pktLength).arg(r.crcHex)
                .arg(r.hasMac ? r.macHex : tr("(none)"))
@@ -1397,10 +1403,57 @@ void PacketMakerDialog::refreshPreview(const PacketBuilder::Result &r)
     if (!anyNot) { out += tr("  no reject condition matched (%1 rules checked)\n").arg(kavachRejectRules().count()); }
     out += QLatin1Char('\n');
     out += tr("decoded back:\n");
+    m_rowLines.clear();
     for (const FieldRow &fr : r.decoded) {
+        if (fr.hasSpan()) { m_rowLines.append({ int(out.count(QLatin1Char('\n'))), fr }); }
         out += QStringLiteral("  %1  %2\n").arg(fr.field, -28).arg(fr.value);
     }
     m_preview->setPlainText(out);
+}
+
+void PacketMakerDialog::onOutputCursor()
+{
+    // A click in the hex lights up every field with a bit in that byte (bit-
+    // packed: a byte can hold several) and their bytes; a click on a decoded
+    // field lights up its line and its bytes.
+    QList<QTextEdit::ExtraSelection> sels;
+    QTextDocument *doc = m_preview->document();
+    const int pos = m_preview->textCursor().position();
+    QVector<const FieldRow *> picked;
+    QSet<int> pickedLines;
+    if (m_hexStart >= 0 && pos >= m_hexStart && pos < m_hexStart + m_hexBytes * 3) {
+        const int b = (pos - m_hexStart) / 3;
+        for (const auto &rl : m_rowLines) {
+            if (b >= rl.second.byteStart() && b <= rl.second.byteEnd()) {
+                picked << &rl.second; pickedLines << rl.first;
+            }
+        }
+    } else {
+        const int line = doc->findBlock(pos).blockNumber();
+        for (const auto &rl : m_rowLines) {
+            if (rl.first == line) { picked << &rl.second; pickedLines << rl.first; }
+        }
+    }
+    QColor hl = m_preview->palette().highlight().color();
+    hl.setAlpha(90);
+    const auto mark = [&](int from, int to) {
+        QTextEdit::ExtraSelection sel;
+        sel.cursor = QTextCursor(doc);
+        sel.cursor.setPosition(from);
+        sel.cursor.setPosition(to, QTextCursor::KeepAnchor);
+        sel.format.setBackground(hl);
+        sels.append(sel);
+    };
+    for (const FieldRow *r : picked) {
+        for (int b = r->byteStart(); b <= r->byteEnd() && b < m_hexBytes; ++b) {
+            mark(m_hexStart + b * 3, m_hexStart + b * 3 + 2);
+        }
+    }
+    for (int line : pickedLines) {
+        const QTextBlock blk = doc->findBlockByNumber(line);
+        mark(blk.position(), blk.position() + blk.length() - 1);
+    }
+    m_preview->setExtraSelections(sels);
 }
 
 void PacketMakerDialog::rebuildForNewFrameNumber()
@@ -1452,6 +1505,7 @@ void PacketMakerDialog::onBuild()
         if (!exErr.isEmpty() && MessageHeader::applies(m_packetCombo->currentText())) {
             m_lastFrame.clear();
             setSendEnabled(false);
+            m_hexStart = -1; m_rowLines.clear();
             m_preview->setPlainText(QString());
             m_status->fail(tr("Build failed: %1").arg(exErr));
             return;
@@ -1462,6 +1516,7 @@ void PacketMakerDialog::onBuild()
     if (!r.ok) {
         m_lastFrame.clear();
         setSendEnabled(false);
+        m_hexStart = -1; m_rowLines.clear();
         m_preview->setPlainText(QString());
         m_status->fail(tr("Build failed: %1").arg(r.error));
         return;
