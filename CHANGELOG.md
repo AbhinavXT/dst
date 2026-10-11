@@ -11,6 +11,85 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-256"></a>
+## Session 256 — the NMS tables: find and filter bar
+
+Items 7 and the "find and filter bar" of Abhinav's list after patch 248.
+
+What the operator sees, a bar under the counts:
+
+`[ Find (Ctrl+F): words … ] [ All columns ▾ ] [▲] [▼]  1 of 7 matching packets  ☐ Only matching rows  ☐ Marked rows only`
+
+- **Find**: every word must appear, in any case; "_" counts as a space
+  (the Live Loco Console's find rule). "not ok", "safety error",
+  "dmi link not". Typing is debounced 200 ms. Esc clears.
+- **Where**: All columns (the words may be in different cells of the row,
+  the frame's hex included) or one column. So "by subsystem, fault id or
+  value" is: pick `reporting_subsystem` or `fault[1] fault_id`, type the
+  value.
+- **The matches** are tinted with the log find's recipe (`UiColor::accent`
+  at low alpha), so a match looks the same everywhere in DLConsole. Only
+  cells holding every word are tinted, so "not ok" does not tint every
+  "1 (OK)". In a row that matches only across cells, the cells holding a
+  word are tinted.
+- **▼ / Enter / F3** and **▲ / Shift+F3** go to the next or previous match,
+  "3 of 7". The view goes to the matching cell: with "All columns", the
+  row's first cell holding the words, scrolled clear of any frozen columns.
+  Going to a match turns Follow off, so the row being read is not scrolled
+  away.
+- **Only matching rows** turns the find into a filter. It combines with
+  Changes only and Marked rows only (all must hold), and new packets that
+  match are added as they arrive.
+- **Marked rows only**: the packets with a bold cell (a failure or an event
+  reported, or packets missing before it).
+- **Export** now asks, when rows or columns are hidden: "The table shows 7
+  of 2081 packets and 47 of 53 columns": *What is shown* or *Every packet
+  and column*.
+
+`FrozenColumns` gains `scrollTo()`, Qt's scrollTo then sideways until the
+cell is clear of the frozen columns. The table and the pinned strip scroll
+sideways by pixel now (needed to place a cell exactly).
+
+### Files
+
+`nmslog.h/.cpp` (`findWords`, `cellMatches`, `rowMatches`, `rowMarked`;
+`toCsv` / `toSheets` take the rows and columns to write);
+`nmslogwindow.h/.cpp` (the bar, `NmsLogFilter::setMatching / setMarkedOnly`,
+the tint in `NmsLogTableModel`, the export question, `saveCsv/saveXlsx(path,
+shownOnly)`); `frozencolumns.h/.cpp` (`scrollTo`, per-pixel);
+`tests/test_session256.cpp`, `tests/tests.pro`; the screenshot harness gains
+`SHOT_FIND=words`.
+
+### Tests
+
+`session256` (29 checks, the 2081 real health packets of
+`loco_1_1_29062026_134509`, the fault log of `loco_1_1_26062026_162418`):
+- **Matching:** the word rules; `rowMatches` finds exactly the rows whose
+  cells contain "not ok" (worked out again in the test); words across cells.
+- **Find:** the count; the tint (and "1 (OK)" not tinted); Next lands on the
+  first match and its matching cell, "1 of N"; Next with 6 columns frozen
+  puts the cell clear of them; Previous wraps to the last.
+- **One column:** "ok" in DMI_1_LINK_STATUS only (and the tint only there);
+  "14:20:52 not ok" across cells tints that row's cells only; a column the
+  table does not have matches nothing.
+- **Only matching rows:** shows just those packets, live as more arrive,
+  and combined with Changes only.
+- **Marked rows only:** exactly the rows `rowMarked` names, each with a
+  bold cell.
+- **Export:** "shown" vs "everything" in CSV (rows, and the hidden seq
+  column) and .xlsx.
+- **The fault log:** `fault[1] fault_id` "safety_error" keeps exactly
+  those packets.
+
+`./verify.sh` green on macOS (Qt 6.11.2): 13 validators, `dltests` 300
+suites / 7861 checks / 0 failed, menu audit (183 ok), smoke. Harness shot
+("not ok", 1 of 7) checked. Not tested here: Windows / Qt 5.15 (CI after the
+push); the keyboard shortcuts (Ctrl+F, F3, Esc) are wired but not
+key-pressed in a test; the export question box is not driven by a test (the
+save paths it calls are).
+
+---
+
 <a id="session-255"></a>
 ## Session 255 — the NMS fault log: Fault summary
 

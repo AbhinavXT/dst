@@ -29,6 +29,8 @@ FrozenColumns::FrozenColumns(QTableView *table)
     m_overlay->setToolTip(table->toolTip());
     m_overlay->hide();
     table->viewport()->stackUnder(m_overlay);
+    // Pixels, not columns: a cell can be scrolled clear of the overlay exactly.
+    table->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);
 
     // Up and down with the table. One way only: before the overlay is laid
     // out its range is shorter, and a clamped value sent back would scroll the
@@ -107,4 +109,15 @@ bool FrozenColumns::eventFilter(QObject *watched, QEvent *event)
         || event->type() == QEvent::Show)
         place();
     return QObject::eventFilter(watched, event);
+}
+
+void FrozenColumns::scrollTo(const QModelIndex &index, int hint)
+{
+    if (!m_table || !index.isValid()) return;
+    m_table->scrollTo(index, QAbstractItemView::ScrollHint(hint));
+    if (m_count <= 0 || m_overlay->isHidden() || index.column() < m_count) return;
+    const QRect cell = m_table->visualRect(index);
+    const int covered = m_overlay->width();
+    if (cell.left() < covered)
+        m_table->horizontalScrollBar()->setValue(m_table->horizontalScrollBar()->value() - (covered - cell.left()));
 }

@@ -128,10 +128,24 @@ QStringList faultSummaryHeader();
 QVector<QStringList> faultSummary(const Table &t);
 QString faultSummaryCsv(const Table &t);
 
+// Session 256: find. The query's words, lower-case, "_" read as a space
+// (TableFindBar's rule): every word must appear. In one column (display
+// position), or anywhere in the row when col < 0 (the words may be in
+// different cells, the frame's hex included); col < -1 (a column the table
+// does not have yet) matches nothing.
+QStringList findWords(const QString &query);
+bool cellMatches(const QString &cell, const QStringList &words);
+bool rowMatches(const Table &t, int row, const QStringList &words, int col = -1);
+// Any cell of the row marked (markOf), or a gap before it.
+bool rowMarked(const Table &t, int row);
+
 // Header row, then one line per packet; RFC 4180 quoting, CRLF.
-QString toCsv(const Table &t);
+// Session 256: `rows` (table rows) and `cols` (display positions) pick what
+// is written; empty: all of them.
+QString toCsv(const Table &t, const QVector<int> &rows = {}, const QVector<int> &cols = {});
 // One sheet named after the packet type.
-QVector<XlsxBook::Sheet> toSheets(const Table &t, Kind kind);
+QVector<XlsxBook::Sheet> toSheets(const Table &t, Kind kind, const QVector<int> &rows = {},
+                                  const QVector<int> &cols = {});
 
 }  // namespace NmsLog
 

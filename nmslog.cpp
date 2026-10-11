@@ -382,32 +382,96 @@ QString faultSummaryCsv(const Table &t)
     return out;
 }
 
-QString toCsv(const Table &t)
+QStringList findWords(const QString &query)
 {
+    QString q = query.toLower();
+    q.replace(QLatin1Char('_'), QLatin1Char(' '));
+    return q.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+}
+
+namespace {
+
+QString folded(const QString &s)
+{
+    QString f = s.toLower();
+    f.replace(QLatin1Char('_'), QLatin1Char(' '));
+    return f;
+}
+
+bool hasAll(const QString &foldedText, const QStringList &words)
+{
+    for (const QString &w : words)
+        if (!foldedText.contains(w)) return false;
+    return true;
+}
+
+}  // namespace
+
+bool cellMatches(const QString &cell, const QStringList &words)
+{
+    return !words.isEmpty() && !cell.isEmpty() && hasAll(folded(cell), words);
+}
+
+bool rowMatches(const Table &t, int row, const QStringList &words, int col)
+{
+    if (words.isEmpty() || row < 0 || row >= t.rows.size() || col < -1) return false;   // < -1: a column not in the table
+    if (col >= 0) return cellMatches(t.cell(row, col), words);
+    QString all;
+    for (int c = 0; c < t.columnCount(); ++c) {
+        all += t.cell(row, c);
+        all += QLatin1String(" | ");
+    }
+    return hasAll(folded(all), words);
+}
+
+bool rowMarked(const Table &t, int row)
+{
+    if (row < 0 || row >= t.rows.size()) return false;
+    if (!t.gapColumn.value(row).isEmpty()) return true;
+    for (int c = 0; c < t.order.size(); ++c)
+        if (markOf(t.header(c), t.cell(row, c)) != Mark::None) return true;
+    return false;
+}
+
+namespace {
+
+QVector<int> allOf(int n)
+{
+    QVector<int> v(n);
+    for (int i = 0; i < n; ++i) v[i] = i;
+    return v;
+}
+
+}  // namespace
+
+QString toCsv(const Table &t, const QVector<int> &rowsIn, const QVector<int> &colsIn)
+{
+    const QVector<int> rows = rowsIn.isEmpty() ? allOf(t.rows.size()) : rowsIn;
+    const QVector<int> cols = colsIn.isEmpty() ? allOf(t.columnCount()) : colsIn;
     QString out;
-    const int cols = t.columnCount();
     QStringList line;
-    for (int c = 0; c < cols; ++c) line << csvField(t.header(c));
+    for (int c : cols) line << csvField(t.header(c));
     out += line.join(QLatin1Char(',')) + QStringLiteral("\r\n");
-    for (int r = 0; r < t.rows.size(); ++r) {
+    for (int r : rows) {
         line.clear();
-        for (int c = 0; c < cols; ++c) line << csvField(t.cell(r, c));
+        for (int c : cols) line << csvField(t.cell(r, c));
         out += line.join(QLatin1Char(',')) + QStringLiteral("\r\n");
     }
     return out;
 }
 
-QVector<XlsxBook::Sheet> toSheets(const Table &t, Kind kind)
+QVector<XlsxBook::Sheet> toSheets(const Table &t, Kind kind, const QVector<int> &rowsIn, const QVector<int> &colsIn)
 {
+    const QVector<int> rows = rowsIn.isEmpty() ? allOf(t.rows.size()) : rowsIn;
+    const QVector<int> cols = colsIn.isEmpty() ? allOf(t.columnCount()) : colsIn;
     XlsxBook::Sheet sh;
     sh.name = token(kind);
-    const int cols = t.columnCount();
     XlsxBook::Row head;
-    for (int c = 0; c < cols; ++c) head << t.header(c);
+    for (int c : cols) head << t.header(c);
     sh.rows << head;
-    for (int r = 0; r < t.rows.size(); ++r) {
+    for (int r : rows) {
         XlsxBook::Row row;
-        for (int c = 0; c < cols; ++c) row << sheetCell(t.cell(r, c));
+        for (int c : cols) row << sheetCell(t.cell(r, c));
         while (!row.isEmpty() && !row.last().isValid()) row.removeLast();
         sh.rows << row;
     }

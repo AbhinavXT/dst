@@ -251,6 +251,14 @@ int main(int argc, char **argv)
                     while (t0.elapsed() < 500) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
                     fd->grab().save(QStringLiteral("%1/shot_nmsfaults.png").arg(dir));
                 }
+                // SHOT_FIND=words (session 256), then Next once.
+                if (!qEnvironmentVariableIsEmpty("SHOT_FIND")) {
+                    w->resize(1100, 720);
+                    w->show();
+                    w->setFindText(qEnvironmentVariable("SHOT_FIND"));
+                    w->findNext();
+                    printf("  find: %d matching\n", w->findMatches());
+                }
                 // SHOT_FREEZE=n, SHOT_PIN=r,r (1-based packet numbers): session 253.
                 if (!qEnvironmentVariableIsEmpty("SHOT_FREEZE")) w->freezeColumns(qEnvironmentVariableIntValue("SHOT_FREEZE"));
                 for (const QString &r : qEnvironmentVariable("SHOT_PIN").split(QLatin1Char(','), Qt::SkipEmptyParts))

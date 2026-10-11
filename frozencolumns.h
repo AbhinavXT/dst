@@ -29,6 +29,9 @@ public:
     void setCount(int n);
     int  count() const { return m_count; }
     QTableView *overlay() const { return m_overlay; }
+    // The table's scrollTo(), then sideways until the cell is clear of the
+    // frozen columns (Qt's own does not know they cover the left).
+    void scrollTo(const QModelIndex &index, int hint = 0);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;

@@ -19,6 +19,13 @@
 #include <QDialogButtonBox>
 #include <QLabel>
 #include <QListWidget>
+#include <QComboBox>
+#include <QLineEdit>
+#include <QMessageBox>
+#include <QShortcut>
+#include <QTimer>
+#include <QToolButton>
+#include <QApplication>
 #include <QTableWidget>
 #include <QMenu>
 #include <QPushButton>
@@ -32,6 +39,7 @@
 
 void NmsLogTableModel::reset(const NmsLog::Table &t)
 {
+    m_spread.clear();
     beginResetModel();
     m_table = t;
     endResetModel();
@@ -91,6 +99,30 @@ QVariant NmsLogTableModel::data(const QModelIndex &index, int role) const
 {
     if (!index.isValid()) return QVariant();
     if (role == Qt::DisplayRole) return m_table.cell(index.row(), index.column());
+    if (role == Qt::BackgroundRole) {
+        // Session 256: a find match, tinted as the log find tints one.
+        // The cells that hold every word; in a row that matches only across
+        // cells, the cells that hold one of them.
+        if (m_findWords.isEmpty()) return QVariant();
+        if (!m_findColumn.isEmpty() && m_table.header(index.column()) != m_findColumn) return QVariant();
+        const QString text = m_table.cell(index.row(), index.column());
+        bool tint = NmsLog::cellMatches(text, m_findWords);
+        if (!tint && m_findColumn.isEmpty()) {
+            auto it = m_spread.constFind(index.row());
+            if (it == m_spread.constEnd()) {
+                bool whole = false;
+                for (int c = 0; c < m_table.columnCount() && !whole; ++c)
+                    whole = NmsLog::cellMatches(m_table.cell(index.row(), c), m_findWords);
+                it = m_spread.insert(index.row(), !whole && NmsLog::rowMatches(m_table, index.row(), m_findWords));
+            }
+            if (it.value())
+                for (const QString &w : m_findWords) tint = tint || NmsLog::cellMatches(text, { w });
+        }
+        if (!tint) return QVariant();
+        QColor colour = UiColor::accent();
+        colour.setAlpha(qApp->palette().color(QPalette::Base).lightness() < 128 ? 70 : 48);
+        return QBrush(colour);
+    }
     if (role != Qt::ToolTipRole && role != Qt::ForegroundRole && role != Qt::FontRole) return QVariant();
     // Session 250: a cell that reports a failure or an event is marked.
     const QString text = m_table.cell(index.row(), index.column());
@@ -108,6 +140,15 @@ QVariant NmsLogTableModel::data(const QModelIndex &index, int role) const
     QFont f;
     f.setBold(true);
     return f;
+}
+
+void NmsLogTableModel::setFind(const QStringList &words, const QString &column)
+{
+    if (words == m_findWords && column == m_findColumn) return;
+    m_findWords = words;
+    m_findColumn = column;
+    m_spread.clear();
+    if (rowCount() > 0) emit dataChanged(index(0, 0), index(rowCount() - 1, columnCount() - 1), { Qt::BackgroundRole });
 }
 
 QVariant NmsLogTableModel::headerData(int section, Qt::Orientation o, int role) const
@@ -139,9 +180,29 @@ void NmsLogFilter::setOnlyRows(const QSet<int> &rows)
     invalidateFilter();
 }
 
+void NmsLogFilter::setMatching(const QStringList &words, const QString &column)
+{
+    if (words == m_words && column == m_column) return;
+    m_words = words;
+    m_column = column;
+    invalidateFilter();
+}
+
+void NmsLogFilter::setMarkedOnly(bool on)
+{
+    if (on == m_markedOnly) return;
+    m_markedOnly = on;
+    invalidateFilter();
+}
+
 bool NmsLogFilter::filterAcceptsRow(int sourceRow, const QModelIndex &) const
 {
     if (m_onlyListed) return m_only.contains(sourceRow);
+    const NmsLog::Table &t = m_rows->table();
+    if (!m_words.isEmpty()
+        && !NmsLog::rowMatches(t, sourceRow, m_words, m_column.isEmpty() ? -1 : t.index.value(m_column, -2)))
+        return false;
+    if (m_markedOnly && !NmsLog::rowMarked(t, sourceRow)) return false;
     if (m_changesOnly && !m_rows->table().changed.value(sourceRow, true)) return false;
     return true;
 }
@@ -190,6 +251,7 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
     m_pinned->setSelectionBehavior(QAbstractItemView::SelectRows);
     m_pinned->horizontalHeader()->hide();
     m_pinned->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_pinned->setHorizontalScrollMode(QAbstractItemView::ScrollPerPixel);   // as the table's (FrozenColumns)
     m_pinned->verticalHeader()->setDefaultSectionSize(m_view->verticalHeader()->defaultSectionSize());
     m_pinned->setContextMenuPolicy(Qt::CustomContextMenu);
     m_pinned->verticalHeader()->setContextMenuPolicy(Qt::CustomContextMenu);
@@ -222,6 +284,35 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
         faults->setToolTip(tr("Each fault from the packet that first lists it to the first later packet from the "
                               "same subsystem that no longer does: how long, in how many packets"));
     }
+    // Session 256: the find and filter bar.
+    m_findEdit = new QLineEdit(this);
+    m_findEdit->setObjectName(QStringLiteral("nmsFind"));
+    m_findEdit->setClearButtonEnabled(true);
+    m_findEdit->setPlaceholderText(tr("Find (Ctrl+F): words, e.g. “not ok” or “dmi link”"));
+    m_findEdit->setToolTip(tr("Every word must appear, in any case; “_” counts as a space. Enter or F3: next "
+                              "match, Shift+F3: previous. Esc: clear"));
+    m_findColumn = new QComboBox(this);
+    m_findColumn->setObjectName(QStringLiteral("nmsFindColumn"));
+    m_findColumn->setToolTip(tr("Where to look: one column, or the whole row (the frame's hex too)"));
+    m_findColumn->setSizeAdjustPolicy(QComboBox::AdjustToContents);
+    m_filterRows = new QCheckBox(tr("Only matching rows"), this);
+    m_filterRows->setObjectName(QStringLiteral("nmsFilterRows"));
+    m_filterRows->setToolTip(tr("Show only the packets that match; off: every packet, the matches tinted"));
+    m_markedOnly = new QCheckBox(tr("Marked rows only"), this);
+    m_markedOnly->setObjectName(QStringLiteral("nmsMarkedOnly"));
+    m_markedOnly->setToolTip(tr("Show only the packets with a bold cell: a failure or an event reported, or "
+                                "packets missing before it"));
+    auto *prev = new QToolButton(this);
+    prev->setText(QStringLiteral("▲"));
+    prev->setToolTip(tr("Previous match (Shift+F3)"));
+    auto *next = new QToolButton(this);
+    next->setText(QStringLiteral("▼"));
+    next->setToolTip(tr("Next match (F3, Enter)"));
+    m_findCount = new QLabel(this);
+    m_findCount->setObjectName(QStringLiteral("nmsFindCount"));
+    m_findTimer = new QTimer(this);
+    m_findTimer->setSingleShot(true);
+    m_findTimer->setInterval(200);
     m_count = new QLabel(this);
     m_status = new StatusLine;
     auto *csv = new QPushButton(tr("Export CSV…"), this);
@@ -236,12 +327,21 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
     top->addWidget(columns);
     top->addWidget(m_changesOnly);
     top->addWidget(m_follow);
+    auto *findRow = new QHBoxLayout;
+    findRow->addWidget(m_findEdit, 2);
+    findRow->addWidget(m_findColumn);
+    findRow->addWidget(prev);
+    findRow->addWidget(next);
+    findRow->addWidget(m_findCount, 1);
+    findRow->addWidget(m_filterRows);
+    findRow->addWidget(m_markedOnly);
     auto *bottom = new QHBoxLayout;
     bottom->addWidget(m_status, 1);
     bottom->addWidget(csv);
     bottom->addWidget(xlsx);
     auto *root = new QVBoxLayout(this);
     root->addLayout(top);
+    root->addLayout(findRow);
     root->addWidget(m_pinned);
     root->addWidget(m_view, 1);
     root->addLayout(bottom);
@@ -277,6 +377,30 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
     connect(m_view->verticalHeader(), &QHeaderView::geometriesChanged, this, [this]() { syncPinned(); });
     connect(m_filter, &QAbstractItemModel::modelReset, this, [this]() { syncPinned(); }, Qt::QueuedConnection);
     connect(m_hideUnchanging, &QCheckBox::toggled, this, [this]() { applyColumns(); });
+    connect(m_findEdit, &QLineEdit::textChanged, m_findTimer, qOverload<>(&QTimer::start));
+    connect(m_findTimer, &QTimer::timeout, this, &NmsLogWindow::applyFind);
+    connect(m_findEdit, &QLineEdit::returnPressed, this, [this]() {
+        if (m_findTimer->isActive()) { m_findTimer->stop(); applyFind(); }
+        findNext();
+    });
+    connect(m_findColumn, qOverload<int>(&QComboBox::activated), this, [this]() { applyFind(); });
+    connect(m_filterRows, &QCheckBox::toggled, this, [this]() { applyFind(); });
+    connect(m_markedOnly, &QCheckBox::toggled, this, [this](bool on) {
+        m_filter->setMarkedOnly(on);
+        recountMatches();
+        showCount();
+    });
+    connect(prev, &QToolButton::clicked, this, &NmsLogWindow::findPrevious);
+    connect(next, &QToolButton::clicked, this, &NmsLogWindow::findNext);
+    auto *findKey = new QShortcut(QKeySequence::Find, this);
+    connect(findKey, &QShortcut::activated, this, [this]() { m_findEdit->setFocus(); m_findEdit->selectAll(); });
+    auto *nextKey = new QShortcut(QKeySequence::FindNext, this);
+    connect(nextKey, &QShortcut::activated, this, &NmsLogWindow::findNext);
+    auto *prevKey = new QShortcut(QKeySequence::FindPrevious, this);
+    connect(prevKey, &QShortcut::activated, this, &NmsLogWindow::findPrevious);
+    auto *escKey = new QShortcut(QKeySequence(Qt::Key_Escape), m_findEdit);
+    escKey->setContext(Qt::WidgetShortcut);
+    connect(escKey, &QShortcut::activated, m_findEdit, &QLineEdit::clear);
     if (faults) connect(faults, &QPushButton::clicked, this, [this]() {
         QDialog *d = faultSummary();
         d->show();
@@ -290,6 +414,7 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
     connect(m_changesOnly, &QCheckBox::toggled, this, [this](bool on) {
         m_filter->setChangesOnly(on);
         if (m_follow->isChecked()) m_view->scrollToBottom();
+        recountMatches();
         showCount();
     });
 
@@ -322,6 +447,9 @@ void NmsLogWindow::rebuild()
     widenToFit(0, m_rows->rowCount() - 1);
     if (m_follow->isChecked()) m_view->scrollToBottom();
     applyColumns();
+    fillFindColumns();
+    m_current = -1;
+    recountMatches();
     if (m_rows->table().rows.isEmpty())
         m_status->state(tr("No @%1 packet in this tab yet; new ones are added as they arrive.")
                             .arg(NmsLog::token(m_kind)));
@@ -339,7 +467,15 @@ void NmsLogWindow::onRowsInserted(int first, int last)
     if (m_rows->append(m_kind, batch) == 0) return;
     if (m_rows->columnCount() != columnsBefore) m_view->resizeColumnsToContents();
     widenToFit(rowsBefore, m_rows->rowCount() - 1);
+    if (m_rows->columnCount() != columnsBefore) fillFindColumns();
     applyColumns();
+    if (!m_words.isEmpty()) {
+        // The new rows' matches, after the ones already counted.
+        for (int r = rowsBefore; r < m_rows->rowCount(); ++r)
+            if (m_filter->mapFromSource(m_rows->index(r, 0)).isValid()
+                && NmsLog::rowMatches(m_rows->table(), r, m_words, findColumnPos())) m_matches << r;
+        showFindCount();
+    }
     if (m_follow->isChecked()) m_view->scrollToBottom();
 }
 
@@ -418,20 +554,50 @@ int NmsLogWindow::tableRow(const QModelIndex &viewIndex) const
 
 bool NmsLogWindow::saveCsv(const QString &path, QString *err) const
 {
+    return saveCsv(path, false, err);
+}
+
+bool NmsLogWindow::saveXlsx(const QString &path, QString *err) const
+{
+    return saveXlsx(path, false, err);
+}
+
+bool NmsLogWindow::saveCsv(const QString &path, bool shownOnly, QString *err) const
+{
     QFile f(path);
+    const QString csv = shownOnly ? NmsLog::toCsv(m_rows->table(), shownRows(), shownColumns())
+                                  : NmsLog::toCsv(m_rows->table());
     // UTF-8 with a byte-order mark: Excel opens it as UTF-8 then ("—", "°C").
     if (f.open(QIODevice::WriteOnly)
         && f.write("\xEF\xBB\xBF") == 3
-        && f.write(NmsLog::toCsv(m_rows->table()).toUtf8()) >= 0) {
+        && f.write(csv.toUtf8()) >= 0) {
         return true;
     }
     if (err) *err = f.errorString();
     return false;
 }
 
-bool NmsLogWindow::saveXlsx(const QString &path, QString *err) const
+bool NmsLogWindow::saveXlsx(const QString &path, bool shownOnly, QString *err) const
 {
-    return XlsxBook::writeFile(path, NmsLog::toSheets(m_rows->table(), m_kind), err);
+    return XlsxBook::writeFile(path, shownOnly ? NmsLog::toSheets(m_rows->table(), m_kind, shownRows(), shownColumns())
+                                               : NmsLog::toSheets(m_rows->table(), m_kind),
+                               err);
+}
+
+QVector<int> NmsLogWindow::shownRows() const
+{
+    QVector<int> out;
+    out.reserve(m_filter->rowCount());
+    for (int v = 0; v < m_filter->rowCount(); ++v) out << m_filter->mapToSource(m_filter->index(v, 0)).row();
+    return out;
+}
+
+QVector<int> NmsLogWindow::shownColumns() const
+{
+    QVector<int> out;
+    for (int c = 0; c < m_rows->columnCount(); ++c)
+        if (!m_view->isColumnHidden(c)) out << c;
+    return out;
 }
 
 void NmsLogWindow::exportTo(bool xlsx)
@@ -440,14 +606,34 @@ void NmsLogWindow::exportTo(bool xlsx)
         m_status->warn(tr("Nothing to export yet."));
         return;
     }
+    // Session 256: rows or columns hidden: what is shown, or everything?
+    const int rowsShown = m_filter->rowCount(), rowsAll = m_rows->rowCount();
+    const int colsShown = shownColumns().size(), colsAll = m_rows->columnCount();
+    bool shownOnly = false;
+    if (rowsShown != rowsAll || colsShown != colsAll) {
+        QMessageBox ask(QMessageBox::Question, tr("Export %1").arg(NmsLog::title(m_kind)),
+                        tr("The table shows %1 of %2 packets and %3 of %4 columns.").arg(rowsShown).arg(rowsAll)
+                            .arg(colsShown).arg(colsAll),
+                        QMessageBox::Cancel, this);
+        QPushButton *shown = ask.addButton(tr("What is shown"), QMessageBox::AcceptRole);
+        QPushButton *all = ask.addButton(tr("Every packet and column"), QMessageBox::AcceptRole);
+        ask.setDefaultButton(shown);
+        ask.exec();
+        if (ask.clickedButton() == shown) shownOnly = true;
+        else if (ask.clickedButton() != all) return;
+        if (shownOnly && rowsShown == 0) {
+            m_status->warn(tr("No packet is shown: nothing to export."));
+            return;
+        }
+    }
     const QString suggested = NmsLog::fileStem(m_kind) + QLatin1Char('_') + m_tabKey
                               + (xlsx ? QStringLiteral(".xlsx") : QStringLiteral(".csv"));
     const QString path = QFileDialog::getSaveFileName(this, tr("Export %1").arg(NmsLog::title(m_kind)), suggested,
                                                       xlsx ? tr("Excel workbook (*.xlsx)") : tr("CSV (*.csv)"));
     if (path.isEmpty()) return;
     QString err;
-    const bool ok = xlsx ? saveXlsx(path, &err) : saveCsv(path, &err);
-    if (ok) m_status->ok(tr("Saved %1 packets to %2").arg(m_rows->table().rows.size()).arg(path));
+    const bool ok = xlsx ? saveXlsx(path, shownOnly, &err) : saveCsv(path, shownOnly, &err);
+    if (ok) m_status->ok(tr("Saved %1 packets to %2").arg(shownOnly ? rowsShown : rowsAll).arg(path));
     else m_status->fail(tr("Could not write %1: %2").arg(path, err));
 }
 
@@ -721,3 +907,122 @@ bool NmsLogWindow::saveFaultSummaryCsv(const QString &path, QString *err) const
     if (err) *err = f.errorString();
     return false;
 }
+
+// --- session 256: the find and filter bar -------------------------------------
+
+int NmsLogWindow::findColumnPos() const
+{
+    const QString col = m_findColumn->currentData().toString();
+    return col.isEmpty() ? -1 : m_rows->table().index.value(col, -2);
+}
+
+void NmsLogWindow::fillFindColumns()
+{
+    const QString keep = m_findColumn->currentData().toString();
+    QSignalBlocker block(m_findColumn);
+    m_findColumn->clear();
+    m_findColumn->addItem(tr("All columns"), QString());
+    for (int c = 0; c < m_rows->columnCount(); ++c) m_findColumn->addItem(m_rows->table().header(c), m_rows->table().header(c));
+    const int at = m_findColumn->findData(keep);
+    m_findColumn->setCurrentIndex(at < 0 ? 0 : at);
+}
+
+void NmsLogWindow::applyFind()
+{
+    m_findTimer->stop();
+    m_words = NmsLog::findWords(m_findEdit->text());
+    const QString column = m_findColumn->currentData().toString();
+    m_rows->setFind(m_words, column);
+    m_filter->setMatching(m_filterRows->isChecked() ? m_words : QStringList(), column);
+    m_current = -1;
+    recountMatches();
+    showCount();
+    if (m_filterRows->isChecked() && m_follow->isChecked()) m_view->scrollToBottom();
+}
+
+void NmsLogWindow::recountMatches()
+{
+    m_matches.clear();
+    if (!m_words.isEmpty()) {
+        const int col = findColumnPos();
+        for (int v = 0; v < m_filter->rowCount(); ++v) {
+            const int r = m_filter->mapToSource(m_filter->index(v, 0)).row();
+            if (NmsLog::rowMatches(m_rows->table(), r, m_words, col)) m_matches << r;
+        }
+    }
+    if (!m_matches.contains(m_current)) m_current = -1;
+    showFindCount();
+}
+
+void NmsLogWindow::showFindCount()
+{
+    if (m_words.isEmpty()) { m_findCount->clear(); return; }
+    if (m_matches.isEmpty()) {
+        m_findCount->setText(tr("no match"));
+        m_findCount->setStyleSheet(UiColor::warningStyle());
+        return;
+    }
+    m_findCount->setStyleSheet(QString());
+    const int at = m_matches.indexOf(m_current);
+    m_findCount->setText(at >= 0 ? tr("%1 of %2 matching packets").arg(at + 1).arg(m_matches.size())
+                                 : tr("%1 matching packets").arg(m_matches.size()));
+}
+
+void NmsLogWindow::goToMatch(int step)
+{
+    if (m_findTimer->isActive()) applyFind();
+    if (m_matches.isEmpty()) return;
+    const int n = m_matches.size();
+    int at = m_matches.indexOf(m_current);
+    if (at >= 0) {
+        at = (at + step + n) % n;
+    } else {
+        // No current match: the first after (or before) the selected row.
+        const int here = tableRow(m_view->currentIndex());
+        if (step > 0) {
+            at = 0;
+            while (here >= 0 && at < n && m_matches.at(at) <= here) ++at;
+            at %= n;
+        } else {
+            at = n - 1;
+            while (here >= 0 && at >= 0 && m_matches.at(at) >= here) --at;
+            at = (at + n) % n;
+        }
+    }
+    m_current = m_matches.at(at);
+    m_follow->setChecked(false);   // a match being read is not scrolled away
+    // The matching cell: the find's column, or the row's first cell with
+    // every word (else one of them), so a match far to the right is shown.
+    int col = findColumnPos();
+    if (col < 0) {
+        const NmsLog::Table &t = m_rows->table();
+        for (int c = 0; c < t.columnCount() && col < 0; ++c)
+            if (!m_view->isColumnHidden(c) && NmsLog::cellMatches(t.cell(m_current, c), m_words)) col = c;
+        for (int c = 0; c < t.columnCount() && col < 0; ++c)
+            for (const QString &w : m_words)
+                if (col < 0 && !m_view->isColumnHidden(c) && NmsLog::cellMatches(t.cell(m_current, c), { w })) col = c;
+    }
+    const QModelIndex v = m_filter->mapFromSource(m_rows->index(m_current, qMax(0, col)));
+    m_view->setCurrentIndex(v);
+    m_frozen->scrollTo(v, QAbstractItemView::PositionAtCenter);
+    showFindCount();
+}
+
+void NmsLogWindow::findNext() { goToMatch(1); }
+void NmsLogWindow::findPrevious() { goToMatch(-1); }
+
+void NmsLogWindow::setFindText(const QString &text)
+{
+    m_findEdit->setText(text);
+    applyFind();
+}
+
+void NmsLogWindow::setFindColumn(const QString &column)
+{
+    const int at = m_findColumn->findData(column);
+    m_findColumn->setCurrentIndex(at < 0 ? 0 : at);
+    applyFind();
+}
+
+void NmsLogWindow::setFilterRows(bool on) { m_filterRows->setChecked(on); }
+void NmsLogWindow::setMarkedOnly(bool on) { m_markedOnly->setChecked(on); }
