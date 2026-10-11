@@ -9,6 +9,7 @@
 #include <QSet>
 
 #include <algorithm>
+#include <limits>
 
 namespace TrackDiagram {
 namespace {
@@ -246,6 +247,54 @@ Diagram build(const LogModel *model, const QString &tabKey, const QString &tabNa
     if (!haveSpan) { d.minLocM = 0.0; d.maxLocM = 1.0; }
     else if (d.maxLocM - d.minLocM < 1.0) { d.minLocM -= 50.0; d.maxLocM += 50.0; }   // one point: give it room
     return d;
+}
+
+LayoutOverlay overlay(const Diagram &d, const StationLayout::Layout &layout, const QString &source)
+{
+    LayoutOverlay o;
+    o.source = source;
+    const QHash<QString, QString> lineOf = StationLayout::lineOfTag(layout);
+    struct Known { QString name; qint64 unique; double locM; QString line; bool duplicate; };
+    QVector<Known> known;
+    for (const StationLayout::Tag &t : layout.tags) {
+        const StationLayout::TagInfo i = StationLayout::info(t);
+        if (!i.ok) continue;
+        // A duplicate rides its main tag's line.
+        QString line = lineOf.value(t.name);
+        if (line.isEmpty() && i.duplicate) line = lineOf.value(QString::number(i.unique));
+        known << Known{ t.name, i.unique, double(i.absLoc), line, i.duplicate };
+        if (!line.isEmpty() && !o.lineOfUnique.contains(i.unique)) o.lineOfUnique.insert(i.unique, line);
+    }
+    QSet<qint64> read;
+    for (const RfidMark &t : d.tags) {
+        read.insert(t.uniqueId);
+        const QString line = o.lineOfUnique.value(t.uniqueId);
+        if (!line.isEmpty() && !o.lines.contains(line)) o.lines << line;
+    }
+    QHash<QString, double> footLoc;
+    for (const Known &k : known) {
+        // Only the stretch the run covered: the rest of the line was never passed.
+        if (k.duplicate || !o.lines.contains(k.line) || k.locM < d.minLocM || k.locM > d.maxLocM) continue;
+        o.tags << LayoutOverlay::Tag{ k.name, k.locM, k.line, read.contains(k.unique) };
+        footLoc.insert(k.name, k.locM);
+    }
+    for (const StationLayout::Signal &sg : layout.signalList)
+        if (footLoc.contains(sg.footTag)) o.signalMarks << LayoutOverlay::Sig{ sg.name, sg.footTag, footLoc.value(sg.footTag) };
+    return o;
+}
+
+QString lineAt(const Diagram &d, const LayoutOverlay &o, qint64 ms)
+{
+    QString line;
+    qint64 best = std::numeric_limits<qint64>::min();
+    for (const RfidMark &t : d.tags) {
+        if (t.epochMs > ms || t.epochMs < best) continue;
+        const QString l = o.lineOfUnique.value(t.uniqueId);
+        if (l.isEmpty()) continue;
+        best = t.epochMs;
+        line = l;
+    }
+    return line;
 }
 
 const Profile *Diagram::profileAt(qint64 ms) const

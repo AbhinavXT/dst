@@ -77,6 +77,9 @@
 
 #include "speeddistance.h"
 
+#include "stationlayout.h"
+
+#include <QHash>
 #include <QString>
 #include <QVector>
 
@@ -157,6 +160,25 @@ struct Diagram {
     // Any sample with a known location, or a tag: something to place.
     bool hasLocation() const { return trace.samples.size() > unknownSamples || !tags.isEmpty(); }
 };
+
+// Session 209: a station layout (stationlayout.h, Tools ▸ Station Layout)
+// laid over the run. Only the layout lines this run read a tag on: the
+// layout holds every line of the station, and an UP main's tags drawn on a
+// DN run's rail would read as tags the loco missed. Tags are matched by
+// unique id (the bits), not by the row's name.
+struct LayoutOverlay {
+    QString source;                       // the file, for the status line
+    QStringList lines;                    // layout lines this run read tags on
+    struct Tag { QString name; double locM = 0.0; QString line; bool read = false; };
+    QVector<Tag> tags;                    // main tags on those lines, inside the run's span
+    struct Sig { QString name, footTag; double locM = 0.0; };
+    QVector<Sig> signalMarks;             // signals whose foot tag is one of them
+    QHash<qint64, QString> lineOfUnique;  // every layout tag's line, by unique id
+    int unreadTags() const { int n = 0; for (const Tag &t : tags) n += t.read ? 0 : 1; return n; }
+};
+LayoutOverlay overlay(const Diagram &d, const StationLayout::Layout &layout, const QString &source);
+// The line of the last tag read at or before `ms`; empty when unknown.
+QString lineAt(const Diagram &d, const LayoutOverlay &o, qint64 ms);
 
 // abs_loco_loc 0 = the loco has not localised (see above).
 using SpeedDistance::locationKnown;

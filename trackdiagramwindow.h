@@ -27,6 +27,9 @@ class TrackDiagramCanvas : public QWidget
 public:
     explicit TrackDiagramCanvas(QWidget *parent = nullptr);
     void setDiagram(const TrackDiagram::Diagram &diagram);
+    // Session 209: a station layout over the run (an empty one clears it).
+    void setOverlay(const TrackDiagram::LayoutOverlay &o);
+    const TrackDiagram::LayoutOverlay &overlay() const { return m_overlay; }
     const TrackDiagram::Diagram &diagram() const { return m_d; }
     QSize sizeHint() const override { return QSize(1000, 380); }
     QSize minimumSizeHint() const override;   // taller when there are SLRP lanes (session 207)
@@ -58,6 +61,7 @@ private:
     void paintProfile(QPainter &p, int top, int lineHeight, qint64 cursorMs);
 
     TrackDiagram::Diagram m_d;
+    TrackDiagram::LayoutOverlay m_overlay;
     int m_cursorIndex = -1;
     QVector<Hit> m_hits;     // rebuilt by every paint
     QVector<QRect> m_labels; // likewise
@@ -71,6 +75,9 @@ public:
     const TrackDiagram::Diagram &diagram() const { return m_diagram; }
     TrackDiagramCanvas *canvas() const { return m_canvas; }
     bool saveImage(const QString &path) const;
+    // Session 209: a station layout (.json or the Python tool's .xlsx) over the run.
+    bool loadLayout(const QString &path);
+    void clearLayout();
 
 public slots:
     void rebuild();
@@ -88,6 +95,9 @@ private:
     QPushButton *m_play   = nullptr;
     QTimer      *m_timer  = nullptr;
     StatusLine  *m_status = nullptr;
+    QPushButton *m_hideLayout = nullptr;
+    StationLayout::Layout m_layout;
+    QString m_layoutFile;
 };
 
 #endif // TRACKDIAGRAMWINDOW_H

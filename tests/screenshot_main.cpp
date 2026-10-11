@@ -184,6 +184,7 @@ int main(int argc, char **argv)
                 const QString key = disp.knownKeys().value(0);
                 auto *w = new TrackDiagramWindow(disp.modelForKey(key), key, QStringLiteral("L1_V1"));
                 w->setAttribute(Qt::WA_DeleteOnClose, false);
+                if (!qEnvironmentVariableIsEmpty("SHOT_LAYOUT")) w->loadLayout(qEnvironmentVariable("SHOT_LAYOUT"));   // session 209
                 win = w;
             }
             if (which == QLatin1String("stationlayout")) {

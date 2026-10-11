@@ -11,6 +11,54 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-209"></a>
+## Session 209 — a station layout over the Track diagram
+
+The overlay half of Abhinav's choice for item 4 (2026-10-11: "Editor
+window + overlay"). Session 208 made the layout; this patch lays it over a run.
+
+**What the operator sees:** the Track diagram has **Station layout…**
+(a `.json` from Tools ▸ Station Layout, or the Python tool's `.xlsx`) and
+**Hide layout**. With a layout loaded:
+- tags the layout has on the run's lines, inside the stretch the run
+  covered, that the run did **not read** are drawn as hollow diamonds
+  ("Layout tag 777 at …, line DM: not read in this run");
+- the layout's **signals** at their foot tags, drawn as grey posts, where
+  the DMI never named them in this run;
+- a read tag's tooltip names its **line**, and the readout says which line
+  the loco is on at the cursor (the line of the last tag read);
+- the status line adds "layout station.xlsx, line DM: 6 of its 6 tags here
+  read", or "none of this run's tags are in it";
+- a second legend row explains the layout marks.
+
+**Which lines:** only the layout lines this run read a tag on, matched by
+the tag's unique id (its bits, not the row name), and only inside the
+run's span. A station layout holds every line, so an UP main's tags drawn
+on a DN run's rail, or tags kilometres away on the same line, would read
+as tags the loco missed.
+
+**Checked on real data:** over `loco_1_1_27062026_170217.cap`, the real
+station.xlsx puts the run on line DM. Every tag the run read sits exactly
+where the station file puts it, and S48 and S43 appear at their foot
+tags (the DMI named no signal in that run).
+
+**Files:** `trackdiagram.{h,cpp}` (`LayoutOverlay`, `overlay`, `lineAt`),
+`trackdiagramwindow.{h,cpp}`, `tests/screenshot_main.cpp`
+(`SHOT_LAYOUT`); `tests/test_session209.cpp`.
+
+**Tests:** session209, 21 checks. On the real run, with a layout built in the
+test from the run's own tags, plus an unread tag between two of them and a
+tag on another line: only the run's line, the unread tag drawn, the
+other line's not; the signal at its foot tag; the line before and after
+the first read; tooltips; no label overlaps; Hide layout; a missing file
+refused. The real station.xlsx is checked when present.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators **13/13**;
+`dltests` **259 suites / 6984 checks, 1 failed** (the `session156` pty
+check, as at 194 and 206); menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-208"></a>
 ## Session 208 — Station Layout: the Python tool's station file, editable
 
