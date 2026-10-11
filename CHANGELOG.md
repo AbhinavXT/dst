@@ -11,6 +11,64 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-252"></a>
+## Session 252 — the NMS tables: packets missing
+
+Item 3 of Abhinav's list after patch 248.
+
+What the operator sees: where packets are missing before a row, one cell of
+that row is marked in the warning colour, bold. Hovering it says what is
+missing. The count adds "; 4 gaps", and **Changes only** keeps gap rows.
+
+The real captures decided how a gap is recognised:
+
+- **@nmshlth / @nmsrssi:** their `nms.message_seq` never changes (the same
+  number in every packet of every capture in `replay/`), so it cannot show
+  a loss. They are sent about once a second: the RTC steps 0, 1 or 2 s
+  (second-resolution jitter), never 3–8 s, and a few times 9 s or more. A
+  step of **3 s or more** (or the RTC going back) is a gap, marked on the
+  **rtc** cell: "12 s since the @nmshlth before (they are sent about once a
+  second)".
+- **@nmsflt:** sent when there is something to report, so time says
+  nothing. Its `message_seq` counts up by one. A jump is marked on the
+  **nms.message_seq** cell ("message_seq 40 then 45: 4 @nmsflt packet(s)
+  not in the log"), and so are a repeat and a restart ("12 then 2: the count
+  started again (the sender restarted, or packets are not in the log)").
+
+The note says what the log shows, not why: a gap can be the sender, the
+link or the logger.
+
+### Files
+
+`nmslog.h/.cpp` (`Table::gapColumn / gapNote / gaps`; the state carried to
+the next row is now one `Table::Carry`: the events' last values, the last
+RTC, the last message_seq); `nmslogwindow.cpp` (the mark and tooltip, the
+count); `tests/test_session252.cpp`, `tests/tests.pro`;
+`tests/test_session251.cpp` (its rule now includes gap rows; its count
+checks read the start of the label).
+
+### Tests
+
+`session252` (24 checks, real frames). On `loco_1_1_29062026_134509`, for
+both health and RSSI: message_seq never changes, and the gaps are exactly
+the rows where the capture line's RTC steps 3 s or more (worked out in the
+test from the line), each on the rtc cell with its seconds, each kept by
+Changes only. For the fault logs of three captures, the gaps are exactly
+where bytes 13..14 do not count on by one, each on message_seq, with
+restarts and jumps both seen; row 11 of `loco_1_1_26062026_162418` (12 then
+2) says the count started again. In the window, opened just before the
+first gap, the gap arrives live across the batch boundary and is found the
+same, the cell is in the warning colour with the note, the row after is
+not, and the count names the gaps.
+`./verify.sh` green on macOS (Qt 6.11.2): 13 validators, `dltests` 296
+suites / 7760 checks / 0 failed, menu audit (183 ok), smoke. One earlier
+run failed `session111` (the serial probe against a pseudo-terminal, on a
+4 s / 6 s budget). It passes 6 of 6 alone, the NMS code does not touch it,
+and CI has failed it before (patch 237); it is noted for Abhinav, not
+changed here. Not tested here: Windows / Qt 5.15 (CI after the push).
+
+---
+
 <a id="session-251"></a>
 ## Session 251 — the NMS tables: Changes only
 

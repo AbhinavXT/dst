@@ -202,13 +202,55 @@ bool append(Table &t, Kind kind, const LogEntry &entry, bool *newColumns)
     for (int c = 0; c < row.size(); ++c) {
         if (row.at(c).isEmpty()) continue;
         if (t.groups.at(c) == Group::Body) {
-            auto it = t.lastValue.find(c);
-            if (it == t.lastValue.end()) { t.lastValue.insert(c, row.at(c)); changed = true; }
+            auto it = t.carry.lastValue.find(c);
+            if (it == t.carry.lastValue.end()) { t.carry.lastValue.insert(c, row.at(c)); changed = true; }
             else if (it.value() != row.at(c)) { it.value() = row.at(c); changed = true; }
         } else if (t.columns.at(c) == QLatin1String("CRC") && row.at(c) == QLatin1String("FAIL")) {
             changed = true;
         }
     }
+
+    // Session 252: packets missing before this one?
+    QString gapColumn, gapNote;
+    auto valueOf = [&](const QString &name) { return row.value(t.columns.indexOf(name)); };
+    if (kind == Kind::Fault) {
+        bool ok = false;
+        const int seq = valueOf(QStringLiteral("nms.message_seq")).toInt(&ok);
+        if (ok) {
+            const int last = t.carry.lastMsgSeq;
+            const int step = (seq - last) & 0xFFFF;
+            if (last >= 0 && step != 1) {
+                gapColumn = QStringLiteral("nms.message_seq");
+                if (step == 0)
+                    gapNote = QStringLiteral("message_seq %1 again: the same number as the packet before").arg(seq);
+                else if (step <= 1000)
+                    gapNote = QStringLiteral("message_seq %1 then %2: %3 @nmsflt packet(s) not in the log")
+                                  .arg(last).arg(seq).arg(step - 1);
+                else
+                    gapNote = QStringLiteral("message_seq %1 then %2: the count started again "
+                                             "(the sender restarted, or packets are not in the log)").arg(last).arg(seq);
+            }
+            t.carry.lastMsgSeq = seq;
+        }
+    } else {
+        const QDateTime rtc = QDateTime::fromString(valueOf(QStringLiteral("rtc")), QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+        if (rtc.isValid()) {
+            const qint64 secs = rtc.toMSecsSinceEpoch() / 1000;
+            const qint64 last = t.carry.lastRtc;
+            if (last >= 0 && secs - last >= 3) {
+                gapColumn = QStringLiteral("rtc");
+                gapNote = QStringLiteral("%1 s since the @%2 before (they are sent about once a second)")
+                              .arg(secs - last).arg(token(kind));
+            } else if (last >= 0 && secs < last) {
+                gapColumn = QStringLiteral("rtc");
+                gapNote = QStringLiteral("The RTC is %1 s behind the @%2 before").arg(last - secs).arg(token(kind));
+            }
+            t.carry.lastRtc = secs;
+        }
+    }
+    if (!gapColumn.isEmpty()) { ++t.gaps; changed = true; }
+    t.gapColumn << gapColumn;
+    t.gapNote << gapNote;
     t.changed << changed;
     t.rows << row;
     t.hex << QString::fromLatin1(cap.bytes.toHex(' ').toUpper());

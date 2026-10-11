@@ -37,7 +37,7 @@ int NmsLogTableModel::append(NmsLog::Kind kind, const QVector<LogEntryPtr> &entr
     batch.groups = m_table.groups;
     batch.order = m_table.order;
     batch.index = m_table.index;
-    batch.lastValue = m_table.lastValue;   // "changed" carries on from the table
+    batch.carry = m_table.carry;   // "changed" and the gaps carry on from the table
     for (const LogEntryPtr &e : entries) {
         if (e) NmsLog::append(batch, kind, *e);
     }
@@ -55,7 +55,10 @@ int NmsLogTableModel::append(NmsLog::Kind kind, const QVector<LogEntryPtr> &entr
     m_table.hex += batch.hex;
     m_table.epochMs += batch.epochMs;
     m_table.changed += batch.changed;
-    m_table.lastValue = batch.lastValue;
+    m_table.gapColumn += batch.gapColumn;
+    m_table.gapNote += batch.gapNote;
+    m_table.gaps += batch.gaps;
+    m_table.carry = batch.carry;
     if (widened) endResetModel();
     else endInsertRows();
     return added;
@@ -78,8 +81,14 @@ QVariant NmsLogTableModel::data(const QModelIndex &index, int role) const
     if (role != Qt::ToolTipRole && role != Qt::ForegroundRole && role != Qt::FontRole) return QVariant();
     // Session 250: a cell that reports a failure or an event is marked.
     const QString text = m_table.cell(index.row(), index.column());
+    const QString column = m_table.header(index.column());
     QString why;
-    const NmsLog::Mark m = NmsLog::markOf(m_table.header(index.column()), text, &why);
+    NmsLog::Mark m = NmsLog::markOf(column, text, &why);
+    // Session 252: packets missing before this one, on the cell that shows it.
+    if (m == NmsLog::Mark::None && m_table.gapColumn.value(index.row()) == column) {
+        m = NmsLog::Mark::Warn;
+        why = m_table.gapNote.at(index.row());
+    }
     if (role == Qt::ToolTipRole) return why.isEmpty() ? text : text + QStringLiteral("\n") + why;
     if (m == NmsLog::Mark::None) return QVariant();
     if (role == Qt::ForegroundRole) return QBrush(m == NmsLog::Mark::Fail ? UiColor::error() : UiColor::warning());
@@ -138,7 +147,8 @@ NmsLogWindow::NmsLogWindow(NmsLog::Kind kind, LogModel *model, const QString &ta
     m_view->horizontalHeader()->setStretchLastSection(true);
     m_view->verticalHeader()->setDefaultSectionSize(m_view->fontMetrics().height() + 6);
     m_view->setToolTip(tr("One row per @%1 packet, as decoded. Bold cells: a failure (error colour) or an "
-                          "event (warning colour) the packet reported; hover one for what. "
+                          "event (warning colour) the packet reported, or packets missing before it (on the rtc or "
+                          "message_seq); hover one for what. "
                           "Double-click a row: the frame in its tab")
                            .arg(NmsLog::token(kind)));
 
@@ -248,6 +258,8 @@ void NmsLogWindow::showCount()
     const int n = m_rows->table().rows.size();
     QString text = n == 1 ? tr("1 packet") : tr("%1 packets").arg(n);
     if (m_filter->rowCount() != n) text += tr(", %1 shown").arg(m_filter->rowCount());
+    const int gaps = m_rows->table().gaps;
+    if (gaps > 0) text += gaps == 1 ? tr("; 1 gap") : tr("; %1 gaps").arg(gaps);
     m_count->setText(text);
 }
 

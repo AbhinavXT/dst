@@ -46,6 +46,7 @@ QVector<LogEntryPtr> entries(const QString &path, const QString &token)
 
 // The rule, worked out again from the finished table by column name: which
 // rows does "changes only" keep? Event columns are those after nms.time.
+// (Since session 252 the gap rows too: those are checked in its own suite.)
 QVector<bool> expectedChanged(const NmsLog::Table &t)
 {
     const int firstEvent = t.index.value(QStringLiteral("nms.time")) + 1;
@@ -53,7 +54,8 @@ QVector<bool> expectedChanged(const NmsLog::Table &t)
     QHash<int, QString> last;
     QVector<bool> out;
     for (int r = 0; r < t.rows.size(); ++r) {
-        bool ch = t.cell(r, crc) == QLatin1String("FAIL");
+        // Session 252: a gap before the row (packets missing) is a change too.
+        bool ch = t.cell(r, crc) == QLatin1String("FAIL") || !t.gapColumn.value(r).isEmpty();
         for (int c = firstEvent; c < t.columnCount() - 1; ++c) {
             const QString v = t.cell(r, c);
             if (v.isEmpty()) continue;
@@ -94,7 +96,7 @@ TEST_SUITE(session251)
     CHECK(w.view()->model()->rowCount() == nChanged, "Changes only: just the changed packets");
     QLabel *count = nullptr;
     for (QLabel *l : w.findChildren<QLabel *>()) if (l->text().contains(QLatin1String("packets"))) count = l;
-    CHECK(count && count->text() == QStringLiteral("2081 packets, %1 shown").arg(nChanged),
+    CHECK(count && count->text().startsWith(QStringLiteral("2081 packets, %1 shown").arg(nChanged)),   // then "; 4 gaps" (252)
           qPrintable("the count says how many are shown: " + (count ? count->text() : QString())));
 
     // A DMI link going NOT OK is a change; the row after it, back to OK, too.
@@ -129,7 +131,8 @@ TEST_SUITE(session251)
               "a repeat of the last packet arrives: added, not shown");
     }
     box->setChecked(false);
-    CHECK(w.view()->model()->rowCount() == 2082 && count && count->text() == QLatin1String("2082 packets"),
+    CHECK(w.view()->model()->rowCount() == 2082 && count && count->text().startsWith(QLatin1String("2082 packets"))
+              && !count->text().contains(QLatin1String("shown")),
           "off again: every packet, and the count without 'shown'");
 
     // Fault log: every packet that reports a different set of faults.

@@ -51,9 +51,26 @@ struct Table {
     QVector<qint64> epochMs;            // per row: the entry's time, for jumping to it
     // Session 251: per row, did any of the packet's own fields (the events)
     // read differently from the last time that field was carried, or did the
-    // CRC fail? The first packet always did. lastValue: by column id.
+    // CRC fail, or (session 252) is there a gap before it? The first packet
+    // always did.
     QVector<bool> changed;
-    QHash<int, QString> lastValue;
+    // Session 252: a gap before the row: packets missing. gapColumn names the
+    // cell that shows it ("rtc" or "nms.message_seq"), gapNote says what.
+    //   @nmshlth / @nmsrssi  sent about once a second, and their message_seq
+    //                        does not count: a gap is 3 s or more on the RTC
+    //                        (or the RTC going back)
+    //   @nmsflt              sent when there is a fault to report, its
+    //                        message_seq counts up by one: a jump, a repeat
+    //                        or a restart
+    QVector<QString> gapColumn;
+    QVector<QString> gapNote;
+    int gaps = 0;
+    // What the next row is compared with; carried across batches.
+    struct Carry {
+        QHash<int, QString> lastValue;  // by column id: the event's last value
+        qint64 lastRtc = -1;            // seconds since the epoch
+        int lastMsgSeq = -1;
+    } carry;
     QHash<QString, int> index;          // column name -> display position
 
     Table();
