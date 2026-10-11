@@ -10,6 +10,9 @@
 //  along its lane to move it (re-encoded, CRC-30 recomputed). Below, one
 //  table per sheet, edited in place, and the Checks list. Open / Save the
 //  own .json; Import / Export the old Python tool's .xlsx. Ctrl+Z undoes.
+//  Session 212: drawn as the RDSO Annexure-H Tag-TIN layouts are (tinlayout.h):
+//  TIN-coloured bands, one symbol per tag set with its letter, "R-…" and km
+//  above, gap dimensions, title, centre line, legend; Export ▸ PDF / PNG.
 // =============================================================================
 
 #include "stationlayout.h"
@@ -19,6 +22,7 @@
 #include <QWidget>
 
 class QLabel;
+class QPainter;
 class QListWidget;
 class QScrollArea;
 class QTabWidget;
@@ -65,13 +69,18 @@ protected:
     void mouseMoveEvent(QMouseEvent *e) override;
     void mouseReleaseEvent(QMouseEvent *e) override;
     void wheelEvent(QWheelEvent *e) override;
+    void resizeEvent(QResizeEvent *e) override;
 
 private:
     void layoutLanes();
     int laneY(int lane) const;
+    QFont smallFont() const;
+    int sheetHeight(int width) const;
+    int legend(QPainter *p, int top, int width) const;
 
     StationLayout::Layout m_l;
     QHash<QString, qint64> m_loc;      // tag -> abs_loc
+    QHash<QString, StationLayout::TagInfo> m_info;
     QHash<QString, int>    m_lane;     // tag -> lane
     QStringList m_laneNames;           // "DN  DM", ..., "(no line)"
     QHash<QString, int> m_laneOfLine;  // line id -> lane
@@ -93,6 +102,9 @@ public:
     bool openFile(const QString &path);       // .json, or an .xlsx (imported)
     bool saveFile(const QString &path);       // .json
     bool exportXlsx(const QString &path);
+    // Session 212: the drawing as a printable sheet, .pdf (A3 landscape) or
+    // .png, by extension.
+    bool exportDrawing(const QString &path);
     bool reopenLast();
     void setStation(const StationLayout::Layout &l);
     const StationLayout::Layout &station() const { return m_layout; }

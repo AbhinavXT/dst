@@ -195,6 +195,7 @@ int main(int argc, char **argv)
                                 ? QStringLiteral(DL_SRC_DIR "/tests/fixtures/station_layout_synthetic.xlsx")
                                 : qEnvironmentVariable("SHOT_FILE"));
                 if (!qEnvironmentVariableIsEmpty("SHOT_EXPORT")) w->exportXlsx(qEnvironmentVariable("SHOT_EXPORT"));
+                if (!qEnvironmentVariableIsEmpty("SHOT_DRAWING")) w->exportDrawing(qEnvironmentVariable("SHOT_DRAWING"));   // session 212
                 win = w;
             }
             if (which == QLatin1String("twoloco")) {

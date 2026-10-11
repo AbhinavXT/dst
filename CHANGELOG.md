@@ -11,6 +11,68 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-212"></a>
+## Session 212 — the RDSO Tag-TIN layout look
+
+Asked for by Abhinav: make Station Layout and the Tag Builder's tag
+layout look like the drawings in RDSO/SPN/196/2020 Annexure-H, "KAVACH
+RFID Tag-TIN Layout Guidelines" (Amdt-5, 03.06.2024). Scope he picked:
+TIN-coloured lines, tag symbols and labels, gap dimensions and the sheet
+furniture; spacing stays to scale by absolute location; the drawing
+exports as PDF and PNG; both windows. The Annexure's own typical layout
+(H2.29) is Lingampalli, station 527, which is DLConsole's built-in
+default station, so the two can be compared side by side.
+
+**What the operator sees** in Tools ▸ Station Layout:
+- each line drawn as a band in the colour of its TIN (H2.17), "(N-65)"
+  over each run of one TIN; TIN 0 is hollow, as non-Kavach (H2.18). A
+  section between two tags is in the TIN a loco reading the left tag
+  enters travelling Nominal; the band's tooltip gives both directions
+  when they differ;
+- one symbol per main + duplicate set (H2.15): a rectangle when both
+  hold the same location, a triangle pointing to the duplicate when not,
+  the duplicate also a small mark of its own so it can still be dragged.
+  Inside, the placement letter (H2.21) from the tag's own bits: N inline,
+  S signal foot, T turnout, X exit, D dead stop, G LC gate, L adjacent
+  line, A adjustment. Above it "R-981" in a box and the location in km;
+- the distance between neighbouring sets ("800m") under each line where
+  it fits;
+- the title "Station ID: 527 (km : 161.060)" (H2.2), Reverse ↔ Nominal,
+  the station centre line in green with its km (H2.4, H2.28), and a
+  legend (H2.25) that says the drawing is to scale.
+- **Export ▸ Drawing as PDF or PNG…**: the drawing 2400 px wide, as an A3
+  landscape PDF or a 2× PNG. ("Export .xlsx…" moved into the same menu as
+  "Python tool .xlsx…".)
+
+In the Tag Builder, the route strip uses the same symbols, TIN colours,
+"(N-…)" and "R-…" boxes. A duplicate hidden under its main whose CRC-30
+fails is still drawn, in the error colour.
+
+**Not done:** no station name in the title (the station file has only
+the id); no signal symbols, LC gates, BSLB or stop boards in the RDSO
+style (the files do not say which signal is which kind); no revision or
+signature block (H2.24 leaves those to the Railway); no gap dimensions on
+the Tag Builder strip (100 px high). The export is drawn in the current
+theme: in a dark theme the PDF is dark. Not printed on paper.
+
+**Files:** `tinlayout.{h,cpp}` (new: notation, colours, symbols),
+`stationlayoutwindow.{h,cpp}`, `stationlayout.{h,cpp}` (`TagInfo::
+placement`), `routestrip.{h,cpp}`, `dlcore.pri`; `tests/test_session212.cpp`,
+`tests/tests.pro`; `tests/screenshot_main.cpp` (`SHOT_DRAWING`).
+
+**Tests:** session212, 19 checks: the H2.21 letters for every placement
+and type, the H2.15 shapes, TIN colours; on station 527, tag 981's set
+(letter, duplicate 981D 4 m behind as a triangle, TIN 83), the TIN band
+tooltip, a duplicate at its main's location folded into the symbol; PDF
+and PNG export (and a path that cannot be written refused); the Tag
+Builder strip with the same tags.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11.2: validators **13/13**;
+`dltests` **262 suites / 7026 checks, 1 failed** (the `session156` pty
+check, as at 194, 206 and 211); menu audit passed; headless smoke alive.
+
+---
+
 <a id="session-211"></a>
 ## Session 211 — the station layout library
 

@@ -157,6 +157,7 @@ TagInfo info(const Tag &t)
     i.absLoc = s.absLoc;
     i.tinNom = s.tinNom;
     i.tinRev = s.tinRev;
+    i.placement = s.placement;
     i.crcOk = s.crcOk;
     return i;
 }

@@ -117,6 +117,7 @@ SOURCES += \
     $$PWD/xlsxbook.cpp \
     $$PWD/stationlayout.cpp \
     $$PWD/stationlayoutwindow.cpp \
+    $$PWD/tinlayout.cpp \
     $$PWD/workspacesnapshot.cpp \
     $$PWD/settingsbundle.cpp \
     $$PWD/namemap.cpp \
@@ -265,6 +266,7 @@ HEADERS += \
     $$PWD/xlsxbook.h \
     $$PWD/stationlayout.h \
     $$PWD/stationlayoutwindow.h \
+    $$PWD/tinlayout.h \
     $$PWD/workspacesnapshot.h \
     $$PWD/settingsbundle.h \
     $$PWD/namemap.h \

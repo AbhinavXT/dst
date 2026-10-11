@@ -94,7 +94,7 @@ struct TagInfo {
     int     type = 0, unique = 0;
     bool    duplicate = false;
     qint64  absLoc = 0;           // abs_loc (abs_loc_1 on type 12)
-    int     tinNom = 0, tinRev = 0;
+    int     tinNom = 0, tinRev = 0, placement = 0;
     bool    crcOk = false;
 };
 TagInfo info(const Tag &t);
