@@ -127,6 +127,10 @@ QVector<Field> fieldsOf(int type)
     for (const Schema::FieldInfo &f : encoder().packet(kRfid).header) {
         if (f.isPad || f.isCrc || f.name == QLatin1String("reader_id") || f.name == QLatin1String("type")) continue;
         if (!present.contains(f.name)) continue;
+        // Session 259: duplication, comm_nom, comm_rev, sect_* are declared
+        // once in each type's <when>; only this type's declaration counts.
+        // Without this a Normal tag's form listed duplication four times.
+        if (!Schema::Encoder::conditionHolds(f.when, in)) continue;
         out.append({ f.name, f.bits, f.enumName });
     }
     return out;

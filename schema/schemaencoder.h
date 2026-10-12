@@ -141,6 +141,10 @@ public:
     // (capturedecoder.cpp registers the same ones as the decoder's).
     static void registerCrc(const QString &name, std::function<quint32(const QByteArray &, int, int)> fn);
 
+    // Session 259: whether a field's `when` holds for these values, by the
+    // same rule encodeBody() gates on (empty = always).
+    static bool conditionHolds(const QString &when, const QHash<QString, qint64> &values);
+
     bool load(const QString &xmlPath, QString *err = nullptr);
     bool isLoaded() const { return m_loaded; }
 

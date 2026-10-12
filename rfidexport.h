@@ -48,6 +48,13 @@ TextFiles textFiles(const RfidTag::Route &route);
 QByteArray mergeIntoConfiguration(const QByteArray &config, const RfidTag::Route &route,
                                   QString *err = nullptr, QStringList *notes = nullptr);
 
+// Session 259: the route as a Configuration1.xml route, to paste in by hand:
+// its two <route_data> blocks (the route and its REV route, the same blocks
+// mergeIntoConfiguration() splices in), no XML declaration and no <route>
+// wrapper, indented as Configuration1.xml's own blocks are. Read back inside
+// a <route> before it is returned; empty and *err set when refused.
+QByteArray configurationRoute(const RfidTag::Route &route, QString *err = nullptr);
+
 // Session 199: every <rfid_data> in `config` (a Configuration1.xml or a
 // route.xml) whose CRC-30 fails gets the CRC its contents give: page_y
 // rewritten in that element only (page_x and every data bit kept), the

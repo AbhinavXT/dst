@@ -103,6 +103,9 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     QAction *actConfig = exportMenu->addAction(tr("Into Configuration1.xml…"));
     actConfig->setToolTip(tr("Put the route and its REV route into an existing Configuration1.xml, replacing the "
                              "routes of the same name; the rest of the file is left as it was"));
+    QAction *actRouteOnly = exportMenu->addAction(tr("Route for Configuration1.xml…"));
+    actRouteOnly->setToolTip(tr("Just the route and its REV route, as the two <route_data> blocks a "
+                                "Configuration1.xml holds: no other file needed, to paste inside its <route>"));
     QAction *actText = exportMenu->addAction(tr("Text files (rfid, sigID, tag_link_info)…"));
     exportMenu->addSeparator();
     QAction *actFixFile = exportMenu->addAction(tr("Fix the CRCs in a Configuration1.xml or route.xml…"));
@@ -110,7 +113,7 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
                               "as tags_sim's corrector does); the rest of the file is left as it was"));
     exportMenu->setToolTipsVisible(true);
     exportBtn->setMenu(exportMenu);
-    exportBtn->setToolTip(tr("route.xml, into a Configuration1.xml, or tags_sim's text files"));
+    exportBtn->setToolTip(tr("route.xml, a route for (or into) a Configuration1.xml, or tags_sim's text files"));
     auto *bar = new QHBoxLayout;
     bar->addWidget(new QLabel(tr("Route:"), this));
     bar->addWidget(m_routeName, 1);
@@ -534,6 +537,12 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
         const QString path = QFileDialog::getSaveFileName(this, tr("Export tags_sim route.xml"),
                                                           QStringLiteral("route.xml"), tr("XML (*.xml)"));
         if (!path.isEmpty()) exportRouteXml(path);
+    });
+    connect(actRouteOnly, &QAction::triggered, this, [this]() {
+        const QString name = m_route.name.isEmpty() ? QStringLiteral("route") : m_route.name;
+        const QString path = QFileDialog::getSaveFileName(this, tr("Export the route for Configuration1.xml"),
+                                                          name + QStringLiteral("_configuration_route.xml"), tr("XML (*.xml)"));
+        if (!path.isEmpty()) exportConfigurationRoute(path);
     });
     connect(actConfig, &QAction::triggered, this, [this]() {
         const QString in = QFileDialog::getOpenFileName(this, tr("The Configuration1.xml to put the route into"),
@@ -1243,6 +1252,20 @@ bool TagBuilderWindow::exportRouteXml(const QString &path)
         return false;
     }
     m_status->ok(tr("Exported %1: the route and its REV route, %2 tags each")
+                     .arg(QFileInfo(path).fileName()).arg(m_route.tags.size()));
+    return true;
+}
+
+bool TagBuilderWindow::exportConfigurationRoute(const QString &path)
+{
+    QString err;
+    const QByteArray xml = RfidExport::configurationRoute(m_route, &err);
+    if (xml.isEmpty() || !RfidTag::writeFile(path, xml, &err)) {
+        m_status->fail(tr("Not exported: %1").arg(err));
+        return false;
+    }
+    m_status->ok(tr("Exported %1: the route and its REV route (%2 tags each) as Configuration1.xml <route_data> "
+                    "blocks, to paste inside its <route>")
                      .arg(QFileInfo(path).fileName()).arg(m_route.tags.size()));
     return true;
 }

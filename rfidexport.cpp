@@ -179,6 +179,43 @@ QByteArray mergeIntoConfiguration(const QByteArray &config, const RfidTag::Route
     return out;
 }
 
+QByteArray configurationRoute(const RfidTag::Route &r, QString *err)
+{
+    QString e;
+    const QByteArray xml = RfidTag::toRouteXml(r, &e);
+    if (xml.isEmpty()) {
+        if (err) *err = e;
+        return {};
+    }
+    // route.xml writes the blocks one level in, under <route>: out by one level.
+    const QString ours = QString::fromUtf8(xml);
+    const QVector<RfidTag::Route> mine = RfidTag::readXml(xml);
+    QString out;
+    for (const RfidTag::Route &m : mine) {
+        const QPair<int, int> span = blockSpan(ours, m.name);
+        if (span.first < 0) {
+            if (err) *err = QStringLiteral("route %1 not found in the route.xml text").arg(m.name);
+            return {};
+        }
+        const QStringList lines = ours.mid(span.first, span.second - span.first).split(QLatin1Char('\n'));
+        for (const QString &line : lines)
+            out += (line.startsWith(QLatin1String("    ")) ? line.mid(4) : line) + QLatin1Char('\n');
+    }
+    // It must read back, inside a <route>, as the same rows.
+    const QByteArray bytes = out.toUtf8();
+    const QVector<RfidTag::Route> back = RfidTag::readXml("<LOCO><route>\n" + bytes + "</route></LOCO>\n", &e);
+    bool same = back.size() == mine.size() && !mine.isEmpty();
+    for (int i = 0; same && i < mine.size(); ++i) {
+        same = back.at(i).name == mine.at(i).name && back.at(i).tags.size() == mine.at(i).tags.size();
+        for (int t = 0; same && t < mine.at(i).tags.size(); ++t) same = back.at(i).tags.at(t).bytes == mine.at(i).tags.at(t).bytes;
+    }
+    if (!same) {
+        if (err) *err = QStringLiteral("the route did not read back as written (%1); not exported").arg(e);
+        return {};
+    }
+    return bytes;
+}
+
 QByteArray fixCrcs(const QByteArray &config, QStringList *changes, QString *err)
 {
     QString text = QString::fromUtf8(config);

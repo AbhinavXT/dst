@@ -11,6 +11,56 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-259"></a>
+## Session 259 — Tag Builder: a route for Configuration1.xml; one form row per field
+
+Two requests from the bench.
+
+**Export ▸ Route for Configuration1.xml…** Until now a route reached a
+Configuration1.xml only by Export ▸ Into Configuration1.xml, which needs
+the file and rewrites it. The new export writes just the route: its two
+`<route_data>` blocks (the route and its REV route, the same blocks the
+merge splices in), with no XML declaration and no `<route>` wrapper,
+indented as Configuration1.xml's own blocks are (`<route_data>` at the
+margin, `<rfid_data>` four in). It is pasted inside the file's `<route>`
+by hand. Before it is written it is read back inside a `<route>` and must
+give the same rows; without a direction it is refused, as route.xml is
+(the REV route and the names depend on it).
+`RfidExport::configurationRoute()`, `TagBuilderWindow::exportConfigurationRoute()`.
+
+**The tag form listed fields several times.** The schema declares
+`duplication`, `comm_nom`, `comm_rev`, `sect_nom`, `sect_rev` and
+`placement` once in each tag type's `<when>` (9, 10, 11, 12).
+`RfidTag::fieldsOf()` kept every declaration whose name the tag carries,
+so a Normal tag's form had four `duplication` rows, three `comm_nom` and so
+on; all of them edited the same bits. It now keeps only the declarations
+whose `when` holds for the type (`Schema::Encoder::conditionHolds()`, the
+encoder's own gating rule, made public), so each type has its fields once,
+in its own wire order (a Junction tag's `abs_loc_2` before its sections).
+The Set field… dialog uses the same list and is fixed with it.
+
+### Files
+
+`rfidexport.h/.cpp`; `tagbuilderwindow.h/.cpp` (menu entry, export);
+`rfidtag.cpp` (`fieldsOf`); `schema/schemaencoder.h/.cpp`
+(`conditionHolds`); `tests/test_session259.cpp`, `tests/tests.pro`.
+
+### Tests
+
+`session259` (15 checks): types 9-12 each list every field once,
+duplication once; type 12 in its wire order; type 11 without comm or
+section fields; a Normal tag built from the form's fields reads back.
+The real S2S route (tests/fixtures/tags_sim): two `<route_data>` blocks,
+no declaration or wrapper, the indentation; pasted before the real S2S
+Configuration1.xml's `</route>`, the same routes as Into Configuration1.xml
+gives, every other route kept; refused without a direction; the window's
+export writes exactly those bytes; the tag form has one row per field.
+
+Gate: `./verify.sh` green on Qt 5 and Qt 6 (303 suites / 7902 checks, menu
+audit, smoke).
+
+---
+
 <a id="session-258"></a>
 ## Session 258 — glyph buttons drawn as empty boxes
 

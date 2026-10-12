@@ -88,6 +88,9 @@ public:
     bool loadFile(const QString &path, int routeIndex = -1);   // -1: ask when several
     bool saveFile(const QString &path);
     bool exportRouteXml(const QString &path);
+    // Session 259: just the route's two <route_data> blocks, to paste into a
+    // Configuration1.xml by hand (RfidExport::configurationRoute).
+    bool exportConfigurationRoute(const QString &path);
     // Session 197: the route into an existing Configuration1.xml (`configPath`),
     // written to `outPath` (may be the same file); tags_sim's text files into
     // `folder`.

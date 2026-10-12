@@ -164,6 +164,11 @@ bool condOk(const QString &when, const QHash<QString, qint64> &vals)
 
 namespace Schema {
 
+bool Encoder::conditionHolds(const QString &when, const QHash<QString, qint64> &values)
+{
+    return condOk(when, values);
+}
+
 // Walk a struct's DOM children in spec order, emitting fields, pads and
 // <repeat> blocks. The exact inverse of Decoder::walkStruct / walkEntry.
 static bool emitStruct(BitWriter &bw, const QDomElement &st,
