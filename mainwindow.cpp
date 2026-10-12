@@ -89,6 +89,7 @@
 #include "clockskewalarm.h"
 #include "dmipanel.h"
 #include "dmitimetravel.h"
+#include "dmiclipdialog.h"
 #ifdef DL_HAVE_SERIAL
 #include "serialconsolewindow.h"
 #include "serialmanager.h"
@@ -1054,6 +1055,10 @@ void MainWindow::onLogRowContextMenu(const QPoint &pos)
         actDmi = menu.addAction(tr("Show on D&MI"));
         actDmi->setObjectName(QStringLiteral("rowShowOnDmi"));
     }
+    // Session 262: the DMI over the moments around this row, as a GIF.
+    QAction *actClip = menu.addAction(tr("DMI c&lip around here…"));
+    actClip->setObjectName(QStringLiteral("rowDmiClip"));
+    actClip->setToolTip(tr("The DMI as the loco pilot saw it, ±30 s around this row, as an animated GIF"));
     menu.addSeparator();
     QAction *actWhy      = menu.addAction(tr("&Why this colour?"));
     QAction *actFilterSrc = menu.addAction(
@@ -1098,6 +1103,9 @@ void MainWindow::onLogRowContextMenu(const QPoint &pos)
     } else if (actDmi && chosen == actDmi) {
         offerDmiMoment(key, idx);       // this row, even if another was pointed at since
         DmiWindow::showFollowing(this, m_dispatcher);
+    } else if (chosen == actClip) {
+        DmiClipDialog dlg(model, key, entry->epochMs, dmiKeyOfText(entry->text), this);
+        dlg.exec();
     }
 }
 

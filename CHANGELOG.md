@@ -11,6 +11,77 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-262"></a>
+## Session 262 — the DMI clip: the DMI over a stretch of a log, as a GIF
+
+Item 4 of the list after patch 261. Scope agreed with Abhinav: GIF only
+(nothing to install), from a log row's right-click and from the DMI window.
+
+What the operator sees:
+
+- **Right-click any row ▸ DMI clip around here…** (in a tab with @dmi
+  frames): a dialog with Loco, From / To (the row's moment ±30 s), Speed
+  (real time, 2×, 4×, 8× faster) and Size (100 / 75 / 50 % of 800 × 600). As
+  they change it says "29 DMI frames over 1 min 0 s of log: a clip of about
+  15 s". **Export GIF…** draws it, writes it, and says what it wrote.
+- **DMI window ▸ Export clip…**: the same dialog for panel A's loco, over
+  the tab holding its @dmi frames, around the moment the window follows
+  (else its newest frame).
+- **The clip**: each @dmi frame drawn as the DMI window draws it, held, as
+  the DMI holds it, until the next one (its real duration ÷ the speed). The
+  frame on screen at the window's start opens the clip. Under every frame a
+  caption: "Loco 1_1 · 14:03:11.000" and the speed.
+- **Gaps are said, not hidden**: when the next frame is more than 3 s away
+  the frame is held 3 s, then a muted copy says "no new @dmi for 12 s
+  (shortened)" in amber for 1.5 s. A two-minute silence does not become two
+  minutes of a still picture, and the caption's clock shows the jump.
+- At most 30 minutes of log per clip (3000 frames); refused, with why,
+  beyond that or when the loco has no @dmi in the window.
+
+`GifWriter` (new): an animated GIF in plain C++ (LZW, one palette of the
+clip's 256 most used colours, per-frame delays, looping). No ffmpeg, no Qt
+Multimedia: it builds the same on Qt 5 and 6 and every platform.
+
+### Files
+
+`gifwriter.h/.cpp`, `dmiclip.h/.cpp`, `dmiclipdialog.h/.cpp` (new,
+`dlcore.pri`); `mainwindow.cpp` (row menu); `dmipanel.h/.cpp` (Export clip…,
+`makeClipDialog`); `tests/test_session262.cpp`, `tests/tests.pro`;
+`tests/test_contrastaudit.cpp`: dmiclip.cpp may name its caption colours
+(a fixed dark strip in an exported image, under the DMI's own dark panel:
+15:1 white, 9:1 amber), as replaywindow.cpp's fixed canvas does.
+
+### Tests
+
+`session262` (25 checks). GifWriter read back by Qt's own GIF reader: three
+frames, their sizes and delays (500, 1230, and 20 ms for one asked at 5),
+flat colours exact; 320 × 240 random colours (past the 4096-code LZW table,
+so it restarts) read back whole, every pixel near. The clip from the real
+@dmi frames of replay/loco_1_1_27062026_140226.cap: one GIF frame per @dmi
+frame, plays 30 s for 30 s at 1×, 7.5 s at 4×, 400 wide at 50 %, the DMI
+drawn in it, Qt reads the file back frame for frame; a window starting
+between frames opens on the frame then on screen; no loco / too long
+refused. The same capture with 10 s of @dmi cut out: one gap, one muted
+frame saying so, the clip shorter by the difference. The dialog (the tab's
+loco, ±30 s, the frame count, Export writes the file) and the DMI window's
+Export clip (panel A's loco, its tab found; says why with none).
+`DMI_CLIP_OUT=<dir>` writes the gap clip and frames there to look at.
+
+Not tested: playing the GIF in PowerPoint / WhatsApp (Qt's reader and
+macOS's own image decoder, which Preview uses, read it).
+
+**Also: patch 261's guard, narrowed.** It stopped the gate for any
+`ui_*.h` in core/, and Qt Creator (Shadow build off) writes a fresh
+core/ui_mainwindow.h on every build: the gate refused to run while
+Abhinav worked. Since 261 core/ is not on the include path, so that file
+cannot shadow anything; the guard now looks only in the source root,
+beside mainwindow*.cpp, where a quoted include still finds a copy first.
+
+Gate: `./verify.sh` green on Qt 5 and Qt 6 (304 suites / 7927 checks, menu
+audit, smoke).
+
+---
+
 <a id="session-261"></a>
 ## Session 261 — a stale generated header can no longer shadow the build
 

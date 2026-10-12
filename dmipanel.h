@@ -186,6 +186,10 @@ public:
     QString selectedSource() const;
     void setSelectedSource(const QString &key);
     bool saveImage(const QString &path) const;
+    // Session 262: Export clip… The clip dialog for panel A's loco, over the
+    // tab holding its @dmi frames, around the moment followed (else its
+    // newest frame). Null, with *why, when no tab has that loco's @dmi.
+    class DmiClipDialog *makeClipDialog(QString *why = nullptr);
     QString statusText() const;
 
     // Session 84: time travel. Following, the panel shows each loco's

@@ -1,6 +1,8 @@
 #include "dmipanel.h"
 
 #include "capturedecoder.h"
+#include "dmiclipdialog.h"
+#include "logmodel.h"
 #include "messagedispatcher.h"
 #include "uicolors.h"
 #include "windowgeometry.h"
@@ -14,6 +16,7 @@
 #include <QSet>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPainter>
 #include <QPainterPath>
 #include <QPushButton>
@@ -796,6 +799,10 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
     m_countBox->setToolTip(tr("Panels side by side, one per loco (four as a 2 × 2 grid): all at the same "
                               "moment when following the cursor (head-on, rear-end, SoS)"));
     auto *save = new QPushButton(tr("Save image…"), this);
+    auto *clip = new QPushButton(tr("Export clip…"), this);
+    clip->setObjectName(QStringLiteral("dmiExportClip"));
+    clip->setToolTip(tr("Panel A's loco over a stretch of its log, as an animated GIF: around the moment "
+                        "followed, or its newest frame"));
     // Session 92: "Fields" shows the drawn frame's decoded @dmi fields.
     // Session 167: one table under each panel; the notes on which field
     // feeds which region sit once, under the panels.
@@ -818,6 +825,7 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
     top->addStretch(1);
     top->addWidget(m_fieldsBtn);
     top->addWidget(save);
+    top->addWidget(clip);
     // The panels scroll as one: four at 4:3 with their fields need more
     // height than a laptop screen has; they keep their shape and scroll
     // rather than squash.
@@ -853,6 +861,15 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
                                           : QStringLiteral("dmi_%1_locos.png").arg(m_count);
         const QString path = QFileDialog::getSaveFileName(this, tr("Save DMI image"), name, tr("PNG (*.png)"));
         if (!path.isEmpty()) saveImage(path);
+    });
+    connect(clip, &QPushButton::clicked, this, [this]() {
+        QString why;
+        if (DmiClipDialog *dlg = makeClipDialog(&why)) {
+            dlg->exec();
+            delete dlg;
+        } else {
+            QMessageBox::information(this, tr("DMI clip"), why);
+        }
     });
     connect(m_fieldsBtn, &QPushButton::toggled, this, [this](bool on) { setFieldsVisible(on); });
     // H / I alternate every 2 s (B4.6.7 (e)); staleness is judged each tick.
@@ -1105,6 +1122,31 @@ void DmiWindow::setSelectedSource(const QString &key)
 {
     addSource(key);
     m_source->setCurrentText(key);
+}
+
+DmiClipDialog *DmiWindow::makeClipDialog(QString *why)
+{
+    const QString loco = selectedSource();
+    if (loco.isEmpty()) {
+        if (why) *why = tr("Pick a loco in panel A first.");
+        return nullptr;
+    }
+    const QString tab = DmiClip::tabWithDmi(m_dispatcher, loco);
+    LogModel *model = m_dispatcher && !tab.isEmpty() ? m_dispatcher->modelForKey(tab) : nullptr;
+    if (!model) {
+        if (why) *why = tr("No tab holds @dmi frames of loco %1.").arg(loco);
+        return nullptr;
+    }
+    qint64 centre = 0;
+    if (m_following && m_moment.valid) {
+        centre = m_moment.atMs;
+    } else {
+        for (int i = model->count() - 1; i >= 0 && !centre; --i) {
+            const LogEntry *e = model->entryPtrAt(i);
+            if (e && dmiKeyOfText(e->text) == loco) centre = e->epochMs;
+        }
+    }
+    return new DmiClipDialog(model, tab, centre, loco, this);
 }
 
 bool DmiWindow::saveImage(const QString &path) const

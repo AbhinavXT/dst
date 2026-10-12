@@ -41,6 +41,9 @@ SOURCES += \
     $$PWD/lococonsolewindow.cpp \
     $$PWD/tablefindbar.cpp \
     $$PWD/portedit.cpp \
+    $$PWD/gifwriter.cpp \
+    $$PWD/dmiclip.cpp \
+    $$PWD/dmiclipdialog.cpp \
     $$PWD/minimizeddock.cpp \
     $$PWD/textzoom.cpp \
     $$PWD/presentationmode.cpp \
@@ -208,6 +211,9 @@ HEADERS += \
     $$PWD/lococonsolewindow.h \
     $$PWD/tablefindbar.h \
     $$PWD/portedit.h \
+    $$PWD/gifwriter.h \
+    $$PWD/dmiclip.h \
+    $$PWD/dmiclipdialog.h \
     $$PWD/minimizeddock.h \
     $$PWD/textzoom.h \
     $$PWD/presentationmode.h \

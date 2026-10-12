@@ -61,6 +61,9 @@ bool literalsAllowed(const QString &file)
         || file == QLatin1String("runreport.cpp")          // session 81: the run summary
         || file == QLatin1String("incidentreport.cpp")     // session 97: the incident report pack
         || file == QLatin1String("missionreport.cpp")      // session 171: the mission report
+        // An exported image: the DMI clip's caption strip, fixed dark under
+        // the DMI's own dark panel, whatever the theme (contrast stated there).
+        || file == QLatin1String("dmiclip.cpp")
         // A fixed dark plot canvas, deliberately independent of the theme.
         || file == QLatin1String("replaywindow.cpp");
 }
