@@ -96,6 +96,12 @@ QColor chipFill(Tone tone);
 QColor chipText(Tone tone);
 double contrastFloor();   // 4.5, or 7.0 in High Contrast
 
+// A button whose label is one glyph ("◀", "▶", "✕", "⧉") in a box sized for
+// it (session 258). The general button padding is 14 px a side: in a 24 px
+// button that left the glyph no width at all, and the box drew empty. Off
+// (on = false) gives the button the general padding back, for a worded label.
+void makeGlyphButton(QAbstractButton *b, bool on = true);
+
 // A segmented control: a row of exclusive, checkable buttons drawn as one
 // rounded group ("All | Errors | Warnings | In | Out"). The group is
 // returned through `group`, ids 0..n-1 in label order; the first is checked.

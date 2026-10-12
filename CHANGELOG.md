@@ -11,6 +11,63 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-258"></a>
+## Session 258 — glyph buttons drawn as empty boxes
+
+Reported from the bench: the find bar's forward and back buttons showed
+their rectangles, and worked, but no arrows.
+
+**Cause.** The general button rule pads 14 px a side. The docked find bar's
+◀ ▶ (28 px wide) and ✕ ⧉ (24 px), and the filter bar's ✕ (24 px), had
+28 px of padding plus the border to fit in: the style left the glyph −2 to
+−6 px, so nothing was drawn. The empty square left of "Filter:" in every log
+tab was the same fault.
+
+**Fix.** A button role, `UiStyle::makeGlyphButton()` (`[dlRole="glyph"]`:
+2 px 0 padding), for a one-glyph button in a box sized for it. The find bar
+sets it on its four buttons while docked and clears it in the window form,
+where they are worded (Previous / Next / Close / Dock in tab). The filter
+bar's ✕ has it.
+
+**Also found, by walking every button.** The screenshot harness gains
+`SHOT_CLIP=1`: every visible button narrower or shorter than its own size
+hint, in the main window (find bar docked and open) and the 40 tool windows
+it can build. Beyond the above it found the docked find bar in a **Compare
+pane** (540 px) squeezed to slivers: the input "|.", the mode box "T", the
+column box "M", "Mar", "0 matc", "ta". Docked and too narrow for the whole
+strip, the bar now lets the mode box, "in" column box and "All tabs" step
+out (all three are in the ⧉ window), and the input keeps 120 px. What it
+flagged and is not a fault: the line edits' own clear buttons (Qt paints
+those itself), the rail icons (3 px under the hint, icons drawn), the tab
+bars' scroll arrows (drawn).
+
+What the operator sees: ◀ ▶ ✕ ⧉ in the find bar, ✕ beside "Filter:", and
+a Compare pane's find bar with a usable input and readable controls.
+
+### Files
+
+`uistyle.h/.cpp` (`makeGlyphButton`, the rule); `findbar.h/.cpp` (glyph
+role when docked, `fitDocked()` on resize); `filterbar.cpp`;
+`tests/test_session258.cpp`, `tests/tests.pro`; the screenshot harness
+(`SHOT_CLIP`).
+
+### Tests
+
+`session258` (9 checks): docked, each of ◀ ▶ ✕ ⧉ has a content width at
+least its glyph's and is not below its size hint; the filter bar's ✕ the
+same; in a 540 px pane the mode box and All tabs step out, no button or
+tick box is squeezed, the input keeps 120 px; undocked, Previous is worded
+with the general padding and the boxes are back. With the glyph rule taken
+out, three of them fail ("◀ −2 px for 10").
+
+Not tested: the glyphs' font on Windows (◀ ▶ ⧉ come from the system's
+symbol font by Qt's fallback); only the room for them is.
+
+Gate: `./verify.sh` green on Qt 5 and Qt 6 (302 suites / 7887 checks, menu
+audit, smoke).
+
+---
+
 <a id="session-257"></a>
 ## Session 257 — bench fixes: Port boxes, theme switch, the Link lane
 

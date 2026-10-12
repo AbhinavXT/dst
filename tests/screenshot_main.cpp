@@ -27,6 +27,26 @@
 #include "lococonsolewindow.h"
 #include "dmipanel.h"
 #include <QGroupBox>
+#include <QAbstractButton>
+#include "findbar.h"
+#include "tablefindbar.h"
+
+// SHOT_CLIP=1: every visible button drawn narrower or shorter than its own
+// size hint (padding + border + label/icon): its label or glyph is clipped.
+static void clipAudit(QWidget *root, const QString &where)
+{
+    if (!qEnvironmentVariableIsSet("SHOT_CLIP")) return;
+    struct Flush { ~Flush() { fflush(stdout); } } flush;
+    for (QAbstractButton *b : root->findChildren<QAbstractButton *>()) {
+        if (!b->isVisible() || b->inherits("QCheckBox") || b->inherits("QRadioButton")) continue;
+        if (b->text().isEmpty() && b->icon().isNull() && !b->inherits("QToolButton")) continue;
+        const QSize h = b->sizeHint();
+        if (b->width() + 1 < h.width() || b->height() + 1 < h.height())
+            printf("  CLIP %s: %s %s '%s' tip='%s' is %dx%d, needs %dx%d\n", qPrintable(where), b->metaObject()->className(),
+                   qPrintable(b->objectName()), qPrintable(b->text()), qPrintable(b->toolTip().left(40)),
+                   b->width(), b->height(), h.width(), h.height());
+    }
+}
 #include <QTabWidget>
 #include <QSplitter>
 #include <cstdio>
@@ -91,6 +111,7 @@
 int main(int argc, char **argv)
 {
     QApplication app(argc, argv);
+    if (qEnvironmentVariableIsSet("SHOT_CLIP")) Settings::setFindDetached(false);   // the docked find bar's glyph buttons
     const QString dir = qEnvironmentVariableIsEmpty("SHOT_DIR") ? QStringLiteral("/tmp")
                                                                 : qEnvironmentVariable("SHOT_DIR");
     const QStringList only = qEnvironmentVariable("SHOT_THEMES").split(QLatin1Char(','), Qt::SkipEmptyParts);
@@ -812,6 +833,10 @@ int main(int argc, char **argv)
             QElapsedTimer settle;
             settle.start();
             while (settle.elapsed() < 800) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            for (FindBar *fb : win->findChildren<FindBar *>()) fb->activate();
+            if (qEnvironmentVariableIsSet("SHOT_CLIP")) for (TableFindBar *tb : win->findChildren<TableFindBar *>()) tb->show();
+            QCoreApplication::processEvents();
+            clipAudit(win, which);
             if (built != t) {
                 Settings::setTheme(ThemeUtil::toString(t));
                 ThemeUtil::apply(t);
@@ -942,6 +967,9 @@ int main(int argc, char **argv)
             break;
         }
         for (int i = 0; i < 20; ++i) { QCoreApplication::processEvents(); }
+        for (FindBar *fb : w.findChildren<FindBar *>()) if (fb->parentWidget() && fb->parentWidget()->isVisible()) fb->activate();
+        for (int i = 0; i < 20; ++i) { QCoreApplication::processEvents(); }
+        clipAudit(&w, QStringLiteral("main"));
         w.grab().save(QStringLiteral("%1/shot_%2.png").arg(dir, ThemeUtil::toString(t)));
         if (qEnvironmentVariableIsSet("SHOT_DUMP")) {
             printf("main %dx%d minHint %dx%d\n", w.width(), w.height(), w.minimumSizeHint().width(), w.minimumSizeHint().height());

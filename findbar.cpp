@@ -27,6 +27,10 @@
 #include <QToolButton>
 #include <QVBoxLayout>
 
+namespace {
+const int kDockedEditMin = 120;   // the docked input never narrower than this
+}
+
 FindBar::FindBar(QTableView *view, QWidget *parent)
     : QWidget(parent)
     , m_view(view)
@@ -298,6 +302,29 @@ void FindBar::buildWidgets()
 //  where the input gets a row of its own and the options can say what they
 //  are. Same widgets, same state, different arrangement.
 // =============================================================================
+void FindBar::resizeEvent(QResizeEvent *e)
+{
+    QWidget::resizeEvent(e);
+    fitDocked();
+}
+
+void FindBar::fitDocked()
+{
+    if (isDetached() || !layout()) return;
+    // The whole strip at its natural size, the input at its floor. Hint
+    // widths, not current widths: a squeezed control reports the squeeze.
+    int need = 8 + kDockedEditMin;
+    for (QWidget *w : std::initializer_list<QWidget *>{ m_findLabel, m_modeBox, m_inLabel, m_columnBox, m_caseSens,
+                                                        m_wholeWord, m_markAll, m_prevBtn, m_nextBtn, m_count,
+                                                        m_allTabsBtn, m_detachBtn, m_closeBtn })
+        need += w->sizeHint().width() + 4;
+    const bool roomy = width() >= need;
+    m_modeBox   ->setVisible(roomy);
+    m_inLabel   ->setVisible(roomy);
+    m_columnBox ->setVisible(roomy);
+    m_allTabsBtn->setVisible(roomy);
+}
+
 void FindBar::applyShape()
 {
     // Deleting the layout leaves the child widgets alone — QWidgetItem does
@@ -317,6 +344,9 @@ void FindBar::applyShape()
     m_detachBtn->setToolTip(win ? tr("Put the find bar back in the tab")
                                 : tr("Open Find in a window, with more options"));
     m_closeBtn->setToolTip(tr("Close find (Esc)"));
+    // Session 258: docked, these four are one glyph in a 24-28 px box, which
+    // the general button padding (14 px a side) left blank.
+    for (QPushButton *b : { m_prevBtn, m_nextBtn, m_closeBtn, m_detachBtn }) UiStyle::makeGlyphButton(b, !win);
 
     // Glyph buttons need a fixed width to stay square in the strip; the
     // worded ones must be free to size themselves or the labels are clipped.
@@ -335,6 +365,9 @@ void FindBar::applyShape()
     m_advPanel ->setVisible(win && m_advBtn->isChecked());
     m_findLabel->setVisible(true);
     m_inLabel  ->setVisible(true);
+    m_modeBox  ->setVisible(true);
+    m_columnBox->setVisible(true);
+    m_allTabsBtn->setVisible(true);
 
     if (!win) {
         auto *row = new QHBoxLayout(this);
@@ -356,7 +389,8 @@ void FindBar::applyShape()
         row->addWidget(m_allTabsBtn);
         row->addWidget(m_detachBtn);
         row->addWidget(m_closeBtn);
-        m_edit->setMinimumWidth(0);
+        m_edit->setMinimumWidth(kDockedEditMin);
+        fitDocked();
         return;
     }
 

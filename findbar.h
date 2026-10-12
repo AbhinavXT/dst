@@ -192,12 +192,19 @@ private slots:
     void rebuildMatches();      // re-scan for matches after filter changed
     void updateCountLabel();
 
+protected:
+    void resizeEvent(QResizeEvent *e) override;
+
 private:
     // Build the two layouts. buildWidgets() runs once; applyShape() moves the
     // same widgets between the strip and the window form and is called on
     // every dock/undock.
     void buildWidgets();
     void applyShape();
+    // Docked and narrow (a Compare pane): the mode and column boxes and
+    // "All tabs" step out, so the input and the buttons keep their size.
+    // They are all in the window form, one click away on the ⧉ button.
+    void fitDocked();
     void setAdvancedOpen(bool on);
 
     // Which controls make sense in the current mode, plus the help line.

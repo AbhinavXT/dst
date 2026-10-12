@@ -1,4 +1,5 @@
 #include "filterbar.h"
+#include "uistyle.h"
 #include <QResizeEvent>
 #include <QVBoxLayout>
 #include "uicolors.h"
@@ -199,6 +200,7 @@ FilterBar::FilterBar(LogModel *source, QWidget *parent)
     // ---- Build UI -----------------------------------------------------
     m_clearBtn = new QPushButton(QStringLiteral("✕"));
     m_clearBtn->setFixedWidth(24);
+    UiStyle::makeGlyphButton(m_clearBtn);   // session 258: blank under the general padding
     m_clearBtn->setToolTip(tr("Clear filter"));
 
     auto *filterLabel = new QLabel(tr("Filter:"));

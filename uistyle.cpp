@@ -143,6 +143,10 @@ QString componentRules(const QPalette &p, bool isDark, const QColor &window,
         " border:1px solid %2; }")
         .arg(sunk.name(), border.name(), muted.name(), text.name(), hover.name(), raised.name());
 
+    // A one-glyph button (session 258): the padding the general rule gives
+    // a worded button would leave the glyph no room in its small box.
+    s += QStringLiteral("QAbstractButton[dlRole=\"glyph\"] { padding:2px 0px; min-width:22px; }");
+
     // The icon rail.
     s += QStringLiteral(
         "QAbstractButton[dlRole=\"rail\"] { background:transparent; border:none;"
@@ -209,6 +213,14 @@ void makeChip(QWidget *w, Tone tone)
     w->setProperty("dlRole", QStringLiteral("chip"));
     w->setAttribute(Qt::WA_StyledBackground, true);
     setTone(w, tone);
+}
+
+void makeGlyphButton(QAbstractButton *b, bool on)
+{
+    if (!b) return;
+    if (on) b->setProperty("dlRole", QStringLiteral("glyph"));
+    else if (b->property("dlRole").toString() == QLatin1String("glyph")) b->setProperty("dlRole", QVariant());
+    repolish(b);
 }
 
 void setTone(QWidget *w, Tone tone)
