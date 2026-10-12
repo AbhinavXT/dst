@@ -33,6 +33,16 @@ msvc: QMAKE_CXXFLAGS += /utf-8
 
 include(../dlcore.pri)
 
+# Session 261: the headers this build generates (uic's ui_mainwindow.h) come
+# from THIS build folder, first. qmake puts the .pro's own folder (core/)
+# ahead of it by default, and a stale ui_mainwindow.h left there by a build
+# run inside the source tree was compiled instead of the fresh one: every
+# local build since Oct 10 used an old mainwindow.ui. core/ holds no
+# headers of its own, so it leaves the path; the build folder goes in front
+# of the source folders (dlcore.pri's $$PWD too).
+CONFIG     += no_include_pwd
+INCLUDEPATH = $$OUT_PWD $$INCLUDEPATH
+
 # Resources live in the programs, not here: a .qrc inside a static library
 # registers itself from an object the linker never pulls in.
 RESOURCES =

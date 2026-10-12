@@ -11,6 +11,40 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-261"></a>
+## Session 261 — a stale generated header can no longer shadow the build
+
+Patch 260 found a `core/ui_mainwindow.h` from Oct 10, left by a build run
+inside the source tree, compiled instead of the header the gate's own build
+generated: `-I../../core` came first on the include path. Every local
+build since then had compiled MainWindow against an old mainwindow.ui. CI
+(clean checkouts) never had the file. Abhinav: "do it, solve the problem".
+
+- **core.pro**: `CONFIG += no_include_pwd` (core/ holds no headers of its
+  own) and the build folder first: `INCLUDEPATH = $$OUT_PWD $$INCLUDEPATH`.
+  The header uic writes for this build now wins over any copy in a source
+  folder. Shown by planting a `core/ui_mainwindow.h` that is only
+  `#error`: mainwindow.o still compiles.
+- **verify.sh** refuses to run (exit 65) while generated headers
+  (`ui_*.h`, `moc_predefs.h`) sit in the source folders on the include path
+  (the root, core, app, schema, flasher, lococonfig, tests), and names them.
+  This covers the one case the include order cannot: `#include
+  "ui_mainwindow.h"` in quotes looks in mainwindow.cpp's own folder (the
+  root) before any -I.
+
+What Abhinav sees: nothing, while builds go to a separate folder. A build
+run inside the source tree (Qt Creator with Shadow build off) makes the
+gate stop with the files to delete, rather than test old code.
+
+### Files
+
+`core/core.pro`, `verify.sh`.
+
+Gate: `./verify.sh` green on Qt 5 and Qt 6 (303 suites / 7902 checks, menu
+audit, smoke).
+
+---
+
 <a id="session-260"></a>
 ## Session 260 — the log header: Clear buttons out, Check buffer gone
 
