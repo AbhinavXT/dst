@@ -65,7 +65,7 @@ public:
     static void     writeFieldEditor(QWidget *w, qint64 v);
 
     // Fill from a buffer handed over by another part of the application (a
-    // log row, the raw-bytes panel, the Check Buffer page) rather than by a
+    // log row, the raw-bytes panel) rather than by a
     // paste. Same text shapes parseBuffer() accepts — bare bytes or a whole
     // @-capture line — and the same code path as the Load button, so a frame
     // loaded this way is loaded exactly as a pasted one is.

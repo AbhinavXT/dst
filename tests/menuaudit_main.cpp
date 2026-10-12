@@ -210,9 +210,25 @@ int main(int argc, char **argv) {
         QWidget *save = w.findChild<QWidget *>(QStringLiteral("pbSaveBtn"));
         CHECK(header && right && !right->isVisibleTo(&w) && save && save->parentWidget() == header,
               "the log header replaces the button column beside the log");
-        QToolButton *more = w.findChild<QToolButton *>(QStringLiteral("logMore"));
-        CHECK(more && more->menu() && more->menu()->actions().size() == 3,
-              "clear tab, clear all and check buffer sit behind More");
+        // Session 260: Clear this tab / Clear all tabs on the header beside
+        // Show date; no More menu, no Check buffer.
+        QWidget *clearTab = w.findChild<QWidget *>(QStringLiteral("pbClearTabLogs"));
+        QWidget *clearAll = w.findChild<QWidget *>(QStringLiteral("pbclearAllLogs"));
+        QWidget *showDate = w.findChild<QWidget *>(QStringLiteral("cbDatetime"));
+        CHECK(clearTab && clearAll && showDate && clearTab->parentWidget() == header && clearAll->parentWidget() == header
+                  && clearTab->isVisibleTo(&w) && clearAll->isVisibleTo(&w)
+                  && header->layout()->indexOf(clearTab) == header->layout()->indexOf(showDate) + 1
+                  && header->layout()->indexOf(clearAll) == header->layout()->indexOf(clearTab) + 1,
+              "Clear this tab and Clear all tabs sit on the log header, right after Show date");
+        // The page's own widgets (unique names; "page_2" is not: Qt's file
+        // dialog names its pages page / page_2).
+        CHECK(!w.findChild<QToolButton *>(QStringLiteral("logMore")) && !w.findChild<QWidget *>(QStringLiteral("pbCheckBuffer"))
+                  && !w.findChild<QWidget *>(QStringLiteral("pbConvert")) && !w.findChild<QWidget *>(QStringLiteral("teToString")),
+              "no More menu, no Check buffer button or page");
+        for (const char *n : { "logMore", "pbCheckBuffer", "pbConvert", "teToString" })
+            if (QWidget *x = w.findChild<QWidget *>(QString::fromLatin1(n)))
+                printf("  still there: %s (%s, parent %s)\n", n, x->metaObject()->className(),
+                       x->parentWidget() ? x->parentWidget()->metaObject()->className() : "-");
         QLabel *bind = w.findChild<QLabel *>(QStringLiteral("frameClockLabel"));
         CHECK(bind && strip && strip->isAncestorOf(bind), "the clocks are in the top strip");
         QWidget *bindBox = w.findChild<QWidget *>(QStringLiteral("stripBind"));
@@ -457,21 +473,20 @@ int main(int argc, char **argv) {
             return qAbs(a.red() - b.red()) <= 8 && qAbs(a.green() - b.green()) <= 8 && qAbs(a.blue() - b.blue()) <= 8;
         };
         QToolButton *railDmi = w.findChild<QToolButton *>(QStringLiteral("rail_dmi"));
-        QToolButton *more = w.findChild<QToolButton *>(QStringLiteral("logMore"));
         QAction *toggle = nullptr;
         if (view) for (QAction *a : view->actions())
             if (a->menu() && a->text().remove(QLatin1Char('&')) == QStringLiteral("Theme"))
                 toggle = findAction(a->menu(), "Toggle Dark/Light");
-        CHECK(railDmi && more && toggle, "fixture: the rail's DMI button, the log's More button, Toggle Dark/Light");
-        if (railDmi && more && toggle) {
+        CHECK(railDmi && toggle, "fixture: the rail's DMI button, Toggle Dark/Light");
+        if (railDmi && toggle) {
             bool allFollow = true;
             for (int i = 0; i < 2; ++i) {          // there and back
                 toggle->trigger();
                 QApplication::processEvents();
                 const QColor text = qApp->palette().color(QPalette::WindowText);
-                allFollow = allFollow && near(inkOf(railDmi->icon()), text) && near(inkOf(more->icon()), text);
+                allFollow = allFollow && near(inkOf(railDmi->icon()), text);
             }
-            CHECK(allFollow, "Toggle Dark/Light, twice: the rail and More icons are redrawn in each theme's text colour");
+            CHECK(allFollow, "Toggle Dark/Light, twice: the rail icons are redrawn in each theme's text colour");
         }
     }
 

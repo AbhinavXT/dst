@@ -28,34 +28,6 @@
         </item>
        </layout>
       </widget>
-      <widget class="QWidget" name="page_2">
-       <layout class="QVBoxLayout" name="verticalLayout_2">
-        <item>
-         <widget class="QLabel" name="commandlabel">
-          <property name="text">
-           <string>Command : tshark -i any -f &quot;udp port 50002&quot; -T fields -e data</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <layout class="QHBoxLayout" name="horizontalLayout_2">
-          <item>
-           <widget class="QTextEdit" name="textEdit"/>
-          </item>
-         </layout>
-        </item>
-        <item>
-         <widget class="QPushButton" name="pbConvert">
-          <property name="text">
-           <string>Convert</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QTextEdit" name="teToString"/>
-        </item>
-       </layout>
-      </widget>
      </widget>
     </item>
     <item row="0" column="2">
@@ -134,16 +106,6 @@
         <widget class="QCheckBox" name="cbDatetime">
          <property name="text">
           <string>Show date</string>
-         </property>
-        </widget>
-       </item>
-       <item row="6" column="0">
-        <widget class="QPushButton" name="pbCheckBuffer">
-         <property name="enabled">
-          <bool>true</bool>
-         </property>
-         <property name="text">
-          <string>Check buffer</string>
          </property>
         </widget>
        </item>

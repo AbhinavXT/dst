@@ -11,6 +11,53 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-260"></a>
+## Session 260 — the log header: Clear buttons out, Check buffer gone
+
+Abhinav's request: remove Check buffer; Clear this tab and Clear all tabs
+beside Show date and Follow newest.
+
+What the operator sees on the log header:
+
+`12  ☐ Follow newest  ☑ Show date  [Clear this tab] [Clear all tabs] [Save log] [Detach tab]`
+
+- **Clear this tab / Clear all tabs** are buttons on the header, after
+  Show date. They were behind the ⋯ More button. What they do is
+  unchanged, Edit ▸ Undo included (their tooltips say so).
+- **The ⋯ More button is gone**: it held only those two and Check buffer.
+- **Check buffer is gone**: the button, the page it switched to (paste
+  tshark hex, Convert to ASCII, open in Decode Workbench / Packet Maker) and
+  its code (`on_pbCheckBuffer_clicked`, `on_pbConvert_clicked`,
+  `hexToAsciiString`). The Decode Workbench takes the same pasted hex and
+  decodes it; `openBufferInWorkbench` / `openBufferInPacketMaker` stay
+  (the log row and raw-bytes panel use them).
+
+### Files
+
+`mainwindow.ui` (page_2 and pbCheckBuffer removed); `mainwindow.cpp`,
+`mainwindow.h`, `mainwindow_shell.cpp`; comments in `decodeworkbench.h`,
+`packetmakerdialog.h`; `tests/menuaudit_main.cpp`.
+
+### Tests
+
+Menu audit: the two Clear buttons are on the header, visible, right after
+Show date; no More button, no Check buffer button or page (was: "three
+actions behind More"). The theme-toggle icon check keeps the rail and drops
+More. (Not "no widget named page_2": Qt's own file dialog names its pages
+page / page_2; the check looks for the removed page's own widgets.)
+
+Found on the way: a stale `core/ui_mainwindow.h` (Oct 10, git-ignored),
+left by an in-source build, sat on the include path ahead of the build's
+own generated header (`-I../../core` comes first), so local builds
+compiled MainWindow against the old .ui. Deleted; CI checks out clean and
+never had it. An in-source build of core.pro will write it again: if it
+does, the local gate builds against whatever .ui it was made from.
+
+Gate: `./verify.sh` green on Qt 5 and Qt 6 (303 suites / 7902 checks, menu
+audit, smoke).
+
+---
+
 <a id="session-259"></a>
 ## Session 259 — Tag Builder: a route for Configuration1.xml; one form row per field
 

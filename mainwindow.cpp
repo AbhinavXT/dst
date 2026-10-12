@@ -167,34 +167,6 @@ MainWindow::MainWindow(QWidget *parent)
     statusBar()->addWidget(m_notify, 1);
     connect(m_notify, &NotificationBar::historyRequested,
             this,     &MainWindow::onShowNotificationLog);
-    ui->teToString->setReadOnly(true);
-    ui->commandlabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
-
-    // Check Buffer page: the hex that lands here comes off tshark or out of
-    // somebody's email, and until now the only thing that could be done with
-    // it was ASCII conversion. Both real destinations for a loose buffer sit
-    // one click away instead.
-    {
-        auto *bufRow = new QHBoxLayout;
-        auto *bufToWb = new QPushButton(tr("Open in Decode Workbench"), ui->page_2);
-        bufToWb->setToolTip(tr("Decode these bytes as a Kavach frame."));
-        auto *bufToPm = new QPushButton(tr("Open in Packet Maker"), ui->page_2);
-        bufToPm->setToolTip(tr("Fill the Packet Maker's fields from these bytes, "
-                               "so the frame can be edited and re-sent."));
-        bufRow->addWidget(bufToWb);
-        bufRow->addWidget(bufToPm);
-        bufRow->addStretch(1);
-        const int convertIdx = ui->verticalLayout_2->indexOf(ui->pbConvert);
-        ui->verticalLayout_2->insertLayout(convertIdx + 1, bufRow);
-
-        connect(bufToWb, &QPushButton::clicked, this, [this]() {
-            openBufferInWorkbench(ui->textEdit->toPlainText());
-        });
-        connect(bufToPm, &QPushButton::clicked, this, [this]() {
-            openBufferInPacketMaker(ui->textEdit->toPlainText());
-        });
-    }
-
     // The DATE TIME checkbox now toggles whether the Time column is shown.
     ui->cbDatetime->setChecked(true);
 
@@ -1251,40 +1223,6 @@ void MainWindow::onSaveFailed(const QString &filePath, const QString &reason)
     QMessageBox::warning(this, tr("Save failed"),
                          tr("Could not write the log to:\n%1\n\n%2")
                              .arg(filePath, reason));
-}
-
-
-void MainWindow::on_pbCheckBuffer_clicked()
-{
-    if (ui->stackedWidget->currentIndex() == 0) {
-        ui->stackedWidget->setCurrentIndex(1);
-        ui->pbCheckBuffer->setText(tr("Back to log"));
-    } else {
-        ui->stackedWidget->setCurrentIndex(0);
-        ui->pbCheckBuffer->setText(tr("Check buffer"));
-    }
-}
-
-void MainWindow::on_pbConvert_clicked()
-{
-    ui->teToString->setText(hexToAsciiString(ui->textEdit->toPlainText()));
-}
-
-QString MainWindow::hexToAsciiString(const QString &hexData) const
-{
-    // Section 1e fix preserved: prepend (not append) on odd-length input.
-    QString cleaned = hexData;
-    cleaned.remove(QRegularExpression("[^0-9A-Fa-f]"));
-    if (cleaned.size() % 2 != 0) {
-        cleaned.prepend('0');
-    }
-    const QByteArray bytes = QByteArray::fromHex(cleaned.toUtf8());
-    QString ascii;
-    ascii.reserve(bytes.size());
-    for (char b : bytes) {
-        ascii.append((b >= 32 && b <= 126) ? QChar(b) : QChar('.'));
-    }
-    return ascii;
 }
 
 

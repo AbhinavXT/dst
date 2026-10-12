@@ -209,34 +209,15 @@ void MainWindow::buildShell()
 
     hl->addWidget(ui->cbScrollLock);
     hl->addWidget(ui->cbDatetime);
+    // Session 260: the two Clear buttons beside the tick boxes, where they
+    // are seen, rather than behind a "more" menu (which held only them and
+    // Check buffer, now gone: the Decode Workbench does what it did).
+    ui->pbClearTabLogs->setToolTip(tr("Clear this tab's log (Edit ▸ Undo brings it back)"));
+    ui->pbclearAllLogs->setToolTip(tr("Clear every tab's log (Edit ▸ Undo brings them back)"));
+    hl->addWidget(ui->pbClearTabLogs);
+    hl->addWidget(ui->pbclearAllLogs);
     hl->addWidget(ui->pbSaveBtn);
     hl->addWidget(ui->pbDetach);
-
-    // The rest behind "more": the buttons themselves stay (hidden), so their
-    // slots, Undo and the tests that click them by name are untouched.
-    m_moreBtn = new QToolButton(header);
-    m_moreBtn->setObjectName(QStringLiteral("logMore"));
-    UiIcons::bind(m_moreBtn, QStringLiteral("more"), 16);
-    m_moreBtn->setToolTip(tr("More: clear this tab, clear all tabs, check buffer"));
-    m_moreBtn->setAccessibleName(tr("More actions"));
-    m_moreBtn->setPopupMode(QToolButton::InstantPopup);
-    auto *more = new QMenu(m_moreBtn);
-    for (QPushButton *b : { ui->pbClearTabLogs, ui->pbclearAllLogs, ui->pbCheckBuffer }) {
-        QAction *a = more->addAction(b->text());
-        a->setObjectName(QStringLiteral("more_%1").arg(b->objectName()));
-        connect(a, &QAction::triggered, b, &QPushButton::click);
-    }
-    // Check buffer renames itself ("Back to log"): follow it.
-    connect(more, &QMenu::aboutToShow, this, [this, more]() {
-        const QList<QAction *> acts = more->actions();
-        const QList<QPushButton *> btns{ ui->pbClearTabLogs, ui->pbclearAllLogs, ui->pbCheckBuffer };
-        for (int i = 0; i < acts.size() && i < btns.size(); ++i) {
-            acts[i]->setText(btns[i]->text());
-            acts[i]->setEnabled(btns[i]->isEnabled());
-        }
-    });
-    m_moreBtn->setMenu(more);
-    hl->addWidget(m_moreBtn);
 
     ui->verticalLayout->insertWidget(0, header);
     ui->rightFrame->hide();

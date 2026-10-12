@@ -36,7 +36,7 @@ public:
     explicit DecodeWorkbench(QWidget *parent = nullptr, SessionKeyStore *keys = nullptr);
 
     // Load a buffer from elsewhere in the application (a log row, the raw
-    // bytes panel, the Check Buffer page) instead of making the operator
+    // bytes panel) instead of making the operator
     // copy hex out of one window and paste it into this one.
     //
     // `text` may be a whole "@type_loco_ctrl <ts> <seq> <hex…>" capture line

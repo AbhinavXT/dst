@@ -221,8 +221,6 @@ private slots:
     void on_pbClearTabLogs_clicked();
     void on_pbclearAllLogs_clicked();
     void on_tabWidget_currentChanged(int index);
-    void on_pbCheckBuffer_clicked();
-    void on_pbConvert_clicked();
     void on_pbDetach_clicked();
 
 private:
@@ -548,7 +546,6 @@ private:
     class QToolBar *m_rail = nullptr;
     QLabel *m_headerTitle = nullptr;
     QLabel *m_headerMeta = nullptr;
-    class QToolButton *m_moreBtn = nullptr;   // session 96: owned here, fed by live traffic      // session 96: owned here, shared with pop-outs and loco consoles   // session 95: owned here, handed to the Packet Makers
     quint64 m_lastReportedMalformed = 0;   // session 90: drops by cause
     quint64 m_lastReportedQueueFull = 0;
     int     m_perTabCapacity    = 200'000;
@@ -572,7 +569,6 @@ private:
     void   hideTab(TabUi &tab);
     void   updateLogCount();
     void   emitDropBanner(quint64 newMalformed, quint64 newQueueFull);
-    QString hexToAsciiString(const QString &hexData) const;
     QString currentTabKey() const;
     LogEntryPtr entryFromProxyIndex(const QModelIndex &proxyIndex) const;
     // Session 84: tell the DMI time-travel broker where the cursor is.
