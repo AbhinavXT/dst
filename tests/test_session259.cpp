@@ -17,15 +17,15 @@
 //  Session 259 — the Tag Builder.
 //  1. A route for Configuration1.xml: Export ▸ Route for Configuration1.xml…
 //     writes just the route's two <route_data> blocks (route + REV), to paste
-//     inside a Configuration1.xml's <route>. Real files: tests/fixtures/
-//     tags_sim (the S2S Configuration1.xml and an S2S route.xml).
+//     inside a Configuration1.xml's <route>. Real files, in git:
+//     tag_scenarios/Hafizpet (its Configuration1.xml and DN_MAIN route).
 //  2. The tag form listed duplication, comm_nom, comm_rev, sect_* once per
 //     tag type declared in the schema (four duplication rows on a Normal
 //     tag). RfidTag::fieldsOf() now keeps only the type's own declaration.
 // =============================================================================
 
 namespace {
-QString fx259(const QString &name) { return QStringLiteral(DL_SRC_DIR "/tests/fixtures/tags_sim/") + name; }
+QString fx259(const QString &name) { return QStringLiteral(DL_SRC_DIR "/tag_scenarios/Hafizpet/") + name; }
 QByteArray readAll259(const QString &path)
 {
     QFile f(path);
@@ -80,10 +80,10 @@ TEST_SUITE(session259)
     }
 
     // ---- 1. a route for Configuration1.xml ---------------------------------------------------
-    const QByteArray conf = readAll259(fx259(QStringLiteral("S2S_Configuration1.xml")));
-    const RfidTag::Route s2s = RfidTag::readXml(readAll259(fx259(
-        QStringLiteral("adjust/S2S_DN_Single_NOM_20.8_794_N_R_plus1000m148_2route.xml")))).value(0);
-    CHECK(!conf.isEmpty() && !s2s.tags.isEmpty(), "fixtures: the S2S Configuration1.xml and route");
+    const QByteArray conf = readAll259(fx259(QStringLiteral("Configuration1.xml")));
+    const RfidTag::Route s2s = RfidTag::readFile(fx259(QStringLiteral("DN_MAIN.tagroute.xml"))).value(0);
+    CHECK(!conf.isEmpty() && !s2s.tags.isEmpty() && s2s.dir == RfidTag::DirNominal,
+          "fixtures: Hafizpet's Configuration1.xml and DN_MAIN route");
     QString err;
     const QByteArray blocks = RfidExport::configurationRoute(s2s, &err);
     const QString text = QString::fromUtf8(blocks);
@@ -113,7 +113,7 @@ TEST_SUITE(session259)
             }
             same = found;
         }
-        CHECK(same, QByteArray("pasted into the real S2S Configuration1.xml: the same ") + QByteArray::number(merged.size())
+        CHECK(same, QByteArray("pasted into the real Hafizpet Configuration1.xml: the same ") + QByteArray::number(merged.size())
                         + " routes as Into Configuration1.xml gives (" + QByteArray::number(byHand.size()) + ")");
     }
     {

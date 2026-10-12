@@ -50,14 +50,16 @@ The Set field… dialog uses the same list and is fixed with it.
 `session259` (15 checks): types 9-12 each list every field once,
 duplication once; type 12 in its wire order; type 11 without comm or
 section fields; a Normal tag built from the form's fields reads back.
-The real S2S route (tests/fixtures/tags_sim): two `<route_data>` blocks,
-no declaration or wrapper, the indentation; pasted before the real S2S
-Configuration1.xml's `</route>`, the same routes as Into Configuration1.xml
-gives, every other route kept; refused without a direction; the window's
+The real Hafizpet DN_MAIN route (tag_scenarios/Hafizpet, in git): two
+`<route_data>` blocks, no declaration or wrapper, the indentation; pasted
+before the real Hafizpet Configuration1.xml's `</route>`, the same routes
+as Into Configuration1.xml gives, every other route kept; refused without a direction; the window's
 export writes exactly those bytes; the tag form has one row per field.
 
 Gate: `./verify.sh` green on Qt 5 and Qt 6 (303 suites / 7902 checks, menu
-audit, smoke).
+audit, smoke). First pushed reading tests/fixtures/tags_sim, which is
+git-ignored: CI had no such files and failed 6 checks; the suite now uses
+tag_scenarios/Hafizpet, which is tracked.
 
 ---
 
