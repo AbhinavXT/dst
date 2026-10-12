@@ -11,6 +11,58 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-257"></a>
+## Session 257 — bench fixes: Port boxes, theme switch, the Link lane
+
+Three faults from photos of the bench PC (Windows 11, Qt 6.9).
+
+- **Port boxes were empty** (Loco Configuration's four targets, the
+  Flasher's Target card). They were `QSpinBox` with no buttons, 80 px wide;
+  the windows11 style still lays the spin buttons out beside the edit field
+  and leaves the number no room. The IP box beside them, a plain line edit,
+  was fine. They are now `PortEdit`: a `QLineEdit` that takes 1..65535, with
+  `value()` / `setValue()` / `valueChanged(int)`. Left empty, it goes back to
+  the last good port when editing finishes, so a send never goes to port 0.
+- **Dark → Light left surfaces dark**: the Flasher's app bar, its Operator
+  toggle and the queue's detail strip, Loco Configuration's bar. They colour
+  themselves from their own `palette()` when told the theme changed, and
+  `ThemeUtil::apply()` told them before the new stylesheet was in, so they
+  read the old theme's colours. `UiStyle::apply()` now tells them again once
+  the new sheet is set. Light → Dark had the same fault.
+- **The Link lane**: a "no session keys" spell is closed only by the next
+  NMS report, so one running across a VCC restart was painted over the
+  whole traffic gap and cut the "gap" label in half. The gap is drawn over
+  it now, and the tooltip there says "No traffic".
+
+What the operator sees: the port number in every Port box; a theme switch
+that recolours everything; a readable "gap" bar on the Link lane.
+
+### Files
+
+`portedit.h/.cpp` (new, `dlcore.pri`); `flasher/flasherqueuepage.h/.cpp`,
+`lococonfig/lococonfigwindow.h/.cpp` (PortEdit); `uistyle.cpp` (notify after
+the sheet); `laneband.cpp` (gap over no-keys, tooltip order);
+`tests/test_session257.cpp`, `tests/tests.pro`; the screenshot harness
+gains `SHOT_FROM=<theme>` (build in one theme, switch to the shot's).
+
+### Tests
+
+`session257`: PortEdit (value, range, empty restores); Flasher and Loco
+Configuration built Dark, switched to Light: the bar and detail strip carry
+the light colours and the bar is drawn light, four + one port boxes hold
+their port; the Link lane on the real 08102026_105200 capture with
+10:52:48–10:56:27 cut out: a no-keys spell spans the gap, and inside it the
+tooltip says "No traffic" and the top half is the gap's colour.
+
+Not tested: the windows11 style itself (no Windows 11 / Qt 6.9 here). The
+Port fix removes the spin box rather than relying on that style; CI covers
+Windows with Qt 5.15.
+
+Gate: `./verify.sh` green on Qt 5 and Qt 6 (13 validators, 301 suites /
+7878 checks, menu audit, smoke).
+
+---
+
 <a id="session-256"></a>
 ## Session 256 — the NMS tables: find and filter bar
 

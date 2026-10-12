@@ -54,7 +54,7 @@ class QLabel;
 class QLineEdit;
 class QListWidget;
 class QPushButton;
-class QSpinBox;
+class PortEdit;
 class QTableView;
 class StatusLine;
 class UdpSender;
@@ -181,7 +181,7 @@ private:
     // Bulk send: kMaxTargets rows of [tick] IP Port.
     QVector<QCheckBox *> m_targetOn;
     QVector<QLineEdit *> m_targetIps;
-    QVector<QSpinBox *>  m_targetPorts;
+    QVector<PortEdit *>  m_targetPorts;
     QLabel          *m_summary = nullptr;
     QLabel          *m_vccCrc = nullptr;
     QLabel          *m_lastSent = nullptr;

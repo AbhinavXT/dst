@@ -27,7 +27,7 @@
 #include <QScrollArea>
 #include <QEvent>
 #include <QStyle>
-#include <QSpinBox>
+#include "portedit.h"
 #include <QTableView>
 #include <QTimer>
 #include <QToolButton>
@@ -260,7 +260,7 @@ FlasherQueuePage::FlasherQueuePage(QWidget *parent)
         refreshPreflight();
         emit targetChanged();
     });
-    connect(m_portSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this]() {
+    connect(m_portSpin, &PortEdit::valueChanged, this, [this]() {
         refreshPreflight();
         emit targetChanged();
     });
@@ -303,12 +303,10 @@ QWidget *FlasherQueuePage::buildLeftColumn()
 
     auto *portColumn = new QVBoxLayout();
     portColumn->addWidget(new QLabel(tr("Port"), targetCard));
-    m_portSpin = new QSpinBox(targetCard);
-    m_portSpin->setRange(1, 65535);
+    m_portSpin = new PortEdit(targetCard);
     m_portSpin->setValue(50001);
     m_portSpin->setFont(UiStyle::monoFont());
     m_portSpin->setMinimumHeight(34);
-    m_portSpin->setButtonSymbols(QAbstractSpinBox::NoButtons);
     m_portSpin->setFixedWidth(80);
     portColumn->addWidget(m_portSpin);
     ipRow->addLayout(portColumn);

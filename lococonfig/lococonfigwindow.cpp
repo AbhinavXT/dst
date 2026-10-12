@@ -39,7 +39,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QPushButton>
-#include <QSpinBox>
+#include "portedit.h"
 #include <QSplitter>
 #include <QTableView>
 #include <QToolButton>
@@ -414,10 +414,8 @@ QWidget *LocoConfigWindow::buildSendBar()
         ip->setMinimumWidth(150);
         ip->setPlaceholderText(tr("IP address"));
         ip->setClearButtonEnabled(true);
-        auto *port = new QSpinBox(bar);
-        port->setRange(1, 65535);
+        auto *port = new PortEdit(bar);
         port->setFont(UiStyle::monoFont());
-        port->setButtonSymbols(QAbstractSpinBox::NoButtons);
         port->setMinimumHeight(30);
         port->setFixedWidth(80);
         port->setToolTip(tr("UDP port (the VCC application listens on %1)").arg(LocoInfo::kDefaultPort));
@@ -450,7 +448,7 @@ QWidget *LocoConfigWindow::buildSendBar()
         };
         connect(on, &QCheckBox::toggled, this, edited);
         connect(ip, &QLineEdit::textChanged, this, edited);
-        connect(port, QOverload<int>::of(&QSpinBox::valueChanged), this, edited);
+        connect(port, &PortEdit::valueChanged, this, edited);
     }
     targetGrid->setColumnStretch(1, 1);
     targetGrid->setColumnStretch(6, 1);

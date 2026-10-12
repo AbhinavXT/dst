@@ -346,13 +346,16 @@ void LaneBand::paintEvent(QPaintEvent *)
     // Session 180: NMS reported a tag's duplicate missing: a tick on the RFID lane.
     for (const TagCheck::Tag &tg : m_sum.tagCheck.tags)
         if (tg.duplicateMissingMs) tick(2, tg.duplicateMissingMs, UiColor::warning(), QString());
-    for (const RunReport::Gap &g : m_sum.gaps) bar(3, g.fromMs, g.toMs, UiColor::warning(), tr("gap"));
     // Session 179: no session keys (top half of the Link lane), key loads (ticks).
     for (const RunReport::Episode &k : m_sum.noKeys) {
         const QRect r = track(3);
         const int x1 = xFor(k.fromMs, r), x2 = qMax(xFor(k.toMs, r), x1 + 3);
         p.fillRect(QRect(x1, r.top(), x2 - x1, r.height() / 2), UiColor::accent());
     }
+    // Gaps over them (session 257): a "no keys" spell is closed only by the
+    // next report, so one spanning a VCC restart was drawn across the whole
+    // gap and cut its label in half. Nothing arrived there: the gap says so.
+    for (const RunReport::Gap &g : m_sum.gaps) bar(3, g.fromMs, g.toMs, UiColor::warning(), tr("gap"));
     for (qint64 ms : m_sum.keyLoads) tick(3, ms, UiColor::ok(), QString());
     for (const RunReport::FaultEvent &f : m_sum.faults) tick(4, f.ms, f.raised ? UiColor::error() : UiColor::ok(), QString());
 
@@ -449,13 +452,13 @@ QString LaneBand::describeAt(const QPoint &pos) const
         case 3:
             for (qint64 k : m_sum.keyLoads)
                 if (qAbs(k - ms) <= slack) return tr("Session keys loaded (@auth_keys) at %1").arg(hm(k));
+            for (const RunReport::Gap &g : m_sum.gaps)       // drawn on top, so named first
+                if (ms >= g.fromMs - slack && ms <= g.toMs + slack)
+                    return tr("No traffic %1 – %2 (%3 s)").arg(hm(g.fromMs), hm(g.toMs)).arg((g.toMs - g.fromMs) / 1000);
             for (const RunReport::Episode &k : m_sum.noKeys)
                 if (ms >= k.fromMs - slack && ms <= k.toMs + slack)
                     return tr("No session keys (NMS), %1 – %2%3").arg(hm(k.fromMs), hm(k.toMs),
                         k.what.endsWith(QLatin1String("(at a start of mission)")) ? tr(", at a start of mission") : QString());
-            for (const RunReport::Gap &g : m_sum.gaps)
-                if (ms >= g.fromMs - slack && ms <= g.toMs + slack)
-                    return tr("No traffic %1 – %2 (%3 s)").arg(hm(g.fromMs), hm(g.toMs)).arg((g.toMs - g.fromMs) / 1000);
             return QString();
         case 4:
             for (const RunReport::FaultEvent &f : m_sum.faults)

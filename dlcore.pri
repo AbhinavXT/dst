@@ -40,6 +40,7 @@ SOURCES += \
     $$PWD/gototimestampdialog.cpp \
     $$PWD/lococonsolewindow.cpp \
     $$PWD/tablefindbar.cpp \
+    $$PWD/portedit.cpp \
     $$PWD/minimizeddock.cpp \
     $$PWD/textzoom.cpp \
     $$PWD/presentationmode.cpp \
@@ -206,6 +207,7 @@ HEADERS += \
     $$PWD/gototimestampdialog.h \
     $$PWD/lococonsolewindow.h \
     $$PWD/tablefindbar.h \
+    $$PWD/portedit.h \
     $$PWD/minimizeddock.h \
     $$PWD/textzoom.h \
     $$PWD/presentationmode.h \

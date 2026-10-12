@@ -109,8 +109,12 @@ int main(int argc, char **argv)
     if (!which.isEmpty()) {
         for (Theme t : ThemeUtil::all()) {
             if (!only.isEmpty() && !only.contains(ThemeUtil::toString(t))) continue;
-            Settings::setTheme(ThemeUtil::toString(t));
-            ThemeUtil::apply(t);
+            // SHOT_FROM=dark: the window is built in that theme and switched
+            // to this one once shown (what a theme change leaves behind).
+            const QString from = qEnvironmentVariable("SHOT_FROM");
+            const Theme built = from.isEmpty() ? t : ThemeUtil::fromString(from);
+            Settings::setTheme(ThemeUtil::toString(built));
+            ThemeUtil::apply(built);
             UiStyle::apply();
             MessageDispatcher disp;
             QWidget *win = nullptr;
@@ -808,6 +812,13 @@ int main(int argc, char **argv)
             QElapsedTimer settle;
             settle.start();
             while (settle.elapsed() < 800) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            if (built != t) {
+                Settings::setTheme(ThemeUtil::toString(t));
+                ThemeUtil::apply(t);
+                UiStyle::apply();
+                settle.restart();
+                while (settle.elapsed() < 500) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+            }
             if (auto *fz = win->findChild<QTableView *>(QStringLiteral("frozenColumns")))   // session 253
                 if (auto *tv = qobject_cast<QTableView *>(fz->parentWidget()))
                     printf("  settled: table vbar %d, frozen vbar %d, frozen top row %d\n", tv->verticalScrollBar()->value(),

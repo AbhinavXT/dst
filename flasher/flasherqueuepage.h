@@ -29,7 +29,7 @@ class QFrame;
 class QLabel;
 class QLineEdit;
 class QPushButton;
-class QSpinBox;
+class PortEdit;
 class QTableView;
 class QTimer;
 class QVBoxLayout;
@@ -131,7 +131,7 @@ private:
     FlasherQueueModel   *m_model = nullptr;
     QTableView          *m_table = nullptr;
     QLineEdit           *m_ipEdit = nullptr;
-    QSpinBox            *m_portSpin = nullptr;
+    PortEdit            *m_portSpin = nullptr;
     QComboBox           *m_adapterCombo = nullptr;
     FlasherRouteDiagram *m_route = nullptr;
     QVBoxLayout         *m_preflightLayout = nullptr;

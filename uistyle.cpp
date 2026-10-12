@@ -661,6 +661,11 @@ void apply()
     qApp->setFont(f);
 
     qApp->setStyleSheet(sheet());
+    // Again, now the sheet is the new theme's: a surface that colours itself
+    // from its own palette() read the OLD colours when ThemeUtil::apply()
+    // told it first (the old sheet had polished them in), so the Flasher's
+    // and Loco Configuration's bars stayed dark after Dark -> Light.
+    UiColor::notifyThemeChanged();
 }
 
 
