@@ -36,6 +36,10 @@ has the commits. Read the top few CHANGELOG sections before starting.
   Windows tests run on the native platform (offscreen draws no text there).
 - **Qt 6 is gated too** (CI job `linux-qt6`, since patch 127). Locally:
   `QMAKE=/opt/homebrew/opt/qtbase/bin/qmake VERIFY_OUT=$PWD/build-verify-qt6 ./verify.sh`.
+  Plain `./verify.sh` uses the `qmake` on PATH, which on the Mac is **Qt 6
+  too**. The local Qt 5.15 gate is
+  `QMAKE=/opt/homebrew/opt/qt@5/bin/qmake VERIFY_OUT=$PWD/build-verify-qt5 ./verify.sh`
+  (patch 266: 257-265 were "Qt 5" gated on Qt 6; CI caught the Qt 5 break).
   Traps seen: `QStringRef`/`splitRef`, `QRegExp`, `qBound<T>` with mixed
   args, `std::min(int, x.size())` (qsizetype), `QFont::resolve()`,
   `findChild<T>` on a T without `Q_OBJECT`, `QSerialPort::ParityError`,

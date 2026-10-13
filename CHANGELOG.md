@@ -11,6 +11,41 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-266"></a>
+## Session 266 — Qt 5 build fixed; the local "Qt 5" gate was Qt 6
+
+**What broke.** Patch 263 failed CI's Linux (Qt 5) job: `testrun.cpp`'s
+`ids.isEmpty() ? run.results.keys() : ids` mixes a `QList<QString>` (Qt 5's
+`QHash::keys()`) with a `QStringList`, and `?:` wants one type. Qt 6 (where
+they are the same type) built it. 264 and 265 sit on 263, so main was red
+on Linux Qt 5 from 263.
+
+**Why the local gate missed it.** On the Mac plain `./verify.sh` uses the
+`qmake` on PATH, and that is Qt 6.11, as is `/opt/homebrew/opt/qtbase`'s.
+So every "green on Qt 5 and Qt 6" reported for 257-265 was Qt 6 twice;
+Qt 5.15 was only ever CI's. Those sections now say so. The real local Qt
+5.15 gate is `QMAKE=/opt/homebrew/opt/qt@5/bin/qmake
+VERIFY_OUT=$PWD/build-verify-qt5 ./verify.sh` (CLAUDE.md says it now).
+
+**Fixed.**
+- `testrun.cpp`: `QStringList(run.results.keys())`.
+- Run on Qt 5.15 for the first time, session231 failed "fits a laptop
+  (1110x419)": the Test Case Catalog's new run bar (263) widened the
+  window past 1100 px with Qt 5's font. Its two labels (the run's name, the
+  summary) now give way below their text's width when the window is
+  narrow, the full text in their tooltips. On a normal window they look as
+  before.
+
+### Files
+
+`testrun.cpp`, `testcatalogwindow.cpp`; `CLAUDE.md` (the Qt 5 gate);
+CHANGELOG 257-265 (what the gate really ran).
+
+Gate: `./verify.sh` green on Qt 5.15.19 (qt@5) and on Qt 6.11 (307 suites
+/ 7976 checks each, menu audit, smoke).
+
+---
+
 <a id="session-265"></a>
 ## Session 265 — Tag Builder: page_x / page_y can be edited
 
@@ -48,7 +83,7 @@ its leading zero padded.
 
 Not tested: real key presses (the text and textEdited they produce are).
 
-Gate: `./verify.sh` green on Qt 5 and Qt 6 (307 suites / 7976 checks, menu
+Gate: `./verify.sh` green on Qt 6.11, twice (the "Qt 5" run was Qt 6 too: see session 266; Qt 5.15 was CI's) (307 suites / 7976 checks, menu
 audit, smoke).
 
 ---
@@ -86,7 +121,7 @@ starts with, the Configuration1.xml route export named the same; Hafizpet's
 Configuration1.xml holding the old-named REV route: merged into, it is
 replaced (one REV route, none under the old name) and the note says so.
 
-Gate: `./verify.sh` green on Qt 5 and Qt 6 (306 suites / 7966 checks, menu
+Gate: `./verify.sh` green on Qt 6.11, twice (the "Qt 5" run was Qt 6 too: see session 266; Qt 5.15 was CI's) (306 suites / 7966 checks, menu
 audit, smoke).
 
 ---
@@ -159,7 +194,7 @@ clears it.
 Not tested: the keyboard shortcuts pressed (the actions they trigger are);
 the New run dialog itself (`newRun()`, which it calls, is).
 
-Gate: `./verify.sh` green on Qt 5 and Qt 6 (305 suites / 7953 checks, menu
+Gate: `./verify.sh` green on Qt 6.11, twice (the "Qt 5" run was Qt 6 too: see session 266; Qt 5.15 was CI's) (305 suites / 7953 checks, menu
 audit, smoke).
 
 ---
@@ -230,7 +265,7 @@ Abhinav worked. Since 261 core/ is not on the include path, so that file
 cannot shadow anything; the guard now looks only in the source root,
 beside mainwindow*.cpp, where a quoted include still finds a copy first.
 
-Gate: `./verify.sh` green on Qt 5 and Qt 6 (304 suites / 7927 checks, menu
+Gate: `./verify.sh` green on Qt 6.11, twice (the "Qt 5" run was Qt 6 too: see session 266; Qt 5.15 was CI's) (304 suites / 7927 checks, menu
 audit, smoke).
 
 ---
@@ -264,7 +299,7 @@ gate stop with the files to delete, rather than test old code.
 
 `core/core.pro`, `verify.sh`.
 
-Gate: `./verify.sh` green on Qt 5 and Qt 6 (303 suites / 7902 checks, menu
+Gate: `./verify.sh` green on Qt 6.11, twice (the "Qt 5" run was Qt 6 too: see session 266; Qt 5.15 was CI's) (303 suites / 7902 checks, menu
 audit, smoke).
 
 ---
@@ -311,7 +346,7 @@ compiled MainWindow against the old .ui. Deleted; CI checks out clean and
 never had it. An in-source build of core.pro will write it again: if it
 does, the local gate builds against whatever .ui it was made from.
 
-Gate: `./verify.sh` green on Qt 5 and Qt 6 (303 suites / 7902 checks, menu
+Gate: `./verify.sh` green on Qt 6.11, twice (the "Qt 5" run was Qt 6 too: see session 266; Qt 5.15 was CI's) (303 suites / 7902 checks, menu
 audit, smoke).
 
 ---
@@ -361,7 +396,7 @@ before the real Hafizpet Configuration1.xml's `</route>`, the same routes
 as Into Configuration1.xml gives, every other route kept; refused without a direction; the window's
 export writes exactly those bytes; the tag form has one row per field.
 
-Gate: `./verify.sh` green on Qt 5 and Qt 6 (303 suites / 7902 checks, menu
+Gate: `./verify.sh` green on Qt 6.11, twice (the "Qt 5" run was Qt 6 too: see session 266; Qt 5.15 was CI's) (303 suites / 7902 checks, menu
 audit, smoke). First pushed reading tests/fixtures/tags_sim, which is
 git-ignored: CI had no such files and failed 6 checks; the suite now uses
 tag_scenarios/Hafizpet, which is tracked.
@@ -420,7 +455,7 @@ out, three of them fail ("◀ −2 px for 10").
 Not tested: the glyphs' font on Windows (◀ ▶ ⧉ come from the system's
 symbol font by Qt's fallback); only the room for them is.
 
-Gate: `./verify.sh` green on Qt 5 and Qt 6 (302 suites / 7887 checks, menu
+Gate: `./verify.sh` green on Qt 6.11, twice (the "Qt 5" run was Qt 6 too: see session 266; Qt 5.15 was CI's) (302 suites / 7887 checks, menu
 audit, smoke).
 
 ---
@@ -472,7 +507,7 @@ Not tested: the windows11 style itself (no Windows 11 / Qt 6.9 here). The
 Port fix removes the spin box rather than relying on that style; CI covers
 Windows with Qt 5.15.
 
-Gate: `./verify.sh` green on Qt 5 and Qt 6 (13 validators, 301 suites /
+Gate: `./verify.sh` green on Qt 6.11, twice (the "Qt 5" run was Qt 6 too: see session 266; Qt 5.15 was CI's) (13 validators, 301 suites /
 7878 checks, menu audit, smoke).
 
 ---

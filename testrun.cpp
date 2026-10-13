@@ -98,7 +98,8 @@ void setResult(Run *run, const QString &id, const Result &r)
 Counts count(const Run &run, const QStringList &ids)
 {
     Counts c;
-    const QStringList list = ids.isEmpty() ? run.results.keys() : ids;
+    // QStringList(...): in Qt 5 keys() is a QList<QString>, and ?: needs one type.
+    const QStringList list = ids.isEmpty() ? QStringList(run.results.keys()) : ids;
     for (const QString &id : list) {
         switch (run.results.value(id).verdict) {
         case Verdict::Pass: ++c.pass; break;

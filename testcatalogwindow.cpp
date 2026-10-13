@@ -1214,6 +1214,13 @@ void TestCatalogWindow::buildRunBar(QVBoxLayout *root)
     m_runProgress->setObjectName(QStringLiteral("testRunProgress"));
     m_runSummary = new QLabel(bar);
     m_runSummary->setObjectName(QStringLiteral("testRunSummary"));
+    // The two labels give way rather than widen the window (session231's
+    // laptop check failed on Qt 5's font at 1110 px); their text is in the
+    // tooltip when cut.
+    for (QLabel *l : { m_runName, m_runSummary }) {
+        l->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Preferred);
+        l->setMinimumWidth(90);           // below its text's width only when the window is narrow
+    }
     auto *newRun = new QPushButton(tr("New run…"), bar);
     newRun->setToolTip(tr("Start recording results: the loco, the build, the site, who is testing; then where to keep "
                           "the run's file (results are saved to it as you set them)"));
@@ -1414,6 +1421,7 @@ void TestCatalogWindow::updateRunBar()
         m_runName->setText(tr("none open"));
         m_runName->setStyleSheet(UiColor::mutedStyle());
         m_runSummary->setText(tr("results are recorded in a test run: New run… or Open run…"));
+        m_runSummary->setToolTip(m_runSummary->text());
         m_runSummary->setStyleSheet(UiColor::mutedStyle());
         return;
     }
