@@ -25,6 +25,7 @@
 #include "textzoom.h"
 #include <QString>
 #include <QCoreApplication>
+#include "programdir.h"
 
 class Settings
 {
@@ -34,9 +35,14 @@ public:
     // internal caching) and non-copyable, so we can't return one by
     // value from a static factory. Putting the path-building logic in
     // one place keeps the IsoFile location consistent across callers.
+    //  Session 270: beside the program the operator sees (programDir()), not
+    //  the folder it runs from. The single-file packages (patch 269) run it
+    //  from a temporary folder: the Windows .exe deletes that folder on
+    //  close and an AppImage's is read-only, so the ini, and the LOGS folder
+    //  and tag library below, were lost or never written.
     static QString iniPath()
     {
-        return QCoreApplication::applicationDirPath() + "/dlconsole.ini";
+        return programDir() + "/dlconsole.ini";
     }
 
     // ---- Network -----------------------------------------------------
@@ -57,7 +63,7 @@ public:
     static QString diskLogRoot()
     {
         QSettings s(iniPath(), QSettings::IniFormat);
-        const QString def = QCoreApplication::applicationDirPath() + "/LOGS";
+        const QString def = programDir() + "/LOGS";   // session 270: see iniPath()
         return s.value("disk/log_root", def).toString();
     }
     static void setDiskLogRoot(const QString &p)
@@ -517,7 +523,7 @@ public:
     // The scenario library folder: <exe_dir>/tag_scenarios unless set. The
     // copy built into the app is listed too, whether or not it exists.
     static QString tagLibraryPath()
-    { QSettings s(iniPath(), QSettings::IniFormat); return s.value("tag_builder/library_path", QCoreApplication::applicationDirPath() + "/tag_scenarios").toString(); }
+    { QSettings s(iniPath(), QSettings::IniFormat); return s.value("tag_builder/library_path", programDir() + "/tag_scenarios").toString(); }
     static void setTagLibraryPath(const QString &p)
     { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("tag_builder/library_path", p); }
     // The route open when the builder last opened one, reopened next time:

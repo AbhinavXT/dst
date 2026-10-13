@@ -11,6 +11,45 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-270"></a>
+## Session 270 — Packages keep their settings and logs beside themselves
+
+**A bug in patch 269, found while building patch 271.** `Settings::iniPath()`
+was `applicationDirPath()/dlconsole.ini`, and the default disk-log folder
+(`LOGS`) and tag-scenario library were beside it too. The single-file
+packages run DLConsole from a temporary place:
+- **Windows `.exe`:** the folder is deleted when DLConsole closes. Every
+  setting was lost on close, and **captured disk logs were deleted with
+  it**.
+- **Linux AppImage:** the folder is read-only, so nothing could be saved,
+  and disk logging had nowhere to write.
+
+Bookmarks, the saved workspace, flasher profiles and loco configurations
+live beside the ini, so they went the same way. Ordinary builds were not
+affected.
+
+**The fix.** All three now use `programDir()` (patch 269): beside the
+`.exe` / `.AppImage` the operator started, and for an ordinary build the
+program's folder as before. A package kept in Downloads or on the Desktop
+writes `dlconsole.ini`, `LOGS/` and the rest beside itself, so they survive
+and are easy to find. The same applies to a package kept on a USB stick.
+
+**Files.** `settings.h` (`iniPath()`, `diskLogRoot()`, `tagLibraryPath()`),
+`tests/test_session270.cpp`, `tests/tests.pro`.
+
+**Tests.** `session270` (9 checks): an ordinary build is unchanged. With
+`DLCONSOLE_PACKAGE` set, the ini, `LOGS` and the tag library are beside the
+package file, and a setting is written there and read back. The suite
+restores the environment afterwards.
+
+**Not tested:** a package kept where the operator can't write (e.g.
+Program Files). There, as with an ordinary install in such a folder,
+settings and logs can't be saved; choose a log folder in Settings.
+**Gate:** Qt 6 and Qt 5.15 green, 310 suites / 8032 checks, 0 failed; menu
+audit; smoke; validators.
+
+---
+
 <a id="session-269"></a>
 ## Session 269 — DLConsole as one file, for Windows and Linux
 
