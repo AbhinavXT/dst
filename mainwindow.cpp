@@ -8,6 +8,7 @@
 #include "uistyle.h"
 #include "uicolors.h"
 #include "programdir.h"
+#include "configfiles.h"
 #include "ui_mainwindow.h"
 
 #include "exporter.h"
@@ -378,11 +379,12 @@ MainWindow::MainWindow(QWidget *parent)
     });
 
     // -----------------------------------------------------------------
-    //  Load configuration files (color rules + friendly names).
+    //  Load configuration files: colour rules, friendly names, field
+    //  catalogue. Session 271: the chosen file, else one beside the program,
+    //  else the copy built into the program (configfiles.h).
     // -----------------------------------------------------------------
-    const QString appDir = programDir();
-    m_colorRules.loadFromFile(appDir + "/color_rules.json");
-    m_nameMap   .loadFromFile(appDir + "/friendly_names.csv");
+    for (ConfigKind kind : { ConfigKind::ColorRules, ConfigKind::FriendlyNames, ConfigKind::FieldMap })
+        loadConfigAtStart(kind);
     m_rawPanel->setNameMap(&m_nameMap);
 
     // -----------------------------------------------------------------
@@ -390,20 +392,6 @@ MainWindow::MainWindow(QWidget *parent)
     // -----------------------------------------------------------------
     // Bookmarks: load before any traffic arrives so applyToModel() can
     // re-flag a reloaded session's rows.
-    // Field catalogue: names, packets and symbolic values for the query
-    // language. An absent file is not an error — raw field names still work.
-    {
-        const QString fm = programDir()
-                           + QStringLiteral("/fieldmap.json");
-        QString ferr;
-        if (QFile::exists(fm) && FieldCatalog::instance().load(fm, &ferr)) {
-            qInfo("Loaded %d field definitions from %s",
-                  FieldCatalog::instance().fieldCount(), qPrintable(fm));
-        } else if (QFile::exists(fm)) {
-            qWarning("fieldmap.json: %s", qPrintable(ferr));
-        }
-    }
-
     m_bookmarks.load();
 
     connect(&m_tests, &TestAssertionEngine::assertionObserved,
@@ -411,16 +399,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(&m_tests, &TestAssertionEngine::assertionViolated,
             this,     &MainWindow::onAssertionViolated);
     // Auto-load testcases.json if it sits beside the binary, so a run does
-    // not begin with a menu hunt.
-    {
-        const QString def = programDir()
-                            + QStringLiteral("/testcases.json");
-        QString terr;
-        if (QFile::exists(def) && m_tests.load(def, &terr)) {
-            qInfo("Loaded %d test case(s) from %s",
-                  m_tests.assertions().size(), qPrintable(def));
-        }
-    }
+    // not begin with a menu hunt. The built-in set is loaded on request only
+    // (session 271: Tools > Test cases > Load built-in test cases).
+    loadConfigAtStart(ConfigKind::TestCases);
 
     // Field inspector: schema decode of the selected row, byte-linked to
     // the hex panel. Tabbed with the raw-bytes dock rather than stacked, so
@@ -1508,7 +1489,7 @@ void MainWindow::onActionAbout()
            "<p>Listens on UDP/%1, displays one tab per "
            "(source_id, kvch_id) pair, rolls a per-source disk log "
            "under <code>%2</code>, and applies the colour rules "
-           "from <code>color_rules.json</code> next to the exe.</p>"
+           "(built in, or your own: Tools \u25B8 Configuration files).</p>"
            "<p>CRL-GAD &nbsp;·&nbsp; built with Qt %3</p>")
             .arg(Settings::udpPort())
             .arg(Settings::diskLogRoot())
@@ -2134,6 +2115,150 @@ void MainWindow::onActionChooseSchema()
 
     Settings::setSchemaPath(picked);
     onActionReloadSchema();
+}
+
+// =============================================================================
+//  Session 271 — configuration files, built in like the schema
+// =============================================================================
+
+bool MainWindow::applyConfigFile(ConfigKind kind, const ConfigChoice &c, QString *err)
+{
+    if (c.source == ConfigSource::None) return true;   // nothing to load (test cases)
+    switch (kind) {
+    case ConfigKind::ColorRules:
+        // On failure ColorRules falls back to its own hard-coded rules.
+        if (!m_colorRules.loadFromFile(c.path)) {
+            if (err) *err = tr("not readable, or not a JSON array of rules");
+            return false;
+        }
+        return true;
+    case ConfigKind::FriendlyNames:
+        if (!m_nameMap.loadFromFile(c.path)) {
+            if (err) *err = tr("not readable");
+            return false;
+        }
+        return true;
+    case ConfigKind::FieldMap:
+        return FieldCatalog::instance().load(c.path, err);
+    case ConfigKind::TestCases:
+        return m_tests.load(c.path, err);
+    }
+    return false;
+}
+
+void MainWindow::loadConfigAtStart(ConfigKind kind)
+{
+    const ConfigFileSpec &spec = configFileSpec(kind);
+    const ConfigChoice c = resolveConfig(kind);
+    QString err;
+    const bool ok = applyConfigFile(kind, c, &err);
+    if (c.source != ConfigSource::None)
+        qInfo("%s: %s", qPrintable(spec.fileName), qPrintable(describeConfigChoice(c)));
+
+    // Said once the window is up: notify() needs the notification bar.
+    QString problem;
+    if (!c.chosenMissing.isEmpty())
+        problem = tr("The chosen %1 file is gone: %2. Using the %3 copy instead.")
+                      .arg(spec.title, QDir::toNativeSeparators(c.chosenMissing),
+                           c.source == ConfigSource::BuiltIn ? tr("built-in") : tr("beside-the-program"));
+    if (!ok)
+        problem += (problem.isEmpty() ? QString() : QStringLiteral(" "))
+                 + tr("%1 (%2): %3").arg(spec.fileName, describeConfigChoice(c), err);
+    if (!problem.isEmpty())
+        QTimer::singleShot(0, this, [this, problem]() { notify(NoteLevel::Warning, problem); });
+}
+
+void MainWindow::chooseConfigFile(ConfigKind kind)
+{
+    const ConfigFileSpec &spec = configFileSpec(kind);
+    const ConfigChoice before = resolveConfig(kind);
+    const QString start = before.source == ConfigSource::BuiltIn
+                              ? QDir(programDir()).filePath(spec.fileName) : before.path;
+    const QString filter = spec.fileName.endsWith(QLatin1String(".csv"))
+                               ? tr("CSV files (*.csv)") : tr("JSON files (*.json)");
+    const QString picked = QFileDialog::getOpenFileName(
+        this, tr("Use external %1 file").arg(spec.title), start,
+        filter + tr(";;All files (*)"));
+    if (picked.isEmpty()) return;
+
+    ConfigChoice c;
+    c.path = picked;
+    c.source = ConfigSource::Chosen;
+    QString err;
+    if (!applyConfigFile(kind, c, &err)) {
+        QString ignored;
+        applyConfigFile(kind, before, &ignored);   // back to what was in force
+        QMessageBox::warning(this, tr("Configuration files"),
+                             tr("Could not use %1:\n%2\n\nThe %3 in force before (%4) are kept.")
+                                 .arg(QDir::toNativeSeparators(picked), err, spec.title,
+                                      describeConfigChoice(before)));
+        return;
+    }
+    setChosenConfigPath(kind, picked);
+
+    QString effect;
+    if (kind == ConfigKind::ColorRules)
+        effect = tr("Rows already shown keep their colours; new rows use these rules.");
+    else if (kind == ConfigKind::FriendlyNames)
+        effect = tr("Used for tabs opened from now on; disk-log folder names follow at the next start.");
+    notify(NoteLevel::Info, tr("Using this %1 file from now on, also at the next start: %2")
+                                .arg(spec.title, QDir::toNativeSeparators(picked)),
+           effect);
+}
+
+void MainWindow::revertConfigFile(ConfigKind kind)
+{
+    const ConfigFileSpec &spec = configFileSpec(kind);
+    setChosenConfigPath(kind, QString());
+    const ConfigChoice c = resolveConfig(kind);
+    QString err;
+    if (!applyConfigFile(kind, c, &err)) {
+        notify(NoteLevel::Warning, tr("%1 (%2): %3").arg(spec.fileName, describeConfigChoice(c), err));
+        return;
+    }
+    // A file beside the program still comes before the built-in copy.
+    notify(NoteLevel::Info, c.source == ConfigSource::BuiltIn
+                                ? tr("Using the built-in %1.").arg(spec.title)
+                                : tr("Using the %1 %2 (it comes before the built-in copy).")
+                                      .arg(spec.title, describeConfigChoice(c)));
+}
+
+void MainWindow::showConfigFilesInUse()
+{
+    QString text = tr("<p>Which copy of each file DLConsole is using. A file you choose comes "
+                      "first, then a file of the same name beside the program, then the copy "
+                      "built into the program.</p><table cellspacing='6'>");
+    const QString schema = Settings::schemaPath();
+    text += tr("<tr><td><b>%1</b></td><td>%2</td></tr>")
+                .arg(QStringLiteral("kavach.xml"),
+                     schema.isEmpty() ? tr("built in") : tr("chosen: %1").arg(QDir::toNativeSeparators(schema)).toHtmlEscaped());
+    for (ConfigKind kind : { ConfigKind::ColorRules, ConfigKind::FriendlyNames, ConfigKind::FieldMap }) {
+        const ConfigChoice c = resolveConfig(kind);
+        QString what = describeConfigChoice(c).toHtmlEscaped();
+        if (!c.chosenMissing.isEmpty())
+            what += tr(" (the chosen file is gone: %1)").arg(QDir::toNativeSeparators(c.chosenMissing).toHtmlEscaped());
+        text += tr("<tr><td><b>%1</b></td><td>%2</td></tr>").arg(configFileSpec(kind).fileName, what);
+    }
+    const ConfigChoice tc = resolveConfig(ConfigKind::TestCases);
+    text += tr("<tr><td><b>%1</b></td><td>%2</td></tr></table>")
+                .arg(configFileSpec(ConfigKind::TestCases).fileName,
+                     tc.source == ConfigSource::BesideProgram
+                         ? tr("loaded at start from beside the program: %1").arg(QDir::toNativeSeparators(tc.path).toHtmlEscaped())
+                         : tr("built in; loaded only on request (Test cases ▸ Load built-in test cases)"));
+    QMessageBox::information(this, tr("Configuration files in use"), text);
+}
+
+void MainWindow::loadBuiltinTestCases()
+{
+    ConfigChoice c;
+    c.path = builtinConfigPath(ConfigKind::TestCases);
+    c.source = ConfigSource::BuiltIn;
+    QString err;
+    if (!applyConfigFile(ConfigKind::TestCases, c, &err)) {
+        QMessageBox::warning(this, tr("Test cases"), tr("Could not load the built-in test cases:\n%1").arg(err));
+        return;
+    }
+    notify(NoteLevel::Info, tr("Loaded %1 built-in test case(s)").arg(m_tests.assertions().size()));
 }
 
 void MainWindow::refreshPinChoices()

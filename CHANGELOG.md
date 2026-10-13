@@ -11,6 +11,83 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-271"></a>
+## Session 271 — Configuration files built in, like kavach.xml
+
+Abhinav: "can we keep the current files as the base files that are builtin
+similar to kavach.xml and if someone wants to use different they can upload
+it". He also chose:
+- built-in test cases are loaded on request only, not at every start;
+- a file beside the program keeps working, as before.
+
+**What the operator sees.** `color_rules.json`, `friendly_names.csv`,
+`fieldmap.json` and `testcases.json` are now inside the program, so a bare
+single `.exe` / AppImage (patch 269) colours rows, names tabs and knows the
+query field names with nothing beside it. Before, the package had no colour
+rules file, no names and no field catalogue. For each of the first three,
+the first match wins:
+1. the file the operator chose, remembered until reverted;
+2. a file of that name beside the program, as before;
+3. the built-in copy.
+
+A chosen file that has since gone is reported once at start (a warning
+notification), and the next copy in that order is used.
+
+**Menus.**
+- **Tools ▸ Configuration files** (new): for colour rules, friendly names
+  and the field catalogue, *Use external … file…* and *Revert to built-in
+  …*. There is also *Files in use…*, which lists each file's source, the
+  schema included.
+  - A chosen file applies at once and again at every start. A file that
+    can't be read or parsed is refused with the reason, and the previous
+    copy stays in force.
+  - New colour rules apply to new rows; rows already shown keep their
+    colours.
+  - New friendly names apply to tabs opened from then on. The disk-log
+    writer keeps its own copy of the names, so log folder names follow at
+    the next start: changing them mid-session would split a running log.
+  - *Revert* says so when a file beside the program, not the built-in
+    copy, is what applies next.
+- **Tools ▸ Test cases ▸ Load built-in test cases** (new). Loaded test cases
+  post Observed / not-answered notifications all through a live session, so
+  they don't load at every start. *Load test cases…* is unchanged (another
+  set, for this session), and a `testcases.json` beside the program is
+  still loaded at start.
+- **Help ▸ About** no longer says the colour rules come "from
+  color_rules.json next to the exe".
+
+**How.** `defaults.qrc` (`:/defaults/…`) holds the four repository files,
+linked into every program through `dlcore_link.pri` (resources stay out of
+the library). The order of precedence is in `configfiles.h/.cpp`
+(`resolveConfigFor()`). The choice is stored in the ini under
+`config/<key>`. `MainWindow::applyConfigFile()` loads one file with its own
+loader (`ColorRules`, `NameMap`, `FieldCatalog`, `TestAssertionEngine`), at
+start and from the menu.
+
+**Files.** New: `configfiles.h`, `configfiles.cpp`, `defaults.qrc`,
+`tests/test_session271.cpp`. Changed: `dlcore.pri`, `dlcore_link.pri`,
+`mainwindow.h`, `mainwindow.cpp`, `mainwindow_menus.cpp`, `tests/tests.pro`.
+
+**Tests.** `session271` (27 checks):
+- each built-in copy is the repository file byte for byte, and loads with
+  its own loader (with rules, names, fields, and more than 10 SIF test
+  cases in it);
+- the order of precedence: built in, beside, chosen, a chosen file that's
+  gone, and test cases having no built-in copy at start;
+- the choice is saved, in force, separate per file and reverted, using a
+  package's own ini through patch 270's redirect, so the real ini is
+  untouched.
+
+**Gate:** Qt 6 and Qt 5.15 green, 311 suites / 8059 checks, 0 failed; menu
+audit 184 ok (it builds the new submenu); smoke; validators.
+
+**Not tested:** the new menu and the *Files in use…* box were not looked at
+on screen (the screenshot harness covers windows, not message boxes or
+menus), nor was the file dialog driven by hand. Re-colouring rows already
+shown under new rules is not done, by design.
+
+---
+
 <a id="session-270"></a>
 ## Session 270 — Packages keep their settings and logs beside themselves
 

@@ -31,6 +31,9 @@ RESOURCES += $$PWD/station_layouts.qrc
 # Session 231: SIF 0533 v4.22's clauses (Tools > Test Case Catalog), made by
 # scripts/sif_catalog.py from the PDF.
 RESOURCES += $$PWD/test_catalog.qrc
+# Session 271: colour rules, friendly names, field catalogue and test cases,
+# built in like kavach.xml (configfiles.h).
+RESOURCES += $$PWD/defaults.qrc
 
 LIBS += -L$$DLCORE_DIR -ldlcore
 msvc: PRE_TARGETDEPS += $$DLCORE_DIR/dlcore.lib

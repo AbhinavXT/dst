@@ -425,6 +425,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     toolsMenu->addSeparator();
     auto *testMenu     = toolsMenu->addMenu(tr("Test &cases"));   // acceptance runs
     auto *schemaMenu   = toolsMenu->addMenu(tr("&Schema"));       // the decoder itself
+    auto *configMenu   = toolsMenu->addMenu(tr("Configuration &files"));   // session 271
     toolsMenu->addSeparator();
 
     QAction *actCompare = liveMenu->addAction(tr("&Compare tabs…"));
@@ -595,6 +596,11 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     QAction *actLoadTests = testMenu->addAction(tr("&Load test cases…"));
     connect(actLoadTests, &QAction::triggered,
             this,         &MainWindow::onActionLoadTestCases);
+    // Session 271: the set built into the program, on request only (loaded
+    // test cases post notifications all through a live session).
+    QAction *actBuiltinTests = testMenu->addAction(tr("Load &built-in test cases"));
+    actBuiltinTests->setToolTip(tr("The SIF test cases built into DLConsole (testcases.json)"));
+    connect(actBuiltinTests, &QAction::triggered, this, &MainWindow::loadBuiltinTestCases);
     QAction *actTestReport = testMenu->addAction(tr("&Save observation report…"));
     connect(actTestReport, &QAction::triggered,
             this,          &MainWindow::onActionSaveTestReport);
@@ -621,6 +627,21 @@ MainWindow::MenuRoots MainWindow::buildMenus()
         Settings::setSchemaPath(QString());
         onActionReloadSchema();
     });
+
+    // Session 271: colour rules, friendly names and the field catalogue are
+    // built in like the schema; each can be replaced by a file of the
+    // operator's, remembered until reverted (configfiles.h).
+    for (ConfigKind kind : { ConfigKind::ColorRules, ConfigKind::FriendlyNames, ConfigKind::FieldMap }) {
+        const ConfigFileSpec &spec = configFileSpec(kind);
+        QAction *use = configMenu->addAction(tr("Use external %1 file…").arg(spec.title));
+        use->setToolTip(tr("Use your own %1 instead of the built-in copy, from now on").arg(spec.fileName));
+        connect(use, &QAction::triggered, this, [this, kind]() { chooseConfigFile(kind); });
+        QAction *revert = configMenu->addAction(tr("Revert to built-in %1").arg(spec.title));
+        connect(revert, &QAction::triggered, this, [this, kind]() { revertConfigFile(kind); });
+        configMenu->addSeparator();
+    }
+    QAction *actConfigInUse = configMenu->addAction(tr("Files in &use…"));
+    connect(actConfigInUse, &QAction::triggered, this, &MainWindow::showConfigFilesInUse);
 
     QAction *actDecodeWb = inspectMenu->addAction(tr("&Decode Workbench…"));
     actDecodeWb->setShortcut(QKeySequence("Ctrl+Shift+D"));

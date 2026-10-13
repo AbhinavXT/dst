@@ -1,0 +1,10 @@
+<!DOCTYPE RCC>
+<!-- Session 271: the configuration files, built in (configfiles.h). -->
+<RCC version="1.0">
+    <qresource prefix="/defaults">
+        <file>color_rules.json</file>
+        <file>friendly_names.csv</file>
+        <file>fieldmap.json</file>
+        <file>testcases.json</file>
+    </qresource>
+</RCC>

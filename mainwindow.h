@@ -30,6 +30,7 @@
 #include <QTimer>
 
 #include "colorrules.h"
+#include "configfiles.h"
 #include "locoidentity.h"
 #include "framenumberwatch.h"
 #include "exporter.h"
@@ -165,6 +166,14 @@ private slots:
     void onAssertionViolated(const QString &id, const QString &title,
                              const QString &detail);
     void onActionChooseSchema();  // Tools → Use external schema file…
+    // Session 271: colour rules, friendly names, field catalogue and test
+    // cases, built in like the schema (configfiles.h).
+    bool applyConfigFile(ConfigKind kind, const ConfigChoice &c, QString *err);
+    void loadConfigAtStart(ConfigKind kind);
+    void chooseConfigFile(ConfigKind kind);   // Tools → Configuration files → Use external …
+    void revertConfigFile(ConfigKind kind);   // Tools → Configuration files → Revert to built-in …
+    void showConfigFilesInUse();              // Tools → Configuration files → Files in use…
+    void loadBuiltinTestCases();              // Tools → Test cases → Load built-in test cases
     // Turn a ribbon drag into a visible `after:… before:…` query.
     void applyTimeRangeFilter(const QString &tabKey, qint64 fromMs, qint64 toMs);
     void onActionToggleBookmark();      // Ctrl+B on the selected row
