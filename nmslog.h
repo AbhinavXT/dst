@@ -16,6 +16,11 @@
 //      @nmsflt   reporting_subsystem, fault_count, then fault[1] module /
 //                code_type / fault_id, fault[2] …, as many as a packet carried
 //      @nmsrssi  its fixed fields
+//      @dllog    (session 267) the log message's header (msg.*) as the
+//                header columns; log_time, abs_location, log_type,
+//                sub_log_type, field_applicable, then every sub-log type's
+//                fields in the order first seen, empty where a packet does
+//                not carry them
 //    last, the frame in hex.
 //  Values are as the decoder shows them ("1  (OK)"); a cell that is a whole
 //  number goes to the .xlsx as a number.
@@ -33,9 +38,9 @@
 
 namespace NmsLog {
 
-enum class Kind { Health, Fault, Rssi };
+enum class Kind { Health, Fault, Rssi, DlLog };
 
-QString token(Kind k);        // "nmshlth", "nmsflt", "nmsrssi"
+QString token(Kind k);        // "nmshlth", "nmsflt", "nmsrssi", "dllog"
 QString title(Kind k);        // "NMS health log"
 QString fileStem(Kind k);     // "nms_health"
 

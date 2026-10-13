@@ -394,10 +394,12 @@ int main(int argc, char **argv) {
         CHECK(allThere && total == 19, "every former Monitor entry is in its group (19)");
     }
     CHECK(monLive && findAction(monLive, "Live Loco Console"), "Monitor > Live > Live Loco Console");
-    // Session 247: the three NMS packet logs; session 248: in their own group.
-    CHECK(monNms && monNms->actions().size() == 3 && findAction(monNms, "NMS health log")
-              && findAction(monNms, "NMS fault log") && findAction(monNms, "NMS RSSI log"),
-          "Monitor > NMS > NMS health / fault / RSSI log, and nothing else");
+    // Session 247: the three NMS packet logs; session 248: in their own group;
+    // session 267: the DL log beside them.
+    CHECK(monNms && monNms->actions().size() == 4 && findAction(monNms, "NMS health log")
+              && findAction(monNms, "NMS fault log") && findAction(monNms, "NMS RSSI log")
+              && findAction(monNms, "DL log"),
+          "Monitor > NMS > NMS health / fault / RSSI log and DL log, and nothing else");
     CHECK(monEquipment && !findAction(monEquipment, "NMS health log"), "and no longer in Equipment");
 
     // View > Theme: every theme, exactly one ticked, and the toggle.

@@ -101,6 +101,9 @@ Mark markOf(const QString &column, const QString &value, QString *why)
         return mark(Mark::Warn, QStringLiteral("An RFID tag event was reported"));
     if (is("EB_BYPASSED") && has("Bypassed"))
         return mark(Mark::Warn, QStringLiteral("EB reported bypassed"));
+    // @dllog (session 267).
+    if (is("log_type") && has("(Dangerous)"))
+        return mark(Mark::Warn, QStringLiteral("A dangerous event was logged"));
     if ((is("BIU_ISOLATED") || is("KAVACH_CONNECTION")) && has("Isolated"))
         return mark(Mark::Warn, QStringLiteral("Reported isolated"));
     return Mark::None;
@@ -112,6 +115,7 @@ QString token(Kind k)
     case Kind::Health: return QStringLiteral("nmshlth");
     case Kind::Fault:  return QStringLiteral("nmsflt");
     case Kind::Rssi:   return QStringLiteral("nmsrssi");
+    case Kind::DlLog:  return QStringLiteral("dllog");
     }
     return QString();
 }
@@ -122,6 +126,7 @@ QString title(Kind k)
     case Kind::Health: return QStringLiteral("NMS health log");
     case Kind::Fault:  return QStringLiteral("NMS fault log");
     case Kind::Rssi:   return QStringLiteral("NMS RSSI log");
+    case Kind::DlLog:  return QStringLiteral("DL log");
     }
     return QString();
 }
@@ -132,6 +137,7 @@ QString fileStem(Kind k)
     case Kind::Health: return QStringLiteral("nms_health");
     case Kind::Fault:  return QStringLiteral("nms_fault");
     case Kind::Rssi:   return QStringLiteral("nms_rssi");
+    case Kind::DlLog:  return QStringLiteral("dl_log");
     }
     return QString();
 }
@@ -182,7 +188,9 @@ int Table::columnOf(const QString &name, Group g)
 bool append(Table &t, Kind kind, const LogEntry &entry, bool *newColumns)
 {
     if (newColumns) *newColumns = false;
-    if (captureTypeOf(entry.text) != token(kind)) return false;
+    // By type, not token: @dllog also arrives as @dl_log (session 267).
+    if (CaptureDecoder::typeFromToken(captureTypeOf(entry.text))
+        != CaptureDecoder::typeFromToken(token(kind))) return false;
     const CaptureLine cap = CaptureDecoder::parseLine(entry.text);
     if (!cap.valid || cap.bytes.isEmpty()) return false;
 
@@ -204,7 +212,9 @@ bool append(Table &t, Kind kind, const LogEntry &entry, bool *newColumns)
         const int n = ++seen[name];
         // describe() indents the packet's own rows; the rest is the capture
         // line, then the NMS header.
-        const Group g = r.field.startsWith(QLatin1Char(' ')) ? Group::Body
+        // @dllog's message header is the packet's own first rows: msg.*.
+        const Group g = kind == Kind::DlLog && name.startsWith(QLatin1String("msg.")) ? Group::Header
+                      : r.field.startsWith(QLatin1Char(' ')) ? Group::Body
                       : leadRank(name) < leadRank(QString()) ? Group::Lead
                       : Group::Header;
         put(n == 1 ? name : QStringLiteral("%1 (%2)").arg(name).arg(n), r.value.trimmed(), g);
@@ -252,7 +262,7 @@ bool append(Table &t, Kind kind, const LogEntry &entry, bool *newColumns)
             }
             t.carry.lastMsgSeq = seq;
         }
-    } else {
+    } else if (kind != Kind::DlLog) {   // @dllog: sent on events, seq_num 0: no basis for a gap
         const QDateTime rtc = QDateTime::fromString(valueOf(QStringLiteral("rtc")), QStringLiteral("yyyy-MM-dd HH:mm:ss"));
         if (rtc.isValid()) {
             const qint64 secs = rtc.toMSecsSinceEpoch() / 1000;

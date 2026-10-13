@@ -66,8 +66,11 @@ enum class CapType {
                               // table, one row per source loco, and its
                               // decisions (session 184; sosLog.h). Flat LE,
                               // no header/CRC.
-    Rdir                      // @rdir READER_INFO: one RFID read and the
+    Rdir,                     // @rdir READER_INFO: one RFID read and the
                               // directions after it, 5 B LE (session 194)
+    DlLog                     // @dllog LKAVACH -> LDLU log message: 21 B
+                              // header, then the sub-log type's struct, LE,
+                              // no CRC (session 267)
 };
 
 enum class CapDir { Unknown = 0, In, Out };   // provisional per-type direction

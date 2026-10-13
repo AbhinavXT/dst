@@ -560,6 +560,87 @@
       <map v="0" label="0 (empty / no target)"/>
       <map default="true" label="%v (undefined)"/>
     </enum>
+    <!-- @dllog (session 267): LKAVACH -> LDLU log message, from the
+         firmware's #defines (LOG_TYPE_*, SUB_LOG_*, FIELD_APPLICABLE_*). -->
+    <enum name="dlUnit">
+      <map v="2" label="%v (LKAVACH)"/>
+      <map v="6" label="%v (LDLU)"/>
+      <map default="true" label="%v"/>
+    </enum>
+    <enum name="dlMsgId">
+      <map v="102" label="%v (LKAVACH_LDLU_LOG_MESSAGE)"/>
+      <map default="true" label="%v"/>
+    </enum>
+    <enum name="dlLogType">
+      <map v="1" label="%v (Abnormal)"/>
+      <map v="2" label="%v (Normal)"/>
+      <map v="3" label="%v (Periodic)"/>
+      <map v="4" label="%v (Dangerous)"/>
+      <map default="true" label="%v (?)"/>
+    </enum>
+    <enum name="dlSubDangerous">
+      <map v="1"  label="%v (SPAD)"/>
+      <map v="2"  label="%v (Head-on collision)"/>
+      <map v="3"  label="%v (Rear-end collision)"/>
+      <map v="4"  label="%v (SOS message)"/>
+      <map v="5"  label="%v (Train trip)"/>
+      <map v="6"  label="%v (Unusual stoppage)"/>
+      <map v="7"  label="%v (LP-OCIP alert)"/>
+      <map v="8"  label="%v (Rollback)"/>
+      <map v="9"  label="%v (Manual SOS generated)"/>
+      <map v="10" label="%v (Manual SOS cancelled)"/>
+      <map default="true" label="%v (?)"/>
+    </enum>
+    <enum name="dlSubAbnormal">
+      <map v="1"  label="%v (Onboard comm fail)"/>
+      <map v="5"  label="%v (Failure code)"/>
+      <map v="6"  label="%v (Kavach unit fail)"/>
+      <map v="7"  label="%v (BIU isolation)"/>
+      <map v="8"  label="%v (Brake applied status)"/>
+      <map v="9"  label="%v (Kavach restart)"/>
+      <map v="10" label="%v (Non-leading mode)"/>
+      <map v="11" label="%v (Train length info)"/>
+      <map v="12" label="%v (Mode transition)"/>
+      <map v="13" label="%v (MBT)"/>
+      <map v="14" label="%v (RFID tag)"/>
+      <map v="15" label="%v (Onboard comm recovery)"/>
+      <map v="19" label="%v (LC gate)"/>
+      <map default="true" label="%v (?)"/>
+    </enum>
+    <enum name="dlSubPeriodic">
+      <map v="1" label="%v (LKAVACH periodic)"/>
+      <map default="true" label="%v (?)"/>
+    </enum>
+    <enum name="dlField">
+      <map v="1"  label="%v (DANGEROUS_EVENT)"/>
+      <map v="2"  label="%v (LKAVACH_PERIODIC_EVENT)"/>
+      <map v="3"  label="%v (MOVEMENT_AUTH)"/>
+      <map v="4"  label="%v (BRAKE_APPLICATION)"/>
+      <map v="5"  label="%v (KAVACH_MODE)"/>
+      <map v="6"  label="%v (LP_ACK)"/>
+      <map v="7"  label="%v (RFID_PASSED)"/>
+      <map v="8"  label="%v (TIN)"/>
+      <map v="9"  label="%v (SIGNAL_ASPECT)"/>
+      <map v="10" label="%v (SIGNAL_PASSED)"/>
+      <map v="11" label="%v (EMERGENCY_MSG_SEND)"/>
+      <map v="12" label="%v (EMERGENCY_MSG_RECV)"/>
+      <map v="13" label="%v (TRAIN_CONFIG_DETAILS)"/>
+      <map v="14" label="%v (INPUT_FAILURE)"/>
+      <map v="15" label="%v (BIU_ISOLATION)"/>
+      <map v="16" label="%v (BRAKE_STATUS)"/>
+      <map v="17" label="%v (LKAVACH_RESTART)"/>
+      <map v="18" label="%v (TL)"/>
+      <map v="19" label="%v (MODE_TRANSITION)"/>
+      <map v="20" label="%v (MBT)"/>
+      <map v="21" label="%v (RFID)"/>
+      <map v="22" label="%v (NL_MODE)"/>
+      <map v="23" label="%v (COMM_FAILURE)"/>
+      <map v="24" label="%v (DMI_POPUP)"/>
+      <map v="25" label="%v (OB_KAVACH_ID)"/>
+      <map v="26" label="%v (STATION_KAVACH_ID)"/>
+      <map v="27" label="%v (LC_GATE)"/>
+      <map default="true" label="%v (?)"/>
+    </enum>
 
   </enums>
 
@@ -1192,6 +1273,168 @@
     <field name="a_v24_pgd1_status" bits="8"/>
     <field name="a_v24_pgd2_status" bits="8"/>
     <crc name="crc" algo="jamcrc" from="0" len="12"/>
+  </packet>
+
+  <!-- ===================================================================== -->
+  <!-- @dllog  LKAVACH -> LDLU log message (session 267). PrepareDataLoggerPkt -->
+  <!-- memcpy's PACK structs out little-endian, no CRC; the capture is the      -->
+  <!-- buffer as sent (UDP_SendCapturePkt(LOG_PKT_DL_LOG, buffer, offset)).    -->
+  <!--   STRUCT_MESSAGE_HEADER_NEW  src u8, dest u8, id u16, length u16, seq u16 -->
+  <!--   STRUCT_DATE_TIME_NEW       day, month, year - BASE_YEAR, h, m, s (u8)  -->
+  <!--   abs location u32, LOG_TYPE u8, SUB_LOG_TYPE u8, FIELD_APPLICABLE u8   -->
+  <!-- = 21 bytes, then the sub-log type's struct (Handle_* in the firmware).  -->
+  <!-- Typedef widths from irs.h. Bitfields (alarm codes, context values) are  -->
+  <!-- LSB-first: the DMI packet's tables, the same structs.                   -->
+  <!-- Abnormal 1 / 15 (comm fail / recovery) have no handler: no body.        -->
+  <!-- RFID tag (abnormal 14): dl_tag_data is the @rfid frame without its      -->
+  <!-- reader id (16 B); the C++ decodes it with the RFID packet ("tag.").     -->
+  <!-- Mode / brake / direction / train type labels are the DMI's, which the   -->
+  <!-- firmware fills from the same loco_params; the raw value leads.          -->
+  <!-- Years are shown as sent: the header subtracts BASE_YEAR, the brake      -->
+  <!-- status times add it, and end_time.second is second + fsb_applied_time  -->
+  <!-- with no carry.                                                          -->
+  <!-- NO REAL CAPTURE YET: schema/fixtures/dllog_synthetic.log (tests/dlloggen). -->
+  <!-- ===================================================================== -->
+  <packet name="DLLOG" match="captype==dllog,dl_log" wire="lsb-first" trailer_bytes="0">
+    <field name="msg.src_id"         bits="8"  enum="dlUnit"/>
+    <field name="msg.dest_id"        bits="8"  enum="dlUnit"/>
+    <field name="msg.message_id"     bits="16" enum="dlMsgId"/>
+    <field name="msg.message_length" bits="16"/>
+    <field name="msg.seq_num"        bits="16"/>
+    <field name="dd" bits="8" id="dd" hide="true"/>
+    <field name="mo" bits="8" id="mo" hide="true"/>
+    <field name="yy" bits="8" id="yy" hide="true"/>
+    <field name="hh" bits="8" id="hh" hide="true"/>
+    <field name="mi" bits="8" id="mi" hide="true"/>
+    <field name="ss" bits="8" id="ss" hide="true"/>
+    <row name="log_time" tmpl="{dd:02d}-{mo:02d}-{yy:02d} {hh:02d}:{mi:02d}:{ss:02d}"/>
+    <field name="abs_location"     bits="32" unit="m"/>
+    <field name="log_type"         bits="8"  enum="dlLogType"/>
+    <field name="sub_log_type"     bits="8"  enum="dlSubDangerous" when="log_type==4"/>
+    <field name="sub_log_type"     bits="8"  enum="dlSubAbnormal"  when="log_type==1"/>
+    <field name="sub_log_type"     bits="8"  enum="dlSubPeriodic"  when="log_type==3"/>
+    <field name="sub_log_type"     bits="8"  when="log_type not in 1..4"/>
+    <field name="sub_log_type"     bits="8"  when="log_type==2"/>
+    <field name="field_applicable" bits="8"  enum="dlField"/>
+
+    <!-- DANGEROUS -->
+    <when test="log_type==4">
+      <when test="sub_log_type==1">                <!-- STRUCT_SPAD_INFO -->
+        <field name="station_id"         bits="16"/>
+        <field name="signal_aspect"      bits="8"/>
+        <field name="signal_info"        bits="32"/>
+        <field name="ref_rfid"           bits="16"/>
+        <field name="dist_from_ref_rfid" bits="32" unit="m"/>
+      </when>
+      <when test="sub_log_type==2">                <!-- STRUCT_COLLISION_INFO_LOCO -->
+        <field name="station_id"               bits="16"/>
+        <field name="collision_loco_id"        bits="32"/>
+        <field name="self_loco_rfid"           bits="16"/>
+        <field name="self_loco_dist_from_rfid" bits="32" unit="m"/>
+      </when>
+      <when test="sub_log_type==3">                <!-- STRUCT_REAR_END_COLLISION -->
+        <field name="collision_loco_id"  bits="32"/>
+        <field name="ref_rfid"           bits="16"/>
+        <field name="dist_from_ref_rfid" bits="32" unit="m"/>
+      </when>
+      <when test="sub_log_type==4">                <!-- STRUCT_LOCO_SOS -->
+        <field name="sos_reason"         bits="8"/>
+        <field name="kavach_id"          bits="32"/>
+        <field name="ref_rfid"           bits="16"/>
+        <field name="dist_from_ref_rfid" bits="32" unit="m"/>
+      </when>
+      <when test="sub_log_type in 5..6">           <!-- STRUCT_TRAIN_TRIP_UNUSUAL_STOPPAGE_RELEASE -->
+        <field name="loco_reason"        bits="8"/>
+        <field name="loco_id"            bits="32"/>
+        <field name="ref_rfid"           bits="16"/>
+        <field name="dist_from_ref_rfid" bits="32" unit="m"/>
+      </when>
+      <when test="sub_log_type==7">                <!-- Handle_LpocipAlert -->
+        <flags name="alarm_code" table="dmiAlarm" bits="71" pad="9"/>
+        <flags name="context_values" table="dmiCtx" bits="14" pad="2"/>
+        <field name="popup_time"       bits="8"  unit="s"/>
+        <field name="popup_distance"   bits="32" unit="m"/>
+        <field name="popup_speed"      bits="16" unit="km/h"/>
+        <field name="popup_loco_id"    bits="8"/>
+        <field name="popup_train_type" bits="8"  enum="dmiTrainType"/>
+        <field name="popup_pressure"   bits="16"/>   <!-- brake_pressure x 100 -->
+        <field name="popup_station_id" bits="16"/>
+      </when>
+      <when test="sub_log_type==8">                <!-- STRUCT_DANGEROS_EVENT -->
+        <field name="dangerous_event" bits="8" enum="dlSubDangerous"/>
+      </when>
+      <when test="sub_log_type in 9..10">          <!-- STRUCT_LOCO_SOS -->
+        <field name="sos_reason"         bits="8"/>
+        <field name="kavach_id"          bits="32"/>
+        <field name="ref_rfid"           bits="16"/>
+        <field name="dist_from_ref_rfid" bits="32" unit="m"/>
+      </when>
+    </when>
+
+    <!-- ABNORMAL -->
+    <when test="log_type==1">
+      <when test="sub_log_type in 5..6">           <!-- STRUCT_INPUT_FAILURE -->
+        <field name="input_failure" bits="8"/>
+      </when>
+      <when test="sub_log_type==7">                <!-- STRUCT_BIU_ISOLATION -->
+        <field name="biu_isolated" bits="8"/>
+      </when>
+      <when test="sub_log_type==8">                <!-- STRUCT_BRAKE_STATUS -->
+        <field name="brake_applied" bits="8" enum="dmiBrakeType"/>
+        <field name="sd" bits="8"  id="sd" hide="true"/>
+        <field name="sm" bits="8"  id="sm" hide="true"/>
+        <field name="sy" bits="16" id="sy" hide="true"/>
+        <field name="sh" bits="8"  id="sh" hide="true"/>
+        <field name="sn" bits="8"  id="sn" hide="true"/>
+        <field name="ss2" bits="8" id="ss2" hide="true"/>
+        <row name="start_time" tmpl="{sd:02d}-{sm:02d}-{sy} {sh:02d}:{sn:02d}:{ss2:02d}"/>
+        <field name="ed" bits="8"  id="ed" hide="true"/>
+        <field name="em" bits="8"  id="em" hide="true"/>
+        <field name="ey" bits="16" id="ey" hide="true"/>
+        <field name="eh" bits="8"  id="eh" hide="true"/>
+        <field name="en" bits="8"  id="en" hide="true"/>
+        <field name="es" bits="8"  id="es" hide="true"/>
+        <row name="end_time" tmpl="{ed:02d}-{em:02d}-{ey} {eh:02d}:{en:02d}:{es:02d}"/>
+        <field name="speed"    bits="16" unit="km/h"/>
+        <field name="distance" bits="32" unit="m"/>
+      </when>
+      <when test="sub_log_type==9">                <!-- STRUCT_KAVACH_RESTART -->
+        <field name="kavach_restart" bits="8"/>
+      </when>
+      <when test="sub_log_type==10">               <!-- STRUCT_NL_MODE -->
+        <field name="non_leading_mode" bits="8"/>
+      </when>
+      <when test="sub_log_type==11">               <!-- STRUCT_TL -->
+        <field name="train_length" bits="16" unit="m"/>
+      </when>
+      <when test="sub_log_type==12">               <!-- STRUCT_MODE_TRANSITION -->
+        <field name="previous_mode" bits="8" enum="dmiLocoMode"/>
+        <field name="current_mode"  bits="8" enum="dmiLocoMode"/>
+      </when>
+      <when test="sub_log_type==13">               <!-- STRUCT_MBT -->
+        <field name="mbt" bits="8"/>
+      </when>
+      <when test="sub_log_type==14">               <!-- dl_tag_data: @rfid without reader id -->
+        <pad bits="128"/>
+      </when>
+      <when test="sub_log_type==19">               <!-- STRUCT_LC_GATE_LOG -->
+        <field name="gate_id"       bits="16"/>
+        <field name="gate_id_alpha" bits="16"/>
+        <field name="gate_type"     bits="8"/>
+      </when>
+    </when>
+
+    <!-- PERIODIC -->
+    <when test="log_type==3">
+      <when test="sub_log_type==1">                <!-- STRUCT_LKAVACH_PERIODIC_EVENT -->
+        <field name="loco_id"                  bits="32"/>
+        <field name="speed"                    bits="16" unit="km/h"/>
+        <field name="train_movement_direction" bits="8"  enum="dmiMoveDir"/>
+        <field name="tin"                      bits="16"/>
+        <field name="brake_type"               bits="8"  enum="dmiBrakeType"/>
+        <field name="system_faults"            bits="8"/>
+      </when>
+    </when>
   </packet>
 
   <!-- ===================================================================== -->

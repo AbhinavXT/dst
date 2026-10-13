@@ -11,6 +11,77 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-267"></a>
+## Session 267 — DL log (@dllog): LKAVACH's log message to the LDLU
+
+Abhinav: "add a dllog pkt like the nsm hlth fault and rssi one make the same
+table for it too", with `PrepareDataLoggerPkt` and its structs, the irs.h
+typedefs and `STRUCT_DATE_TIME`. No `@dllog` line has been captured yet.
+
+**The packet** (`DLLOG` in `kavach.xml`, `CapType::DlLog`, token `@dllog`;
+`@dl_log` is read as the same type, the real token being unconfirmed).
+Little-endian, PACK, no CRC:
+
+| Bytes | Field |
+|---|---|
+| 0-7 | `msg.src_id` (2 LKAVACH), `msg.dest_id` (6 LDLU), `msg.message_id` (102), `msg.message_length`, `msg.seq_num` |
+| 8-13 | `log_time`: day, month, year - BASE_YEAR, hour, minute, second, as sent |
+| 14-17 | `abs_location` (m) |
+| 18-20 | `log_type`, `sub_log_type` (named by log type), `field_applicable` |
+| 21- | the sub-log type's struct: every `Handle_*` of the dangerous and abnormal tables, and the periodic one |
+
+- LP-OCIP alert: the alarm codes (71 flags + 9 pad) and context values
+  (14 + 2) are named by the DMI's tables, the same structs, LSB first.
+- RFID tag (abnormal 14): `dl_tag_data` is the `@rfid` frame without its
+  reader id; it is decoded by the RFID packet, as `tag.*`, CRC-30 included,
+  and its rows highlight bytes 21-36.
+- Brake status: `start_time` / `end_time` are `STRUCT_DATE_TIME` (u16 year)
+  as sent. The firmware adds BASE_YEAR there but subtracts it in the header,
+  and `end_time.second` is second + fsb_applied_time with no carry: shown
+  raw, not corrected.
+- Comm fail / recovery (abnormal 1 / 15) have no handler: header only.
+- Mode, brake type, direction and train type carry the DMI's labels after
+  the raw value; `sos_reason` / `loco_reason` are raw (the `DL_*` values
+  were not given).
+
+**What the operator sees.** Tools ▸ Monitor ▸ NMS ▸ **DL log…**: the NMS
+log window for `@dllog`. One row per packet; the msg.* header columns, then
+log_time, abs_location, log_type, sub_log_type, field_applicable and each
+sub-type's fields in the order first seen, empty where a packet does not
+carry them. Dangerous events are marked (warning). No gap marks: the
+packets come on events and seq_num is always 0. Find, pin, columns,
+CSV / .xlsx export (sheet `dllog`) and double-click are the NMS window's.
+
+### Files
+
+`schema/kavach.xml` (packet, 8 enums), `capturedecoder.{h,cpp}`,
+`nmslog.{h,cpp}` (`Kind::DlLog`), `mainwindow_menus.cpp`;
+new `schema/dllog_oracle.py`, `schema/validate_dllog.py`,
+`tests/dlloggen/make_fixture.py`, `schema/fixtures/dllog_synthetic.log`,
+`tests/test_session267.cpp`; `tests/tests.pro`, `tests/menuaudit_main.cpp`,
+`CLAUDE.md` (14 validators).
+
+### Tests
+
+`validate_dllog.py` (14th validator): the engine against `struct.unpack`
+of the firmware's structs, field by field, on all 49 fixture frames (24
+log / sub-log types); a 16-bit field read as 8 drops it to 24/49.
+`session267` (36 checks): the type and its alias; the header; SPAD,
+head-on, SoS, LP-OCIP (flag names), brake status, mode transition, LC gate,
+comm fail (no body); both RFID-tag packets equal to the real `@rfid`
+frames' own decode, row for row; the table (one row per line, groups,
+order, empty cells, marks, no gaps, the alias, refusal by the health
+table, xlsx); the window. Menu audit: Monitor ▸ NMS has the four entries.
+
+Not tested: a real `@dllog` capture (none yet; the fixture is packed from
+the pasted code, not taken from the firmware), the capture token, and the
+window with a live feed.
+
+Gate: `./verify.sh` green on Qt 5.15.19 (qt@5) and on Qt 6.11 (308 suites
+/ 8012 checks each, 14 validators, menu audit, smoke).
+
+---
+
 <a id="session-266"></a>
 ## Session 266 — Qt 5 build fixed; the local "Qt 5" gate was Qt 6
 

@@ -536,6 +536,11 @@ MainWindow::MenuRoots MainWindow::buildMenus()
         { NmsLog::Kind::Rssi, QT_TR_NOOP("NMS &RSSI log…"), "actNmsRssiLog",
           QT_TR_NOOP("Every @nmsrssi packet of the current tab as a row: each radio's RSSI and reference tags; "
                      "follows the tab; export CSV or Excel") },
+        // Session 267: LKAVACH's log message to the LDLU, in the same table.
+        { NmsLog::Kind::DlLog, QT_TR_NOOP("&DL log…"), "actDlLog",
+          QT_TR_NOOP("Every @dllog packet of the current tab as a row: log type, sub-log type and the event's "
+                     "fields (SPAD, collision, SoS, brake status, mode transition, RFID tag, periodic, …); "
+                     "follows the tab; export CSV or Excel") },
     };
     for (const auto &n : nmsLogs) {
         QAction *a = nmsMenu->addAction(tr(n.text));

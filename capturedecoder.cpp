@@ -456,6 +456,7 @@ CapType typeFromToken(const QString &token)
     if (token == "sossrc")  return CapType::SosSrc;
     if (token == "sosev")   return CapType::SosEv;
     if (token == "rdir")    return CapType::Rdir;
+    if (token == "dllog" || token == "dl_log") return CapType::DlLog;
     if (token == "speed")   return CapType::Speed;
     if (token == "analog_top")    return CapType::AnalogTop;
     if (token == "analog_bottom") return CapType::AnalogBottom;
@@ -506,6 +507,7 @@ const char *typeLabel(CapType t)
     case CapType::SosSrc:   return "sos source";
     case CapType::SosEv:    return "sos event";
     case CapType::Rdir:     return "reader direction";
+    case CapType::DlLog:    return "dl log";
     case CapType::Speed:    return "speed";
     case CapType::AnalogTop:    return "analog top";
     case CapType::AnalogBottom: return "analog bottom";
@@ -540,6 +542,7 @@ CapDir directionFor(CapType t)
     case CapType::SosSrc:
     case CapType::SosEv:    return CapDir::Out;   // the loco's own SoS state, logged out
     case CapType::Rdir:     return CapDir::Out;   // the loco's own reader directions
+    case CapType::DlLog:    return CapDir::Out;   // LKAVACH -> LDLU, logged out
     case CapType::Speed:                          // tachometer pulses, sensed
     case CapType::AnalogTop:
     case CapType::AnalogBottom: return CapDir::In; // analog (pressure) inputs, sensed
@@ -1510,6 +1513,26 @@ QVector<FieldRow> describe(const CaptureLine &c, const QHash<int, qint64> *tagLo
     case CapType::SosEv:  r += schemaRows(b, QStringLiteral("sosev"),  nullptr, -1, rawValues); break;
     // @rdir READER_INFO (session 194): 5 B LE, no header/CRC.
     case CapType::Rdir:   r += schemaRows(b, QStringLiteral("rdir"),   nullptr, -1, rawValues); break;
+    // @dllog (session 267): the log message LKAVACH sends the LDLU. The
+    // RFID-tag sub-type (abnormal 14) carries dl_tag_data, the @rfid frame
+    // without its reader id byte: decoded by the RFID packet, as "tag.".
+    case CapType::DlLog: {
+        QHash<QString, qint64> own;
+        QHash<QString, qint64> *raw = rawValues ? rawValues : &own;
+        r += schemaRows(b, QStringLiteral("dllog"), nullptr, -1, raw);
+        if (raw->value(QStringLiteral("log_type")) == 1 && raw->value(QStringLiteral("sub_log_type")) == 14
+            && n >= 21 + 16) {
+            const QByteArray tag = QByteArray(1, '\0') + b.mid(21, 16);
+            for (FieldRow row : schemaRows(tag, QStringLiteral("rfid"))) {
+                const QString name = row.field.trimmed();
+                if (name == QLatin1String("reader_id")) continue;   // not in dl_tag_data
+                row.field = QStringLiteral("  tag.") + name;
+                if (row.hasSpan()) row.bitOffset += 20 * 8;   // tag byte 1 is frame byte 21
+                r.push_back(row);
+            }
+        }
+        break;
+    }
     // @speed / @analog_*: flat LE structs, decoded from byte 0 (session 67).
     // @analog_* is six floats with no CRC; the schema shows them %g.
     case CapType::Speed: r += schemaRows(b, QStringLiteral("speed"), nullptr, -1, rawValues); break;
