@@ -7,6 +7,7 @@
 #include "emptystate.h"
 #include "uistyle.h"
 #include "uicolors.h"
+#include "programdir.h"
 #include "ui_mainwindow.h"
 
 #include "exporter.h"
@@ -379,7 +380,7 @@ MainWindow::MainWindow(QWidget *parent)
     // -----------------------------------------------------------------
     //  Load configuration files (color rules + friendly names).
     // -----------------------------------------------------------------
-    const QString appDir = QCoreApplication::applicationDirPath();
+    const QString appDir = programDir();
     m_colorRules.loadFromFile(appDir + "/color_rules.json");
     m_nameMap   .loadFromFile(appDir + "/friendly_names.csv");
     m_rawPanel->setNameMap(&m_nameMap);
@@ -392,7 +393,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Field catalogue: names, packets and symbolic values for the query
     // language. An absent file is not an error — raw field names still work.
     {
-        const QString fm = QCoreApplication::applicationDirPath()
+        const QString fm = programDir()
                            + QStringLiteral("/fieldmap.json");
         QString ferr;
         if (QFile::exists(fm) && FieldCatalog::instance().load(fm, &ferr)) {
@@ -412,7 +413,7 @@ MainWindow::MainWindow(QWidget *parent)
     // Auto-load testcases.json if it sits beside the binary, so a run does
     // not begin with a menu hunt.
     {
-        const QString def = QCoreApplication::applicationDirPath()
+        const QString def = programDir()
                             + QStringLiteral("/testcases.json");
         QString terr;
         if (QFile::exists(def) && m_tests.load(def, &terr)) {
@@ -2127,7 +2128,7 @@ void MainWindow::onActionChooseSchema()
     const QString current = Settings::schemaPath();
     const QString picked = QFileDialog::getOpenFileName(
         this, tr("Choose schema file"),
-        current.isEmpty() ? QCoreApplication::applicationDirPath() : current,
+        current.isEmpty() ? programDir() : current,
         tr("Schema XML (*.xml);;All files (*)"));
     if (picked.isEmpty()) return;
 
@@ -2255,7 +2256,7 @@ void MainWindow::onActionLoadTestCases()
 {
     const QString path = QFileDialog::getOpenFileName(
         this, tr("Load test cases"),
-        QCoreApplication::applicationDirPath() + "/testcases.json",
+        programDir() + "/testcases.json",
         tr("Test cases (*.json);;All files (*)"));
     if (path.isEmpty()) return;
 

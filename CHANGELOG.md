@@ -11,6 +11,110 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-269"></a>
+## Session 269 — DLConsole as one file, for Windows and Linux
+
+Abhinav: "can we make an independent exe like feature for dl console, so
+that i can only give the exe to people and they can run dl console on
+linux or windows". Agreed scope: Windows 10/11 only, a single `.exe`, built
+on every patch tag. Then: "the linux appimage needs to run on rhel". The
+RHEL version wasn't given, so this takes the conservative reading: RHEL 8
+and RHEL 9 both.
+
+**What people get.** Each `patch-N` tag now gets a GitHub Release
+(https://github.com/AbhinavXT/dst/releases) with two files. Neither needs
+Qt or an installer:
+- `DLConsole.exe` (about 18 MB), Windows 10/11. Started, it unpacks
+  DLConsole, the Qt 5.15 DLLs and plugins, and the MSVC runtime to a
+  temporary folder, runs DLConsole from there, and deletes the folder when
+  DLConsole closes. It isn't code-signed, so Windows may say "Windows
+  protected your PC" the first time: More info, then Run anyway.
+- `DLConsole-x86_64.AppImage`, Linux: **RHEL 8 and 9**, and other
+  distributions with glibc 2.28 or newer. `chmod +x`, then start it. If the
+  system has no FUSE: `./DLConsole-x86_64.AppImage --appimage-extract-and-run`.
+
+One file can't serve both systems: Windows and Linux programs are
+different formats. The repository is public, so the release files are too,
+like the source they're built from.
+
+**Why not a static Qt build.** That would mean rebuilding Qt from source
+for CI, and LGPL terms for statically linked Qt. A packed program avoids
+both, with the same result for the person running it.
+
+**Windows: how the single .exe is made**
+(`packaging/windows/make_single_exe.ps1`). `windeployqt` (release, no
+translations) plus the MSVC runtime DLLs app-local, so no `vc_redist`
+installer is needed. All of it goes into a 7z archive behind 7-Zip's small
+SFX module, `7zS2.sfx`. That module is **built in CI from the LZMA SDK
+source** (23.01, public domain, SHA-256 checked) with two changes:
+- DLConsole's icon instead of 7-Zip's setup icon. The operator sees the
+  unpacker's icon, because that is the file they start.
+- It sets `DLCONSOLE_PACKAGE` to its own path before starting DLConsole.
+
+The script refuses if anything other than `DLConsole.exe` could be picked
+as the program to start: 7zS2 prefers a `.bat` or `.cmd` over an `.exe`.
+
+**Linux: the AppImage** (`packaging/linux/make_appimage.sh`,
+`dlconsole.desktop`). Made with `linuxdeploy` and its Qt plugin, fixed
+releases with checked SHA-256. **Built in an AlmaLinux 8 container**: a
+RHEL 8 rebuild, with Qt 5.15 from RHEL 8's own AppStream and GCC 13 from
+`gcc-toolset-13`. A program only runs on systems whose C library is at
+least as new as the one it was built against. Built on Ubuntu 22.04
+(glibc 2.35), it started on neither RHEL 8 (2.28) nor RHEL 9 (2.34).
+
+**"Beside the program" follows the file the operator has**
+(`programdir.h/.cpp`). Both packages run DLConsole from a temporary place.
+`color_rules.json`, `friendly_names.csv`, `fieldmap.json` and
+`testcases.json` are now looked for beside the `.exe` / `.AppImage` the
+operator started, and the Choose-schema, Load-test-cases and catalog
+Save-as dialogs start there. The rule is `programDir()`:
+- `DLCONSOLE_PACKAGE` (Windows), if it names an existing file;
+- otherwise `APPIMAGE` (Linux), counted only while the program runs from
+  inside `APPDIR`, so another AppImage's variables inherited by a
+  DLConsole started from it don't count;
+- otherwise `applicationDirPath()`, as before.
+
+Ordinary builds are unchanged.
+
+**CI** (`.github/workflows/build.yml`). New jobs `package-windows` and
+`package-linux` run on patch tags and on manual runs. `release` runs on
+patch tags only, after **all** gate jobs and both package jobs pass. Each
+package is started once in CI:
+- The `.exe` must start DLConsole from its temporary folder and remove the
+  folder after DLConsole is closed.
+- The AppImage runs in fresh **AlmaLinux 8 (RHEL 8), AlmaLinux 9
+  (RHEL 9) and Ubuntu 24.04** containers with **no Qt** (checked), only what
+  a Linux desktop provides (`packaging/linux/try_appimage.sh`), under Xvfb,
+  and must still be running after 15 s on each.
+
+**Files.** New: `programdir.h`, `programdir.cpp`,
+`packaging/windows/make_single_exe.ps1`, `packaging/linux/make_appimage.sh`,
+`packaging/linux/dlconsole.desktop`, `packaging/linux/try_appimage.sh`,
+`tests/test_session269.cpp`.
+Changed: `dlcore.pri`, `mainwindow.cpp`, `testcatalogwindow.cpp`,
+`tests/tests.pro`, `.github/workflows/build.yml`.
+
+**Tests.** `session269` (11 checks): the `programDir()` rule for a plain
+build, the Windows package (and a package file that no longer exists), the
+AppImage (trailing slashes, a folder that only *starts* with the mount's
+name, APPIMAGE without APPDIR, another program's inherited variables).
+**Gate:** Qt 6 and Qt 5.15 green, 309 suites / 8023 checks, 0 failed; menu
+audit; smoke; validators. Both packages were built and started on a trial
+branch's manual CI runs before this tag. All three Linux hosts said
+"DLConsole exit 124 (alive at timeout)".
+
+**Not tested:**
+- That `DLCONSOLE_PACKAGE` reaches DLConsole on a real Windows PC. CI
+  checks the unpack, run and clean-up, not the variable.
+- Windows 10 specifically: CI runs Windows Server 2022.
+- Real RHEL (the containers are AlmaLinux, built from the same sources),
+  real desktops rather than Xvfb, and the serial port from inside the
+  AppImage.
+- How Windows Defender or other antivirus treats a self-unpacking,
+  unsigned exe.
+
+---
+
 <a id="session-268"></a>
 ## Session 268 — A new application icon
 

@@ -125,3 +125,132 @@ jobs:
         run: |
           tail -40 build-verify/dltests.log || true
           grep '^FAIL' build-verify/menuaudit.log || true
+
+  # ===========================================================================
+  #  Session 269: single-file packages for people who only get the program.
+  #  On each patch tag (and on a manual run, to try them): DLConsole.exe for
+  #  Windows 10/11 and DLConsole-x86_64.AppImage for Linux, each started
+  #  once here, then attached to a GitHub Release named after the tag, only
+  #  when the gate jobs above passed too.
+  # ===========================================================================
+  package-windows:
+    if: startsWith(github.ref, 'refs/tags/patch-') || github.event_name == 'workflow_dispatch'
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Qt 5.15 (MSVC 2019, 64-bit)
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.15.2'
+          host: windows
+          target: desktop
+          arch: win64_msvc2019_64
+          cache: true
+
+      - name: MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build (release, the program only)
+        shell: cmd
+        run: |
+          mkdir build
+          cd build
+          qmake ..\DLConsole.pro CONFIG+=release
+          nmake
+
+      - name: Single .exe
+        shell: pwsh
+        run: packaging\windows\make_single_exe.ps1 -Exe build\DLConsole.exe -Out dist\DLConsole.exe
+
+      # Started as an operator would: it must unpack, run DLConsole, and
+      # remove its temporary folder once DLConsole closes.
+      - name: The single .exe starts
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath dist\DLConsole.exe -PassThru
+          Start-Sleep -Seconds 20
+          if ($p.HasExited) { throw "the package exited at once ($($p.ExitCode))" }
+          $app = Get-CimInstance Win32_Process -Filter "ParentProcessId=$($p.Id)" |
+                 Where-Object Name -eq 'DLConsole.exe'
+          if (-not $app) { throw "DLConsole did not start from the package" }
+          Write-Host "DLConsole running from $($app.ExecutablePath)"
+          $dir = Split-Path -Parent $app.ExecutablePath
+          Stop-Process -Id $app.ProcessId
+          if (-not $p.WaitForExit(30000)) { throw "the package did not finish after DLConsole closed" }
+          Start-Sleep -Seconds 2
+          if (Test-Path $dir) { throw "the temporary folder was left behind: $dir" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DLConsole-windows
+          path: dist/DLConsole.exe
+
+  # Built on AlmaLinux 8 (a RHEL 8 rebuild, glibc 2.28) so the AppImage runs
+  # on RHEL 8 and everything newer; built on a newer system, it would not.
+  # GCC 13 from gcc-toolset (links what RHEL 8's own libstdc++ lacks
+  # statically), Qt 5.15 from RHEL 8's AppStream.
+  package-linux:
+    if: startsWith(github.ref, 'refs/tags/patch-') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and AppImage on AlmaLinux 8 (RHEL 8)
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src almalinux:8 bash -euc '
+            dnf install -y -q dnf-plugins-core
+            dnf config-manager --set-enabled powertools
+            dnf install -y -q gcc-toolset-13-gcc-c++ make qt5-qtbase-devel qt5-qtserialport-devel \
+                which file findutils
+            source /opt/rh/gcc-toolset-13/enable
+            mkdir -p build-el8 && cd build-el8
+            qmake-qt5 ../DLConsole.pro CONFIG+=release
+            make -j"$(nproc)" >build.log 2>&1 || { tail -40 build.log; exit 1; }
+            cd ..
+            QMAKE=/usr/bin/qmake-qt5 WORK=/tmp/package packaging/linux/make_appimage.sh \
+                build-el8/DLConsole dist/DLConsole-x86_64.AppImage'
+
+      # On fresh systems with NO Qt: RHEL 8 and 9 (AlmaLinux) and Ubuntu.
+      - name: The AppImage starts on RHEL 8, RHEL 9 and Ubuntu, without Qt
+        run: |
+          failed=0
+          for img in almalinux:8 almalinux:9 ubuntu:24.04; do
+            echo "== $img"
+            docker run --rm -v "$PWD/dist:/dist" -v "$PWD/packaging/linux:/p" "$img" \
+              sh /p/try_appimage.sh /dist/DLConsole-x86_64.AppImage || failed=1
+          done
+          exit $failed
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DLConsole-linux
+          path: dist/DLConsole-x86_64.AppImage
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/patch-')
+    needs: [ windows, linux, linux-qt6, package-windows, package-linux ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          n="${TAG#patch-}"
+          gh release create "$TAG" dist/DLConsole.exe dist/DLConsole-x86_64.AppImage \
+            --repo "$GITHUB_REPOSITORY" --title "DLConsole $TAG" --notes "Single-file DLConsole, nothing to install.
+
+          - **Windows 10/11:** \`DLConsole.exe\`. Start it. It unpacks to a temporary folder, runs, and cleans up when closed. Windows may warn about an unrecognised app the first time: More info, then Run anyway.
+          - **Linux (RHEL 8 / 9 and newer, Ubuntu 20.04 and newer, other distributions with glibc 2.28 or newer):** \`DLConsole-x86_64.AppImage\`. \`chmod +x\` it, then start it. If it says FUSE is missing: \`./DLConsole-x86_64.AppImage --appimage-extract-and-run\`.
+
+          Files read from beside the program (color_rules.json, friendly_names.csv, fieldmap.json, testcases.json) go beside the downloaded file.
+
+          What changed: [CHANGELOG, session $n](https://github.com/$GITHUB_REPOSITORY/blob/$TAG/CHANGELOG.md#session-$n)."

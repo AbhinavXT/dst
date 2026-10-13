@@ -4,6 +4,7 @@
 #include "settings.h"
 #include "statusline.h"
 #include "uicolors.h"
+#include "programdir.h"
 #include "uistyle.h"
 #include "undolog.h"
 #include "windowgeometry.h"
@@ -250,7 +251,7 @@ TestCatalogWindow::TestCatalogWindow(QWidget *parent)
     auto *saveAsBtn = new QPushButton(tr("Save as…"), this);
     auto saveAs = [this]() {
         const QString start = m_path.startsWith(QLatin1Char(':'))
-                                  ? QCoreApplication::applicationDirPath() + QStringLiteral("/test_catalog.json")
+                                  ? programDir() + QStringLiteral("/test_catalog.json")
                                   : m_path;
         const QString path = QFileDialog::getSaveFileName(this, tr("Save the test case catalog"), start,
                                                           tr("Test case catalogs (*.json)"));

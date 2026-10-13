@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=DLConsole
+Comment=Kavach ATP diagnostic console
+Exec=DLConsole
+Icon=dlconsole
+Categories=Development;Utility;
+Terminal=false

@@ -171,6 +171,7 @@ SOURCES += \
     $$PWD/savedata.cpp \
     $$PWD/statusline.cpp \
     $$PWD/uicolors.cpp \
+    $$PWD/programdir.cpp \
     $$PWD/uistyle.cpp \
     $$PWD/searchwindow.cpp \
     $$PWD/sessionreader.cpp \
@@ -338,6 +339,7 @@ HEADERS += \
     $$PWD/statusline.h \
     $$PWD/sendguard.h \
     $$PWD/uicolors.h \
+    $$PWD/programdir.h \
     $$PWD/uistyle.h \
     $$PWD/searchwindow.h \
     $$PWD/sessionfile.h \
