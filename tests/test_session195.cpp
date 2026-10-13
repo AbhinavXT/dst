@@ -225,7 +225,7 @@ TEST_SUITE(session195)
                   + QByteArray::number(mine.size()) + " rows)");
         const QVector<RfidTag::Route> exported = RfidTag::readXml(ours);
         CHECK(exported.size() == 2 && exported.at(0).name == QLatin1String("DN_904_720")
-                  && exported.at(1).name == QLatin1String("REV_DN_904_720") && exported.at(1).dir == 2,
+                  && exported.at(1).name == QLatin1String("REV_DN_720_904") && exported.at(1).dir == 2,
               "named as tags_sim names them");
 
         const QVector<RfidTag::Route> up = RfidTag::readFile(fx("UP_MN721_981route.xml"));

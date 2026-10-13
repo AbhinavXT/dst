@@ -466,7 +466,11 @@ QByteArray toRouteXml(const Route &r, QString *err)
     QVector<RouteRow> rev(rows.crbegin(), rows.crend());
     for (int i = 0; i < rev.size(); ++i) rev[i].nextAbsLoc = i + 1 < rev.size() ? rev.at(i + 1).absLoc : rev.at(i).absLoc;
     block(side + ends, r.dir, rows);
-    block(QStringLiteral("REV_") + side + ends, r.dir == DirNominal ? DirReverse : DirNominal, rev);
+    // Session 264: the REV route named the way it runs, its first tag first
+    // (DN_804_908 and REV_DN_908_804). tags_sim's own route.xml writes
+    // REV_DN_804_908; Abhinav's simulator files use this.
+    block(QStringLiteral("REV_") + side + last + QLatin1Char('_') + first,
+          r.dir == DirNominal ? DirReverse : DirNominal, rev);
     w.writeEndElement();
     w.writeEndDocument();
     return out;

@@ -11,6 +11,44 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-264"></a>
+## Session 264 — Tag Builder: the REV route named the way it runs
+
+Abhinav: the REV route's name should interchange the tags, e.g.
+`DN_804_908` and `REV_DN_908_804`.
+
+- **route.xml, Into Configuration1.xml and Route for Configuration1.xml**
+  now name the REV route `REV_<DN|UP>_<last>_<first>`: its own first tag
+  first, as it runs (it was `REV_DN_804_908`, the route's name with REV_ in
+  front). The route itself is unchanged (`DN_804_908`).
+- tags_sim's own route.xml still writes the old form (`REV_DN_904_720` in
+  its DN_MN904_720route.xml); DLConsole reads either, it only writes the
+  new one.
+- **Into Configuration1.xml** and a file merged into before this patch:
+  the REV route there is under the old name. It is replaced in place, not
+  left beside a second REV route, and the note says "replaced route
+  REV_DN_804_908 (now REV_DN_908_804)".
+
+### Files
+
+`rfidtag.cpp` (`toRouteXml`), `rfidexport.cpp` (`mergeIntoConfiguration`);
+`tests/test_session264.cpp`, `tests/tests.pro`; `tests/test_session195.cpp`,
+`tests/test_session197.cpp` (the REV names they expect).
+
+### Tests
+
+`session264` (13 checks) on the real Hafizpet routes (tag_scenarios, in
+git): a DN and an UP route, each `<DN|UP>_<first>_<last>` and
+`REV_<DN|UP>_<last>_<first>`, the REV route's first tag the one its name
+starts with, the Configuration1.xml route export named the same; Hafizpet's
+Configuration1.xml holding the old-named REV route: merged into, it is
+replaced (one REV route, none under the old name) and the note says so.
+
+Gate: `./verify.sh` green on Qt 5 and Qt 6 (306 suites / 7966 checks, menu
+audit, smoke).
+
+---
+
 <a id="session-263"></a>
 ## Session 263 — Test Case Catalog: Pass / Fail, recorded in a test run
 

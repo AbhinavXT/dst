@@ -140,13 +140,26 @@ QByteArray mergeIntoConfiguration(const QByteArray &config, const RfidTag::Route
     const QVector<RfidTag::Route> mine = RfidTag::readXml(xml);
     QString text = QString::fromUtf8(config);
     int added = 0;
-    for (const RfidTag::Route &m : mine) {
+    for (int i = 0; i < mine.size(); ++i) {
+        const RfidTag::Route &m = mine.at(i);
         const QPair<int, int> src = blockSpan(ours, m.name);
         const QString block = ours.mid(src.first, src.second - src.first);
-        const QPair<int, int> at = blockSpan(text, m.name);
+        QPair<int, int> at = blockSpan(text, m.name);
+        // Session 264: the REV route was named REV_<route's name> before
+        // (REV_DN_804_908); a file merged into then holds it under that
+        // name. Replace it there, not add a second REV route beside it.
+        QString was;
+        if (at.first < 0 && i == 1 && !mine.isEmpty()) {
+            const QString old = QStringLiteral("REV_") + mine.first().name;
+            if (old != m.name) {
+                at = blockSpan(text, old);
+                if (at.first >= 0) was = old;
+            }
+        }
         if (at.first >= 0) {
             text.replace(at.first, at.second - at.first, block);
-            if (notes) *notes << QStringLiteral("replaced route %1").arg(m.name);
+            if (notes) *notes << (was.isEmpty() ? QStringLiteral("replaced route %1").arg(m.name)
+                                                : QStringLiteral("replaced route %1 (now %2)").arg(was, m.name));
         } else {
             const int lastClose = text.lastIndexOf(QLatin1String("</route_data>"));
             if (lastClose < 0) {

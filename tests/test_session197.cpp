@@ -184,9 +184,9 @@ TEST_SUITE(session197)
         const QVector<RfidTag::Route> back = RfidTag::readXml(merged);
         CHECK(!merged.isEmpty() && back.size() == 3 && back.at(0).name == QLatin1String("KEEP")
                   && back.at(1).name == QLatin1String("DN_100_103") && back.at(1).tags.size() == 4
-                  && back.at(2).name == QLatin1String("REV_DN_100_103"),
+                  && back.at(2).name == QLatin1String("REV_DN_103_100"),
               QByteArray("the route's block replaced in place, its REV route added after the last: ") + err.toUtf8());
-        CHECK(notes == QStringList({ QStringLiteral("replaced route DN_100_103"), QStringLiteral("added route REV_DN_100_103") }),
+        CHECK(notes == QStringList({ QStringLiteral("replaced route DN_100_103"), QStringLiteral("added route REV_DN_103_100") }),
               QByteArray("and it says which: ") + notes.join(QStringLiteral(", ")).toUtf8());
         const int cut = config.indexOf("<route_data route_name=\"DN_100_103\"");
         const int tail = config.size() - config.indexOf("\n       </route>");
