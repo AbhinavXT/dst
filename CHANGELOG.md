@@ -11,6 +11,48 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-265"></a>
+## Session 265 — Tag Builder: page_x / page_y can be edited
+
+Abhinav: inserting and deleting in page_x and page_y does not work;
+Backspace makes the numbers zero from the front; data cannot be inserted.
+
+**Cause.** Every keystroke was read at once: 15 digits after a Backspace
+were taken as a smaller number and the box rewritten with it, zero-padded
+to 16, so a 0 appeared in front and the digits shifted under the cursor.
+And the box took at most 16 digits, so once full nothing could be typed
+anywhere.
+
+**Now.** The box keeps exactly what is typed. The tag is read from it only
+when it holds 16 hex digits; until then the status says "page_x has 15 of
+16 hex digits: the tag shown is the last complete one", and the form, the
+CRC and the name stay on that tag. While editing a box takes up to 48
+characters (insert a digit, then delete one elsewhere) and spaces (a tag
+pasted as `08 2a 2a 02 7f ec e2 19` is read, the spaces left as pasted).
+Non-hex characters are still refused. A value given by a file or another
+window without its leading zeros (`setPages`) is padded and read, as
+before.
+
+### Files
+
+`tagbuilderwindow.cpp`; `tests/test_session265.cpp`, `tests/tests.pro`.
+
+### Tests
+
+`session265` (10 checks), on tag 912D's pages: Backspace leaves 15 digits
+as typed, no 0 in front, the tag unchanged and the status saying why; a
+digit inserted back: read at 16; a 17th digit inserted into a full box:
+accepted, kept, not read, then one deleted elsewhere: read; pasted with
+spaces: read, spaces kept; a non-hex character refused; a value without
+its leading zero padded.
+
+Not tested: real key presses (the text and textEdited they produce are).
+
+Gate: `./verify.sh` green on Qt 5 and Qt 6 (307 suites / 7976 checks, menu
+audit, smoke).
+
+---
+
 <a id="session-264"></a>
 ## Session 264 — Tag Builder: the REV route named the way it runs
 

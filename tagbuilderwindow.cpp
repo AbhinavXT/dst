@@ -47,6 +47,16 @@
 #include <QVBoxLayout>
 
 namespace {
+// The hex digits of a page box, spaces dropped (session 265).
+QString hexDigits(const QString &s)
+{
+    QString d = s;
+    d.remove(QLatin1Char(' '));
+    return d;
+}
+}  // namespace
+
+namespace {
 
 const int kTypes[] = { 9, 10, 11, 12 };
 
@@ -379,13 +389,17 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     for (int t : kTypes) m_type->addItem(QStringLiteral("%1  %2").arg(t).arg(RfidTag::typeName(t)), t);
     m_type->setToolTip(tr("Tag type 10 (LC gate) has never been seen in a capture: its layout is the "
                           "specification's, not checked against a real tag"));
-    const QRegularExpression hex(QStringLiteral("[0-9A-Fa-f]{0,16}"));
+    // Session 265: room to type past 16 while editing (insert, then delete
+    // elsewhere) and spaces (a tag pasted as "08 2a 2a ..."). The tag is
+    // read from a box only once it holds exactly 16 hex digits.
+    const QRegularExpression hex(QStringLiteral("[0-9A-Fa-f ]{0,48}"));
     m_pageX = new QLineEdit(editor);
     m_pageY = new QLineEdit(editor);
     for (QLineEdit *e : { m_pageX, m_pageY }) {
         e->setValidator(new QRegularExpressionValidator(hex, e));
         e->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
-        e->setToolTip(tr("16 hex digits, as tags_sim and the simulator write them. Paste a tag here to decode it"));
+        e->setToolTip(tr("16 hex digits, as tags_sim and the simulator write them. Paste a tag here to decode it. "
+                         "Edit freely: the tag changes once the box holds 16 digits again"));
     }
     m_name = new QLabel(editor);
     m_crc = new QLabel(editor);
@@ -692,8 +706,10 @@ void TagBuilderWindow::showTag()
     m_type->setCurrentIndex(ti);
     rebuildForm();
     fillForm();
-    if (m_pageX->text().compare(RfidTag::pageX(m_tag), Qt::CaseInsensitive) != 0) m_pageX->setText(RfidTag::pageX(m_tag));
-    if (m_pageY->text().compare(RfidTag::pageY(m_tag), Qt::CaseInsensitive) != 0) m_pageY->setText(RfidTag::pageY(m_tag));
+    // Rewritten only when they say something else: not to drop the spaces
+    // or the case the operator typed, and never under a cursor mid-edit.
+    for (auto [e, want] : { std::make_pair(m_pageX, RfidTag::pageX(m_tag)), std::make_pair(m_pageY, RfidTag::pageY(m_tag)) })
+        if (hexDigits(e->text()).compare(want, Qt::CaseInsensitive) != 0) e->setText(want);
     m_name->setText(ti < 0 ? tr("Tag type %1: not a type this editor builds (9 to 12)").arg(s.type)
                            : tr("Tag %1, %2 tag").arg(RfidTag::nameOf(m_tag), RfidTag::typeName(s.type)));
     if (s.crcOk) {
@@ -716,19 +732,38 @@ void TagBuilderWindow::setTag(const QByteArray &tag)
 
 void TagBuilderWindow::setPages(const QString &px, const QString &py)
 {
-    m_pageX->setText(px);
-    m_pageY->setText(py);
+    // From a file or another window: a value, not typing. Leading zeros
+    // a file left out are put back.
+    auto full = [](const QString &s) {
+        const QString d = hexDigits(s);
+        return d.size() < 16 && !d.isEmpty() ? QString(16 - d.size(), QLatin1Char('0')) + d : d;
+    };
+    m_pageX->setText(full(px));
+    m_pageY->setText(full(py));
     pagesEdited();
 }
 
 void TagBuilderWindow::pagesEdited()
 {
+    // Session 265: each keystroke used to be read at once, 15 digits as a
+    // smaller number, and the box rewritten with it zero-padded: Backspace
+    // put a 0 at the front, and a full box took no digit anywhere. Now the
+    // box keeps what is typed; the tag changes only at 16 digits.
+    const QString x = hexDigits(m_pageX->text()), y = hexDigits(m_pageY->text());
+    if (x.size() != 16 || y.size() != 16) {
+        QStringList what;
+        if (x.size() != 16) what << tr("page_x has %1 of 16 hex digits").arg(x.size());
+        if (y.size() != 16) what << tr("page_y has %1 of 16 hex digits").arg(y.size());
+        m_status->warn(what.join(QStringLiteral(", ")) + tr(": the tag shown is the last complete one"));
+        return;
+    }
     QString err;
-    const QByteArray t = RfidTag::fromPages(m_pageX->text(), m_pageY->text(), &err);
+    const QByteArray t = RfidTag::fromPages(x, y, &err);
     if (t.isEmpty()) {
         m_status->warn(err);
         return;
     }
+    m_status->state(tr("page_x and page_y read: tag %1").arg(RfidTag::nameOf(t)));
     setTag(t);
 }
 
