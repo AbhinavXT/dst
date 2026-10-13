@@ -10,6 +10,12 @@ include(../dlcore_link.pri)
 
 SOURCES += ../main.cpp
 
+# Session 268: the program's own icon (Explorer, taskbar, Finder, Dock),
+# made from icons/dlconsole.svg by scripts/app_icons.py. The window icon
+# set in main.cpp (:/myapp_icon.png) comes from the same SVG.
+win32: RC_ICONS = dlconsole.ico
+macx:  ICON     = dlconsole.icns
+
 # The program goes in the MAIN build folder (<build>/DLConsole.exe), not in
 # <build>/app/release/, so it sits where it always did. Qt Creator's Run,
 # windeployqt and any script find it there. Override with

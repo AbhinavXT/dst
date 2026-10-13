@@ -11,6 +11,43 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-268"></a>
+## Session 268 — A new application icon
+
+Abhinav: "change the icon for dlconsole to a better and catchy icon".
+
+**What the operator sees.** A new icon: a saffron shield (Kavach, armour)
+on a deep-navy rounded square, a green signal pulse across it (live
+diagnostics), and a railway track running into it. It replaces the
+generic 64 px train clip-art in the title bar and taskbar. For the first
+time, the program file has an icon too: `DLConsole.exe` in Explorer and
+on the Windows taskbar, and `DLConsole.app` in Finder and the Dock.
+Before, both showed the system's default.
+
+**How it is made.** `icons/dlconsole.svg` is the master. It is rendered to
+PNGs (patch 268 used Qt's `QSvgRenderer`, 16 to 1024 px), and
+`scripts/app_icons.py PNG_DIR` writes:
+- `myapp_icon.png`: the window icon, now 256 px so it stays sharp on
+  high-DPI screens. The name is kept, so `main.cpp` and `images.qrc` are
+  unchanged.
+- `app/dlconsole.ico`: 9 sizes from 16 to 256, stored as PNG entries.
+  `RC_ICONS` in `app/app.pro` uses it on Windows.
+- `app/dlconsole.icns`: made by `iconutil`. `ICON` in `app/app.pro` uses
+  it on macOS.
+
+**Files.** `icons/dlconsole.svg` (new), `myapp_icon.png`,
+`app/dlconsole.ico` (new), `app/dlconsole.icns` (new), `app/app.pro`,
+`scripts/app_icons.py` (new).
+
+**Tests.** None new: there is no behaviour to test. **Gate:** Qt 6 and
+Qt 5.15 both green: 308 suites / 8012 checks, 0 failed; menu audit;
+smoke; 14 validators. Both builds' `DLConsole.app` holds
+`Contents/Resources/dlconsole.icns`, and `CFBundleIconFile` names it.
+**Not tested here:** the Windows `.exe` icon. `RC_ICONS` is only compiled by the
+Windows build, so CI's MSVC job is the first build to use it.
+
+---
+
 <a id="session-267"></a>
 ## Session 267 — DL log (@dllog): LKAVACH's log message to the LDLU
 
