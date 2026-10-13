@@ -540,6 +540,15 @@ public:
     { QSettings s(iniPath(), QSettings::IniFormat); return s.value("test_catalog/last_file").toString(); }
     static void setTestCatalogLastFile(const QString &file)
     { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("test_catalog/last_file", file); }
+    // Session 263: the test run last open, and who set the last result.
+    static QString testRunLastFile()
+    { QSettings s(iniPath(), QSettings::IniFormat); return s.value("test_catalog/last_run").toString(); }
+    static void setTestRunLastFile(const QString &file)
+    { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("test_catalog/last_run", file); }
+    static QString testRunTester()
+    { QSettings s(iniPath(), QSettings::IniFormat); return s.value("test_catalog/tester").toString(); }
+    static void setTestRunTester(const QString &name)
+    { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("test_catalog/tester", name); }
     // Session 232: the Packet Matrix's base preset and output folder.
     static QString matrixLastBase()
     { QSettings s(iniPath(), QSettings::IniFormat); return s.value("packet_matrix/base").toString(); }

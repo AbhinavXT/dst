@@ -44,6 +44,7 @@ SOURCES += \
     $$PWD/gifwriter.cpp \
     $$PWD/dmiclip.cpp \
     $$PWD/dmiclipdialog.cpp \
+    $$PWD/testrun.cpp \
     $$PWD/minimizeddock.cpp \
     $$PWD/textzoom.cpp \
     $$PWD/presentationmode.cpp \
@@ -214,6 +215,7 @@ HEADERS += \
     $$PWD/gifwriter.h \
     $$PWD/dmiclip.h \
     $$PWD/dmiclipdialog.h \
+    $$PWD/testrun.h \
     $$PWD/minimizeddock.h \
     $$PWD/textzoom.h \
     $$PWD/presentationmode.h \

@@ -11,6 +11,79 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-263"></a>
+## Session 263 — Test Case Catalog: Pass / Fail, recorded in a test run
+
+Abhinav: "add a pass, fail option in the testing catalog with good ui".
+Scope agreed: Pass / Fail / N/A / Not tested, with tester, date, remarks and
+evidence, kept in a test-run file per campaign.
+
+**Who decides.** The result is the tester's, set by hand. DLConsole records
+it with who set it and when; it never sets or changes one itself, and the
+report says so at its head.
+
+What the operator sees in Tools ▸ Test Case Catalog:
+
+- **The test-run bar**, under the buttons: the open run ("FRS 4 bench run ·
+  loco 21 · LKAVACH v1.2.10"), a bar filling with pass (green), fail (red)
+  and N/A (grey), "3 Pass · 1 Fail · 1 N/A · 1882 not tested", and New run…,
+  Open run…, Report…, Close run. With none open it says how to start one.
+- **New run…** asks for a title, the loco, the firmware build, the site and
+  the testers, then where to keep the file (`*.testrun.json`). From then on
+  every result is **saved to it the moment it is set** (remarks and evidence
+  after a pause in typing): a crash or a dead laptop battery on the bench
+  loses nothing. The last run reopens with the window.
+- **The result card**, on each clause, above its text: Pass / Fail / N/A /
+  Not tested as one segmented switch (Pass filled green, Fail red, in the
+  contrast-audited chip colours), "set by Abhinav, 2026-10-13 05:30",
+  Tester (who is at the bench: viewing someone else's result does not
+  change it, and it never rewrites who set a result), Remarks, Evidence
+  (the log and time, a clip, a photo). **Ctrl+1 / 2 / 3 / 4** set Pass /
+  Fail / N/A / Not tested; **Next not tested ▸** (Ctrl+.) goes to the next
+  clause in the list with no result.
+- **The list** gains a Result column ("✓ Pass", "✗ Fail", "N/A"); a
+  section's tooltip counts how many of its clauses have a result. **Show**
+  gains "Failed in this run", "Passed in this run", "Not tested yet in this
+  run".
+- **Report…**: HTML (prints, opens in Word) or CSV (Excel). The run's
+  details, the counts, every failed clause first with its remarks and
+  evidence, then every clause by section with its result, who and when.
+- A run is read over whichever catalog is open: a result for a clause the
+  catalog does not have (renamed, deleted) is kept, counted on the bar ("2
+  for clauses not in this catalog") and listed in the report, never dropped.
+
+### Files
+
+`testrun.h/.cpp` (new, `dlcore.pri`): the run, its file, counts, the
+report. `testcatalogwindow.h/.cpp`: the bar, the card, the column, the
+filters. `settings.h`: the last run, the tester's name.
+`tests/test_contrastaudit.cpp`: testrun.cpp writes a standalone HTML
+report (its own white page), as runreport.cpp does. `tests/test_session263.cpp`,
+`tests/tests.pro`; the screenshot harness gains `SHOT_RUN=1`.
+
+### Tests
+
+`session263` (26 checks), over the SIF 0533 v4.22 catalog as built in.
+The data: an empty result is not stored, a not-tested note is; counts over
+the catalog; a result for a clause the catalog lacks kept and listed;
+saved and read back the same; a missing or foreign file refused, said why;
+the report (who decides, failed first, the run's details, the orphan) and
+the CSV (a row per clause, quotes and commas escaped). The window: no run,
+no result (the card says how to start); New run writes the file; a result
+is on disk the moment it is set, with who and when; remarks and evidence
+after the pause; viewing another's result keeps the tester; the Result
+column; Show failed / passed / not tested yet; Next not tested skips N/A;
+Report writes HTML and CSV; a new window reopens the last run; Close run
+clears it.
+
+Not tested: the keyboard shortcuts pressed (the actions they trigger are);
+the New run dialog itself (`newRun()`, which it calls, is).
+
+Gate: `./verify.sh` green on Qt 5 and Qt 6 (305 suites / 7953 checks, menu
+audit, smoke).
+
+---
+
 <a id="session-262"></a>
 ## Session 262 — the DMI clip: the DMI over a stretch of a log, as a GIF
 

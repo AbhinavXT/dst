@@ -30,6 +30,7 @@
 #include <QAbstractButton>
 #include "findbar.h"
 #include "tablefindbar.h"
+#include "testrun.h"
 
 // SHOT_CLIP=1: every visible button drawn narrower or shorter than its own
 // size hint (padding + border + label/icon): its label or glyph is clipped.
@@ -340,6 +341,24 @@ int main(int argc, char **argv)
                 w->setAttribute(Qt::WA_DeleteOnClose, false);
                 w->loadBuiltin();
                 if (!qEnvironmentVariableIsEmpty("SHOT_SEARCH")) w->setSearch(qEnvironmentVariable("SHOT_SEARCH"));
+                // SHOT_RUN=1 (session 263): a test run open, a few results set.
+                if (qEnvironmentVariableIsSet("SHOT_RUN")) {
+                    TestRun::Run r;
+                    r.title = QStringLiteral("FRS 4 bench run");
+                    r.loco = QStringLiteral("21");
+                    r.firmware = QStringLiteral("LKAVACH v1.2.10");
+                    r.testers = QStringLiteral("Abhinav");
+                    static QTemporaryDir runDir;
+                    w->newRun(r, runDir.filePath(QStringLiteral("shot.testrun.json")));
+                    w->setTester(QStringLiteral("Abhinav"));
+                    const QVector<QPair<const char *, TestRun::Verdict>> set{
+                        { "4.1", TestRun::Verdict::Pass }, { "4.2", TestRun::Verdict::Pass }, { "4.3", TestRun::Verdict::Fail },
+                        { "4.4", TestRun::Verdict::NotApplicable }, { "4.5", TestRun::Verdict::Pass } };
+                    for (const auto &e : set) { w->select(QLatin1String(e.first)); w->setVerdict(e.second); }
+                    w->select(QStringLiteral("4.3"));
+                    w->setRemarks(QStringLiteral("FSB not applied at the MA end; EB came 1.2 s later."));
+                    w->setEvidence(QStringLiteral("loco_1_1_12102026_1354.cap 13:55:36"));
+                }
                 w->select(qEnvironmentVariableIsEmpty("SHOT_SELECT") ? QStringLiteral("22.1") : qEnvironmentVariable("SHOT_SELECT"));
                 win = w;
             }

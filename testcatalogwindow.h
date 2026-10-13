@@ -13,6 +13,13 @@
 //  clause / sub-clause / section, Duplicate, Delete (sub-clauses go with
 //  their clause). Open / Save a catalog file; the SIF as built in is never
 //  overwritten.
+//
+//  Session 263: TEST RUNS (testrun.h). A run is one campaign's results over
+//  the catalog, in its own file, saved as results are set. The bar under
+//  the buttons names the open run and counts it; each clause has a result
+//  card: Pass / Fail / N/A / Not tested (Ctrl+1 / 2 / 3 / 4), who set it and
+//  when, remarks, evidence. The list gets a Result column and Show: failed /
+//  passed / not tested yet. The result is the tester's, set by hand.
 // =============================================================================
 
 #include "testcatalog.h"
@@ -20,7 +27,12 @@
 #include <QHash>
 #include <QWidget>
 
+#include "testrun.h"
+
+class QButtonGroup;
 class QCheckBox;
+class QFrame;
+class QTimer;
 class QComboBox;
 class QLabel;
 class QLineEdit;
@@ -38,7 +50,8 @@ class TestCatalogWindow : public QWidget
 {
     Q_OBJECT
 public:
-    enum Show { ShowAll, ShowChanged, ShowAdded, ShowDeleted, ShowFigures };
+    enum Show { ShowAll, ShowChanged, ShowAdded, ShowDeleted, ShowFigures,
+                ShowFailed, ShowPassed, ShowUntested };      // the last three: session 263
     enum Field { Title, Purpose, Methodology, Setup, Input, Expected, Result, Observed, Notes, FieldCount };
 
     explicit TestCatalogWindow(QWidget *parent = nullptr);
@@ -82,6 +95,29 @@ public:
     // "Preset: <file>" into each clause's notes, one undo step.
     void notePresets(const QHash<QString, QString> &files);
 
+    // Session 263: test runs. newRun writes `path` at once; every result set
+    // after is saved to it (remarks and evidence after a pause in typing).
+    bool newRun(const TestRun::Run &details, const QString &path);
+    bool openRun(const QString &path);
+    void closeRun();
+    bool hasRun() const { return !m_runPath.isEmpty(); }
+    const TestRun::Run &run() const { return m_run; }
+    QString runPath() const { return m_runPath; }
+    TestRun::Counts runCounts() const;
+    // On the selected clause, as the result card does.
+    void setVerdict(TestRun::Verdict v);
+    void setTester(const QString &name);
+    void setRemarks(const QString &text);
+    void setEvidence(const QString &text);
+    TestRun::Result currentResult() const;
+    // The next clause in list order with no result after the selected one
+    // (wrapping); false when every shown clause has one.
+    bool selectNextUntested();
+    // .html or .csv, by the file's extension.
+    bool exportReport(const QString &path);
+    QLabel *runSummary() const { return m_runSummary; }
+    QFrame *resultCard() const { return m_resultCard; }
+
     QTreeWidget *tree() const { return m_tree; }
     QPlainTextEdit *editor(Field f) const { return m_edit[f]; }
     QLineEdit *idEdit() const { return m_idEdit; }
@@ -99,6 +135,15 @@ protected:
 
 private:
     void rebuildTree();
+    // Session 263
+    void buildRunBar(class QVBoxLayout *root);
+    QFrame *buildResultCard();
+    void showResult();
+    void updateResultItems();
+    void updateRunBar();
+    void restyleVerdicts();
+    void saveRunNow();
+    void runChanged(bool soon = false);
     void showCurrent();
     void showClause(const TestCatalog::Case &k, bool deleted);
     void showSection(const TestCatalog::Section &s);
@@ -152,6 +197,26 @@ private:
     QPushButton *m_delBtn = nullptr;
     UndoLog *m_undo = nullptr;
     StatusLine *m_status = nullptr;
+
+    // Session 263: the test run.
+    TestRun::Run m_run;
+    QString m_runPath;
+    QTimer *m_runSave = nullptr;
+    bool m_runDirty = false;
+    QLabel *m_runName = nullptr;
+    QLabel *m_runSummary = nullptr;
+    QWidget *m_runProgress = nullptr;
+    QPushButton *m_reportBtn = nullptr;
+    QPushButton *m_closeRunBtn = nullptr;
+    QFrame *m_resultCard = nullptr;
+    QWidget *m_resultBody = nullptr;
+    QLabel *m_noRun = nullptr;
+    QButtonGroup *m_verdicts = nullptr;
+    QLineEdit *m_tester = nullptr;
+    QLabel *m_when = nullptr;
+    QPlainTextEdit *m_remarks = nullptr;
+    QLineEdit *m_evidence = nullptr;
+    QPushButton *m_nextUntested = nullptr;
 };
 
 #endif // TESTCATALOGWINDOW_H

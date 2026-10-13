@@ -4,10 +4,20 @@
 #include "settings.h"
 #include "statusline.h"
 #include "uicolors.h"
+#include "uistyle.h"
 #include "undolog.h"
 #include "windowgeometry.h"
 
 #include <QAction>
+#include <QButtonGroup>
+#include <QDateTime>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QFrame>
+#include <QPainter>
+#include <QPainterPath>
+#include <QSaveFile>
+#include <QTimer>
 #include <QCheckBox>
 #include <QCloseEvent>
 #include <QComboBox>
@@ -28,6 +38,7 @@
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QRegularExpression>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSplitter>
@@ -37,6 +48,8 @@
 #include <QToolButton>
 #include <QTreeWidget>
 #include <QVBoxLayout>
+
+#include <functional>
 
 using namespace TestCatalog;
 
@@ -76,6 +89,62 @@ bool idLike(const QString &t)
     for (const QChar c : t)
         if (!c.isDigit() && c != QLatin1Char('.')) return false;
     return !t.isEmpty();
+}
+
+// Session 263: a run's progress as one bar: pass, fail and N/A in their
+// colours from the left, what is not tested yet as the empty track.
+class RunProgress : public QWidget
+{
+public:
+    explicit RunProgress(QWidget *parent) : QWidget(parent)
+    {
+        setMinimumWidth(120);
+        setFixedHeight(10);
+        setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
+    }
+    void setCounts(const TestRun::Counts &c) { m_c = c; update(); }
+
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing, true);
+        const QRectF r = QRectF(rect()).adjusted(0.5, 0.5, -0.5, -0.5);
+        QPainterPath track;
+        track.addRoundedRect(r, r.height() / 2, r.height() / 2);
+        p.fillPath(track, UiColor::grid());
+        if (m_c.total() <= 0) return;
+        p.setClipPath(track);
+        double x = r.left();
+        const struct { int n; QColor c; } parts[] = { { m_c.pass, UiColor::ok() }, { m_c.fail, UiColor::error() },
+                                                     { m_c.na, UiColor::muted() } };
+        for (const auto &part : parts) {
+            const double w = r.width() * part.n / m_c.total();
+            p.fillRect(QRectF(x, r.top(), w, r.height()), part.c);
+            x += w;
+        }
+    }
+
+private:
+    TestRun::Counts m_c;
+};
+
+const char *const kVerdictLabels[] = { "\u2713 Pass", "\u2717 Fail", "N/A", "Not tested" };
+const TestRun::Verdict kVerdictOrder[] = { TestRun::Verdict::Pass, TestRun::Verdict::Fail,
+                                           TestRun::Verdict::NotApplicable, TestRun::Verdict::NotTested };
+int verdictButton(TestRun::Verdict v)
+{
+    for (int i = 0; i < 4; ++i) if (kVerdictOrder[i] == v) return i;
+    return 3;
+}
+QString verdictCell(TestRun::Verdict v)
+{
+    switch (v) {
+    case TestRun::Verdict::Pass: return QStringLiteral("\u2713 Pass");
+    case TestRun::Verdict::Fail: return QStringLiteral("\u2717 Fail");
+    case TestRun::Verdict::NotApplicable: return QStringLiteral("N/A");
+    default: return QString();
+    }
 }
 
 } // namespace
@@ -227,6 +296,10 @@ TestCatalogWindow::TestCatalogWindow(QWidget *parent)
     m_showBox->addItem(tr("Added here"), ShowAdded);
     m_showBox->addItem(tr("Deleted from the SIF"), ShowDeleted);
     m_showBox->addItem(tr("With a figure in the SIF"), ShowFigures);
+    m_showBox->insertSeparator(m_showBox->count());
+    m_showBox->addItem(tr("Failed in this run"), ShowFailed);
+    m_showBox->addItem(tr("Passed in this run"), ShowPassed);
+    m_showBox->addItem(tr("Not tested yet in this run"), ShowUntested);
     m_showBox->setToolTip(tr("Which clauses the list shows. Changed / added / deleted are against the SIF as "
                              "built in"));
     m_showBox->setAccessibleName(tr("Show"));
@@ -236,12 +309,13 @@ TestCatalogWindow::TestCatalogWindow(QWidget *parent)
     });
 
     m_tree = new QTreeWidget(this);
-    m_tree->setColumnCount(3);
-    m_tree->setHeaderLabels({ tr("Clause"), tr("Test scenario"), QString() });
+    m_tree->setColumnCount(4);
+    m_tree->setHeaderLabels({ tr("Clause"), tr("Test scenario"), QString(), tr("Result") });
     m_tree->header()->setStretchLastSection(false);
     m_tree->header()->setSectionResizeMode(0, QHeaderView::Interactive);
     m_tree->header()->setSectionResizeMode(1, QHeaderView::Stretch);
     m_tree->header()->setSectionResizeMode(2, QHeaderView::ResizeToContents);
+    m_tree->header()->setSectionResizeMode(3, QHeaderView::ResizeToContents);
     m_tree->setColumnWidth(0, fontMetrics().horizontalAdvance(QStringLiteral("88.888.888")) + 44);
     m_tree->setSelectionMode(QAbstractItemView::ExtendedSelection);
     m_tree->setUniformRowHeights(true);
@@ -359,6 +433,7 @@ TestCatalogWindow::TestCatalogWindow(QWidget *parent)
     cl->addLayout(idRow);
     cl->addLayout(originRow);
     cl->addWidget(m_figure);
+    cl->addWidget(buildResultCard());
     cl->addWidget(m_scroll, 1);
     m_pages->addWidget(clausePage);
 
@@ -415,13 +490,19 @@ TestCatalogWindow::TestCatalogWindow(QWidget *parent)
     m_status = new StatusLine(this);
     auto *root = new QVBoxLayout(this);
     root->addLayout(bar);
+    buildRunBar(root);
     root->addWidget(split, 1);
     root->addWidget(m_status);
 
     UiColor::onThemeChange(this, [this]() {
         for (auto it = m_items.cbegin(); it != m_items.cend(); ++it) updateItem(it.key());
+        updateResultItems();
+        restyleVerdicts();
+        updateRunBar();
         showCurrent();
     });
+    restyleVerdicts();
+    updateRunBar();
     updateTitle();
 }
 
@@ -430,8 +511,9 @@ TestCatalogWindow::TestCatalogWindow(QWidget *parent)
 bool TestCatalogWindow::reopenLast()
 {
     const QString last = Settings::testCatalogLastFile();
-    if (!last.isEmpty() && QFileInfo::exists(last) && loadFile(last)) return true;
-    loadBuiltin();
+    if (!(!last.isEmpty() && QFileInfo::exists(last) && loadFile(last))) loadBuiltin();
+    const QString run = Settings::testRunLastFile();
+    if (!run.isEmpty() && QFileInfo::exists(run)) openRun(run);
     return true;
 }
 
@@ -487,6 +569,7 @@ bool TestCatalogWindow::confirmDiscard()
 
 void TestCatalogWindow::closeEvent(QCloseEvent *e)
 {
+    saveRunNow();                    // results are never left unsaved
     if (confirmDiscard()) e->accept();
     else e->ignore();
 }
@@ -580,6 +663,10 @@ void TestCatalogWindow::rebuildTree()
             if ((m_show == ShowChanged && o != Origin::Changed) || (m_show == ShowAdded && o != Origin::Added)
                 || (m_show == ShowFigures && k.figurePages.isEmpty()))
                 continue;
+            const TestRun::Verdict v = TestRun::resultOf(m_run, k.id).verdict;
+            if ((m_show == ShowFailed && v != TestRun::Verdict::Fail) || (m_show == ShowPassed && v != TestRun::Verdict::Pass)
+                || (m_show == ShowUntested && v != TestRun::Verdict::NotTested))
+                continue;
             list << k;
         }
     }
@@ -628,6 +715,7 @@ void TestCatalogWindow::rebuildTree()
                                    .arg(secCounts.value(it.key())));
     }
     if (filtering) m_tree->expandAll();
+    updateResultItems();
     m_tree->blockSignals(false);
     m_tree->setUpdatesEnabled(true);
     updateCount();
@@ -800,6 +888,8 @@ void TestCatalogWindow::showClause(const Case &k, bool deleted)
     }
     m_filling = false;
     m_pages->setCurrentIndex(1);
+    m_resultCard->setEnabled(!deleted);
+    showResult();
 }
 
 void TestCatalogWindow::pushUndo(const QString &label)
@@ -1103,4 +1193,473 @@ void TestCatalogWindow::notePresets(const QHash<QString, QString> &files)
     setModified(true);
     showCurrent();
     m_status->ok(tr("Noted %1 presets in their clauses' notes: Save keeps them").arg(files.size()));
+}
+
+// ---- test runs (session 263) -------------------------------------------------------------------
+
+void TestCatalogWindow::buildRunBar(QVBoxLayout *root)
+{
+    auto *bar = new QFrame(this);
+    bar->setObjectName(QStringLiteral("testRunBar"));
+    auto *lay = new QHBoxLayout(bar);
+    lay->setContentsMargins(0, 2, 0, 2);
+    auto *label = new QLabel(tr("Test run:"), bar);
+    QFont bold = label->font();
+    bold.setBold(true);
+    label->setFont(bold);
+    m_runName = new QLabel(bar);
+    m_runName->setObjectName(QStringLiteral("testRunName"));
+    m_runName->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_runProgress = new RunProgress(bar);
+    m_runProgress->setObjectName(QStringLiteral("testRunProgress"));
+    m_runSummary = new QLabel(bar);
+    m_runSummary->setObjectName(QStringLiteral("testRunSummary"));
+    auto *newRun = new QPushButton(tr("New run…"), bar);
+    newRun->setToolTip(tr("Start recording results: the loco, the build, the site, who is testing; then where to keep "
+                          "the run's file (results are saved to it as you set them)"));
+    auto *openRun = new QPushButton(tr("Open run…"), bar);
+    m_reportBtn = new QPushButton(tr("Report…"), bar);
+    m_reportBtn->setToolTip(tr("Every clause with its result, the failed ones first: HTML (prints, opens in Word) "
+                               "or CSV (Excel)"));
+    m_closeRunBtn = new QPushButton(tr("Close run"), bar);
+    lay->addWidget(label);
+    lay->addWidget(m_runName);
+    lay->addSpacing(8);
+    lay->addWidget(m_runProgress, 1);
+    lay->addWidget(m_runSummary);
+    lay->addSpacing(8);
+    lay->addWidget(newRun);
+    lay->addWidget(openRun);
+    lay->addWidget(m_reportBtn);
+    lay->addWidget(m_closeRunBtn);
+    root->addWidget(bar);
+
+    m_runSave = new QTimer(this);
+    m_runSave->setSingleShot(true);
+    m_runSave->setInterval(800);
+    connect(m_runSave, &QTimer::timeout, this, &TestCatalogWindow::saveRunNow);
+
+    connect(newRun, &QPushButton::clicked, this, [this]() {
+        QDialog dlg(this);
+        dlg.setWindowTitle(tr("New test run"));
+        auto *title = new QLineEdit(&dlg);
+        auto *loco = new QLineEdit(&dlg);
+        auto *fw = new QLineEdit(&dlg);
+        auto *site = new QLineEdit(&dlg);
+        auto *testers = new QLineEdit(Settings::testRunTester(), &dlg);
+        title->setPlaceholderText(tr("e.g. FRS 4 full supervision, loco 21"));
+        loco->setPlaceholderText(tr("loco number / unit id"));
+        fw->setPlaceholderText(tr("e.g. LKAVACH v1.2.10"));
+        site->setPlaceholderText(tr("bench, station, section"));
+        auto *form = new QFormLayout;
+        form->addRow(tr("Title:"), title);
+        form->addRow(tr("Loco:"), loco);
+        form->addRow(tr("Firmware build:"), fw);
+        form->addRow(tr("Site:"), site);
+        form->addRow(tr("Testers:"), testers);
+        auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+        buttons->button(QDialogButtonBox::Ok)->setText(tr("Choose where to save…"));
+        auto *v = new QVBoxLayout(&dlg);
+        v->addLayout(form);
+        v->addWidget(buttons);
+        connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+        connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+        dlg.resize(460, dlg.sizeHint().height());
+        if (dlg.exec() != QDialog::Accepted) return;
+        TestRun::Run r;
+        r.title = title->text().trimmed();
+        r.loco = loco->text().trimmed();
+        r.firmware = fw->text().trimmed();
+        r.site = site->text().trimmed();
+        r.testers = testers->text().trimmed();
+        QString base = r.title.isEmpty() ? QStringLiteral("test_run") : r.title;
+        base.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9._-]+")), QStringLiteral("_"));
+        const QString start = QFileInfo(m_runPath.isEmpty() ? QDir::homePath() + QStringLiteral("/x") : m_runPath)
+                                  .absolutePath() + QLatin1Char('/') + base + QStringLiteral(".testrun.json");
+        const QString path = QFileDialog::getSaveFileName(this, tr("Keep the test run in"), start,
+                                                          tr("Test runs (*.testrun.json)"));
+        if (!path.isEmpty()) this->newRun(r, path);
+    });
+    connect(openRun, &QPushButton::clicked, this, [this]() {
+        const QString path = QFileDialog::getOpenFileName(this, tr("Open a test run"),
+                                                          m_runPath.isEmpty() ? QDir::homePath() : QFileInfo(m_runPath).absolutePath(),
+                                                          tr("Test runs (*.testrun.json);;All files (*)"));
+        if (!path.isEmpty()) this->openRun(path);
+    });
+    connect(m_reportBtn, &QPushButton::clicked, this, [this]() {
+        QString base = m_run.title.isEmpty() ? QStringLiteral("test_run") : m_run.title;
+        base.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9._-]+")), QStringLiteral("_"));
+        const QString path = QFileDialog::getSaveFileName(
+            this, tr("Test run report"), QFileInfo(m_runPath).absolutePath() + QLatin1Char('/') + base + QStringLiteral("_report.html"),
+            tr("HTML report (*.html);;CSV for Excel (*.csv)"));
+        if (!path.isEmpty()) exportReport(path);
+    });
+    connect(m_closeRunBtn, &QPushButton::clicked, this, [this]() { closeRun(); });
+}
+
+QFrame *TestCatalogWindow::buildResultCard()
+{
+    m_resultCard = new QFrame(this);
+    m_resultCard->setObjectName(QStringLiteral("testResultCard"));
+    m_resultCard->setFrameShape(QFrame::StyledPanel);
+    auto *outer = new QVBoxLayout(m_resultCard);
+    outer->setContentsMargins(10, 8, 10, 8);
+    outer->setSpacing(6);
+
+    m_noRun = new QLabel(tr("To record a result, start a test run (New run… above) or open one."), m_resultCard);
+    m_noRun->setObjectName(QStringLiteral("testResultNoRun"));
+    m_noRun->setStyleSheet(UiColor::mutedStyle());
+    outer->addWidget(m_noRun);
+
+    m_resultBody = new QWidget(m_resultCard);
+    auto *body = new QVBoxLayout(m_resultBody);
+    body->setContentsMargins(0, 0, 0, 0);
+    body->setSpacing(6);
+    auto *top = new QHBoxLayout;
+    auto *title = new QLabel(tr("Result"), m_resultBody);
+    QFont bold = title->font();
+    bold.setBold(true);
+    title->setFont(bold);
+    QStringList labels;
+    for (const char *l : kVerdictLabels) labels << tr(l);
+    QWidget *seg = UiStyle::segmented(labels, &m_verdicts, m_resultBody);
+    seg->setObjectName(QStringLiteral("testVerdicts"));
+    const char *const tips[] = { "The clause behaved as expected (Ctrl+1)", "It did not (Ctrl+2): say what in Remarks",
+                                 "Does not apply to this loco or build (Ctrl+3)", "No result (Ctrl+4)" };
+    const char *const keys[] = { "Ctrl+1", "Ctrl+2", "Ctrl+3", "Ctrl+4" };
+    for (int i = 0; i < 4; ++i) {
+        QAbstractButton *b = m_verdicts->button(i);
+        b->setObjectName(QStringLiteral("testVerdict%1").arg(i));
+        b->setToolTip(tr(tips[i]));
+        auto *a = new QAction(this);
+        a->setShortcut(QKeySequence(QLatin1String(keys[i])));
+        addAction(a);
+        connect(a, &QAction::triggered, this, [this, i]() {
+            if (m_resultCard->isEnabled() && hasRun() && m_pages->currentIndex() == 1) setVerdict(kVerdictOrder[i]);
+        });
+    }
+    connect(m_verdicts, &QButtonGroup::idClicked, this, [this](int id) { setVerdict(kVerdictOrder[id]); });
+    m_when = new QLabel(m_resultBody);
+    m_when->setObjectName(QStringLiteral("testResultWhen"));
+    m_when->setStyleSheet(UiColor::mutedStyle());
+    m_nextUntested = new QPushButton(tr("Next not tested ▸"), m_resultBody);
+    m_nextUntested->setObjectName(QStringLiteral("testNextUntested"));
+    m_nextUntested->setToolTip(tr("The next clause in the list with no result (Ctrl+.)"));
+    auto *nextAct = new QAction(this);
+    nextAct->setShortcut(QKeySequence(QStringLiteral("Ctrl+.")));
+    addAction(nextAct);
+    connect(nextAct, &QAction::triggered, this, [this]() { if (hasRun()) selectNextUntested(); });
+    connect(m_nextUntested, &QPushButton::clicked, this, [this]() { selectNextUntested(); });
+    top->addWidget(title);
+    top->addWidget(seg);
+    top->addWidget(m_when, 1);
+    top->addWidget(m_nextUntested);
+    body->addLayout(top);
+
+    m_tester = new QLineEdit(Settings::testRunTester(), m_resultBody);
+    m_tester->setObjectName(QStringLiteral("testTester"));
+    m_tester->setPlaceholderText(tr("who sets the result"));
+    m_evidence = new QLineEdit(m_resultBody);
+    m_evidence->setObjectName(QStringLiteral("testEvidence"));
+    m_evidence->setPlaceholderText(tr("the log and time, e.g. loco_1_1_12102026_1354.cap 13:55:36; a clip; a photo"));
+    m_remarks = new QPlainTextEdit(m_resultBody);
+    m_remarks->setObjectName(QStringLiteral("testRemarks"));
+    m_remarks->setPlaceholderText(tr("What was seen: on a Fail, what happened instead"));
+    m_remarks->setTabChangesFocus(true);
+    m_remarks->setFixedHeight(m_remarks->fontMetrics().lineSpacing() * 3 + 14);
+    auto *form = new QFormLayout;
+    form->addRow(tr("Tester:"), m_tester);
+    form->addRow(tr("Remarks:"), m_remarks);
+    form->addRow(tr("Evidence:"), m_evidence);
+    body->addLayout(form);
+    outer->addWidget(m_resultBody);
+
+    connect(m_tester, &QLineEdit::textEdited, this, [this](const QString &t) { setTester(t); });
+    connect(m_evidence, &QLineEdit::textEdited, this, [this](const QString &t) { setEvidence(t); });
+    connect(m_remarks, &QPlainTextEdit::textChanged, this, [this]() {
+        if (!m_filling) setRemarks(m_remarks->toPlainText());
+    });
+    return m_resultCard;
+}
+
+void TestCatalogWindow::restyleVerdicts()
+{
+    if (!m_verdicts) return;
+    // The checked segment in its result's colours (chip fills: text lifted
+    // to the contrast floor in every theme). Pass and Fail only: N/A and
+    // Not tested keep the plain segment.
+    const UiStyle::Tone tones[] = { UiStyle::Tone::Ok, UiStyle::Tone::Fail };
+    for (int i = 0; i < 2; ++i) {
+        QAbstractButton *b = m_verdicts->button(i);
+        b->setStyleSheet(QStringLiteral("QPushButton:checked { background:%1; color:%2; border:1px solid %2; font-weight:600; }")
+                             .arg(UiStyle::chipFill(tones[i]).name(), UiStyle::chipText(tones[i]).name()));
+    }
+}
+
+TestRun::Counts TestCatalogWindow::runCounts() const
+{
+    QStringList ids;
+    for (const Case &k : m_cat.cases) ids << k.id;
+    return TestRun::count(m_run, ids);
+}
+
+void TestCatalogWindow::updateRunBar()
+{
+    if (!m_runName) return;
+    const bool open = hasRun();
+    m_reportBtn->setEnabled(open);
+    m_closeRunBtn->setEnabled(open);
+    m_runProgress->setVisible(open);
+    if (!open) {
+        m_runName->setText(tr("none open"));
+        m_runName->setStyleSheet(UiColor::mutedStyle());
+        m_runSummary->setText(tr("results are recorded in a test run: New run… or Open run…"));
+        m_runSummary->setStyleSheet(UiColor::mutedStyle());
+        return;
+    }
+    QStringList what;
+    for (const QString &s : { m_run.title, m_run.loco.isEmpty() ? QString() : tr("loco %1").arg(m_run.loco), m_run.firmware })
+        if (!s.isEmpty()) what << s;
+    m_runName->setText(what.isEmpty() ? QFileInfo(m_runPath).fileName() : what.join(QStringLiteral(" · ")));
+    m_runName->setStyleSheet(QString());
+    m_runName->setToolTip(QDir::toNativeSeparators(m_runPath));
+    const TestRun::Counts c = runCounts();
+    static_cast<RunProgress *>(m_runProgress)->setCounts(c);
+    QString text = tr("<span style=\"%1\">%2 Pass</span> · <span style=\"%3\">%4 Fail</span> · %5 N/A · %6 not tested")
+                       .arg(UiColor::style(UiColor::ok())).arg(c.pass).arg(UiColor::style(UiColor::error())).arg(c.fail)
+                       .arg(c.na).arg(c.notTested);
+    QStringList ids;
+    for (const Case &k : m_cat.cases) ids << k.id;
+    const int lost = TestRun::orphans(m_run, ids).size();
+    if (lost) text += tr(" · <span style=\"%1\">%2 for clauses not in this catalog</span>").arg(UiColor::style(UiColor::warning())).arg(lost);
+    m_runSummary->setText(text);
+    m_runSummary->setStyleSheet(QString());
+    m_runSummary->setToolTip(tr("%1 of %2 clauses have a result").arg(c.done()).arg(c.total()));
+}
+
+void TestCatalogWindow::updateResultItems()
+{
+    QHash<int, QPair<int, int>> perSection;           // done, total
+    for (auto it = m_items.cbegin(); it != m_items.cend(); ++it) {
+        QTreeWidgetItem *item = it.value();
+        if (item->data(0, KindRole).toInt() == SectionItem) continue;
+        if (item->data(0, KindRole).toInt() == DeletedItem) { item->setText(3, QString()); continue; }
+        const TestRun::Verdict v = TestRun::resultOf(m_run, it.key()).verdict;
+        item->setText(3, verdictCell(v));
+        item->setForeground(3, v == TestRun::Verdict::Pass ? UiColor::ok()
+                               : v == TestRun::Verdict::Fail ? UiColor::error() : UiColor::muted());
+        QPair<int, int> &s = perSection[sectionOf(it.key())];
+        s.second++;
+        if (v != TestRun::Verdict::NotTested) s.first++;
+    }
+    for (auto it = m_items.cbegin(); it != m_items.cend(); ++it) {
+        QTreeWidgetItem *item = it.value();
+        if (item->data(0, KindRole).toInt() != SectionItem) continue;
+        // A section row spans the columns (its title is long): its progress
+        // is in its tooltip, after the section's own description.
+        const QPair<int, int> s = perSection.value(item->data(0, IdRole).toString().toInt());
+        QString tip = item->toolTip(0).section(QStringLiteral("\n\n"), 0, 0);
+        if (hasRun() && s.second) tip += (tip.isEmpty() ? QString() : QStringLiteral("\n\n"))
+                                         + tr("This run: %1 of %2 shown clauses have a result").arg(s.first).arg(s.second);
+        item->setToolTip(0, tip);
+    }
+}
+
+void TestCatalogWindow::showResult()
+{
+    if (!m_resultCard) return;
+    const bool open = hasRun();
+    m_noRun->setVisible(!open);
+    m_resultBody->setVisible(open);
+    if (!open) return;
+    const TestRun::Result r = currentResult();
+    m_filling = true;
+    if (QAbstractButton *b = m_verdicts->button(verdictButton(r.verdict))) b->setChecked(true);
+    if (m_remarks->toPlainText() != r.remarks) m_remarks->setPlainText(r.remarks);
+    if (m_evidence->text() != r.evidence) m_evidence->setText(r.evidence);
+    m_filling = false;
+    m_when->setText(r.verdict == TestRun::Verdict::NotTested
+                        ? tr("not tested yet")
+                        : tr("set by %1, %2").arg(r.tester.isEmpty() ? tr("(no name)") : r.tester,
+                                                  r.when.toString(QStringLiteral("yyyy-MM-dd HH:mm"))));
+}
+
+TestRun::Result TestCatalogWindow::currentResult() const
+{
+    if (m_current.isEmpty() || m_current.startsWith(QLatin1Char('S'))) return {};
+    return TestRun::resultOf(m_run, m_current);
+}
+
+void TestCatalogWindow::setVerdict(TestRun::Verdict v)
+{
+    if (!hasRun() || m_current.isEmpty() || m_current.startsWith(QLatin1Char('S')) || indexOf(m_cat, m_current) < 0) return;
+    TestRun::Result r = TestRun::resultOf(m_run, m_current);
+    r.verdict = v;
+    r.tester = m_tester->text().trimmed();
+    r.when = QDateTime::currentDateTime();
+    TestRun::setResult(&m_run, m_current, r);
+    if (!r.tester.isEmpty()) Settings::setTestRunTester(r.tester);
+    runChanged();
+    updateResultItems();
+    showResult();
+    if (v != TestRun::Verdict::NotTested && r.tester.isEmpty())
+        m_status->warn(tr("%1: %2, with no tester's name. Fill in Tester: the result is theirs").arg(m_current, TestRun::verdictName(v)));
+    else
+        m_status->ok(tr("%1: %2").arg(m_current, TestRun::verdictName(v)));
+    // A filter by result that no longer holds this clause keeps it on screen
+    // until the list is rebuilt: the operator sees what they just set.
+}
+
+void TestCatalogWindow::setTester(const QString &name)
+{
+    // Who is at the bench now: the name each result set from here on is
+    // recorded under. It never rewrites who set a result already.
+    if (m_tester->text() != name) m_tester->setText(name);
+    Settings::setTestRunTester(name.trimmed());
+}
+
+void TestCatalogWindow::setRemarks(const QString &text)
+{
+    if (m_remarks->toPlainText() != text) {
+        m_filling = true;
+        m_remarks->setPlainText(text);
+        m_filling = false;
+    }
+    if (!hasRun() || m_current.isEmpty() || m_current.startsWith(QLatin1Char('S')) || indexOf(m_cat, m_current) < 0) return;
+    TestRun::Result r = TestRun::resultOf(m_run, m_current);
+    if (r.remarks == text) return;
+    r.remarks = text;
+    TestRun::setResult(&m_run, m_current, r);
+    runChanged(true);
+}
+
+void TestCatalogWindow::setEvidence(const QString &text)
+{
+    if (m_evidence->text() != text) m_evidence->setText(text);
+    if (!hasRun() || m_current.isEmpty() || m_current.startsWith(QLatin1Char('S')) || indexOf(m_cat, m_current) < 0) return;
+    TestRun::Result r = TestRun::resultOf(m_run, m_current);
+    if (r.evidence == text) return;
+    r.evidence = text;
+    TestRun::setResult(&m_run, m_current, r);
+    runChanged(true);
+}
+
+void TestCatalogWindow::runChanged(bool soon)
+{
+    m_runDirty = true;
+    updateRunBar();
+    if (soon) m_runSave->start();
+    else saveRunNow();
+}
+
+void TestCatalogWindow::saveRunNow()
+{
+    if (m_runSave) m_runSave->stop();
+    if (!m_runDirty || !hasRun()) return;
+    QString err;
+    if (!TestRun::save(m_runPath, m_run, &err)) {
+        m_status->fail(tr("The test run was NOT saved to %1: %2").arg(QFileInfo(m_runPath).fileName(), err));
+        return;
+    }
+    m_runDirty = false;
+}
+
+bool TestCatalogWindow::newRun(const TestRun::Run &details, const QString &path)
+{
+    saveRunNow();
+    TestRun::Run r = details;
+    r.results.clear();
+    r.created = QDateTime::currentDateTime();
+    r.catalog = m_path.isEmpty() || m_path.startsWith(QLatin1Char(':')) ? QStringLiteral("SIF 0533 v4.22, as built in")
+                                                                        : QFileInfo(m_path).fileName();
+    QString err;
+    if (!TestRun::save(path, r, &err)) {
+        m_status->fail(tr("No run started: %1").arg(err));
+        return false;
+    }
+    m_run = r;
+    m_runPath = path;
+    m_runDirty = false;
+    Settings::setTestRunLastFile(path);
+    if (!r.testers.isEmpty() && m_tester->text().isEmpty()) m_tester->setText(r.testers.section(QLatin1Char(','), 0, 0).trimmed());
+    updateRunBar();
+    updateResultItems();
+    showResult();
+    m_status->ok(tr("Test run started: %1. Results are saved to it as you set them").arg(QFileInfo(path).fileName()));
+    return true;
+}
+
+bool TestCatalogWindow::openRun(const QString &path)
+{
+    TestRun::Run r;
+    QString err;
+    if (!TestRun::load(path, &r, &err)) {
+        m_status->fail(tr("Not opened: %1: %2").arg(QFileInfo(path).fileName(), err));
+        return false;
+    }
+    saveRunNow();
+    m_run = r;
+    m_runPath = path;
+    m_runDirty = false;
+    Settings::setTestRunLastFile(path);
+    updateRunBar();
+    if (m_show == ShowFailed || m_show == ShowPassed || m_show == ShowUntested) rebuildTree();
+    else updateResultItems();
+    showResult();
+    const TestRun::Counts c = runCounts();
+    m_status->ok(tr("Opened %1: %2 of %3 clauses have a result").arg(QFileInfo(path).fileName()).arg(c.done()).arg(c.total()));
+    return true;
+}
+
+void TestCatalogWindow::closeRun()
+{
+    saveRunNow();
+    m_run = TestRun::Run();
+    m_runPath.clear();
+    Settings::setTestRunLastFile(QString());
+    updateRunBar();
+    if (m_show == ShowFailed || m_show == ShowPassed || m_show == ShowUntested) rebuildTree();
+    else updateResultItems();
+    showResult();
+}
+
+bool TestCatalogWindow::selectNextUntested()
+{
+    // The list's order: walk the tree as shown.
+    QStringList order;
+    std::function<void(QTreeWidgetItem *)> walk = [&](QTreeWidgetItem *it) {
+        if (it->data(0, KindRole).toInt() == ClauseItem) order << it->data(0, IdRole).toString();
+        for (int i = 0; i < it->childCount(); ++i) walk(it->child(i));
+    };
+    for (int i = 0; i < m_tree->topLevelItemCount(); ++i) walk(m_tree->topLevelItem(i));
+    const int from = order.indexOf(m_current);
+    for (int step = 1; step <= order.size(); ++step) {
+        const QString id = order.at((qMax(from, -1) + step + order.size()) % order.size());
+        if (TestRun::resultOf(m_run, id).verdict == TestRun::Verdict::NotTested) {
+            select(id);
+            return true;
+        }
+    }
+    m_status->ok(tr("Every clause shown has a result"));
+    return false;
+}
+
+bool TestCatalogWindow::exportReport(const QString &path)
+{
+    saveRunNow();
+    if (!hasRun()) {
+        m_status->warn(tr("No test run open"));
+        return false;
+    }
+    const bool csv = path.endsWith(QLatin1String(".csv"), Qt::CaseInsensitive);
+    const QByteArray data = (csv ? TestRun::toCsv(m_run, m_cat) : TestRun::toHtml(m_run, m_cat)).toUtf8();
+    QSaveFile f(path);
+    if (!f.open(QIODevice::WriteOnly) || f.write(data) != data.size() || !f.commit()) {
+        m_status->fail(tr("Report not written: %1").arg(f.errorString()));
+        return false;
+    }
+    const TestRun::Counts c = runCounts();
+    m_status->ok(tr("Wrote %1: %2 Pass, %3 Fail, %4 N/A, %5 not tested")
+                     .arg(QFileInfo(path).fileName()).arg(c.pass).arg(c.fail).arg(c.na).arg(c.notTested));
+    return true;
 }
