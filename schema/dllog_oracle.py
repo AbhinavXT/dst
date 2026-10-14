@@ -33,7 +33,7 @@ BODIES = {
     (4, 5): TRIP_STOP,
     (4, 6): TRIP_STOP,
     # alarm codes: 80 bits (71 flags + 9 pad) as 10 bytes; context values 16 bits
-    (4, 7): ("<10sHBIHBBHH", ["alarm_code", "context_values", "popup_time", "popup_distance", "popup_speed",
+    (4, 7): ("<10sHBIHIBHH", ["alarm_code", "context_values", "popup_time", "popup_distance", "popup_speed",
                               "popup_loco_id", "popup_train_type", "popup_pressure", "popup_station_id"]),
     (4, 8): ("<B", ["dangerous_event"]),
     (4, 9): LOCO_SOS,

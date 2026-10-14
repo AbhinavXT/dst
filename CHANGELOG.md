@@ -11,6 +11,59 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-273"></a>
+## Session 273 — The first real DL log: popup_loco_id is 4 bytes
+
+Abhinav sent `81_1_14102026_110915.log`, a DLConsole text log from loco 81,
+port 1. It holds the first real `@dllog` frames (172) and the first real
+`@sos` frames (81). He confirmed `popup_loco_id` is a U32 and asked for the
+capture to go into `replay/`.
+
+**What the real frames showed.**
+- The capture token is `@dllog`, as patch 267 assumed.
+- Periodic packets (log 3 / sub 1, 87 frames) match patch 267's layout:
+  loco_id 1, tin 52, the speed falling from 47 to 0 km/h.
+- LP-OCIP alert packets (log 4 / sub 7, 85 frames) are 49 bytes, and their
+  `message_length` says 49. Patch 267's struct is 46: `popup_loco_id` was
+  read as 8 bits. As a U32 the fields line up: End of Authority at
+  724 m / 622 m, no_alarm at 0 m, popup_time 3 s, train type 1
+  (LIGHT_ENGINE). Before the fix every field after `popup_loco_id` was
+  read from the wrong bytes.
+- `@sos`: 81/81 frames match the oracle as they were.
+
+**What the operator sees.** In the DL log window and the decode pane, the
+LP-OCIP alert's `popup_train_type`, `popup_pressure` and `popup_station_id`
+now show the frame's real values. Nothing else changes.
+
+**The capture.** `replay/loco_81_1_14102026_110915.cap` is the log with
+each line's PC time and `[81_1]` removed, which is the `.cap` line format.
+`validate_dllog.py` and `validate_sos.py` now pick it up by default and run
+on real frames instead of the synthetic fixtures.
+
+**Files.** `schema/kavach.xml` (`popup_loco_id` 32 bits),
+`schema/dllog_oracle.py`, `schema/fixtures/dllog_synthetic.log`
+(regenerated: only the 4/7 line changes), new
+`replay/loco_81_1_14102026_110915.cap`, new `tests/test_session273.cpp`,
+`tests/tests.pro`, `CLAUDE.md`.
+
+**Tests.**
+- `validate_dllog.py`: 172/172 real frames; the fixture is still 49/49.
+- `validate_sos.py`: 81/81 real frames.
+- `session273` (8 checks) on the real capture: 87 periodic and 85 LP-OCIP
+  alert frames, nothing else; every frame as long as its `message_length`;
+  each alert's fields line up under the U32 reading; the End of Authority
+  distances; the periodic values; the first frame's time and location; the
+  DL log table has one row per packet.
+
+**Gate:** Qt 6 and Qt 5.15 green, 313 suites / 8073 checks, 0 failed; menu
+audit 184 ok; smoke; validators (dllog and sos on real frames).
+
+**Not tested:** the capture has only these two DL log types, so the other
+22 sub-log types are still checked against the synthetic fixture only. The
+DL log window wasn't looked at on screen.
+
+---
+
 <a id="session-272"></a>
 ## Session 272 — DMI: "SOS to This Loco" names the station from station_id
 

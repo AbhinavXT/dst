@@ -1355,7 +1355,7 @@
         <field name="popup_time"       bits="8"  unit="s"/>
         <field name="popup_distance"   bits="32" unit="m"/>
         <field name="popup_speed"      bits="16" unit="km/h"/>
-        <field name="popup_loco_id"    bits="8"/>
+        <field name="popup_loco_id"    bits="32"/>   <!-- U32: real frames are 49 bytes (patch 273) -->
         <field name="popup_train_type" bits="8"  enum="dmiTrainType"/>
         <field name="popup_pressure"   bits="16"/>   <!-- brake_pressure x 100 -->
         <field name="popup_station_id" bits="16"/>

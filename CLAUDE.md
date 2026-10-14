@@ -54,8 +54,9 @@ Nothing is committed as a patch unless **all** of these are green:
 ```
 
 - 14 Python golden validators (`schema/validate_*.py`) against `replay/`
-  (`validate_sos.py`, `validate_rdir.py` and `validate_dllog.py` against
-  synthetic fixtures until real `@sos` / `@rdir` / `@dllog` captures exist).
+  (`validate_sos.py`, `validate_rdir.py` against a synthetic fixture
+  until a real `@rdir` capture exists; `@sos` and `@dllog` are real since
+  patch 273).
 - Unit suite `dltests` (152 suites / 4898 checks at patch 96). Run one suite
   with `cd tests && ../build-verify/tests/dltests <suite>`.
 - Menu audit (`tests/menuaudit_main.cpp`, 138 checks): builds the real
