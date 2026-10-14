@@ -54,7 +54,7 @@ Nothing is committed as a patch unless **all** of these are green:
 ```
 
 - 14 Python golden validators (`schema/validate_*.py`) against `replay/`
-  (`validate_sos.py`, `validate_rdir.py` against a synthetic fixture
+  (`validate_rdir.py` against a synthetic fixture
   until a real `@rdir` capture exists; `@sos` and `@dllog` are real since
   patch 273).
 - Unit suite `dltests` (152 suites / 4898 checks at patch 96). Run one suite
