@@ -508,6 +508,11 @@ MainWindow::MainWindow(QWidget *parent)
     m_sourceDock->setWidget(sourcePanel);
     m_sourceDock->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea);
     addDockWidget(Qt::LeftDockWidgetArea, m_sourceDock);
+    // Session 275: no panel open by default. A saved layout still restores
+    // whatever the operator had open; View or Reset Panels opens them.
+    m_sourceDock->hide();
+    if (m_rawDock)   m_rawDock->hide();
+    if (m_fieldDock) m_fieldDock->hide();
 
     connect(m_sourceList, &QTreeWidget::itemActivated,
             this,         &MainWindow::onSourceActivated);

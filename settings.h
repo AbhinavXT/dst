@@ -48,7 +48,7 @@ public:
     // ---- Network -----------------------------------------------------
     // UDP port to bind. Changes require a restart (the receiver is bound
     // to a port for its lifetime; rebinding mid-run is not implemented).
-    static quint16 udpPort()             { QSettings s(iniPath(), QSettings::IniFormat); return s.value("network/udp_port", 50002).toUInt(); }
+    static quint16 udpPort()             { QSettings s(iniPath(), QSettings::IniFormat); return s.value("network/udp_port", 51234).toUInt(); }
     static void    setUdpPort(quint16 p) { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("network/udp_port", p); }
 
     // Soft cap on cross-thread queue depth between receiver and dispatcher.
@@ -170,9 +170,13 @@ public:
     // visible: an unknown index simply is not in the hidden list. Storing
     // the visible set would make every new column invisible for anyone with
     // an existing INI, which is the sort of thing nobody notices for weeks.
+    //
+    // Session 275: until the operator picks, only Time and Message (the
+    // data) show: Source, Name, Dir and Sev start hidden.
     static QList<int> hiddenColumns()
     {
         QSettings s(iniPath(), QSettings::IniFormat);
+        if (!s.contains("ui/hidden_columns")) return { 1, 2, 3, 4 };
         QList<int> out;
         for (const QString &v : s.value("ui/hidden_columns").toStringList()) {
             bool ok = false;
@@ -512,7 +516,7 @@ public:
     static void setRawCapture(bool on)
     { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("disk/raw_capture", on); }
 
-    static QString theme()                    { QSettings s(iniPath(), QSettings::IniFormat); return s.value("ui/theme", "dark").toString(); }
+    static QString theme()                    { QSettings s(iniPath(), QSettings::IniFormat); return s.value("ui/theme", "sage").toString(); }
     static void    setTheme(const QString &t) { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("ui/theme", t); }
 
     // Colour-blind-safe status colours (View > Theme). See UiColor.

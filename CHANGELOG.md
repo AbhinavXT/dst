@@ -11,6 +11,48 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-275"></a>
+## Session 275 — First-run defaults: port 51234, Sage, no panels, Time + Message
+
+Abhinav: "the default port is 50002 make it 51234. the default theme is
+dark make it sage, the default view should be no panels open, and finally
+the default column will be time and data."
+
+**What the operator sees.** On a first start, with no `dlconsole.ini` or
+with the setting not yet in it:
+- UDP listens on **51234** (was 50002).
+- The theme is **Sage** (was Ayu Dark).
+- **No panel is open.** Sources, Raw bytes and Decoded fields used to open;
+  Pinned fields, Watches, Bookmarks and Decode failures were already closed.
+  They open from View, and View ▸ Reset Panels still opens the usual set.
+- The log tabs show only **Time** and **Message**. "Data" was read as the
+  Message column, the frame text. Source, Name, Dir and Sev start hidden and
+  come back from View ▸ Columns.
+
+A value already saved in `dlconsole.ini` still wins. An exe that already has
+an INI beside it keeps its port, theme, columns and panel layout. To get the
+new defaults there, delete the INI, or the `network/udp_port`, `ui/theme`
+and `ui/hidden_columns` keys and the saved window state.
+
+**Files.** `settings.h` (`udpPort`, `theme`, `hiddenColumns` defaults),
+`mainwindow.cpp` (Sources, Raw bytes and Decoded fields start hidden); new
+`tests/test_session275.cpp`, `tests/tests.pro`.
+
+**Tests.** `session275` (9 checks), on a fresh INI (`DLCONSOLE_PACKAGE`
+pointed at an empty folder, as in session 270):
+- the port, the theme and the hidden columns;
+- a saved empty column list, port and theme are kept;
+- a MainWindow built on that INI has no dock open. The suite then clears the
+  field catalogue the window loaded: the first gate run caught that leaked
+  singleton breaking the later `assertions` suite.
+
+**Gate:** Qt 6 and Qt 5.15 green, 315 suites / 8099 checks, 0 failed; menu
+audit 184 ok; smoke; validators.
+
+**Not tested:** the Windows exe itself. The app wasn't looked at on screen.
+
+---
+
 <a id="session-274"></a>
 ## Session 274 — Main tables hide the loco's own ARP heard back
 
