@@ -195,6 +195,7 @@ SOURCES += \
     test_session269.cpp \
     test_session270.cpp \
     test_session271.cpp \
+    test_session272.cpp \
     test_session213.cpp \
     test_session214.cpp \
     test_session215.cpp \

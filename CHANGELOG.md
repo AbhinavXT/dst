@@ -11,6 +11,35 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-272"></a>
+## Session 272 — DMI: "SOS to This Loco" names the station from station_id
+
+Abhinav: "in dmi in context value SOS From Station (station_id) (SOS for
+this loco) you are using dmi feild sos_station_id, instead use station_id."
+
+**What the operator sees.** On the DMI, the region I message
+"SOS – From Station N ( SOS to This Loco )" now shows N from the DMI frame's
+`station_id` field; before, it showed `sos_station_id`.
+"SOS – From Station N ( SOS to All Locos )" was not part of the request and
+still uses `sos_station_id`.
+
+**Files.** `dmipanel.cpp` (`dmiContextMessage()`),
+`tests/test_session272.cpp` (new), `tests/test_session83.cpp` (its SOS check
+now supplies `station_id`), `tests/tests.pro`.
+
+**Tests.** `session272` (4 checks): This Loco takes `station_id`, All Locos
+still takes `sos_station_id` when the two differ. Over the real `@dmi`
+frames in `replay/`, the This Loco wording carries each frame's own
+`station_id`.
+
+**Gate:** Qt 6 and Qt 5.15 green, 312 suites / 8063 checks, 0 failed; menu
+audit 184 ok; smoke; validators.
+
+**Not tested:** no real capture in `replay/` raises the "SOS - Station
+(This Loco)" flag, so the message wasn't seen on the panel on screen.
+
+---
+
 <a id="session-271"></a>
 ## Session 271 — Configuration files built in, like kavach.xml
 

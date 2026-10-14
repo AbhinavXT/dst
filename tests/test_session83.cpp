@@ -69,7 +69,7 @@ TEST_SUITE(session83)
     // ---- messages: the flag names with their numbers filled in --------------------
     {
         QHash<QString, qint64> raw{ { "target_distance", 60 }, { "collision_loco_id", 23456 }, { "collision_loco_distance", 812 },
-                                    { "override_timeout", 45 }, { "fsb_applied_time", 8 }, { "sos_station_id", 1201 } };
+                                    { "override_timeout", 45 }, { "fsb_applied_time", 8 }, { "station_id", 1201 } };
         QHash<QString, QString> text{ { "train_type", "2 (GOODS_TRAIN)" } };
         CHECK(dmiSystemMessage(QStringLiteral("End of Authority"), raw, text) == QLatin1String("End of Authority in 60m"),
               "H: End of Authority in 60m (the photo's message)");

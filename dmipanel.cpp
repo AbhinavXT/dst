@@ -168,8 +168,9 @@ QString dmiContextMessage(const QString &flag, const QHash<QString, qint64> &raw
     if (flag == QLatin1String("SOS - Self Loco Train Parted")) return QObject::tr("SOS – Self Loco ( Train Parted )");
     if (flag == QLatin1String("SOS - Station (All Locos)"))
         return QObject::tr("SOS – From Station %1 ( SOS to All Locos )").arg(n("sos_station_id"));
+    // A loco-specific SoS names the station from DMI station_id, not sos_station_id.
     if (flag == QLatin1String("SOS - Station (This Loco)"))
-        return QObject::tr("SOS – From Station %1 ( SOS to This Loco )").arg(n("sos_station_id"));
+        return QObject::tr("SOS – From Station %1 ( SOS to This Loco )").arg(n("station_id"));
     if (flag == QLatin1String("Over Speed - Reduce Speed"))    return QObject::tr("Over Speed, Please Reduce Speed");
     if (flag == QLatin1String("Brake Applied - Speed Limit Exceeded")) return QObject::tr("Brake Applied, Speed Limit Exceeded");
     if (flag == QLatin1String("Train Type Selected")) {
