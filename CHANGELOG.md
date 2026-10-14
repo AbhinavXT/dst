@@ -11,6 +11,62 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-274"></a>
+## Session 274 — Main tables hide the loco's own ARP heard back
+
+Abhinav: "filter out the self arprecv packet of self loco from the main". He
+chose: hide them in the main window's log tables (they stay in the model,
+the saved log, the run summary and every other view), hidden by default,
+with a toggle.
+
+**What the operator sees.** In each main-window tab, `@arprecv` rows whose
+SOURCE_LOCO_ID is the tab's own loco ID are hidden. Session 170's 81_2
+capture had 566 of these in 27 minutes. The count label says so:
+"Showing N of M · K own ARP hidden", and its tooltip names the ID.
+**View ▸ Hide Own Received ARPs** (checked by default, remembered in the
+INI as `ui/hide_own_arprecv`, part of the View settings section) shows them
+again.
+
+**Which ID is "own".** The ID is learned as `LocoIdentity` learns it: the
+SOURCE_LOCO_ID of the tab's own `@arp` / `@lsrp`, never from `@arprecv`.
+- Nothing is hidden until that ID is known.
+- Once it is known, a received ARP that came in earlier and carries it is
+  hidden too.
+- If two IDs show up on one tab (a merged capture), nothing is hidden,
+  because which loco is "ours" can't be decided.
+- A received ARP whose CRC fails is never hidden: a garbled ID isn't this
+  loco's.
+
+**How.** The filter bar's proxy does it. Each entry's SOURCE_LOCO_ID is
+decoded once and cached on the `LogEntry` (`sourceLocoId`), so re-filtering
+doesn't decode again. Filter bars outside the main window (merged view,
+session windows) are unchanged: the option is off unless it is set.
+
+**Files.** `filterbar.{h,cpp}`, `logentry.h`, `settings.h`,
+`settingsbundle.cpp`, `mainwindow.{h,cpp}`, `mainwindow_menus.cpp`,
+`mainwindow_tabs.cpp`, `mainwindowsession.cpp`; new
+`tests/test_session274.cpp`, `tests/tests.pro`.
+
+**Tests.** `session274` (17 checks) on the real 81_2 excerpt
+(`replay/2026-10-08/loco_2_1_08102026_162008.cap`): 44 received ARPs from
+loco 2 itself and 19 from loco 1.
+- All 44 are hidden, including the one that arrived before loco 2's first
+  ARP. All 19 from loco 1 are shown.
+- The label and tooltip say how many are hidden; switching the option off
+  and on again works.
+- Adding a real ARP from loco 1 (`loco_1_1_27062026_140226.cap`) to the
+  tab hides nothing.
+- One batch insert into a tab that trims to 1,000 rows keeps the count
+  right, and `clear()` sets it to zero.
+
+**Gate:** Qt 6 and Qt 5.15 green, 314 suites / 8090 checks, 0 failed; menu
+audit 184 ok; smoke; validators.
+
+**Not tested:** the main window wasn't looked at on screen, and the menu
+item was only exercised by the menu audit.
+
+---
+
 <a id="session-273"></a>
 ## Session 273 — The first real DL log: popup_loco_id is 4 bytes
 

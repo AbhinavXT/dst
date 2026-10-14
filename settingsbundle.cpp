@@ -54,7 +54,7 @@ QStringList iniKeys(Section s)
     case Section::View:
         return { QStringLiteral("ui/visible_columns"), QStringLiteral("ui/hidden_columns"),
                  QStringLiteral("ui/column_widths"), QStringLiteral("ui/row_density"),
-                 QStringLiteral("ui/show_utc"),
+                 QStringLiteral("ui/show_utc"), QStringLiteral("ui/hide_own_arprecv"),
                  QStringLiteral("ui/find_advanced"), QStringLiteral("ui/find_detached"),
                  QStringLiteral("ui/find_mode"), QStringLiteral("ui/find_scan_limit"),
                  QStringLiteral("ui/find_wrap"),

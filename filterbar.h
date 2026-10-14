@@ -73,6 +73,13 @@ public:
     // query mode. Used by the timeline ribbon's range drag.
     void setQuery(const QString &expression);
 
+    // Session 274: hide @arprecv rows carrying the tab's own loco ID (its
+    // own ARP heard back). Off unless set; MainWindow sets it from Settings.
+    void   setHideOwnArpRecv(bool on);
+    bool   hideOwnArpRecv() const;
+    qint64 ownLocoId() const;          // -1 until exactly one ID is known
+    int    ownArpRecvCount() const;    // such rows in the tab, hidden or not
+
     QString filterText() const;
     bool    queryModeOn() const;
     ~FilterBar() override;

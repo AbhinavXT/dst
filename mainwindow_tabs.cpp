@@ -137,6 +137,7 @@ void MainWindow::buildOrShowTab(const QString &tabKey,
     // Per-tab filter bar — owns its proxy model.
     auto *filterBar = new FilterBar(model);
     filterBar->setNameMap(&m_nameMap);   // enables name: in query mode
+    filterBar->setHideOwnArpRecv(Settings::hideOwnArpRecv());   // session 274
 
     // Build the table view.
     auto *view = new QTableView;

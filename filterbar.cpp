@@ -3,6 +3,7 @@
 #include <QResizeEvent>
 #include <QVBoxLayout>
 #include "uicolors.h"
+#include "capturedecoder.h"
 #include "logmodel.h"
 #include "logquery.h"
 #include "namemap.h"
@@ -11,6 +12,7 @@
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QComboBox>
+#include <QSet>
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QEvent>
@@ -20,6 +22,42 @@
 #include <QRegularExpression>
 #include <QSortFilterProxyModel>
 #include <QTimer>
+
+// =============================================================================
+//  Session 274: a received ARP carrying the loco's own ID
+//
+//  The loco hears its own ARP come back as @arprecv (session 170: 566 times
+//  in 27 minutes on 81_2). It is not another loco (rejectrules.xml, clause
+//  "DLConsole"), and in the main tables it buries the received ARPs that are.
+//  The own ID is learned as LocoIdentity learns it: SOURCE_LOCO_ID of the
+//  tab's own @arp / @lsrp, never from @arprecv, and only while exactly one ID
+//  has been seen (two is a merged capture: which one is "ours" is undecided,
+//  so nothing is hidden).
+// =============================================================================
+namespace {
+
+bool isArpRecvLine(const QString &t) { return t.startsWith(QLatin1String("@arprecv_")); }
+bool teachesOwnId(const QString &t)
+{
+    return t.startsWith(QLatin1String("@arp_")) || t.startsWith(QLatin1String("@lsrp_"));
+}
+
+// SOURCE_LOCO_ID of an arp / lsrp / arprecv line, decoded once per entry.
+qint64 sourceLocoIdOf(const LogEntry &e)
+{
+    if (e.sourceLocoId != LogEntry::kLocoIdUnread) return e.sourceLocoId;
+    e.sourceLocoId = -1;
+    if (!isArpRecvLine(e.text) && !teachesOwnId(e.text)) return -1;
+    const CaptureLine c = CaptureDecoder::parseLine(e.text);
+    if (!c.valid || (c.crcChecked && !c.crcOk)) return -1;
+    QHash<QString, qint64> raw;
+    CaptureDecoder::describe(c, nullptr, 0, &raw);
+    const auto it = raw.constFind(QStringLiteral("SOURCE_LOCO_ID"));
+    if (it != raw.constEnd()) e.sourceLocoId = it.value();
+    return e.sourceLocoId;
+}
+
+}  // namespace
 
 // =============================================================================
 //  Internal proxy that combines a text-on-column filter with a
@@ -78,6 +116,38 @@ public:
 
     void setNameMap(const NameMap *n) { m_names = n; invalidateFilter(); }
 
+    // Session 274. Called once, after setSourceModel: connected after the
+    // proxy's own handlers, so a row is filtered before it is learned from;
+    // the invalidateFilter() on learning the ID catches that row up.
+    void watchOwnArpRecv(LogModel *lm)
+    {
+        m_lm = lm;
+        if (!lm) return;
+        QObject::connect(lm, &QAbstractItemModel::rowsInserted, this,
+                         [this](const QModelIndex &, int first, int last) { learnRows(first, last); });
+        QObject::connect(lm, &QAbstractItemModel::rowsAboutToBeRemoved, this,
+                         [this](const QModelIndex &, int first, int last) {
+            if (ownLocoId() < 0) return;
+            for (int i = first; i <= last; ++i)
+                if (isOwnArpRecv(m_lm->entryPtrAt(i))) --m_ownCount;
+        });
+        QObject::connect(lm, &QAbstractItemModel::modelReset, this, [this]() { recount(); });
+        learnRows(0, lm->count() - 1);
+    }
+
+    void setHideOwnArpRecv(bool on)
+    {
+        if (m_hideOwn == on) return;
+        m_hideOwn = on;
+        invalidateFilter();
+    }
+    bool hideOwnArpRecv() const { return m_hideOwn; }
+
+    // -1 while no ID, or more than one, has been seen on the tab.
+    qint64 ownLocoId() const { return m_ids.size() == 1 ? *m_ids.cbegin() : -1; }
+    // Received ARPs in the tab carrying that ID, hidden or not.
+    int ownArpRecvCount() const { return m_ownCount; }
+
     bool    queryOk()          const { return m_queryOk; }
     QString queryError()       const { return m_queryError; }
     int     queryErrorOffset() const { return m_queryErrorOffset; }
@@ -95,6 +165,9 @@ protected:
         // lookups — at 75K rows the difference is what makes the
         // filter feel instant vs sluggish.
         const LogModel *lm = qobject_cast<const LogModel*>(src);
+
+        // ---- Session 274: the loco's own ARP heard back ------------------
+        if (m_hideOwn && lm && isOwnArpRecv(lm->entryPtrAt(sourceRow))) return false;
 
         // ---- Chip filter ----------------------------------------------
         if (m_chip != ChipAll) {
@@ -167,6 +240,45 @@ protected:
     }
 
 private:
+    bool isOwnArpRecv(const LogEntry *e) const
+    {
+        const qint64 own = ownLocoId();
+        return own >= 0 && e && isArpRecvLine(e->text) && sourceLocoIdOf(*e) == own;
+    }
+
+    void learnRows(int first, int last)
+    {
+        if (!m_lm) return;
+        const qint64 before = ownLocoId();
+        for (int i = first; i <= last; ++i) {
+            const LogEntry *e = m_lm->entryPtrAt(i);
+            if (!e || !teachesOwnId(e->text)) continue;
+            const qint64 id = sourceLocoIdOf(*e);
+            if (id > 0) m_ids.insert(id);      // 0 is unassigned, not a loco
+        }
+        if (ownLocoId() != before) {
+            recount();
+            if (m_hideOwn) invalidateFilter();
+            return;
+        }
+        if (before < 0) return;
+        for (int i = first; i <= last; ++i)
+            if (isOwnArpRecv(m_lm->entryPtrAt(i))) ++m_ownCount;
+    }
+
+    void recount()
+    {
+        m_ownCount = 0;
+        if (!m_lm || ownLocoId() < 0) return;
+        for (int i = 0; i < m_lm->count(); ++i)
+            if (isOwnArpRecv(m_lm->entryPtrAt(i))) ++m_ownCount;
+    }
+
+    LogModel           *m_lm       = nullptr;
+    bool                m_hideOwn  = false;
+    QSet<qint64>        m_ids;               // SOURCE_LOCO_IDs of the tab's own arp/lsrp
+    int                 m_ownCount = 0;
+
     QString             m_textPattern;
     bool                m_textRegex  = false;
     int                 m_textColumn = LogModel::ColMessage;
@@ -195,6 +307,7 @@ FilterBar::FilterBar(LogModel *source, QWidget *parent)
 {
     auto *proxy = new CombinedProxy(this);
     proxy->setSourceModel(source);
+    proxy->watchOwnArpRecv(source);
     m_proxy = proxy;
 
     // ---- Build UI -----------------------------------------------------
@@ -493,15 +606,45 @@ void FilterBar::setNameMap(const NameMap *names)
     static_cast<CombinedProxy*>(m_proxy)->setNameMap(names);
 }
 
+void FilterBar::setHideOwnArpRecv(bool on)
+{
+    static_cast<CombinedProxy*>(m_proxy)->setHideOwnArpRecv(on);
+    updateCountsLabel();
+}
+
+bool FilterBar::hideOwnArpRecv() const
+{
+    return static_cast<CombinedProxy*>(m_proxy)->hideOwnArpRecv();
+}
+
+qint64 FilterBar::ownLocoId() const
+{
+    return static_cast<CombinedProxy*>(m_proxy)->ownLocoId();
+}
+
+int FilterBar::ownArpRecvCount() const
+{
+    return static_cast<CombinedProxy*>(m_proxy)->ownArpRecvCount();
+}
+
 void FilterBar::updateCountsLabel()
 {
     if (!m_source || !m_proxy) return;
     const int total = m_source->rowCount();
     const int shown = m_proxy->rowCount();
+    // Session 274: said, not left silent, when own received ARPs are hidden.
+    const int own = hideOwnArpRecv() ? ownArpRecvCount() : 0;
+    m_countLabel->setToolTip(own > 0
+        ? tr("%1 received ARP(s) carrying this loco's own ID %2 are hidden: "
+             "not another loco.\nView \u25B8 Hide Own Received ARPs shows them.")
+              .arg(own).arg(ownLocoId())
+        : QString());
     if (total == shown) {
         m_countLabel->setText(tr("Showing %1").arg(total));
     } else {
-        m_countLabel->setText(tr("Showing %1 of %2").arg(shown).arg(total));
+        m_countLabel->setText(own > 0
+            ? tr("Showing %1 of %2 \u00B7 %3 own ARP hidden").arg(shown).arg(total).arg(own)
+            : tr("Showing %1 of %2").arg(shown).arg(total));
         m_countLabel->setStyleSheet(UiColor::accentStyle() + QStringLiteral(" font-weight: bold;"));
         return;
     }

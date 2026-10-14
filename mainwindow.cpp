@@ -1857,6 +1857,18 @@ void MainWindow::onActionToggleUtc()
                : tr("Times shown in local time"));
 }
 
+void MainWindow::onActionToggleHideOwnArpRecv()
+{
+    auto *action = qobject_cast<QAction*>(sender());
+    const bool hide = action ? action->isChecked() : !Settings::hideOwnArpRecv();
+    Settings::setHideOwnArpRecv(hide);
+    for (auto it = m_tabs.constBegin(); it != m_tabs.constEnd(); ++it)
+        if (it->filterBar) it->filterBar->setHideOwnArpRecv(hide);
+    notify(NoteLevel::Info,
+           hide ? tr("Received ARPs carrying the loco's own ID are hidden")
+                : tr("Received ARPs carrying the loco's own ID are shown"));
+}
+
 void MainWindow::onActionSetDensity()
 {
     auto *action = qobject_cast<QAction*>(sender());

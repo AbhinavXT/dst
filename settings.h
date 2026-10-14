@@ -209,6 +209,13 @@ public:
     static void setShowUtc(bool on)
     { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("ui/show_utc", on); }
 
+    // Session 274: the main tables hide a received ARP carrying the loco's
+    // own ID (its own ARP heard back). On by default.
+    static bool hideOwnArpRecv()
+    { QSettings s(iniPath(), QSettings::IniFormat); return s.value("ui/hide_own_arprecv", true).toBool(); }
+    static void setHideOwnArpRecv(bool on)
+    { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("ui/hide_own_arprecv", on); }
+
     // ---- row density ----------------------------------------------------
     //
     // 0 = Compact, 1 = Normal, 2 = Comfortable. Default is Normal.

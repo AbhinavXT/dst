@@ -13,6 +13,7 @@
 
 #include "bignumberpanel.h"
 #include "clockskewalarm.h"
+#include "filterbar.h"
 #include "flasher/flasherwindow.h"
 #include "lococonfig/lococonfigwindow.h"
 #include "pinpanel.h"
@@ -693,6 +694,13 @@ void MainWindow::afterSettingsImported(const QStringList &ids)
             const QSignalBlocker block(act);
             act->setChecked(utc);
         }
+        const bool hideOwn = Settings::hideOwnArpRecv();   // session 274
+        if (auto *act = findChild<QAction *>(QStringLiteral("actHideOwnArpRecv"))) {
+            const QSignalBlocker block(act);
+            act->setChecked(hideOwn);
+        }
+        for (auto it = m_tabs.constBegin(); it != m_tabs.constEnd(); ++it)
+            if (it->filterBar) it->filterBar->setHideOwnArpRecv(hideOwn);
         if (m_dispatcher) {
             m_dispatcher->setShowUtc(utc);
             for (const QString &key : m_dispatcher->knownKeys())

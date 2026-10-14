@@ -331,6 +331,16 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     actUtc->setChecked(Settings::showUtc());
     connect(actUtc, &QAction::triggered, this, &MainWindow::onActionToggleUtc);
 
+    // Session 274: the loco's own ARP heard back as a received ARP is not
+    // another loco; hidden from the tables unless asked for.
+    QAction *actOwnArp = viewMenu->addAction(tr("Hide Own Received &ARPs"));
+    actOwnArp->setObjectName(QStringLiteral("actHideOwnArpRecv"));
+    actOwnArp->setCheckable(true);
+    actOwnArp->setChecked(Settings::hideOwnArpRecv());
+    actOwnArp->setToolTip(tr("Hide @arprecv rows whose SOURCE_LOCO_ID is the tab's own loco ID "
+                             "(learned from its ARP / LSRP)"));
+    connect(actOwnArp, &QAction::triggered, this, &MainWindow::onActionToggleHideOwnArpRecv);
+
     // Theme: every theme as a radio item, so one can be tried with a click,
     // and the toggle, which flips between the last light and last dark
     // theme used (Sepia <-> Nord, not always back to the Ayu pair).

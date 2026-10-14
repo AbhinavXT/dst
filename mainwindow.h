@@ -134,6 +134,7 @@ private slots:
     void onActionMergedView();    // View → All sources chronological
     void onActionSetDensity();    // View → Row density → …
     void onActionToggleUtc();     // View → Show times in UTC
+    void onActionToggleHideOwnArpRecv();   // View → Hide Own Received ARPs (session 274)
     void onActionToggleColumn();  // View → Columns → …
     void onActionResetPanels();   // View → Panels → Reset panel layout
     void onActionCommandPalette();// Ctrl+P

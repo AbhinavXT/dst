@@ -122,6 +122,13 @@ struct LogEntry
     mutable bool                     fieldsDecoded = false;
     mutable QVector<QPair<QString, QString>> decodedFields;
 
+    // Session 274: SOURCE_LOCO_ID of an @arp / @lsrp / @arprecv line, decoded
+    // once by the filter bar (which hides a received ARP carrying the loco's
+    // own ID). kLocoIdUnread until then; -1 for any other line, a line with
+    // no SOURCE_LOCO_ID, or one whose CRC fails (a garbled ID is no loco's).
+    static constexpr qint64 kLocoIdUnread = -2;
+    mutable qint64 sourceLocoId = kLocoIdUnread;
+
     void cacheDerived(bool utc = false)
     {
         cachedTabKey = QString("%1_%2")
