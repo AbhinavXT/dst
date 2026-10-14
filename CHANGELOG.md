@@ -11,6 +11,46 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-276"></a>
+## Session 276 — Restored tabs take their names from the names file
+
+Abhinav: "the names of tabs like 21_1 as L1_V1 or 51_1 as Fault_L1_V1 are
+not displayed when running the exe, it just shows 21_1, 51_1 etc".
+
+**Cause.** At start-up the console restores last session's tabs with the
+name **saved** for each one (`ui/workspace_tabs` in `dlconsole.ini`). A
+package that ran without names saved the bare keys "21_1", "51_1": before
+patch 271 the single exe carried no `friendly_names.csv`. Every later start
+restored those keys as names. Live traffic then arrived in the tab that
+already existed, and an existing tab is never renamed, so the names file was
+never consulted. A saved layout (View ▸ Layouts) had the same rule.
+
+**What the operator sees.** A restored tab takes its name from the names
+file in force (chosen, beside the program, or built in). The saved name is
+used only for a key the names file doesn't list. The built-in file names
+21_1 **L1_V1** and 51_1 **Fault_L1V1**, as the file spells it, not
+"Fault_L1_V1".
+
+**Files.** `mainwindow.{h,cpp}` (`restoredTabName()`, used by
+`restoreWorkspace()`), `mainwindowsession.cpp` (applying a saved layout);
+new `tests/test_session276.cpp`, `tests/tests.pro`.
+
+**Tests.** `session276` (6 checks): on a fresh INI seeded with the stale
+workspace (21_1 / 51_1 saved under their keys, 99_3 saved as "Bench rig"),
+a MainWindow's tabs read L1_V1, Fault_L1V1 and Bench rig. With the old rule
+put back, the suite fails with "21_1 | 51_1 | Bench rig", which is what
+was seen on the exe.
+
+**Gate:** Qt 6 and Qt 5.15 green, 316 suites / 8105 checks, 0 failed; menu
+audit 184 ok; smoke; validators.
+
+**Not tested:** the Windows exe itself. If an exe still shows keys after
+this patch, check for a `friendly_names.csv` beside it, or a chosen one
+(Tools ▸ Configuration files ▸ Files in use…). Either of those beats the
+built-in file.
+
+---
+
 <a id="session-275"></a>
 ## Session 275 — First-run defaults: port 51234, Sage, no panels, Time + Message
 

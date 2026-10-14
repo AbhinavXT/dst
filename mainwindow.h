@@ -574,6 +574,8 @@ private:
 
     // Helpers.
     void   buildOrShowTab(const QString &tabKey, const QString &friendlyName);
+    // Session 276: a restored tab's name; the names file in force beats the saved one.
+    QString restoredTabName(const QString &key, const QString &saved) const;
     void   gotoProblem(int dir);     // shared by the two slots above
     void   showTab(TabUi &tab);
     void   hideTab(TabUi &tab);

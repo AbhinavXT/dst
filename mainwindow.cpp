@@ -1948,6 +1948,19 @@ void MainWindow::saveWorkspace() const
     Settings::setWorkspaceActiveTab(active);
 }
 
+// Session 276: the name a restored tab gets. The names file in force
+// now wins: the saved name is what the tab was called LAST session, and a
+// package that once ran without friendly_names.csv (before patch 271) saved
+// "21_1", which then stuck at every start, since traffic for a tab that
+// already exists never renames it. The saved name is used only when the
+// names file has nothing for the key.
+QString MainWindow::restoredTabName(const QString &key, const QString &saved) const
+{
+    const QString mapped = m_dispatcher ? m_dispatcher->friendlyNameFor(key) : key;
+    if (mapped != key || saved.isEmpty()) return mapped;
+    return saved;
+}
+
 void MainWindow::restoreWorkspace()
 {
     if (!Settings::restoreWorkspace()) { return; }
@@ -1972,7 +1985,7 @@ void MainWindow::restoreWorkspace()
         // Building the tab creates the model too, so traffic that arrives
         // for this source later routes into the tab already on screen
         // instead of making a second one.
-        buildOrShowTab(key, name);
+        buildOrShowTab(key, restoredTabName(key, name));
 
         if (parts.at(2) != QLatin1String("1")) {
             auto it = m_tabs.find(key);

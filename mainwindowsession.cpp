@@ -290,7 +290,7 @@ void MainWindow::applyWorkspace(const WorkspaceSnapshot &s)
     for (const WorkspaceTab &t : s.tabs) {
         auto it = m_tabs.find(t.key);
         if (it == m_tabs.end()) {
-            buildOrShowTab(t.key, t.name.isEmpty() ? m_dispatcher->friendlyNameFor(t.key) : t.name);
+            buildOrShowTab(t.key, restoredTabName(t.key, t.name));
             it = m_tabs.find(t.key);
             if (it == m_tabs.end()) continue;
         } else if (t.visible) {
