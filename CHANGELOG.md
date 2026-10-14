@@ -27,16 +27,21 @@ still uses `sos_station_id`.
 `tests/test_session272.cpp` (new), `tests/test_session83.cpp` (its SOS check
 now supplies `station_id`), `tests/tests.pro`.
 
-**Tests.** `session272` (4 checks): This Loco takes `station_id`, All Locos
+Real captures in `replay/` raise this flag in 20 frames, with `station_id`
+527 and `sos_station_id` 0: the panel said "From Station 0"; it now says
+"From Station 527".
+
+**Tests.** `session272` (6 checks): This Loco takes `station_id`, All Locos
 still takes `sos_station_id` when the two differ. Over the real `@dmi`
 frames in `replay/`, the This Loco wording carries each frame's own
-`station_id`.
+`station_id`; the 20 real frames that raise the flag show it on the panel
+state, and in each of them `sos_station_id` differs.
 
-**Gate:** Qt 6 and Qt 5.15 green, 312 suites / 8063 checks, 0 failed; menu
+**Gate:** Qt 6 and Qt 5.15 green, 312 suites / 8065 checks, 0 failed; menu
 audit 184 ok; smoke; validators.
 
-**Not tested:** no real capture in `replay/` raises the "SOS - Station
-(This Loco)" flag, so the message wasn't seen on the panel on screen.
+**Not tested:** the message wasn't looked at on screen (the screenshot
+harness wasn't run on one of those frames).
 
 ---
 
