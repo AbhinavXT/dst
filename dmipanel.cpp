@@ -350,29 +350,6 @@ DmiColours DmiColours::annexure()
     return c;
 }
 
-DmiColours DmiColours::forTheme(const QPalette &p)
-{
-    // The theme's own background and ink; each Annexure-B hue moved just far
-    // enough to be seen on that background (3:1, the graphics floor).
-    const DmiColours a = annexure();
-    DmiColours c;
-    c.bg  = p.color(QPalette::Base);
-    c.wht = p.color(QPalette::Text);
-    c.gry = UiColor::frame();
-    c.lgy = UiColor::muted();
-    c.mgy = UiColor::withContrast(p.color(QPalette::Button), c.bg, 1.0);
-    auto fit = [&c](const QColor &x) { return UiColor::withContrast(x, c.bg, 3.0); };
-    c.lbl = fit(a.lbl);
-    c.ylw = fit(a.ylw);
-    c.lor = fit(a.lor);
-    c.org = fit(a.org);
-    c.brd = fit(a.brd);
-    c.lgr = fit(a.lgr);
-    c.grn = fit(a.grn);
-    c.dgr = fit(a.dgr);
-    return c;
-}
-
 // =============================================================================
 //  The panel
 // =============================================================================
@@ -392,19 +369,13 @@ void DmiView::setState(const DmiState &state)
     update();
 }
 
-void DmiView::setAnnexureColours(bool on)
-{
-    m_annexure = on;
-    update();
-}
-
 void DmiView::paintEvent(QPaintEvent *)
 {
     QPainter p(this);
     p.setRenderHint(QPainter::Antialiasing, true);
     p.setRenderHint(QPainter::TextAntialiasing, true);
-    const DmiColours c = m_annexure ? DmiColours::annexure() : DmiColours::forTheme(palette());
-    p.fillRect(rect(), m_annexure ? QColor(0, 0, 0) : palette().color(QPalette::Window));
+    const DmiColours c = DmiColours::annexure();
+    p.fillRect(rect(), c.bg);
 
     // 800 x 600 units, scaled to fit, centred.
     const double scale = qMin(width() / 800.0, height() / 600.0);
@@ -514,9 +485,8 @@ void DmiView::paintEvent(QPaintEvent *)
         p.setBrush(ptr);
         p.drawPolygon(arm);
         p.drawEllipse(kDial, 26, 26);
-        // Session 189: the digits contrast with the hub. Annexure-B draws a white
-        // hub with black digits; in a light theme the hub takes the theme's ink
-        // (black), and black digits on it could not be read.
+        // Session 189: the digits contrast with the hub (Annexure-B: a white hub,
+        // black digits; grey when the frame is old).
         const QColor digits = qGray(ptr.rgb()) >= 128 ? QColor(0, 0, 0) : QColor(255, 255, 255);
         text(QRectF(kDial.x() - 26, kDial.y() - 26, 52, 52), QString::number(s.speed), 20, true, digits, Qt::AlignCenter);
     }
@@ -752,8 +722,7 @@ void DmiView::paintEvent(QPaintEvent *)
             p.setPen(QPen(c.gry, 1));
             p.setBrush(c.mgy);
             p.drawRect(kr);
-            text(kr, QLatin1String(keys[k]), 18.67, true, m_annexure ? QColor(255, 255, 255) : palette().color(QPalette::ButtonText),
-                 Qt::AlignCenter);
+            text(kr, QLatin1String(keys[k]), 18.67, true, c.wht, Qt::AlignCenter);
         }
     }
     if (m_stale) {
@@ -775,16 +744,12 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
     resize(880, 720);
     WindowGeometry::restore(this, QStringLiteral("dmiWindow"));
 
-    auto *annexure = new QCheckBox(tr("Annexure-B colours"), this);
-    annexure->setObjectName(QStringLiteral("dmiAnnexureColours"));
-    annexure->setToolTip(tr("Table B.2's exact colours on black, as the real panel. Off: follow the console's theme."));
     QSettings settings(Settings::iniPath(), QSettings::IniFormat);
-    annexure->setChecked(settings.value(QStringLiteral("dmi/annexureColours"), false).toBool());
 
     // Session 160 / 167: the panels. Built once; the ones past the count are hidden.
     m_grid = new QGridLayout;
     m_grid->setContentsMargins(0, 0, 0, 0);
-    for (int i = 0; i < kMaxPanels; ++i) buildPanel(i, annexure->isChecked());
+    for (int i = 0; i < kMaxPanels; ++i) buildPanel(i);
     m_view = m_panels[0].view;
     m_source = m_panels[0].source;
     m_status = m_panels[0].status;
@@ -822,7 +787,6 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
     top->addWidget(new QLabel(tr("Panels:"), this));
     top->addWidget(m_countBox);
     top->addWidget(m_follow);
-    top->addWidget(annexure);
     top->addStretch(1);
     top->addWidget(m_fieldsBtn);
     top->addWidget(save);
@@ -848,11 +812,6 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
     root->addWidget(scroll, 1);
     layoutPanels();
 
-    connect(annexure, &QCheckBox::toggled, this, [this](bool on) {
-        for (Panel &p : m_panels) p.view->setAnnexureColours(on);
-        QSettings s(Settings::iniPath(), QSettings::IniFormat);
-        s.setValue(QStringLiteral("dmi/annexureColours"), on);
-    });
     connect(m_follow, &QCheckBox::toggled, this, [this](bool on) { setFollowCursor(on); });
     connect(m_countBox, qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this](int index) { setPanelCount(index + 1); });
@@ -908,7 +867,7 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
     if (panels > 1) setPanelCount(panels);
 }
 
-void DmiWindow::buildPanel(int i, bool annexure)
+void DmiWindow::buildPanel(int i)
 {
     static const char *const kSuffix[kMaxPanels] = { "", "B", "C", "D" };
     const QString suffix = QLatin1String(kSuffix[i]);
@@ -928,7 +887,6 @@ void DmiWindow::buildPanel(int i, bool annexure)
     col->addLayout(head);
     p.view = new DmiView(p.column);
     if (i > 0) p.view->setObjectName(QStringLiteral("dmiView") + suffix);
-    p.view->setAnnexureColours(annexure);
     col->addWidget(p.view);
     p.status = new QLabel(p.column);
     p.status->setObjectName(QStringLiteral("dmiStatus") + suffix);

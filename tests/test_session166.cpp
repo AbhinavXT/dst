@@ -32,7 +32,6 @@ QString nthDmi166(const QString &file, int n)
 int redOverAntenna(const DmiState &s, bool stale = false)
 {
     DmiView v;
-    v.setAnnexureColours(true);
     v.setState(s);
     v.setStale(stale);
     v.resize(800, 600);

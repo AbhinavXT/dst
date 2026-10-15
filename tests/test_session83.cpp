@@ -126,40 +126,24 @@ TEST_SUITE(session83)
         QTest::qWait(20);
         CHECK(w.view()->state().valid && w.selectedSource() == QLatin1String("1_1"), "a frame arrives: the panel shows it");
         CHECK(w.view()->state().speed == best.speed, "the view shows that frame");
-        auto *annexure = w.findChild<QCheckBox *>(QStringLiteral("dmiAnnexureColours"));
-        CHECK(annexure != nullptr, "there is an Annexure-B colours switch");
-        const bool was = annexure && annexure->isChecked();
-        if (annexure) annexure->setChecked(false);
-        CHECK(!w.view()->annexureColours(), "by default the panel follows the theme");
         const DmiColours spec = DmiColours::annexure();
         CHECK(spec.lor == QColor(255, 165, 0) && spec.lbl == QColor(0, 139, 206) && spec.lgr == QColor(128, 255, 0)
                   && spec.org == QColor(255, 128, 64),
               "Annexure-B colours are Table B.2's RGB");
-        // On a light theme every Annexure hue is moved to be visible.
+        // Session 285: always Annexure-B, whatever the theme; no switch.
+        CHECK(w.findChild<QCheckBox *>(QStringLiteral("dmiAnnexureColours")) == nullptr,
+              "no colours switch: the panel is always Annexure-B");
         const QPalette saved = qApp->palette();
         const int savedTheme = UiColor::activeTheme();
         ThemeUtil::apply(Theme::Light);
-        const DmiColours light = DmiColours::forTheme(qApp->palette());
-        double worst = 99;
-        for (const QColor &x : { light.lbl, light.ylw, light.lor, light.org, light.brd, light.lgr, light.grn, light.dgr })
-            worst = qMin(worst, UiColor::contrastRatio(x, light.bg));
-        CHECK(worst >= 3.0, QByteArray("theme colours: every Annexure hue at least 3:1 on the light theme (worst ")
-                                + QByteArray::number(worst, 'f', 2) + ")");
-        if (!shotDir().isEmpty()) {
-            w.view()->update();
-            QTest::qWait(30);
-            w.grab().save(QDir(shotDir()).filePath(QStringLiteral("dmi_light.png")));
-        }
+        w.view()->update();
+        QTest::qWait(30);
+        const QImage light = w.view()->grab().toImage();
+        CHECK(light.pixelColor(2, 2) == QColor(0, 0, 0), "light theme: the panel is still black");
+        if (!shotDir().isEmpty()) w.grab().save(QDir(shotDir()).filePath(QStringLiteral("dmi_annexure.png")));
         ThemeUtil::apply(Theme::Dark);
-        if (annexure) annexure->setChecked(true);
-        CHECK(w.view()->annexureColours(), "the switch gives the annexure's own colours");
-        if (!shotDir().isEmpty()) {
-            QTest::qWait(30);
-            w.grab().save(QDir(shotDir()).filePath(QStringLiteral("dmi_annexure.png")));
-        }
         qApp->setPalette(saved);
         UiColor::setActiveTheme(savedTheme);
-        if (annexure) annexure->setChecked(was);
         const QString png = QDir::temp().filePath(QStringLiteral("dmi_test.png"));
         CHECK(w.saveImage(png) && QFile(png).size() > 1000, "the panel saves as an image");
         QFile::remove(png);

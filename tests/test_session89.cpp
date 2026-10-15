@@ -19,10 +19,9 @@
 namespace {
 
 // Render the panel at exactly 800 x 600, so panel units are pixels.
-QImage render89(const DmiState &s, bool annexure = true)
+QImage render89(const DmiState &s)
 {
     DmiView v;
-    v.setAnnexureColours(annexure);
     v.resize(800, 600);
     v.setState(s);
     QImage img(800, 600, QImage::Format_ARGB32);

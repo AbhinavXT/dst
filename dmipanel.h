@@ -30,12 +30,10 @@
 //       nothing is sent back to the loco)
 //
 //  COLOURS
-//    Two palettes. "Theme" (the default) follows the console's theme: the
-//    background and text are the theme's, and each Annexure-B colour keeps
-//    its hue but is moved to at least 3:1 against that background, so the
-//    yellow and light green stay visible on a light theme. "Annexure-B"
-//    draws Table B.2's exact RGB on black, as the real panel does.
-//    Signal lamps are the railway's colours in both.
+//    Always Table B.2's exact RGB on black, as the real panel does, whatever
+//    the console's theme: in this window, in saved images, the GIF clip and
+//    the incident report alike (session 285; the theme palette and its
+//    light-mode DMI are gone). Signal lamps are the railway's colours.
 //
 //  WHAT IS NOT IN THE FRAME IS NOT INVENTED
 //    Every region is filled from a named @dmi field. Where the annexure asks
@@ -139,7 +137,6 @@ QStringList dmiAssumptions();
 struct DmiColours {
     QColor bg, wht, gry, lgy, mgy, lbl, ylw, lor, org, brd, lgr, grn, dgr;
     static DmiColours annexure();                      // Table B.2 exactly, on black
-    static DmiColours forTheme(const QPalette &palette);
 };
 
 // ---- the panel ----------------------------------------------------------------
@@ -150,8 +147,6 @@ public:
     explicit DmiView(QWidget *parent = nullptr);
     void setState(const DmiState &state);
     const DmiState &state() const { return m_state; }
-    void setAnnexureColours(bool on);
-    bool annexureColours() const { return m_annexure; }
     void setStale(bool stale) { m_stale = stale; update(); }
     bool isStale() const { return m_stale; }
     // What the panel says when there is no frame to draw (session 84: the
@@ -169,7 +164,6 @@ protected:
 
 private:
     DmiState m_state;
-    bool     m_annexure = false;
     bool     m_stale = false;
     int      m_msgTick = 0;
     QString  m_emptyText;
@@ -248,7 +242,7 @@ private:
         QTableWidget *fields = nullptr;
         CaptureLine   shown;                    // the frame the panel is drawing
     };
-    void buildPanel(int i, bool annexure);
+    void buildPanel(int i);
     void layoutPanels();
     void refreshStatus();
     void render();                 // the visible panels, live or at the moment

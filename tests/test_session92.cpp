@@ -26,7 +26,6 @@ namespace {
 QImage render92(const DmiState &s)
 {
     DmiView v;
-    v.setAnnexureColours(true);
     v.resize(800, 600);
     v.setState(s);
     QImage img(800, 600, QImage::Format_ARGB32);

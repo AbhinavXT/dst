@@ -8,6 +8,7 @@
 
 // =============================================================================
 //  Session 189 — DMI: the speed in the dial's hub can be read in a light theme.
+//  (Since session 285 the panel is Annexure-B in every theme.)
 //
 //  The hub takes the pointer's colour: white in Annexure-B colours and in a
 //  dark theme, but the theme's ink (black) in a light theme, and the digits
@@ -42,29 +43,17 @@ int digitPixels(DmiView &v, QColor *hubOut)
 
 TEST_SUITE(session189)
 {
-    ThemeUtil::apply(Theme::Light);
-    UiStyle::apply();
-    {
+    // Session 285: the panel is always Annexure-B, so in both themes the hub
+    // is white and the speed on it black.
+    for (const Theme t : { Theme::Light, Theme::Dark }) {
+        ThemeUtil::apply(t);
+        UiStyle::apply();
         DmiView v;
         QColor hub;
         const int n = digitPixels(v, &hub);
-        CHECK(qGray(hub.rgb()) < 80, QByteArray("light theme: the hub is dark (gray ") + QByteArray::number(qGray(hub.rgb())) + ")");
-        CHECK(n >= 25, QByteArray("and the speed on it stands out (") + QByteArray::number(n) + " pixels; was about 0)");
-    }
-    {
-        DmiView v;
-        v.setAnnexureColours(true);
-        QColor hub;
-        const int n = digitPixels(v, &hub);
-        CHECK(qGray(hub.rgb()) > 200 && n >= 25, "Annexure-B colours: white hub, black digits, as before");
-    }
-    ThemeUtil::apply(Theme::Dark);
-    UiStyle::apply();
-    {
-        DmiView v;
-        QColor hub;
-        const int n = digitPixels(v, &hub);
-        CHECK(qGray(hub.rgb()) > 150 && n >= 25, "dark theme: light hub, dark digits");
+        CHECK(qGray(hub.rgb()) > 200 && n >= 25,
+              QByteArray(t == Theme::Light ? "light" : "dark") + " theme: white hub, the speed on it stands out ("
+                  + QByteArray::number(n) + " pixels)");
     }
     ThemeUtil::apply(Theme::Light);
     UiStyle::apply();

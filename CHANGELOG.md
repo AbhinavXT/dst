@@ -11,6 +11,43 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-285"></a>
+## Session 285 — The DMI is always in Annexure-B colours
+
+Abhinav: "in each report, gif, etc dmi should always be in annexure b colors
+remove light mode for dmi".
+
+**What the operator sees.** Every DMI panel is drawn in Table B.2's exact
+colours on black, as the real LP-OCIP is, whatever the console's theme:
+- the DMI window (live, time travel, 1–4 panels);
+- Save image…, Export clip… (the GIF);
+- the incident report's DMI moments.
+
+The **Annexure-B colours** checkbox is gone from the DMI window, and so is
+the theme palette (the theme's background, each hue moved to 3:1 on it) that
+it switched off. An old INI's `dmi/annexureColours` is ignored. The
+settings bundle still lists the key so an old bundle reads as before.
+
+Not changed: the Live Loco Console's small cab dial (`CabDisplay`), which is
+not the Annexure-B layout and follows the theme like the rest of that
+window.
+
+**Files.** `dmipanel.{h,cpp}` (`DmiColours::forTheme`,
+`DmiView::setAnnexureColours` and the checkbox removed);
+`tests/test_session83.cpp`, `test_session89.cpp`, `test_session92.cpp`,
+`test_session166.cpp`, `test_session189.cpp`.
+
+**Tests.** `session83`: no colours switch; under the light theme the panel is
+still black (screenshot checked: Annexure-B on black). `session189`: white
+hub and readable speed in both the light and the dark theme. The other DMI
+suites (89, 92, 166, 262 clip) pass unchanged apart from dropping the
+switch.
+
+**Gate:** Qt 6 and Qt 5.15 green, 322 suites / 8152 checks, 0 failed; menu
+audit; smoke; validators.
+
+---
+
 <a id="session-284"></a>
 ## Session 284 — CI: sessions 281 and 282 read the route from the library
 
