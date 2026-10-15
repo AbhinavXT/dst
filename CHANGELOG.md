@@ -11,6 +11,54 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-283"></a>
+## Session 283 — A closed dialog gives focus back to the window that opened it
+
+Abhinav: "doing actions like exporting a route, exporting config xml etc or
+cancelling them in between changes my window from tag builder to dl console
+main window".
+
+**Why.** The Tag Builder's dialogs were already parented to it. But when a
+modal dialog closes (the native file dialogs most of all), the platform
+activates the application's main window rather than the tool window under
+the dialog. Every tool window opened from the main window was exposed to
+this, not only the Tag Builder.
+
+**What the operator sees.** After any dialog closes, with OK or Cancel, the
+window that opened it is in front and active again: the Tag Builder after
+Export ▸ route.xml, Into Configuration1.xml, Fix the CRCs, Open, Save,
+Library, Set shared folder; the same in Loco Configuration and the other
+tool windows. Two dialogs in a row (Into Configuration1.xml: open, then save
+as) still run one after the other; nothing is brought forward while the
+second is up. A window that was closed or minimised meanwhile is left alone.
+
+**How.** `DialogFocus::install()` (called once in `main.cpp`) puts one event
+filter on the application. When a dialog window is shown it remembers its
+parent's window (or, with no parent, the active window); when it hides, that
+window is raised and activated on the next turn of the event loop, and once
+more 150 ms later only if activation went elsewhere in between (macOS hands
+it over after the panel has gone). Spontaneous show/hide (minimise/restore)
+is ignored.
+
+**Files.** New `dialogfocus.{h,cpp}`, `dlcore.pri`, `main.cpp`; new
+`tests/test_session283.cpp`, `tests/tests.pro`.
+
+**Tests.** `session283` (10 checks), a main window and a tool window
+parented to it with the platform's part (activating the main window as the
+dialog goes) played by the test: the tool window is active again after a
+dialog closes; a child widget's dialog returns to its window; nothing is
+activated over a second modal dialog; a hidden window is not shown again; a
+parentless dialog returns to the window that was active. With the filter
+switched off, 3 of the checks fail.
+
+**Gate:** Qt 6 and Qt 5.15 green, 322 suites / 8156 checks, 0 failed; menu
+audit; smoke; validators.
+
+**Not tested:** the real native file dialogs on screen (macOS panel, Windows
+IFileDialog, Linux): the tests use plain QDialogs on the offscreen platform.
+
+---
+
 <a id="session-282"></a>
 ## Session 282 — Tag Builder: export straight to a shared folder
 

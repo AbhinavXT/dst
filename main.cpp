@@ -1,3 +1,4 @@
+#include "dialogfocus.h"
 #include "logentry.h"
 #include "textzoom.h"
 #include "mainwindow.h"
@@ -29,6 +30,9 @@ int main(int argc, char *argv[])
     UiStyle::apply();   // rebuilt from the palette above
     // The saved text size (View > Text size), on top of the style above.
     TextZoom::initialise();
+    // Session 283: a closed dialog gives focus back to the window that
+    // opened it, not to the main window.
+    DialogFocus::install();
 
     qRegisterMetaType<ParsedMessagePtr>("ParsedMessagePtr");
     qRegisterMetaType<LogEntryPtr>     ("LogEntryPtr");

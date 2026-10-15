@@ -45,6 +45,7 @@ SOURCES += \
     $$PWD/dmiclip.cpp \
     $$PWD/dmiclipdialog.cpp \
     $$PWD/testrun.cpp \
+    $$PWD/dialogfocus.cpp \
     $$PWD/minimizeddock.cpp \
     $$PWD/textzoom.cpp \
     $$PWD/presentationmode.cpp \
@@ -218,6 +219,7 @@ HEADERS += \
     $$PWD/dmiclip.h \
     $$PWD/dmiclipdialog.h \
     $$PWD/testrun.h \
+    $$PWD/dialogfocus.h \
     $$PWD/minimizeddock.h \
     $$PWD/textzoom.h \
     $$PWD/presentationmode.h \
