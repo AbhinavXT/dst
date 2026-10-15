@@ -98,6 +98,15 @@ public:
     bool exportTextFiles(const QString &folder);
     // Session 281: the selected tag as its route.xml <rfid_data> line.
     bool exportSelectedTag(const QString &path);
+    // Session 282: Export ▸ To shared folder. The export, under its usual
+    // file name, straight into the shared folder (Settings, set once with
+    // Export ▸ Set shared folder…), to hand it to another PC. Refused, on
+    // the status line, when the folder is not set or cannot be reached; an
+    // existing file is overwritten only after asking (`ask` false: the tests).
+    enum class SharedExport { RouteXml, ConfigurationRoute, SelectedTag, TextFiles };
+    bool exportToShared(SharedExport kind, bool ask = true);
+    // The file name(s) `kind` gets there.
+    QStringList sharedFileNames(SharedExport kind) const;
     // Session 199. The route's failing CRCs; the number of tags fixed (-1 none to fix).
     int fixRouteCrcs();
     // A whole file's failing CRCs, written to `outPath`; *changes one line per tag.

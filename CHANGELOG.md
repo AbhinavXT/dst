@@ -11,6 +11,52 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-282"></a>
+## Session 282 — Tag Builder: export straight to a shared folder
+
+Abhinav: "send exported file over ethernet to other pc (if possible)". He
+chose a shared folder, for the Tag Builder's exports.
+
+**What the operator sees.** In the Tag Builder's Export menu:
+- **Set shared folder…** picks the folder another PC can read. A network
+  path such as `\\PC2\share` can be typed into the dialog. The folder is
+  remembered in the INI (`tag_builder/shared_folder`).
+- **To shared folder ▸** route.xml, Route for Configuration1.xml, Selected
+  tag as <rfid_data>, and Text files (rfid, sigID, tag_link_info). Each is
+  written straight into that folder under the file name the save dialog
+  would suggest, with no dialog.
+  - The submenu title shows the folder; it reads "(not set)" and is greyed
+    out until one is set.
+  - An existing file of the same name is replaced only after asking.
+  - The status line says what was written, or why nothing was: no folder
+    set, folder can't be reached, no tag selected, or the file was kept.
+
+Sharing the folder itself is set up in Windows. DLConsole only writes into
+it. "Into Configuration1.xml" and "Fix the CRCs" aren't in the submenu,
+because both start from a file the operator opens.
+
+**Files.** `settings.h` (`tagSharedFolder()`), `tagbuilderwindow.{h,cpp}`
+(the submenu, Set shared folder, `exportToShared()`, `sharedFileNames()`);
+new `tests/test_session282.cpp`, `tests/tests.pro`.
+
+**Tests.** `session282` (11 checks) on tags_sim's `DN_MN904_720route.xml`,
+with a temporary folder as the shared one:
+- no folder set, or a folder that can't be reached: nothing is written;
+- route.xml is written there, identical to Export ▸ route.xml;
+- the Configuration1.xml route is written;
+- no tag selected: refused; with tag 873 selected, `873_rfid_data.xml` is
+  written;
+- the three text files are written;
+- an existing file is replaced when not asked.
+
+**Gate:** Qt 6 and Qt 5.15 green, 321 suites / 8146 checks, 0 failed; menu
+audit 184 ok; smoke; validators.
+
+**Not tested:** a real network share (`\\PC\share` on Windows); the
+overwrite question on screen.
+
+---
+
 <a id="session-281"></a>
 ## Session 281 — Tag Builder: export one tag as its <rfid_data> line
 

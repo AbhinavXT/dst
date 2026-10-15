@@ -540,6 +540,12 @@ public:
     { QSettings s(iniPath(), QSettings::IniFormat); return s.value("tag_builder/library_path", programDir() + "/tag_scenarios").toString(); }
     static void setTagLibraryPath(const QString &p)
     { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("tag_builder/library_path", p); }
+    // Session 282: the shared folder (e.g. \\PC2\share) Export ▸ To shared
+    // folder writes into, to hand a file to another PC. Empty = not set.
+    static QString tagSharedFolder()
+    { QSettings s(iniPath(), QSettings::IniFormat); return s.value("tag_builder/shared_folder").toString(); }
+    static void setTagSharedFolder(const QString &p)
+    { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("tag_builder/shared_folder", p); }
     // The route open when the builder last opened one, reopened next time:
     // its file (a library ":/" path or a file on disk) and route index in it.
     static QString tagBuilderLastFile()

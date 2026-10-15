@@ -120,6 +120,36 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     actTag->setToolTip(tr("Just the selected tag, as the one <rfid_data> line route.xml writes for it "
                           "(locations from its place in the route), to paste into a <route_data>"));
     QAction *actText = exportMenu->addAction(tr("Text files (rfid, sigID, tag_link_info)…"));
+    // Session 282: the same exports straight into a shared folder, for
+    // another PC; no save dialog.
+    exportMenu->addSeparator();
+    QMenu *sharedMenu = exportMenu->addMenu(tr("To shared folder"));
+    sharedMenu->setToolTipsVisible(true);
+    const QVector<QPair<QString, SharedExport>> sharedItems {
+        { tr("route.xml"),                        SharedExport::RouteXml },
+        { tr("Route for Configuration1.xml"),     SharedExport::ConfigurationRoute },
+        { tr("Selected tag as <rfid_data>"),      SharedExport::SelectedTag },
+        { tr("Text files (rfid, sigID, tag_link_info)"), SharedExport::TextFiles },
+    };
+    for (const auto &item : sharedItems) {
+        const SharedExport kind = item.second;
+        connect(sharedMenu->addAction(item.first), &QAction::triggered, this, [this, kind]() { exportToShared(kind); });
+    }
+    QAction *actShared = exportMenu->addAction(tr("Set shared folder…"));
+    actShared->setToolTip(tr("A folder another PC can read, e.g. \\\\PC2\\share: To shared folder writes there"));
+    connect(exportMenu, &QMenu::aboutToShow, this, [sharedMenu]() {
+        const QString folder = Settings::tagSharedFolder();
+        sharedMenu->setTitle(folder.isEmpty() ? tr("To shared folder (not set)")
+                                              : tr("To shared folder: %1").arg(QDir::toNativeSeparators(folder)));
+        sharedMenu->setEnabled(!folder.isEmpty());
+    });
+    connect(actShared, &QAction::triggered, this, [this]() {
+        const QString dir = QFileDialog::getExistingDirectory(this, tr("Shared folder for exports (another PC reads it)"),
+                                                              Settings::tagSharedFolder());
+        if (dir.isEmpty()) return;
+        Settings::setTagSharedFolder(dir);
+        m_status->ok(tr("Exports to the shared folder go to %1").arg(QDir::toNativeSeparators(dir)));
+    });
     exportMenu->addSeparator();
     QAction *actFixFile = exportMenu->addAction(tr("Fix the CRCs in a Configuration1.xml or route.xml…"));
     actFixFile->setToolTip(tr("Every tag in the file whose CRC-30 fails gets the CRC its contents give (page_y only, "
@@ -1318,6 +1348,65 @@ bool TagBuilderWindow::exportSelectedTag(const QString &path)
                      .arg(QFileInfo(path).fileName(), RfidTag::nameOf(m_route.tags.at(row).bytes))
                      .arg(row + 1));
     return true;
+}
+
+QStringList TagBuilderWindow::sharedFileNames(SharedExport kind) const
+{
+    const QString name = m_route.name.isEmpty() ? QStringLiteral("route") : m_route.name;
+    switch (kind) {
+    case SharedExport::RouteXml:
+        return { QStringLiteral("route.xml") };
+    case SharedExport::ConfigurationRoute:
+        return { name + QStringLiteral("_configuration_route.xml") };
+    case SharedExport::SelectedTag: {
+        const int row = currentRow();
+        if (row < 0 || row >= m_route.tags.size()) return {};
+        return { RfidTag::nameOf(m_route.tags.at(row).bytes) + QStringLiteral("_rfid_data.xml") };
+    }
+    case SharedExport::TextFiles: {
+        const QString stem = RfidExport::textFiles(m_route).stem;
+        return { stem + QStringLiteral("rfid.txt"), stem + QStringLiteral("sigID.txt"),
+                 stem + QStringLiteral("tag_link_info.txt") };
+    }
+    }
+    return {};
+}
+
+bool TagBuilderWindow::exportToShared(SharedExport kind, bool ask)
+{
+    const QString folder = Settings::tagSharedFolder();
+    if (folder.isEmpty()) {
+        m_status->warn(tr("No shared folder set: Export \u25B8 Set shared folder\u2026"));
+        return false;
+    }
+    const QDir dir(folder);
+    if (!dir.exists()) {
+        m_status->fail(tr("Not exported: the shared folder %1 cannot be reached").arg(QDir::toNativeSeparators(folder)));
+        return false;
+    }
+    const QStringList names = sharedFileNames(kind);
+    if (names.isEmpty()) {
+        m_status->warn(tr("Select the tag to export"));
+        return false;
+    }
+    QStringList existing;
+    for (const QString &n : names)
+        if (QFileInfo::exists(dir.filePath(n))) existing << n;
+    if (!existing.isEmpty() && ask
+        && QMessageBox::question(this, tr("Shared folder"),
+                                 tr("%1 already in %2. Replace?").arg(existing.join(QStringLiteral(", ")),
+                                                                     QDir::toNativeSeparators(folder)))
+               != QMessageBox::Yes) {
+        m_status->warn(tr("Not exported: %1 kept").arg(existing.join(QStringLiteral(", "))));
+        return false;
+    }
+    switch (kind) {
+    case SharedExport::RouteXml:           return exportRouteXml(dir.filePath(names.first()));
+    case SharedExport::ConfigurationRoute: return exportConfigurationRoute(dir.filePath(names.first()));
+    case SharedExport::SelectedTag:        return exportSelectedTag(dir.filePath(names.first()));
+    case SharedExport::TextFiles:          return exportTextFiles(folder);
+    }
+    return false;
 }
 
 bool TagBuilderWindow::exportConfigurationRoute(const QString &path)
