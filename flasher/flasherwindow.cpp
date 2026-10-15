@@ -21,7 +21,6 @@
 #include "uistyle.h"
 #include "windowgeometry.h"
 
-#include <QButtonGroup>
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QDir>
@@ -43,7 +42,6 @@ namespace {
 
 const char kProfilesFileName[] = "flasher_profiles.json";
 const char kHistoryFileName[]  = "flash_history.jsonl";
-const char kModeSettingKey[]   = "flasher/mode";         // "engineer" | "operator"
 
 // Beside dlconsole.ini, unless the caller (a test) says otherwise. Same
 // directory as the rest of the console's state, so one folder backs up all
@@ -83,14 +81,12 @@ FlasherWindow::FlasherWindow(QWidget *parent, const QString &dataDirectory)
                              tr("The flasher profiles could not be read and defaults are in use:\n\n%1")
                                  .arg(m_profiles.lastError()));
     }
-    {
-        QSettings settings(Settings::iniPath(), QSettings::IniFormat);
-        if (settings.value(QLatin1String(kModeSettingKey)).toString() == QLatin1String("operator")) {
-            m_mode = Flasher::Mode::Operator;
-        } else {
-            m_mode = Flasher::Mode::Engineer;
-        }
-    }
+    // Session 280: always Engineer (Abhinav: "remove engineer and operator
+    // from flash window"). The Engineer / Operator toggle is gone; a
+    // flasher/mode saved by an older build is no longer read. Tuning is
+    // editable, and an image whose name does not match its card can be
+    // flashed after a confirmation.
+    m_mode = Flasher::Mode::Engineer;
 
     // ---- layout -------------------------------------------------------------------
     auto *central = new QWidget(this);
@@ -130,11 +126,6 @@ FlasherWindow::FlasherWindow(QWidget *parent, const QString &dataDirectory)
     connect(m_summaryPage, &FlasherSummaryPage::backToQueueRequested, this, [this]() { showPage(QueuePageIndex); });
 
     // ---- initial state -------------------------------------------------------------
-    if (m_mode == Flasher::Mode::Operator) {
-        m_operatorButton->setChecked(true);
-    } else {
-        m_engineerButton->setChecked(true);
-    }
     m_queuePage->setMode(m_mode);
     reloadProfileCombo();
     applyActiveProfile();
@@ -209,29 +200,6 @@ QWidget *FlasherWindow::buildAppBar()
     connect(m_profileCombo, QOverload<int>::of(&QComboBox::activated), this, &FlasherWindow::onProfileChosen);
     barLayout->addWidget(m_profileCombo);
 
-    // Engineer / Operator segmented toggle. Two exclusive checkable buttons,
-    // which is what a segmented control is in Qt terms.
-    m_engineerButton = new QToolButton(m_appBar);
-    m_engineerButton->setText(tr("Engineer"));
-    m_engineerButton->setCheckable(true);
-    m_engineerButton->setToolTip(tr("Engineer: transfer tuning is editable; an image whose name does not\n"
-                                    "match its card can be flashed after a confirmation."));
-    m_operatorButton = new QToolButton(m_appBar);
-    m_operatorButton->setText(tr("Operator"));
-    m_operatorButton->setCheckable(true);
-    m_operatorButton->setToolTip(tr("Operator: tuning is locked, and an image whose name does not match\n"
-                                    "its card, or no adapter on the board's subnet, blocks the flash."));
-    m_modeGroup = new QButtonGroup(this);
-    m_modeGroup->setExclusive(true);
-    m_modeGroup->addButton(m_engineerButton);
-    m_modeGroup->addButton(m_operatorButton);
-    connect(m_engineerButton, &QToolButton::toggled, this, &FlasherWindow::onModeChanged);
-    auto *segment = new QHBoxLayout();
-    segment->setSpacing(0);
-    segment->addWidget(m_engineerButton);
-    segment->addWidget(m_operatorButton);
-    barLayout->addLayout(segment);
-
     barLayout->addStretch(1);
 
     // Shown only while flashing: the caution, and where it is going.
@@ -299,17 +267,6 @@ void FlasherWindow::restyleAppBar()
     if (m_flashing) {
         m_appIcon->setStyleSheet(UiColor::style(UiColor::bannerFg()));
     }
-
-    // Segmented toggle: checked half filled with the accent.
-    const QString segmentSheet = QStringLiteral(
-        "QToolButton { padding:6px 14px; border:1px solid %1; background-color:%2; color:%3; }"
-        "QToolButton:checked { background-color:%4; color:%2; border-color:%4; font-weight:600; }");
-    const QString filled = segmentSheet.arg(rule.name(QColor::HexArgb), pal.color(QPalette::Base).name(),
-                                            pal.color(QPalette::Text).name(), FlasherStyle::primary().name());
-    m_engineerButton->setStyleSheet(filled + QStringLiteral(
-        "QToolButton { border-top-left-radius:6px; border-bottom-left-radius:6px; border-right:none; }"));
-    m_operatorButton->setStyleSheet(filled + QStringLiteral(
-        "QToolButton { border-top-right-radius:6px; border-bottom-right-radius:6px; }"));
 }
 
 void FlasherWindow::refreshAppBarTarget()
@@ -330,33 +287,10 @@ void FlasherWindow::setFlashingState(bool flashing)
     // Nothing that would change what is being flashed can be touched while
     // a batch runs. History stays available: it is read-only.
     m_profileCombo->setEnabled(!flashing);
-    m_engineerButton->setEnabled(!flashing);
-    m_operatorButton->setEnabled(!flashing);
-    // Hidden as well as disabled while flashing (session 134): the mode
-    // cannot change mid-run, and the caution badge needs the room -- with
-    // both in the bar the window could not be narrower than 1350 px.
-    m_engineerButton->setVisible(!flashing);
-    m_operatorButton->setVisible(!flashing);
     m_gearButton->setEnabled(!flashing);
     if (m_profileMenuButton) m_profileMenuButton->setEnabled(!flashing);   // no profile swaps mid-flash
     refreshAppBarTarget();
     restyleAppBar();
-}
-
-void FlasherWindow::onModeChanged()
-{
-    if (m_engineerButton->isChecked()) {
-        m_mode = Flasher::Mode::Engineer;
-    } else {
-        m_mode = Flasher::Mode::Operator;
-    }
-    m_queuePage->setMode(m_mode);
-    QSettings settings(Settings::iniPath(), QSettings::IniFormat);
-    if (m_mode == Flasher::Mode::Operator) {
-        settings.setValue(QLatin1String(kModeSettingKey), QStringLiteral("operator"));
-    } else {
-        settings.setValue(QLatin1String(kModeSettingKey), QStringLiteral("engineer"));
-    }
 }
 
 // =============================================================================

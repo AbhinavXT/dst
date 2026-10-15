@@ -154,12 +154,12 @@ TEST_SUITE(session134)
                                + QByteArray::number(loose.size()) + ": " + loose.join(QLatin1String(", ")).left(120).toUtf8() + ")");
 
     // ---- flashing ---------------------------------------------------------------------------------
-    QToolButton *engineer = buttonNamed(&w, QStringLiteral("Engineer"));
-    CHECK(engineer && engineer->isVisible(), "the mode toggle shows on the queue");
+    // Session 280: no Engineer / Operator toggle any more (always Engineer).
+    CHECK(!buttonNamed(&w, QStringLiteral("Engineer")) && !buttonNamed(&w, QStringLiteral("Operator")),
+          "no mode toggle in the bar");
     CHECK(w.startBatch(false), "a run starts");
     settle(800);
     CHECK(w.isFlashing() && w.currentPage() == FlasherWindow::FlashingPageIndex, "on the flashing page");
-    CHECK(engineer && !engineer->isVisible() && !engineer->isEnabled(), "the mode toggle is hidden (and disabled) mid-run");
     CHECK(w.minimumSizeHint().width() <= 1100 && w.minimumSizeHint().height() <= 700,
           QByteArray("still fits while flashing (minimum ") + QByteArray::number(w.minimumSizeHint().width()) + " x "
               + QByteArray::number(w.minimumSizeHint().height()) + "; was 1350 x 863)");
@@ -179,7 +179,6 @@ TEST_SUITE(session134)
         if (!done) loop.exec();
         CHECK(done && w.currentPage() == FlasherWindow::SummaryPageIndex, "aborted: the run lands on the summary");
     }
-    CHECK(engineer && engineer->isVisible(), "the mode toggle is back");
 
     // ---- the summary says it once -------------------------------------------------------------------
     {

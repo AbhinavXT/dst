@@ -148,7 +148,7 @@ FlasherProfileDialog::FlasherProfileDialog(const Flasher::FlashProfile &profile,
     formLayout->addWidget(m_pinBySha);
 
     // ---- transfer tuning -------------------------------------------------------
-    m_tuningBox = new QGroupBox(tr("Transfer tuning · Engineer only"), form);
+    m_tuningBox = new QGroupBox(tr("Transfer tuning"), form);
     auto *tuningLayout = new QVBoxLayout(m_tuningBox);
     tuningLayout->setSpacing(10);
 

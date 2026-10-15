@@ -11,6 +11,45 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-280"></a>
+## Session 280 — Flash window: no Engineer / Operator toggle, always Engineer
+
+Abhinav: "remove engineer and operator from flash window". He chose:
+always Engineer.
+
+**What the operator sees.** The Engineer / Operator buttons are gone from
+the Kavach Flasher's bar. The flasher always behaves as Engineer did:
+- transfer tuning can be edited;
+- an image whose name doesn't match its card can be flashed after a
+  confirmation;
+- no adapter on the board's subnet is a warning, not a block.
+
+The profile dialog's tuning box is titled "Transfer tuning", no longer
+"· Engineer only".
+
+A `flasher/mode` = `operator` saved by an older build is no longer read.
+Without the buttons it would have left the flasher in Operator mode with no
+way back. The key stays in the settings bundle (patch 165), but nothing
+reads it.
+
+**Files.** `flasher/flasherwindow.{h,cpp}` (the toggle, its styling and
+`onModeChanged()` removed; `mode()` added, for the test),
+`flasher/flasherprofiledialog.cpp`, `tests/test_session134.cpp` (its three
+toggle checks become one "no mode toggle"); new `tests/test_session280.cpp`,
+`tests/tests.pro`.
+
+**Tests.** `session280` (3 checks): with `flasher/mode=operator` in a fresh
+INI, the window is in Engineer mode and has no Engineer / Operator button.
+`session134`, `flasher` and `flasherrun` pass. The screenshot harness
+shows the bar as Kavach Flasher · Profile · History.
+
+**Gate:** Qt 6 and Qt 5.15 green, 319 suites / 8128 checks, 0 failed; menu
+audit 184 ok; smoke; validators.
+
+**Not tested:** a real board.
+
+---
+
 <a id="session-279"></a>
 ## Session 279 — Loco Configuration: changed fields stand out
 

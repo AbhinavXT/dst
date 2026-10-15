@@ -53,7 +53,6 @@ class FlasherFlashingPage;
 class FlasherHistoryDialog;
 class FlasherQueuePage;
 class FlasherSummaryPage;
-class QButtonGroup;
 class QComboBox;
 class QFrame;
 class QLabel;
@@ -81,6 +80,7 @@ public:
     FlasherFlashingPage *flashingPage() const { return m_flashingPage; }
     FlasherSummaryPage  *summaryPage() const { return m_summaryPage; }
     const Flasher::BatchPlan &plan() const { return m_plan; }
+    Flasher::Mode mode() const { return m_mode; }   // session 280: always Engineer
     QString profilesPath() const;
     QString historyPath() const;
 
@@ -117,7 +117,6 @@ private slots:
     void onLogLine(int level, const QString &text);
     void onCardFinished(const kflash::FlashResult &result);
     void onAbortRequested();
-    void onModeChanged();
     void onProfileChosen(int comboIndex);
     void editProfile();
     void exportProfilesDialog();
@@ -162,9 +161,6 @@ private:
     QLabel                 *m_appTitle = nullptr;
     QLabel                 *m_profileLabel = nullptr;
     QComboBox              *m_profileCombo = nullptr;
-    QToolButton            *m_engineerButton = nullptr;
-    QToolButton            *m_operatorButton = nullptr;
-    QButtonGroup           *m_modeGroup = nullptr;
     QLabel                 *m_flashingBadge = nullptr;
     QLabel                 *m_targetLabel = nullptr;
     QToolButton            *m_historyButton = nullptr;
