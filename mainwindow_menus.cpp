@@ -286,7 +286,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     auto *columnsMenu = new StickyMenu(tr("&Columns"), this);
     viewMenu->addMenu(columnsMenu);
     {
-        const QList<int> hiddenCols = Settings::hiddenColumns();
+        const QList<int> hiddenCols = Settings::hiddenColumns(true);
         const QVector<QPair<int, QString>> cols {
             { LogModel::ColTime,      tr("Time") },
             { LogModel::ColSource,    tr("Source") },

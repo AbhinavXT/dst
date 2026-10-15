@@ -11,6 +11,47 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-277"></a>
+## Session 277 — The Time + Message default is for source tabs only; gate from a fresh INI
+
+CI failed patches 275 and 276 on all three platforms. Two checks failed:
+- `session144`: "the Source column fits its header";
+- `session154`: "the Merged window still shows Source".
+
+Patch 275's new "Time and Message" column default applied to every log
+table. The Merged, Session and Compare windows mix sources, and their
+Source column started hidden too.
+
+The local gate stayed green because the unit suite's `dlconsole.ini`
+(`<build>/tests/dlconsole.ini`) is kept from one run to the next. It
+already held `ui/hidden_columns`, so the new default never showed. CI starts
+with no INI.
+
+**What the operator sees.** On a first start, a main-window source tab and
+its pop-out show Time and Message, as patch 275 intended. The Merged,
+Session and Compare windows start with every column again, as before 275.
+Once columns are chosen in View ▸ Columns, that choice applies to every
+log table, as it always has.
+
+**Gate.** `verify.sh` deletes the unit suite's `dlconsole.ini` before each
+run, so local runs start from the same state as CI.
+
+**Files.** `settings.h` (`hiddenColumns(bool sourceTab)`),
+`logtableview.{h,cpp}`, `mainwindow.cpp`, `mainwindow_menus.cpp`,
+`tabpopoutwindow.cpp`, `verify.sh`, `tests/test_session275.cpp` (now checks
+both defaults).
+
+**Gate:** Qt 6 and Qt 5.15 green, from a fresh test INI: 316 suites /
+8106 checks, 0 failed; menu audit 184 ok; smoke; validators.
+
+On the way, an incremental Qt 6 build failed `flasherrun` (14 checks, 17
+minutes of timeouts) twice. The same source rebuilt from clean passed in
+14 s, and so did patch 276. The stale object wasn't identified. If
+`flasherrun` hangs locally again, rebuild from clean before suspecting the
+code.
+
+---
+
 <a id="session-276"></a>
 ## Session 276 — Restored tabs take their names from the names file
 

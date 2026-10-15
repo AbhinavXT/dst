@@ -95,6 +95,9 @@ if [ "$DO_CPP" -eq 1 ] && [ "$core_ok" -eq 1 ]; then
   # ---- 2. unit suite -------------------------------------------------------
   echo "== unit suite"
   if build "$OUT/tests" "$HERE/tests/tests.pro"; then
+    # Session 277: start from no dlconsole.ini, as CI does. One left by the
+    # last run hid patch 275's changed default from the local gate.
+    rm -f "$OUT/tests/dlconsole.ini"
     (cd "$HERE/tests" && QT_QPA_PLATFORM=offscreen "$OUT/tests/dltests" >"$OUT/dltests.log" 2>&1); rc=$?
     tail -1 "$OUT/dltests.log"; grep -B3 '  FAIL' "$OUT/dltests.log" | head -30
     envhint "$OUT/dltests.log"

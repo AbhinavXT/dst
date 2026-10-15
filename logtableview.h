@@ -29,7 +29,9 @@ void applyDensityNow(QTableView *view);
 
 // Show or hide columns per the setting. The Message column is never hidden:
 // a log table with no message in it is not a log table.
-void applyColumnVisibility(QTableView *view);
+// `sourceTab`: a main-window source tab or its pop-out (session 277), which
+// starts from Time + Message rather than every column.
+void applyColumnVisibility(QTableView *view, bool sourceTab = false);
 
 // Stored column widths, where any are stored. Zero or negative widths are
 // ignored — a column collapsed to nothing is almost always an accident, and

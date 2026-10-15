@@ -69,7 +69,7 @@ TabPopoutWindow::TabPopoutWindow(const QString &key, const QString &friendlyName
     // Same density (row height, scaled with the text size), hidden columns
     // and widths as the tabs -- DetachConsoleDialog used a fixed 20 px.
     LogTableView::applyDensity(m_view);
-    LogTableView::applyColumnVisibility(m_view);
+    LogTableView::applyColumnVisibility(m_view, true);
     LogTableView::applyColumnWidths(m_view);
     layout->addWidget(m_view, 1);
     setCentralWidget(central);

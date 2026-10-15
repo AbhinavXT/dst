@@ -27,10 +27,10 @@ void applyDensityNow(QTableView *view)
     view->verticalHeader()->reset();
 }
 
-void applyColumnVisibility(QTableView *view)
+void applyColumnVisibility(QTableView *view, bool sourceTab)
 {
     if (!view) { return; }
-    const QList<int> hidden = Settings::hiddenColumns();
+    const QList<int> hidden = Settings::hiddenColumns(sourceTab);
     for (int c = 0; c < LogModel::ColumnCount; ++c) {
         const bool hide = (c != LogModel::ColMessage) && hidden.contains(c);
         view->setColumnHidden(c, hide);

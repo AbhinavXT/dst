@@ -1791,7 +1791,7 @@ void MainWindow::onActionToggleColumn()
     if (!action) return;
 
     const int col = action->data().toInt();
-    QList<int> hidden = Settings::hiddenColumns();
+    QList<int> hidden = Settings::hiddenColumns(true);
     if (action->isChecked()) hidden.removeAll(col);
     else if (!hidden.contains(col)) hidden.append(col);
 
@@ -1801,7 +1801,7 @@ void MainWindow::onActionToggleColumn()
 
 void MainWindow::applyColumnVisibility(QTableView *view) const
 {
-    LogTableView::applyColumnVisibility(view);
+    LogTableView::applyColumnVisibility(view, true);
 }
 
 void MainWindow::applyColumnVisibilityToAllTabs()

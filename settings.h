@@ -171,12 +171,15 @@ public:
     // the visible set would make every new column invisible for anyone with
     // an existing INI, which is the sort of thing nobody notices for weeks.
     //
-    // Session 275: until the operator picks, only Time and Message (the
-    // data) show: Source, Name, Dir and Sev start hidden.
-    static QList<int> hiddenColumns()
+    // Session 277: until the operator picks, a main-window source tab (and
+    // its pop-out) shows only Time and Message (session 275's "Time and
+    // data"): Source, Name, Dir and Sev start hidden there. Merged, Session
+    // and Compare windows mix sources, so `sourceTab` false keeps their
+    // default of every column.
+    static QList<int> hiddenColumns(bool sourceTab = false)
     {
         QSettings s(iniPath(), QSettings::IniFormat);
-        if (!s.contains("ui/hidden_columns")) return { 1, 2, 3, 4 };
+        if (!s.contains("ui/hidden_columns")) return sourceTab ? QList<int>{ 1, 2, 3, 4 } : QList<int>{};
         QList<int> out;
         for (const QString &v : s.value("ui/hidden_columns").toStringList()) {
             bool ok = false;

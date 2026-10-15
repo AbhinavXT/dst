@@ -27,14 +27,16 @@ TEST_SUITE(session275)
 
     CHECK(Settings::udpPort() == 51234, "the UDP port is 51234");
     CHECK(Settings::theme() == QLatin1String("sage"), "the theme is Sage");
-    const QList<int> hidden = Settings::hiddenColumns();
+    const QList<int> hidden = Settings::hiddenColumns(true);
     CHECK(hidden.size() == 4 && hidden.contains(1) && hidden.contains(2) && hidden.contains(3)
               && hidden.contains(4) && !hidden.contains(0) && !hidden.contains(5),
-          "Source, Name, Dir and Sev hidden: Time and Message shown");
+          "a source tab: Source, Name, Dir and Sev hidden, Time and Message shown");
+    CHECK(Settings::hiddenColumns().isEmpty(),
+          "session 277: Merged / Session / Compare still start with every column (they mix sources)");
 
     // The operator's choice still wins, even "show every column".
     Settings::setHiddenColumns({});
-    CHECK(Settings::hiddenColumns().isEmpty(), "an empty saved list stays empty");
+    CHECK(Settings::hiddenColumns(true).isEmpty(), "an empty saved list stays empty");
     Settings::setUdpPort(50002);
     Settings::setTheme(QStringLiteral("dark"));
     CHECK(Settings::udpPort() == 50002 && Settings::theme() == QLatin1String("dark"),
