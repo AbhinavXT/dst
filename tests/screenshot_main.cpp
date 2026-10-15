@@ -963,7 +963,9 @@ int main(int argc, char **argv)
         MainWindow w;
         w.resize(1440, 900);
         w.show();
-        if (auto *disp = w.findChild<MessageDispatcher *>()) {
+        // SHOT_EMPTY=1 (session 289): no traffic, so the start page shows.
+        auto *disp = qEnvironmentVariableIsSet("SHOT_EMPTY") ? nullptr : w.findChild<MessageDispatcher *>();
+        if (disp) {
             qint64 ms = 1782558147000LL;
             for (int i = 0; i < lines.size(); ++i) {
                 const quint8 src = (i % 5 == 0) ? 81 : 21;

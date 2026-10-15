@@ -375,11 +375,12 @@ void MainWindow::onBindFailed(QString reason)
 
 void MainWindow::updateEmptyState()
 {
-    if (!m_emptyState) return;
+    if (!m_emptyState || !m_startPage) return;
 
-    // Any tab at all means there is something to look at.
-    if (!m_tabs.isEmpty()) {
-        m_emptyState->hide();
+    // Session 289: any tab on show means there is something to look at.
+    // (It was any tab at all, so closing the last one left a blank pane.)
+    if (ui->tabWidget->count() > 0) {
+        m_startPage->hide();
         return;
     }
 
@@ -403,20 +404,23 @@ void MainWindow::updateEmptyState()
                   // paragraph as barely-there grey-on-grey. The disabled
                   // text role is the dim-but-still-readable one.
                   "<p style='color:%3'>Only datagrams addressed to "
-                  "this console (destination&nbsp;id&nbsp;%2) are shown.<br>"
-                  "Recorded sessions can be opened from "
-                  "<b>File&nbsp;→&nbsp;Open recorded session</b>.</p>")
+                  "this console (destination&nbsp;id&nbsp;%2) are shown.</p>")
                    .arg(m_boundPort).arg(kThisConsoleId)
                    .arg(palette().color(QPalette::Disabled, QPalette::Text).name());
     } else {
         html = tr("<h3>Starting…</h3><p>Opening the UDP socket.</p>");
     }
 
+    if (!m_tabs.isEmpty()) {
+        html += tr("<p>%n source(s) closed here and still receiving: "
+                   "<b>Window&nbsp;→&nbsp;Show all tabs</b> brings them back.</p>", "", m_tabs.size());
+    }
     m_emptyState->setText(html);
-    m_emptyState->resize(ui->tabWidget->size());
-    m_emptyState->move(0, 0);
-    m_emptyState->raise();
-    m_emptyState->show();
+    rebuildStartPage();
+    m_startPage->resize(ui->tabWidget->size());
+    m_startPage->move(0, 0);
+    m_startPage->raise();
+    m_startPage->show();
 }
 
 void MainWindow::onStatusTick()

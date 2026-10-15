@@ -75,6 +75,7 @@ SOURCES += \
     $$PWD/profileiodialogs.cpp \
     $$PWD/mainwindow_menus.cpp \
     $$PWD/mainwindow_recent.cpp \
+    $$PWD/mainwindow_start.cpp \
     $$PWD/mainwindow_status.cpp \
     $$PWD/mainwindow_tabs.cpp \
     $$PWD/mainwindow_tools.cpp \

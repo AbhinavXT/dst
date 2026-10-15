@@ -11,6 +11,70 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-289"></a>
+## Session 289 — A start page while no tab is on show
+
+Abhinav chose this from a list of ease-of-life ideas.
+
+**What the operator sees.** While the tab area is empty, it shows a start
+page instead of a single line of text:
+- **The listening state, as before:** listening on UDP port N and nothing
+  yet, not listening and why, or starting. The line pointing at File ▸ Open
+  recorded session is gone, because a button now does it.
+- **Buttons for the ways in:** Open recorded session…, Replay capture
+  (.cap)…, Live Loco Console…, RFID Tag Builder… and Serial Port Terminal….
+  Each is the menu action itself, with the same behaviour, enabled state
+  (Serial is greyed in a build without it) and tooltip with its shortcut.
+- **Recent files** (patch 287's list). One click opens a file; a file gone
+  since reads "missing" and is greyed out. The list is rebuilt each time the
+  page shows.
+- A line saying that dropping a .dlr, .cap or .tagroute.xml on the window
+  opens it.
+- **Closing the last tab now brings the page back.** Before, the
+  placeholder showed only until the first source ever arrived; closing every
+  tab left a blank pane. When sources are still receiving behind closed
+  tabs, the page says how many and points at Window ▸ Show all tabs.
+
+**File ▸ Replay capture (.cap)…** is new: it opens captures in a replay
+window from the main window. Until now that was only in the Loco Console.
+
+**Files.** New `mainwindow_start.cpp` (`buildStartPage()`,
+`rebuildStartPage()`, `onActionReplayCapture()`); `mainwindow.{h,cpp}`,
+`mainwindow_status.cpp` (`updateEmptyState()` shows the page while the tab
+widget is empty), `mainwindow_tabs.cpp` (hide and show tab update it),
+`mainwindow_menus.cpp` (Replay capture, the start actions),
+`mainwindow_recent.cpp`, `dlcore.pri`; `tests/screenshot_main.cpp`
+(`SHOT_EMPTY=1`: no traffic, so the page shows); new
+`tests/test_session289.cpp`, `tests/tests.pro`.
+
+**Tests.** `session289` (15 checks), a real MainWindow on a fresh INI, with
+`replay/loco_1_1_27062026_140226.cap` as the recent file and its lines as
+traffic:
+- the page covers the tab area and shows the listening state;
+- the five buttons are there;
+- recent rows: the capture is enabled and named, a missing file is greyed;
+- clicking the capture opens a replay window, and the list rebuilds behind
+  the click;
+- first traffic hides the page;
+- closing the last tab shows it again, pointing at Show all tabs.
+
+A crash met while writing the suite was in the test's own cleanup, not in
+the app. It deleted replay windows while walking the top-level list, and
+deleting one can take other top-levels with it. The suite now collects them
+first.
+
+Checked on screen with the screenshot harness, light and dark. The first
+shot had all five buttons on one row, their labels cut off in the 640 px
+column, so they now sit three to a row.
+
+**Gate:** Qt 6 and Qt 5.15 green, 326 suites / 8246 checks, 0 failed; menu
+audit 184 ok; smoke; validators.
+
+**Not tested:** a real drag on screen; the page while the UDP bind fails
+(the tests bind fine).
+
+---
+
 <a id="session-288"></a>
 ## Session 288 — The Δt type column: time since the same kind of line
 

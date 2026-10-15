@@ -157,7 +157,7 @@ MainWindow::MainWindow(QWidget *parent)
     m_emptyState->setWordWrap(true);
     m_emptyState->setTextFormat(Qt::RichText);
     m_emptyState->setStyleSheet(UiColor::mutedStyle());
-    m_emptyState->hide();
+    buildStartPage();   // session 289: the label sits in the start page
 
     // Minimised tool windows appear here as named chips, far left of the
     // status bar (minimizeddock.h). Takes no space until one is minimised.
@@ -1903,8 +1903,8 @@ void MainWindow::applyColumnWidths(QTableView *view) const
 void MainWindow::resizeEvent(QResizeEvent *event)
 {
     QMainWindow::resizeEvent(event);
-    if (m_emptyState && m_emptyState->isVisible()) {
-        m_emptyState->resize(ui->tabWidget->size());
+    if (m_startPage && m_startPage->isVisible()) {
+        m_startPage->resize(ui->tabWidget->size());
     }
 }
 

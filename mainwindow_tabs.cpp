@@ -316,6 +316,7 @@ void MainWindow::showTab(TabUi &tab)
     // Refresh m_tabIndex for any tabs that shifted left when this one
     // was removed earlier (though we always re-append at the end so
     // shifts only happen on hide, not show).
+    updateEmptyState();   // session 289: the start page goes
 }
 
 void MainWindow::hideTab(TabUi &tab)
@@ -337,6 +338,7 @@ void MainWindow::hideTab(TabUi &tab)
     for (auto jt = m_tabIndex.begin(); jt != m_tabIndex.end(); ++jt) {
         if (jt.value() > idx) jt.value()--;
     }
+    updateEmptyState();   // session 289: the last tab closed shows the start page
 }
 
 // -----------------------------------------------------------------------

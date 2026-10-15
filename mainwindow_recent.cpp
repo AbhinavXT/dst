@@ -73,6 +73,7 @@ QStringList MainWindow::openFiles(const QStringList &paths)
                   "captures (.cap) and tag routes (.tagroute.xml)").arg(names.join(QStringLiteral(", "))),
                refused.join(QLatin1Char('\n')));
     }
+    if (m_startPage && m_startPage->isVisible()) rebuildStartPage();   // session 289: its recent list
     return refused;
 }
 

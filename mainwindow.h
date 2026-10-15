@@ -99,6 +99,10 @@ public:
     // File ▸ Open Recent, rebuilt from the INI each time it is shown.
     QMenu *recentMenu() const { return m_recentMenu; }
     void rebuildRecentMenu();
+    // Session 289: the start page, over the tab area while no tab exists:
+    // the listening state, buttons for the ways in, and the recent files.
+    QWidget *startPage() const { return m_startPage; }
+    void rebuildStartPage();
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -462,6 +466,11 @@ private:
     quint16 m_boundPort    = 0;
     QString m_bindError;
     void updateEmptyState();
+    QWidget *m_startPage       = nullptr;   // session 289: holds m_emptyState
+    QWidget *m_startButtons    = nullptr;
+    QWidget *m_startRecent     = nullptr;
+    void buildStartPage();
+    void onActionReplayCapture();   // File > Replay capture (.cap)… (session 289)
 
     // Watches live traffic for the conditions a test case asserts. Fed
     // from the same batched signal as everything else.
@@ -549,6 +558,9 @@ private:
     // Menu actions (held so we can toggle their state).
     QAction *m_actSettings    = nullptr;
     QAction *m_actToggleTheme = nullptr;
+    // Session 289: the ways in, as the start page's buttons (the same
+    // actions, so the same enabled state, shortcut and behaviour).
+    QList<QAction *> m_startActions;
     QList<QAction *> m_themeActions;   // View > Theme, one per ThemeUtil::all()
     QMenu   *m_menuWindow     = nullptr;   // populated dynamically with hidden tabs
 

@@ -136,6 +136,13 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     connect(actOpenSession, &QAction::triggered,
             this,           &MainWindow::onActionOpenSession);
 
+    // Session 289: a capture (.cap) into a replay window, from the main
+    // window too (it was only the Loco Console's Open replay).
+    QAction *actReplay = fileMenu->addAction(tr("Re&play capture (.cap)…"));
+    actReplay->setToolTip(tr("Open one or more capture files in a replay window, merged by time"));
+    connect(actReplay, &QAction::triggered, this, &MainWindow::onActionReplayCapture);
+    m_startActions << actOpenSession << actReplay;
+
     // Session 287: the files opened last, of every kind openFiles() takes;
     // rebuilt as it opens, so a file deleted since shows as missing.
     m_recentMenu = fileMenu->addMenu(tr("Open &Recent"));
@@ -456,6 +463,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     actLocoConsole->setShortcut(QKeySequence("Ctrl+Shift+L"));
     connect(actLocoConsole, &QAction::triggered,
             this,           &MainWindow::onActionLocoConsole);
+    m_startActions << actLocoConsole;   // session 289
 
     QAction *actFaultPanel = liveMenu->addAction(tr("Active &Fault Panel…"));
     actFaultPanel->setShortcut(QKeySequence("Ctrl+Shift+F"));
@@ -738,6 +746,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     actTagBuilder->setToolTip(tr("Make and edit RFID tags (page_x / page_y, CRC-30) and tag routes; open and "
                                  "export tags_sim route.xml and Configuration1.xml routes"));
     connect(actTagBuilder, &QAction::triggered, this, &MainWindow::onActionTagBuilder);
+    m_startActions << actTagBuilder;   // session 289
 
     // Session 208: the old Python tool's station file, as DLConsole's own
     // editable layout, with its .xlsx imported and exported.
@@ -762,6 +771,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     // its lines land in a tab like UDP traffic. One window per port.
     QAction *actSerial = toolsMenu->addAction(tr("&Serial Port Terminal…"));
     actSerial->setShortcut(QKeySequence("Ctrl+Alt+S"));
+    m_startActions << actSerial;   // session 289 (greyed there too without serial)
     actSerial->setToolTip(tr("Open a serial port (baud, data bits, parity, stop bits, flow control), "
                              "watch and log it, send text or hex, and feed its lines into the console"));
 #ifdef DL_HAVE_SERIAL
