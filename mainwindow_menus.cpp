@@ -480,9 +480,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     actDmi->setToolTip(tr("The Loco Pilot's Operation-cum-Indication Panel, drawn from @dmi as "
                           "RDSO Annexure-B (Amdt-3) specifies it"));
     connect(actDmi, &QAction::triggered, this, [this]() {
-        auto *w = new DmiWindow(m_dispatcher, this);
-        w->show();
-        w->raise();
+        DmiWindow::openLive(this, m_dispatcher);   // session 278: live, not following
     });
 
     QAction *actRunReport = reportsMenu->addAction(tr("&Run summary report…"));

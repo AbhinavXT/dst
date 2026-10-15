@@ -206,6 +206,12 @@ public:
     // the moment pointed at last.
     static DmiWindow *showFollowing(QWidget *owner, MessageDispatcher *dispatcher);
 
+    // Session 278: Tools ▸ Monitor ▸ Live ▸ DMI. Always opens live: "Follow
+    // cursor" is remembered (dmi/followCursor), and "Show on DMI" turns it on,
+    // so the live menu item kept opening a window that ignored live frames
+    // and stayed blank until a row was picked.
+    static DmiWindow *openLive(QWidget *owner, MessageDispatcher *dispatcher);
+
     // Session 160: two locos side by side. Session 167: up to four panels
     // (1-3 in a row, 4 as a 2x2 grid), each with its own loco picker and,
     // when Fields is open, its own decoded-fields table under it. Panel 0 is

@@ -125,7 +125,7 @@ if [ "$DO_SMOKE" -eq 1 ] && [ "$core_ok" -eq 1 ]; then
   echo "== headless smoke"
   rm -rf "$OUT/DLConsole" "$OUT/DLConsole.app"   # never smoke a stale build
   if build "$OUT/app" "$HERE/app/app.pro"; then
-    port=50002
+    port=51234   # session 278: the default since patch 275 (fresh ini in the bundle)
     # app/app.pro puts the program in the main build folder: $OUT/DLConsole,
     # or $OUT/DLConsole.app on macOS, where the GUI app stays a bundle.
     APPBIN="$OUT/DLConsole"

@@ -884,7 +884,14 @@ DmiWindow::DmiWindow(MessageDispatcher *dispatcher, QWidget *parent)
 
     if (m_dispatcher) {
         connect(m_dispatcher, &MessageDispatcher::entryAppended, this, [this](const QString &key, const LogEntryPtr &e) {
-            if (!e.isNull() && e->text.startsWith(QLatin1String("@dmi_"))) observeLine(key, e->text);
+            // Session 278: trimmed, as CaptureDecoder::parseLine reads it. A
+            // payload starting with CR/LF reaches the entry as leading
+            // spaces (the dispatcher flattens line breaks), and an exact
+            // "@dmi_" test dropped every such frame while the other live
+            // views, which parse, showed them.
+            if (e.isNull()) return;
+            const QString line = e->text.trimmed();
+            if (line.startsWith(QLatin1String("@dmi_"))) observeLine(key, line);
         });
     }
     connect(DmiTimeTravel::instance(), &DmiTimeTravel::momentChanged, this, [this](const DmiMoment &m) {
@@ -1003,6 +1010,15 @@ void DmiWindow::setPanelSource(int i, const QString &key)
 QString DmiWindow::panelStatus(int i) const
 {
     return i >= 0 && i < m_panels.size() ? m_panels[i].status->text() : QString();
+}
+
+DmiWindow *DmiWindow::openLive(QWidget *owner, MessageDispatcher *dispatcher)
+{
+    auto *w = new DmiWindow(dispatcher, owner);
+    w->setFollowCursor(false);
+    w->show();
+    w->raise();
+    return w;
 }
 
 DmiWindow *DmiWindow::showFollowing(QWidget *owner, MessageDispatcher *dispatcher)

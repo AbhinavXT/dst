@@ -11,6 +11,54 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-278"></a>
+## Session 278 — Live DMI window: blank in two ways, both fixed
+
+Abhinav: "live dmi not showing anything". He narrowed it to the DMI
+window, on live UDP. His setup wasn't available here. Two ways the window
+stays blank were found in the code, and both are fixed:
+
+1. **Follow cursor is remembered** (`dmi/followCursor`). Right-click ▸
+   *Show on DMI* turns it on. From then on, every window opened from
+   Tools ▸ Monitor ▸ Live ▸ DMI started out following the cursor. In that
+   mode live frames are ignored, and the panel shows "Pick a row in any tab"
+   until a row is picked. The live menu item now always opens the window
+   live (`DmiWindow::openLive`). Show on DMI still follows, and the checkbox
+   still switches modes.
+2. **A payload that starts with a line break.** The dispatcher turns CR/LF
+   into spaces, so such a frame's text starts with spaces. The DMI window
+   needed "@dmi_" at the very start of the text and dropped the frame. The
+   Loco Console and the decoders parse the line trimmed, so they still
+   showed it. The DMI window now trims too.
+
+**Smoke.** The headless smoke still sent its datagrams to port 50002, but
+since patch 275 the app listens on 51234. The smoke only checks that the
+app stays up, so it kept passing without receiving anything. It sends to
+51234 again.
+
+**Files.** `dmipanel.{h,cpp}`, `mainwindow_menus.cpp`, `verify.sh`; new
+`tests/test_session278.cpp`, `tests/tests.pro`.
+
+**Tests.** `session278` (9 checks) on real `@dmi` frames from
+`replay/loco_1_1_29062026_134509.cap`, fed through the dispatcher as live
+traffic:
+- a frame whose payload starts with CR/LF is drawn, on loco 1_1;
+- after Show on DMI has saved "following", the live menu window still draws
+  the live frame.
+
+With either fix taken out, its checks fail. The window shows "No @dmi
+received yet" or "Following the cursor".
+
+**Gate:** Qt 6 and Qt 5.15 green, 317 suites / 8115 checks, 0 failed; menu
+audit 184 ok; smoke (now on the right port); validators.
+
+**Not tested:** Abhinav's own setup. If the window is still blank there,
+the next things to check are:
+- whether `@dmi` lines reach the main tab for that loco at all;
+- the status line under the panel, which says why it is empty.
+
+---
+
 <a id="session-277"></a>
 ## Session 277 — The Time + Message default is for source tabs only; gate from a fresh INI
 
