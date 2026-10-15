@@ -21,6 +21,7 @@
 // =============================================================================
 #include <QAbstractTableModel>
 #include <QSet>
+#include <QFont>
 #include <QSortFilterProxyModel>
 
 #include "lococonfigcore.h"
@@ -51,6 +52,10 @@ public:
     // Session 158: the locked fields (keys).
     void setLocked(const QStringList &keys);
     bool isLocked(const QString &key) const { return m_locked.contains(key); }
+    // Session 279: the table's font. A field changed from its default is
+    // drawn in a bold of THIS font (a bare QFont() was the app's
+    // proportional font, so the "bold" value looked merely different).
+    void setBaseFont(const QFont &font);
 
     int rowCount(const QModelIndex &parent = QModelIndex()) const override;
     int columnCount(const QModelIndex &parent = QModelIndex()) const override;
@@ -75,6 +80,7 @@ private:
     LocoInfo::Values  m_defaults;
     LocoInfo::Values  m_lastSent;
     QSet<QString>     m_locked;
+    QFont             m_baseFont;
 };
 
 // Group + search filter over the model.

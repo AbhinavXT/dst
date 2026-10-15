@@ -341,6 +341,7 @@ QWidget *LocoConfigWindow::buildBody()
     m_table->setColumnWidth(LocoFieldModel::ColumnLastSent, 140);
     m_table->setColumnWidth(LocoFieldModel::ColumnType, 110);
     m_table->setFont(UiStyle::monoFont());
+    m_model->setBaseFont(m_table->font());   // session 279: changed fields bold in this font
     m_table->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_table, &QTableView::customContextMenuRequested, this, [this](const QPoint &position) {
         const QModelIndex index = m_table->indexAt(position);

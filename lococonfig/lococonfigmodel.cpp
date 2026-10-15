@@ -22,6 +22,14 @@ LocoFieldModel::LocoFieldModel(const LocoInfo::Layout *layout,
     }
 }
 
+void LocoFieldModel::setBaseFont(const QFont &font)
+{
+    m_baseFont = font;
+    if (!m_rows.isEmpty()) {
+        emit dataChanged(index(0, 0), index(m_rows.size() - 1, ColumnCount - 1), { Qt::FontRole });
+    }
+}
+
 void LocoFieldModel::setConfig(const LocoInfo::Values &values, const LocoInfo::Values &defaults,
                                const LocoInfo::Values &lastSent)
 {
@@ -175,13 +183,19 @@ QVariant LocoFieldModel::data(const QModelIndex &index, int role) const
         return UiIcons::icon(QStringLiteral("lock"), FlasherStyle::muted(), 14);
     }
 
-    if (role == Qt::FontRole && column == ColumnValue && changedFromDefault) {
-        QFont font;
-        font.setBold(true);
+    // Session 279: changed from the default reads at a glance: the field and
+    // its value bold (in the table's own font), the value in the accent.
+    if (role == Qt::FontRole && changedFromDefault
+        && (column == ColumnField || column == ColumnValue)) {
+        QFont font = m_baseFont;
+        font.setWeight(QFont::Bold);
         return font;
     }
 
     if (role == Qt::ForegroundRole) {
+        if (column == ColumnValue && changedFromDefault) {
+            return FlasherStyle::primary();
+        }
         if (column == ColumnField && changedSinceSent) {
             return FlasherStyle::primary();
         }

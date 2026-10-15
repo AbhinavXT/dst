@@ -11,6 +11,46 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-279"></a>
+## Session 279 — Loco Configuration: changed fields stand out
+
+Abhinav: "make change fields more bold to show them", meaning the fields
+changed from the defaults in the configuration.
+
+**What was there.** A value changed from its default was already marked
+bold, but in a bare `QFont()`. That is the app's proportional font, inside
+a table drawn in the monospaced font. So the value looked different more
+than it looked bold, and the field's name wasn't marked at all.
+
+**What the operator sees.** For a field changed from its default:
+- both the **field name** and the **value** are bold, in the table's own
+  monospaced font;
+- the value is in the accent colour.
+
+Unchanged fields and the Default, Last sent and Type columns are plain, as
+before. The "●" mark for a field changed since the last send is unchanged.
+
+**Files.** `lococonfig/lococonfigmodel.{h,cpp}` (`setBaseFont()`, the font
+and colour roles), `lococonfig/lococonfigwindow.cpp`,
+`tests/screenshot_main.cpp` (the lococonfig shot changes one field); new
+`tests/test_session279.cpp`, `tests/tests.pro`.
+
+**Tests.** `session279` (12 checks) changes `loco_unit_id`:
+- its Field and Value cells are bold in the table's own font family;
+- the value is in the accent colour;
+- the Default column and an unchanged field (`loco_wheel_dia1`) carry no
+  font.
+
+The screenshot harness (Sage and dark) shows `loco_unit_id` bold with
+30421 in the accent.
+
+**Gate:** Qt 6 and Qt 5.15 green, 318 suites / 8127 checks, 0 failed; menu
+audit 184 ok; smoke; validators.
+
+**Not tested:** Windows' monospaced font (Consolas) bold on screen.
+
+---
+
 <a id="session-278"></a>
 ## Session 278 — Live DMI window: blank in two ways, both fixed
 

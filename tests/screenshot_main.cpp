@@ -71,6 +71,7 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "flasherqueuepage.h"
 #include "flashercore.h"
 #include "layoutaudit.h"
+#include "lococonfigmodel.h"
 #include "lococonfigwindow.h"
 #include "replaywindow.h"
 #include "decodeworkbench.h"
@@ -581,6 +582,10 @@ int main(int argc, char **argv)
             if (which == QLatin1String("lococonfig")) {
                 auto *w = new LocoConfigWindow(nullptr, flashDir.path());
                 w->setAttribute(Qt::WA_DeleteOnClose, false);
+                // Session 279: one field off its default, to see it stand out.
+                if (LocoFieldModel *m = w->fieldModel())
+                    m->setData(m->index(m->rowForKey(QStringLiteral("loco_unit_id")), LocoFieldModel::ColumnValue),
+                               QStringLiteral("30421"), Qt::EditRole);
                 win = w;
             }
             if (which == QLatin1String("replay")) {
