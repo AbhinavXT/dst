@@ -116,6 +116,9 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     QAction *actRouteOnly = exportMenu->addAction(tr("Route for Configuration1.xml…"));
     actRouteOnly->setToolTip(tr("Just the route and its REV route, as the two <route_data> blocks a "
                                 "Configuration1.xml holds: no other file needed, to paste inside its <route>"));
+    QAction *actTag = exportMenu->addAction(tr("Selected tag as <rfid_data>…"));
+    actTag->setToolTip(tr("Just the selected tag, as the one <rfid_data> line route.xml writes for it "
+                          "(locations from its place in the route), to paste into a <route_data>"));
     QAction *actText = exportMenu->addAction(tr("Text files (rfid, sigID, tag_link_info)…"));
     exportMenu->addSeparator();
     QAction *actFixFile = exportMenu->addAction(tr("Fix the CRCs in a Configuration1.xml or route.xml…"));
@@ -557,6 +560,17 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
         const QString path = QFileDialog::getSaveFileName(this, tr("Export the route for Configuration1.xml"),
                                                           name + QStringLiteral("_configuration_route.xml"), tr("XML (*.xml)"));
         if (!path.isEmpty()) exportConfigurationRoute(path);
+    });
+    connect(actTag, &QAction::triggered, this, [this]() {
+        const int row = currentRow();
+        if (row < 0 || row >= m_route.tags.size()) {
+            m_status->warn(tr("Select the tag to export"));
+            return;
+        }
+        const QString name = RfidTag::nameOf(m_route.tags.at(row).bytes);
+        const QString path = QFileDialog::getSaveFileName(this, tr("Export one tag as <rfid_data>"),
+                                                          name + QStringLiteral("_rfid_data.xml"), tr("XML (*.xml)"));
+        if (!path.isEmpty()) exportSelectedTag(path);
     });
     connect(actConfig, &QAction::triggered, this, [this]() {
         const QString in = QFileDialog::getOpenFileName(this, tr("The Configuration1.xml to put the route into"),
@@ -1288,6 +1302,21 @@ bool TagBuilderWindow::exportRouteXml(const QString &path)
     }
     m_status->ok(tr("Exported %1: the route and its REV route, %2 tags each")
                      .arg(QFileInfo(path).fileName()).arg(m_route.tags.size()));
+    return true;
+}
+
+bool TagBuilderWindow::exportSelectedTag(const QString &path)
+{
+    QString err;
+    const int row = currentRow();
+    const QByteArray xml = RfidExport::tagRow(m_route, row, &err);
+    if (xml.isEmpty() || !RfidTag::writeFile(path, xml, &err)) {
+        m_status->fail(tr("Not exported: %1").arg(err));
+        return false;
+    }
+    m_status->ok(tr("Exported %1: tag %2 (row %3) as its route.xml <rfid_data> line")
+                     .arg(QFileInfo(path).fileName(), RfidTag::nameOf(m_route.tags.at(row).bytes))
+                     .arg(row + 1));
     return true;
 }
 

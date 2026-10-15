@@ -96,6 +96,8 @@ public:
     // `folder`.
     bool exportIntoConfiguration(const QString &configPath, const QString &outPath);
     bool exportTextFiles(const QString &folder);
+    // Session 281: the selected tag as its route.xml <rfid_data> line.
+    bool exportSelectedTag(const QString &path);
     // Session 199. The route's failing CRCs; the number of tags fixed (-1 none to fix).
     int fixRouteCrcs();
     // A whole file's failing CRCs, written to `outPath`; *changes one line per tag.

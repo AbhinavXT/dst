@@ -229,6 +229,44 @@ QByteArray configurationRoute(const RfidTag::Route &r, QString *err)
     return bytes;
 }
 
+QByteArray tagRow(const RfidTag::Route &r, int index, QString *err)
+{
+    if (index < 0 || index >= r.tags.size()) {
+        if (err) *err = QStringLiteral("select a tag in the route first");
+        return {};
+    }
+    QString e;
+    const QByteArray xml = RfidTag::toRouteXml(r, &e);
+    if (xml.isEmpty()) {
+        if (err) *err = e;
+        return {};
+    }
+    // The first <route_data> is the route in its own direction, one row per tag.
+    const QString text = QString::fromUtf8(xml);
+    const int blockEnd = text.indexOf(QLatin1String("</route_data>"));
+    static const QRegularExpression rowRe(QStringLiteral("<rfid_data\\b[^>]*/>"));
+    QRegularExpressionMatchIterator it = rowRe.globalMatch(text);
+    QString line;
+    for (int n = 0; it.hasNext(); ++n) {
+        const QRegularExpressionMatch m = it.next();
+        if (blockEnd >= 0 && m.capturedStart() > blockEnd) break;
+        if (n == index) { line = m.captured(); break; }
+    }
+    if (line.isEmpty()) {
+        if (err) *err = QStringLiteral("tag %1 not found in the route.xml text").arg(index + 1);
+        return {};
+    }
+    const QByteArray bytes = line.toUtf8() + '\n';
+    const QVector<RfidTag::Route> back = RfidTag::readXml(
+        "<route><route_data route_name=\"x\" dir=\"1\">\n" + bytes + "</route_data></route>\n", &e);
+    if (back.size() != 1 || back.first().tags.size() != 1
+        || back.first().tags.first().bytes != r.tags.at(index).bytes) {
+        if (err) *err = QStringLiteral("the tag did not read back as written (%1); not exported").arg(e);
+        return {};
+    }
+    return bytes;
+}
+
 QByteArray fixCrcs(const QByteArray &config, QStringList *changes, QString *err)
 {
     QString text = QString::fromUtf8(config);

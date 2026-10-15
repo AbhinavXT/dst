@@ -55,6 +55,16 @@ QByteArray mergeIntoConfiguration(const QByteArray &config, const RfidTag::Route
 // a <route> before it is returned; empty and *err set when refused.
 QByteArray configurationRoute(const RfidTag::Route &route, QString *err = nullptr);
 
+// Session 281: one tag of the route, `index` in its rows, as the single
+// <rfid_data .../> line route.xml writes for it in the route's own direction
+// (rfid_id, tag_name, tag_type, abs_loc, next_rfid_abs_loc, track_id,
+// page_x, page_y: the locations from its place in the route), unindented,
+// to paste into a <route_data> by hand. Taken from toRouteXml()'s own text,
+// so it is the same line route.xml holds; read back inside a <route_data>
+// and refused unless it gives this tag's 16 bytes. Refused while the
+// route's direction is unset, as route.xml is.
+QByteArray tagRow(const RfidTag::Route &route, int index, QString *err = nullptr);
+
 // Session 199: every <rfid_data> in `config` (a Configuration1.xml or a
 // route.xml) whose CRC-30 fails gets the CRC its contents give: page_y
 // rewritten in that element only (page_x and every data bit kept), the

@@ -11,6 +11,51 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-281"></a>
+## Session 281 — Tag Builder: export one tag as its <rfid_data> line
+
+Abhinav: "single tag export in tag builder". He chose the tag's
+`<rfid_data>` XML line.
+
+**What the operator sees.** Select a tag in the route, then use **Export ▸
+Selected tag as <rfid_data>…**. The save dialog suggests
+`<tag>_rfid_data.xml`. The file holds the one `<rfid_data .../>` line that
+route.xml writes for that tag, in the route's own direction:
+- `rfid_id`, `tag_name`, `tag_type`, `track_id`, `page_x` and `page_y`;
+- `abs_loc` and `next_rfid_abs_loc` from the tag's place in the route,
+  adjustment-tag numbering included.
+
+It is meant to be pasted into a `<route_data>` by hand. It's refused, with
+the reason on the status line, when:
+- no tag is selected;
+- the route's direction is unset, as route.xml export is refused.
+
+**How.** `RfidExport::tagRow()` takes the line from `toRouteXml()`'s own
+text, so it can't drift from the full route.xml. It reads the line back
+inside a `<route_data>` and refuses to write it unless it gives the tag's
+16 bytes.
+
+**Files.** `rfidexport.{h,cpp}` (`tagRow()`), `tagbuilderwindow.{h,cpp}`
+(the menu item, `exportSelectedTag()`); new `tests/test_session281.cpp`,
+`tests/tests.pro`.
+
+**Tests.** `session281` (7 checks) on
+`tests/fixtures/tags_sim/DN_MN904_720route.xml`, a route.xml tags_sim
+wrote:
+- every tag's exported line matches the line tags_sim wrote for it,
+  character for character, duplicates included;
+- no selection is refused, and so is an unset direction;
+- the window writes the selected tag (873) and refuses with nothing
+  selected.
+
+**Gate:** Qt 6 and Qt 5.15 green, 320 suites / 8135 checks, 0 failed; menu
+audit 184 ok; smoke; validators.
+
+**Not tested:** the menu item clicked on screen. The test calls
+`exportSelectedTag()` directly.
+
+---
+
 <a id="session-280"></a>
 ## Session 280 — Flash window: no Engineer / Operator toggle, always Engineer
 
