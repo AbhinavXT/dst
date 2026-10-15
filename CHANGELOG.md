@@ -11,6 +11,58 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-290"></a>
+## Session 290 — Help ▸ Keyboard Shortcuts (F1)
+
+Abhinav chose this from a list of ease-of-life ideas.
+
+**What the operator sees.** **Help ▸ Keyboard Shortcuts…**, on **F1**,
+opens a table of every shortcut in the main window: 46 at this patch.
+- **Columns:** the keys (bold, in the platform's own notation: Ctrl+Shift+L
+  on Windows and Linux, ⇧⌘L on the Mac), the command, and its place in the
+  menus (Edit › Bookmarks › Toggle bookmark).
+- **Order:** rows follow the menus. A shortcut that sits on the window but
+  in no menu is listed as "(window)".
+- **Disabled actions** are greyed, not left out, with the tooltip "Not
+  available right now". What a key will do is worth knowing before it can
+  be pressed.
+- **The search box** matches keys, command and menu. Typing `ctrl+shift`
+  works on the Mac too, even though the keys show as ⌘/⇧ there.
+- A note says other windows (Tag Builder, Loco Console, …) have their own
+  shortcuts, and that Help › Run command… finds any command by name.
+
+The table is built from the real menus each time it opens, as the command
+palette is, so it can't fall behind them. Shortcut clashes were already
+covered: the menu audit fails on any key bound twice (session 31's
+Ctrl+Shift+R).
+
+**Files.** New `shortcutsdialog.{h,cpp}` (`harvestShortcuts()`,
+`ShortcutsDialog`); `mainwindow_menus.cpp` (Help ▸ Keyboard Shortcuts, F1),
+`dlcore.pri`; `tests/screenshot_main.cpp` (`SHOT_WINDOW=shortcuts`); new
+`tests/test_session290.cpp`, `tests/tests.pro`.
+
+**Tests.** `session290` (16 checks):
+- On a menu bar built in the test: menu order, `&` stripped, the menu
+  path, a submenu followed, a disabled action listed as disabled, a key-less
+  action left out, a window-only shortcut listed as "(window)", and an action
+  on both menu and window listed once. The dialog greys the disabled row,
+  and the search finds rows by menu, by native keys and by portable
+  `ctrl+o`; no match shows nothing, and clearing shows all.
+- On the real MainWindow: F1 is on Help ▸ Keyboard Shortcuts, and the sheet
+  holds every shortcut in the menus (counted independently: 46) with keys
+  on every row.
+
+Checked on screen with the screenshot harness (light theme).
+
+**Gate:** Qt 6 and Qt 5.15 green, 327 suites / 8262 checks, 0 failed; menu
+audit 184 ok; smoke; validators.
+
+**Not tested:** F1 pressed on screen (the dialog is modal; the test checks
+the binding and the content); shortcuts of the other windows, which this
+sheet doesn't list.
+
+---
+
 <a id="session-289"></a>
 ## Session 289 — A start page while no tab is on show
 

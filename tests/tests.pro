@@ -210,6 +210,7 @@ SOURCES += \
     test_session287.cpp \
     test_session288.cpp \
     test_session289.cpp \
+    test_session290.cpp \
     test_session213.cpp \
     test_session214.cpp \
     test_session215.cpp \

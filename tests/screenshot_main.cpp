@@ -17,6 +17,8 @@
 #include <QMainWindow>
 #include <QLayout>
 #include "mainwindow.h"
+#include "shortcutsdialog.h"
+#include <memory>
 #include "messagedispatcher.h"
 #ifdef DL_HAVE_SERIAL
 #include "serialconsolewindow.h"
@@ -176,6 +178,12 @@ int main(int argc, char **argv)
                         if (b->text() == QLatin1String("Big numbers") && !b->isChecked()) b->click();
             }
             if (which == QLatin1String("packet")) win = new PacketMakerDialog(nullptr);
+            // Session 290: Help > Keyboard Shortcuts, from a real main window's menus.
+            std::unique_ptr<MainWindow> shortcutsOwner;
+            if (which == QLatin1String("shortcuts")) {
+                shortcutsOwner.reset(new MainWindow);
+                win = new ShortcutsDialog(harvestShortcuts(shortcutsOwner->menuBar(), shortcutsOwner.get()), nullptr);
+            }
             if (which == QLatin1String("compare")) {
                 // Two locos' worth of real traffic, so both panes have a tab.
                 qint64 ms = 1782558147000LL;

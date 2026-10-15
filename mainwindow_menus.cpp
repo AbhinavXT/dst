@@ -111,6 +111,7 @@
 #include "sessionkeydialog.h"
 #include "sessionkeystore.h"
 #include "nmslog.h"
+#include "shortcutsdialog.h"
 
 // tshark -i any -f "udp port 50002" -T fields -e data
 
@@ -834,6 +835,14 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     actPalette->setShortcut(QKeySequence("Ctrl+P"));
     connect(actPalette, &QAction::triggered,
             this,       &MainWindow::onActionCommandPalette);
+    // Session 290: every shortcut, from the real menus (shortcutsdialog.h).
+    QAction *actShortcuts = helpMenu->addAction(tr("&Keyboard Shortcuts…"));
+    actShortcuts->setObjectName(QStringLiteral("actKeyboardShortcuts"));
+    actShortcuts->setShortcut(QKeySequence(Qt::Key_F1));
+    connect(actShortcuts, &QAction::triggered, this, [this]() {
+        ShortcutsDialog d(harvestShortcuts(menuBar(), this), this);
+        d.exec();
+    });
     QAction *actAbout = helpMenu->addAction(tr("&About DLConsole"));
     connect(actAbout, &QAction::triggered, this, &MainWindow::onActionAbout);
 

@@ -174,6 +174,7 @@ SOURCES += \
     $$PWD/savedata.cpp \
     $$PWD/statusline.cpp \
     $$PWD/recentfiles.cpp \
+    $$PWD/shortcutsdialog.cpp \
     $$PWD/uicolors.cpp \
     $$PWD/programdir.cpp \
     $$PWD/configfiles.cpp \
@@ -344,6 +345,7 @@ HEADERS += \
     $$PWD/savedata.h \
     $$PWD/statusline.h \
     $$PWD/recentfiles.h \
+    $$PWD/shortcutsdialog.h \
     $$PWD/sendguard.h \
     $$PWD/uicolors.h \
     $$PWD/programdir.h \
