@@ -120,6 +120,11 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     actTag->setToolTip(tr("Just the selected tag, as the one <rfid_data> line route.xml writes for it "
                           "(locations from its place in the route), to paste into a <route_data>"));
     QAction *actText = exportMenu->addAction(tr("Text files (rfid, sigID, tag_link_info)…"));
+    // Session 286: all of the above at once, in a folder named after the route.
+    QAction *actAll = exportMenu->addAction(tr("Everything, in a route folder…"));
+    actAll->setToolTip(tr("A folder named after the route holding the .tagroute.xml, route.xml, the "
+                          "Configuration1.xml route, the three text files and a README.txt: what the route is, "
+                          "its CRCs and checks, and what was written"));
     // Session 282: the same exports straight into a shared folder, for
     // another PC; no save dialog.
     exportMenu->addSeparator();
@@ -130,6 +135,7 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
         { tr("Route for Configuration1.xml"),     SharedExport::ConfigurationRoute },
         { tr("Selected tag as <rfid_data>"),      SharedExport::SelectedTag },
         { tr("Text files (rfid, sigID, tag_link_info)"), SharedExport::TextFiles },
+        { tr("Everything, in a route folder"),    SharedExport::Everything },
     };
     for (const auto &item : sharedItems) {
         const SharedExport kind = item.second;
@@ -672,6 +678,10 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
                         QMessageBox::Ok, this);
         box.setDetailedText(changes.join(QLatin1Char('\n')));
         box.exec();
+    });
+    connect(actAll, &QAction::triggered, this, [this]() {
+        const QString dir = QFileDialog::getExistingDirectory(this, tr("Where to make the %1 folder").arg(bundleFolderName()));
+        if (!dir.isEmpty()) exportEverything(dir);
     });
     connect(actText, &QAction::triggered, this, [this]() {
         const QString dir = QFileDialog::getExistingDirectory(this, tr("Folder for the text files"));
@@ -1368,8 +1378,143 @@ QStringList TagBuilderWindow::sharedFileNames(SharedExport kind) const
         return { stem + QStringLiteral("rfid.txt"), stem + QStringLiteral("sigID.txt"),
                  stem + QStringLiteral("tag_link_info.txt") };
     }
+    case SharedExport::Everything:
+        return { bundleFolderName() };
     }
     return {};
+}
+
+QString TagBuilderWindow::bundleFolderName() const
+{
+    // The route's name, less what Windows forbids in a file name.
+    QString name = m_route.name.trimmed();
+    static const QString kForbidden = QStringLiteral("<>:\"/\\|?*");
+    for (QChar &c : name)
+        if (kForbidden.contains(c) || c.unicode() < 32) c = QLatin1Char('_');
+    while (name.endsWith(QLatin1Char('.')) || name.endsWith(QLatin1Char(' '))) name.chop(1);
+    return name.isEmpty() ? QStringLiteral("route") : name;
+}
+
+QString TagBuilderWindow::bundleReadme(const QStringList &written, const QStringList &skipped, const QDateTime &when) const
+{
+    QStringList out;
+    const QString dir = m_route.dir == RfidTag::DirNominal   ? QStringLiteral("Nominal (dir 1, DN)")
+                        : m_route.dir == RfidTag::DirReverse ? QStringLiteral("Reverse (dir 2, UP)")
+                                                             : QStringLiteral("not set");
+    out << QStringLiteral("Route %1, from the DLConsole RFID Tag Builder").arg(m_route.name.isEmpty() ? QStringLiteral("(no name)") : m_route.name)
+        << QStringLiteral("Written %1").arg(when.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")))
+        << QString()
+        << QStringLiteral("Direction: %1").arg(dir)
+        << QStringLiteral("Tags:      %1").arg(m_route.tags.size())
+        << QStringLiteral("Signals:   %1").arg(m_route.signalList.size());
+    if (!m_route.tags.isEmpty()) {
+        out << QStringLiteral("First tag: %1   Last tag: %2")
+                   .arg(RfidTag::nameOf(m_route.tags.first().bytes), RfidTag::nameOf(m_route.tags.last().bytes));
+    }
+    QStringList badCrc;
+    for (int i = 0; i < m_route.tags.size(); ++i)
+        if (!RfidTag::summary(m_route.tags.at(i).bytes).crcOk)
+            badCrc << QStringLiteral("  row %1, tag %2").arg(i + 1).arg(RfidTag::nameOf(m_route.tags.at(i).bytes));
+    out << QString();
+    if (badCrc.isEmpty()) {
+        out << QStringLiteral("CRC-30: every tag's CRC matches its contents.");
+    } else {
+        out << QStringLiteral("CRC-30: %1 tag(s) fail their CRC; a loco would not process them:").arg(badCrc.size());
+        out << badCrc;
+    }
+    QStringList attention;
+    for (const RfidCheck::Finding &f : RfidCheck::check(m_route)) {
+        if (f.level != RfidCheck::Level::Attention) continue;
+        attention << (f.row < 0 ? QStringLiteral("  route: %1").arg(f.text)
+                                : QStringLiteral("  row %1, tag %2: %3").arg(f.row + 1).arg(f.tag, f.text));
+    }
+    out << QString();
+    if (attention.isEmpty()) {
+        out << QStringLiteral("Checks: nothing marked for attention.");
+    } else {
+        out << QStringLiteral("Checks marked for attention (%1):").arg(attention.size());
+        out << attention;
+    }
+    out << QString() << QStringLiteral("Files:");
+    for (const QString &f : written) out << QStringLiteral("  ") + f;
+    if (!skipped.isEmpty()) {
+        out << QString() << QStringLiteral("Not written:");
+        for (const QString &f : skipped) out << QStringLiteral("  ") + f;
+    }
+    return out.join(QLatin1Char('\n')) + QLatin1Char('\n');
+}
+
+bool TagBuilderWindow::exportEverything(const QString &parentFolder, bool ask)
+{
+    if (m_route.tags.isEmpty()) {
+        m_status->warn(tr("The route has no tags"));
+        return false;
+    }
+    const QString folderName = bundleFolderName();
+    QDir parent(parentFolder);
+    if (!parent.exists()) {
+        m_status->fail(tr("Not exported: %1 cannot be reached").arg(QDir::toNativeSeparators(parentFolder)));
+        return false;
+    }
+    const QString folder = parent.filePath(folderName);
+    const QDir dir(folder);
+    if (dir.exists() && !dir.entryList(QDir::Files).isEmpty() && ask
+        && QMessageBox::question(this, tr("Export everything"),
+                                 tr("%1 already has files. Replace the route's files in it?")
+                                     .arg(QDir::toNativeSeparators(folder)))
+               != QMessageBox::Yes) {
+        m_status->warn(tr("Not exported: %1 kept as it was").arg(QDir::toNativeSeparators(folder)));
+        return false;
+    }
+    if (!parent.mkpath(folderName)) {
+        m_status->fail(tr("Not exported: cannot make %1").arg(QDir::toNativeSeparators(folder)));
+        return false;
+    }
+
+    QStringList written, skipped;
+    QString err;
+    auto put = [&](const QString &name, const QByteArray &data, const QString &why) {
+        if (data.isEmpty()) {
+            skipped << QStringLiteral("%1: %2").arg(name, why);
+            return true;
+        }
+        if (!RfidTag::writeFile(dir.filePath(name), data, &err)) return false;
+        written << name;
+        return true;
+    };
+    QString routeErr, configErr;
+    const QByteArray routeXml = RfidTag::toRouteXml(m_route, &routeErr);
+    const QByteArray configXml = RfidExport::configurationRoute(m_route, &configErr);
+    bool ok = put(folderName + QStringLiteral(".tagroute.xml"), RfidTag::toTagRouteXml(m_route), QString())
+              && put(QStringLiteral("route.xml"), routeXml, routeErr)
+              && put(folderName + QStringLiteral("_configuration_route.xml"), configXml, configErr);
+    const RfidExport::TextFiles t = RfidExport::textFiles(m_route);
+    const QVector<QPair<QString, QStringList>> texts{ { QStringLiteral("rfid.txt"), t.rfid },
+                                                      { QStringLiteral("sigID.txt"), t.sigId },
+                                                      { QStringLiteral("tag_link_info.txt"), t.tagLinkInfo } };
+    for (const auto &f : texts) {
+        if (!ok) break;
+        QByteArray data;
+        for (const QString &line : f.second) data += line.toUtf8() + '\n';
+        ok = put(t.stem + f.first, data, tr("nothing to write"));
+    }
+    if (ok) {
+        const QByteArray readme = bundleReadme(written + QStringList{ QStringLiteral("README.txt") }, skipped,
+                                               QDateTime::currentDateTime()).toUtf8();
+        ok = put(QStringLiteral("README.txt"), readme, QString());
+    }
+    if (!ok) {
+        m_status->fail(tr("Not exported: %1").arg(err));
+        return false;
+    }
+    const QString where = QDir::toNativeSeparators(folder);
+    if (skipped.isEmpty()) {
+        m_status->ok(tr("Exported %1 files to %2").arg(written.size()).arg(where));
+    } else {
+        m_status->warn(tr("Exported %1 files to %2; not written: %3")
+                           .arg(written.size()).arg(where, skipped.join(QStringLiteral("; "))));
+    }
+    return true;
 }
 
 bool TagBuilderWindow::exportToShared(SharedExport kind, bool ask)
@@ -1405,6 +1550,7 @@ bool TagBuilderWindow::exportToShared(SharedExport kind, bool ask)
     case SharedExport::ConfigurationRoute: return exportConfigurationRoute(dir.filePath(names.first()));
     case SharedExport::SelectedTag:        return exportSelectedTag(dir.filePath(names.first()));
     case SharedExport::TextFiles:          return exportTextFiles(folder);
+    case SharedExport::Everything:         return exportEverything(folder, false);   // asked above
     }
     return false;
 }

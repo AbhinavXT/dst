@@ -62,6 +62,7 @@ class QFormLayout;
 class QLabel;
 class QLineEdit;
 class QCheckBox;
+class QDateTime;
 class QDoubleSpinBox;
 class QPushButton;
 class QTableWidget;
@@ -103,10 +104,22 @@ public:
     // Export ▸ Set shared folder…), to hand it to another PC. Refused, on
     // the status line, when the folder is not set or cannot be reached; an
     // existing file is overwritten only after asking (`ask` false: the tests).
-    enum class SharedExport { RouteXml, ConfigurationRoute, SelectedTag, TextFiles };
+    enum class SharedExport { RouteXml, ConfigurationRoute, SelectedTag, TextFiles, Everything };
     bool exportToShared(SharedExport kind, bool ask = true);
-    // The file name(s) `kind` gets there.
+    // The file name(s) `kind` gets there (Everything: its folder's name).
     QStringList sharedFileNames(SharedExport kind) const;
+    // Session 286: Export ▸ Everything, in a route folder. A folder named
+    // after the route (bundleFolderName) made in `parentFolder`, holding the
+    // .tagroute.xml, route.xml, the Configuration1.xml route, the three text
+    // files and a README.txt saying what the route is and what was written.
+    // A file that cannot be made (route.xml with no direction) is left out
+    // and the README and status line say why. An existing folder's files
+    // are replaced only after asking (`ask` false: the tests).
+    bool exportEverything(const QString &parentFolder, bool ask = true);
+    QString bundleFolderName() const;
+    // The README.txt exportEverything writes, for `written` and `skipped`
+    // ("route.xml: why"). `when` is the time it names.
+    QString bundleReadme(const QStringList &written, const QStringList &skipped, const QDateTime &when) const;
     // Session 199. The route's failing CRCs; the number of tags fixed (-1 none to fix).
     int fixRouteCrcs();
     // A whole file's failing CRCs, written to `outPath`; *changes one line per tag.

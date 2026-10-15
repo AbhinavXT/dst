@@ -11,6 +11,52 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-286"></a>
+## Session 286 — Tag Builder: export everything, in a route folder
+
+This was already in the working tree, without tests; Abhinav asked for it to be
+finished first.
+
+**What the operator sees.** The Tag Builder's Export menu has **Everything,
+in a route folder…**, and To shared folder ▸ has **Everything, in a route
+folder**. Both make a folder named after the route, with characters Windows
+forbids replaced by `_` (just `route` when the route has no name). The
+folder holds:
+- `<route>.tagroute.xml`, `route.xml` and `<route>_configuration_route.xml`;
+- the three text files (rfid, sigID, tag_link_info);
+- `README.txt`, which gives the route's direction, number of tags and
+  signals, first and last tag, the CRC-30 result (each failing tag by row),
+  the checks marked for attention, and which files were written.
+
+A file that can't be made is left out, and both the README and the status
+line say why. For example, route.xml can't be made while the route has no
+direction. If the folder already has files, they're replaced only after
+asking.
+
+**Files.** `tagbuilderwindow.{h,cpp}` (`exportEverything()`,
+`bundleFolderName()`, `bundleReadme()`, `SharedExport::Everything`); new
+`tests/test_session286.cpp`, `tests/tests.pro`.
+
+**Tests.** `session286` (26 checks) on the tracked
+`tag_scenarios/Hafizpet/DN_MN904_720route.xml`:
+- folder naming: forbidden characters, a trailing dot or space, an empty name;
+- a parent folder that can't be reached is refused;
+- seven files are written, and route.xml, .tagroute.xml and the text files are
+  byte-identical to their own exports;
+- the README gives the direction, tag count, CRC result and file list;
+- a route with no direction leaves route.xml out, warns and says why in the
+  README;
+- an existing folder is replaced when not asked;
+- To shared folder ▸ Everything works;
+- a route with no tags is refused.
+
+**Gate:** Qt 6 and Qt 5.15 green, 323 suites / 8178 checks, 0 failed; menu
+audit 184 ok; smoke; validators.
+
+**Not tested:** the overwrite question and the folder dialog on screen.
+
+---
+
 <a id="session-285"></a>
 ## Session 285 — The DMI is always in Annexure-B colours
 
