@@ -110,6 +110,7 @@
 #include "dlrplayerdialog.h"
 #include "sessionkeydialog.h"
 #include "sessionkeystore.h"
+#include "recentfiles.h"
 
 // tshark -i any -f "udp port 50002" -T fields -e data
 
@@ -118,6 +119,7 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    setAcceptDrops(true);   // session 287: drop a .dlr / .cap / .tagroute.xml to open it
     // Session 95: the live frame-number watch, owned here (was a singleton).
     m_frameWatch = new FrameNumberWatch(this);
     m_tabTags    = new TabTags(this);           // session 96 (was a singleton)
@@ -2841,7 +2843,11 @@ void MainWindow::onActionOpenSession()
             .arg(QLatin1String(SessionFile::kExtension)));
 
     if (paths.isEmpty()) return;
+    openSessionFiles(paths);
+}
 
+qint64 MainWindow::openSessionFiles(const QStringList &paths)
+{
     // Parented to us so the borrowed ColorRules / NameMap outlive it, and
     // WA_DeleteOnClose handles the rest.
     auto *win = new SessionWindow(&m_colorRules, &m_nameMap, m_theme, this);
@@ -2858,12 +2864,14 @@ void MainWindow::onActionOpenSession()
         win->show();
         notify(NoteLevel::Error, tr("No records could be read from the "
                                     "selected file(s)."));
-        return;
+        return 0;
     }
 
     win->show();
+    RecentFiles::addAll(paths);   // session 287
     notify(NoteLevel::Info, tr("Loaded %1 records from %2 session file(s)")
                                .arg(n).arg(paths.size()));
+    return n;
 }
 
 void MainWindow::refreshFieldIndex()

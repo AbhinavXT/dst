@@ -74,6 +74,7 @@ SOURCES += \
     $$PWD/mainwindow.cpp \
     $$PWD/profileiodialogs.cpp \
     $$PWD/mainwindow_menus.cpp \
+    $$PWD/mainwindow_recent.cpp \
     $$PWD/mainwindow_status.cpp \
     $$PWD/mainwindow_tabs.cpp \
     $$PWD/mainwindow_tools.cpp \
@@ -171,6 +172,7 @@ SOURCES += \
     $$PWD/framenumberwatch.cpp \
     $$PWD/savedata.cpp \
     $$PWD/statusline.cpp \
+    $$PWD/recentfiles.cpp \
     $$PWD/uicolors.cpp \
     $$PWD/programdir.cpp \
     $$PWD/configfiles.cpp \
@@ -340,6 +342,7 @@ HEADERS += \
     $$PWD/framenumberwatch.h \
     $$PWD/savedata.h \
     $$PWD/statusline.h \
+    $$PWD/recentfiles.h \
     $$PWD/sendguard.h \
     $$PWD/uicolors.h \
     $$PWD/programdir.h \

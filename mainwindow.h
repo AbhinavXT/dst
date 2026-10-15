@@ -71,6 +71,8 @@ class QTreeWidgetItem;
 class QLineEdit;
 class QLabel;
 class QMenu;
+class QDragEnterEvent;
+class QDropEvent;
 class FrameNumberWatch;
 class TabTags;
 class SessionKeyStore;
@@ -88,6 +90,16 @@ public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+    // Session 287: open files where they belong, by kind (recentfiles.h):
+    // .dlr in one session viewer, .cap in one replay window, each
+    // .tagroute.xml in a Tag Builder. Each opened file goes on File ▸ Open
+    // Recent. Returns the paths not opened (unknown kind, or missing); the
+    // status bar names them.
+    QStringList openFiles(const QStringList &paths);
+    // File ▸ Open Recent, rebuilt from the INI each time it is shown.
+    QMenu *recentMenu() const { return m_recentMenu; }
+    void rebuildRecentMenu();
+
 protected:
     void closeEvent(QCloseEvent *event) override;
     // Dragging a tab out of the tab bar pops it out (see popOutTab).
@@ -95,6 +107,9 @@ protected:
     // The empty-state label is a manually placed child of the tab widget,
     // so nothing lays it out automatically.
     void resizeEvent(QResizeEvent *event) override;
+    // Session 287: files dropped on the window open by kind (openFiles).
+    void dragEnterEvent(QDragEnterEvent *event) override;
+    void dropEvent(QDropEvent *event) override;
 
 private slots:
     // Dispatcher signals.
@@ -127,6 +142,8 @@ private slots:
     void onActionGotoTimestamp(); // Ctrl+G — jump to a time in current tab
     void onActionExport();        // File → Export current tab…
     void onActionOpenSession();   // File → Open recorded session…
+    // The .dlr files in one session viewer; the records read (0: none).
+    qint64 openSessionFiles(const QStringList &paths);
     void onActionSearchAll();     // Edit → Search all sources… (Ctrl+Shift+A)
     void onActionSearchArchive(); // Edit → Search recorded sessions…
     // Open one .dlr in a session viewer.
@@ -391,6 +408,7 @@ private:
     // place, and two windows would save over each other.
     QPointer<LocoConfigWindow>  m_locoConfig;
     MinimizedDock              *m_windowDock = nullptr;   // chips for minimised tool windows
+    QMenu                      *m_recentMenu = nullptr;   // File ▸ Open Recent (session 287)
     class StatusPins           *m_statusPins = nullptr;   // live values pinned from the Loco Console
 
     // ---- pop-out windows (live copies of tabs) --------------------------------

@@ -11,6 +11,63 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-287"></a>
+## Session 287 — File ▸ Open Recent, and dropping files on the window
+
+Abhinav chose this from a list of ease-of-life ideas.
+
+**What the operator sees.**
+- **File ▸ Open Recent** lists the last ten files opened, newest first,
+  numbered `&1`…`&0` so the keyboard reaches them. It covers three kinds:
+  recorded sessions (`.dlr`), captures replayed from the Loco Console
+  (`.cap`) and Tag Builder routes (`.tagroute.xml`).
+  - A file deleted or moved since reads "(missing)" and is greyed out.
+  - The tooltip gives the kind and the full path.
+  - **Clear list** empties it.
+- **Dropping files** on the main window opens them by kind:
+  - `.dlr` files open in one session viewer;
+  - `.cap` files open in one replay window, merged by time, as the Loco
+    Console's Open replay does;
+  - each `.tagroute.xml` opens in a Tag Builder.
+
+  A drag holding none of these is refused before it lands. Any other file
+  in a drop is named on the notification bar, not opened.
+- Opening a file the usual way also puts it on the list: File ▸ Open recorded
+  session, the Loco Console's replay, and a route opened in the Tag Builder.
+
+Choices made: a route.xml or Configuration1.xml isn't on the list and isn't
+opened when dropped, because any `.xml` could as well be `kavach.xml`. The
+Tag Builder's built-in library routes (`:/`) aren't listed either. The list
+lives in the INI (`recent/files`). On Windows, paths are compared without
+regard to case.
+
+**Files.** New `recentfiles.{h,cpp}` and `mainwindow_recent.cpp`
+(`openFiles()`, `rebuildRecentMenu()`, drag and drop); `mainwindow.{h,cpp}`
+(`openSessionFiles()` split out of Open recorded session; drops accepted);
+`mainwindow_menus.cpp`, `lococonsolewindow.cpp`, `tagbuilderwindow.cpp`,
+`dlcore.pri`; new `tests/test_session287.cpp`, `tests/tests.pro`.
+
+**Tests.** `session287` (29 checks), using the real
+`replay/loco_1_1_27062026_140226.cap`, a `.dlr` of 50 of its lines and
+`tag_scenarios/3.40.tagroute.xml`:
+- kinds by extension;
+- the list's order, duplicates and limit of ten;
+- an unknown or missing file isn't opened or listed;
+- each kind opens its window (replay window, session viewer, Tag Builder);
+- the menu: "(none yet)", a missing file greyed, numbering, choosing a row
+  opens it, Clear list;
+- a drag of only a `.txt` is refused, and a drop of a route plus a `.txt`
+  opens the route alone.
+
+**Gate:** Qt 6 and Qt 5.15 green, 324 suites / 8207 checks, 0 failed; menu
+audit 184 ok; smoke; validators.
+
+**Not tested:** the menu and a real drag from Explorer or Finder on screen
+(the screenshot harness doesn't shoot menus); Windows' case-insensitive
+path comparison (the Mac is case-sensitive here).
+
+---
+
 <a id="session-286"></a>
 ## Session 286 — Tag Builder: export everything, in a route folder
 

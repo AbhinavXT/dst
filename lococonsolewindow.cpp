@@ -40,6 +40,7 @@
 #include "livefields.h"
 #include "statuspins.h"
 #include "settings.h"
+#include "recentfiles.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -1330,6 +1331,7 @@ void LocoConsoleWindow::onOpenReplay()
         this, tr("Open capture(s) for replay \u2014 select several to compare sources"),
         replayDirPath(), tr("Capture files (*.cap);;All files (*)"));
     if (paths.isEmpty()) { return; }
+    RecentFiles::addAll(paths);   // session 287: File ▸ Open Recent
     ReplayWindow *w = new ReplayWindow(paths, nullptr);
     w->setAttribute(Qt::WA_DeleteOnClose);
     w->show();

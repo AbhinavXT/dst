@@ -13,6 +13,7 @@
 #include "undolog.h"
 #include "uicolors.h"
 #include "windowgeometry.h"
+#include "recentfiles.h"
 
 #include <QCheckBox>
 #include <QCloseEvent>
@@ -1301,6 +1302,10 @@ bool TagBuilderWindow::loadFile(const QString &path, int routeIndex)
     }
     setRoute(routes.at(pick));
     Settings::setTagBuilderLast(path, pick);
+    // Session 287: a route file on disk goes on File ▸ Open Recent (not the
+    // built-in library's ":/" copies, nor a route.xml: see recentfiles.h).
+    if (!path.startsWith(QLatin1String(":/")) && RecentFiles::kindOf(path) == RecentFiles::Kind::TagRoute)
+        RecentFiles::add(path);
     int bad = 0;
     for (const RfidTag::Tag &t : m_route.tags) bad += RfidTag::summary(t.bytes).crcOk ? 0 : 1;
     QString msg = tr("Opened %1 from %2: %3 tags, %4 signals")

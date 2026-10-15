@@ -136,6 +136,13 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     connect(actOpenSession, &QAction::triggered,
             this,           &MainWindow::onActionOpenSession);
 
+    // Session 287: the files opened last, of every kind openFiles() takes;
+    // rebuilt as it opens, so a file deleted since shows as missing.
+    m_recentMenu = fileMenu->addMenu(tr("Open &Recent"));
+    m_recentMenu->setObjectName(QStringLiteral("recentMenu"));
+    connect(m_recentMenu, &QMenu::aboutToShow, this, &MainWindow::rebuildRecentMenu);
+    rebuildRecentMenu();
+
     // Replaying an archive as if it were arriving now sits with the other
     // ways of opening a session rather than in Tools: what is being chosen
     // is a source of traffic, not an operation on traffic already here.
