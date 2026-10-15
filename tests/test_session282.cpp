@@ -31,7 +31,7 @@ TEST_SUITE(session282)
     qputenv("DLCONSOLE_PACKAGE", exe.toLocal8Bit());
 
     const QVector<RfidTag::Route> routes =
-        RfidTag::readFile(QStringLiteral(DL_SRC_DIR "/tests/fixtures/tags_sim/DN_MN904_720route.xml"));
+        RfidTag::readFile(QStringLiteral(DL_SRC_DIR "/tag_scenarios/Hafizpet/DN_MN904_720route.xml"));
     CHECK(!routes.isEmpty(), "fixture: tags_sim's route");
     if (routes.isEmpty()) return;
 

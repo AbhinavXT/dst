@@ -11,6 +11,31 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-284"></a>
+## Session 284 — CI: sessions 281 and 282 read the route from the library
+
+CI failed on patches 281 and 282 (Linux, Qt 6 and Windows alike):
+`session281` and `session282` read `tests/fixtures/tags_sim/DN_MN904_720route.xml`.
+That folder is git-ignored on purpose (session 195: real KAV_CONFIG routes
+kept local), so on CI the route was missing and the suites failed on their
+first check.
+
+The same file, byte for byte, is tracked as the built-in library route
+`tag_scenarios/Hafizpet/DN_MN904_720route.xml`. Both suites now read that
+copy, so they still run on the real route and CI runs them too.
+
+**What the operator sees.** Nothing; tests only.
+
+**Files.** `tests/test_session281.cpp`, `tests/test_session282.cpp`.
+
+**Tests.** `session281` (7) and `session282` (11) pass with
+`tests/fixtures/tags_sim/` moved away, on Qt 6 and Qt 5.15.
+
+**Gate:** Qt 6 and Qt 5.15 green, 322 suites / 8156 checks, 0 failed; menu
+audit; smoke; validators.
+
+---
+
 <a id="session-283"></a>
 ## Session 283 — A closed dialog gives focus back to the window that opened it
 

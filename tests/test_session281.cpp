@@ -10,12 +10,12 @@
 // =============================================================================
 //  Session 281 — Tag Builder: export one tag. Abhinav: "single tag export in
 //  tag builder"; he chose the tag's <rfid_data> line. Real route:
-//  tests/fixtures/tags_sim/DN_MN904_720route.xml, a route.xml tags_sim wrote:
+//  tag_scenarios/Hafizpet/DN_MN904_720route.xml, a route.xml tags_sim wrote:
 //  each exported line must be the very line tags_sim wrote for that tag.
 // =============================================================================
 
 namespace {
-QString fx(const QString &name) { return QStringLiteral(DL_SRC_DIR "/tests/fixtures/tags_sim/") + name; }
+QString fx(const QString &name) { return QStringLiteral(DL_SRC_DIR "/tag_scenarios/Hafizpet/") + name; }
 
 // tags_sim's own <rfid_data .../> lines of the file's first <route_data>, trimmed.
 QStringList ownLines(const QString &path)
