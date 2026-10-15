@@ -11,6 +11,74 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-288"></a>
+## Session 288 — The Δt type column: time since the same kind of line
+
+Abhinav chose "Δt column, but different for each type": the gap is measured
+from the previous line **of the same kind**, so a missing periodic packet
+stands out even while other traffic keeps flowing.
+
+**What the operator sees.** **View ▸ Columns ▸ Δt type (since the same
+kind)** adds a column just before Message, in every log table: the main
+tabs, pop-outs, the session viewer, the merged view and Compare.
+- Each row shows the time since the previous line with the same capture
+  tag (`@dmi_1_1`, `@dop1_1_1`, …), for example `1.000 s`, or `1 min 15 s`
+  for a minute or more.
+- Lines that aren't capture lines count as one kind of their own.
+- The first line of each kind is blank; its tooltip says it is the first.
+- **▲**, in the warning colour, marks a gap more than twice that kind's
+  usual gap (the median of its last 8) **and** more than 1 s longer than it.
+  The tooltip gives the usual gap and says lines of this kind may be missing
+  before this one.
+- The column is off by default and remembered in the INI
+  (`ui/show_type_gap`).
+
+In the real `loco_1_1_27062026_140226.cap`, the ▲ falls where it should. At
+14:06:20, 14:13:14 and 14:21:45, every periodic kind (`@dmi`, `@dop1/2`,
+`@nms*`, `@linfo`) had been silent for 12–16 s together. Event-driven kinds
+(`@arp`, `@rfid`, `@aap`) are irregular by nature, so they collect ▲ too.
+
+**Choices made.**
+- The 1 s margin exists because `.cap` lines carry whole-second timestamps.
+  A kind sent several times a second has a usual gap of 0 there, and
+  without the margin every second's tick read as late (86 false marks in
+  600 real lines).
+- An entry shown in two tables (a pop-out, the merged view) keeps the gap
+  its first table measured.
+- Clearing a tab starts each kind afresh.
+- Column widths saved before this patch (six columns) still apply.
+
+**Files.** `logentry.h` (the gap cached on the entry), `logmodel.{h,cpp}`
+(`ColTypeGap`, before `ColMessage`, which is now 6), `logtableview.cpp`,
+`settings.h` (`showTypeGap()`), `mainwindow_menus.cpp`, `mainwindow.cpp`,
+`tests/screenshot_main.cpp` (column by name); `tests/test_comparetools.cpp`
+and `tests/menuaudit_main.cpp` (both pinned the old five columns); new
+`tests/test_session288.cpp`, `tests/tests.pro`.
+
+**Tests.** `session288` (24 checks) on 600 real lines of
+`replay/loco_1_1_27062026_140226.cap`, with times from their own
+timestamps, and 20,000 lines for the real gap:
+- every gap is checked against a count kept independently in the test;
+- the first line of each kind is blank;
+- the steady stream has no ▲;
+- the real 16 s gap at 14:06:20 is ▲ 16.000 s;
+- with eight seconds of one kind taken out, the next line of that kind is
+  ▲, in the warning colour, with its tooltip, and no other line is;
+- plain lines, the same millisecond, a minute or more;
+- a shared entry keeps its gap, and Clear starts afresh;
+- the column is hidden by default and shown when turned on, and old saved
+  widths still apply.
+
+Checked on screen with the screenshot harness (main window, light theme).
+
+**Gate:** Qt 6 and Qt 5.15 green, 325 suites / 8231 checks, 0 failed; menu
+audit 184 ok; smoke; validators.
+
+**Not tested:** the dark theme on screen; a live UDP stream (the tests use
+capture lines).
+
+---
+
 <a id="session-287"></a>
 ## Session 287 — File ▸ Open Recent, and dropping files on the window
 

@@ -32,7 +32,8 @@ void applyColumnVisibility(QTableView *view, bool sourceTab)
     if (!view) { return; }
     const QList<int> hidden = Settings::hiddenColumns(sourceTab);
     for (int c = 0; c < LogModel::ColumnCount; ++c) {
-        const bool hide = (c != LogModel::ColMessage) && hidden.contains(c);
+        const bool hide = c == LogModel::ColTypeGap ? !Settings::showTypeGap()
+                                                    : (c != LogModel::ColMessage) && hidden.contains(c);
         view->setColumnHidden(c, hide);
     }
 }
@@ -40,7 +41,10 @@ void applyColumnVisibility(QTableView *view, bool sourceTab)
 void applyColumnWidths(QTableView *view)
 {
     if (!view) { return; }
-    const QList<int> widths = Settings::logColumnWidths();
+    QList<int> widths = Settings::logColumnWidths();
+    // Session 288: widths saved before the Δt type column (one fewer) keep
+    // their columns; Δt type takes its default.
+    if (widths.size() == LogModel::ColumnCount - 1) { widths.insert(LogModel::ColTypeGap, 0); }
     if (widths.size() != LogModel::ColumnCount) { return; }
     for (int c = 0; c < LogModel::ColumnCount; ++c) {
         // Not Message (session 152): it is the stretched last column, and a
@@ -77,6 +81,7 @@ void applyDefaultColumnWidths(QTableView *view)
     fit(LogModel::ColFriendly,  cell.horizontalAdvance(QStringLiteral("Fault_L1V1W")), 16);
     fit(LogModel::ColDirection, cell.horizontalAdvance(QStringLiteral("OUT")), 16);
     fit(LogModel::ColSeverity,  cell.horizontalAdvance(QStringLiteral("\u25B2 WARN")), 16);
+    fit(LogModel::ColTypeGap,   cell.horizontalAdvance(QStringLiteral("\u25B2 88.888 s")), 16);
 }
 
 void configure(QTableView *view)

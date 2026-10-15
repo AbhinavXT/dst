@@ -299,7 +299,7 @@ int main(int argc, char **argv) {
     if (cols) {
         int n = 0;
         for (QAction *a : cols->actions()) if (a->isCheckable()) ++n;
-        CHECK(n == 5, "five column toggles");
+        CHECK(n == 6, "six column toggles (session 288: Δt type)");
         // Toggling must change state and NOT be a one-shot.
         QAction *src = findAction(cols, "Source");
         if (src) {

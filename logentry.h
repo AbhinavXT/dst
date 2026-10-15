@@ -129,6 +129,17 @@ struct LogEntry
     static constexpr qint64 kLocoIdUnread = -2;
     mutable qint64 sourceLocoId = kLocoIdUnread;
 
+    // Session 288: ms since the previous line of the same capture tag
+    // ("@dmi_1_1"; every line that is not a capture line counts as one
+    // kind), set by the first LogModel the entry goes into. kGapUnread
+    // until then, kGapFirst for the first of its kind. typeGapLate: more
+    // than twice that kind's usual gap (see LogModel::ColTypeGap).
+    static constexpr qint64 kGapUnread = -2;
+    static constexpr qint64 kGapFirst  = -1;
+    mutable qint64 typeGapMs   = kGapUnread;
+    mutable qint64 typeGapUsualMs = 0;   // the median it was compared with; 0 = too few yet
+    mutable bool   typeGapLate = false;
+
     void cacheDerived(bool utc = false)
     {
         cachedTabKey = QString("%1_%2")

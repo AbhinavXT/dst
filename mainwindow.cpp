@@ -1793,6 +1793,11 @@ void MainWindow::onActionToggleColumn()
     if (!action) return;
 
     const int col = action->data().toInt();
+    if (col == LogModel::ColTypeGap) {   // session 288: its own on/off setting
+        Settings::setShowTypeGap(action->isChecked());
+        applyColumnVisibilityToAllTabs();
+        return;
+    }
     QList<int> hidden = Settings::hiddenColumns(true);
     if (action->isChecked()) hidden.removeAll(col);
     else if (!hidden.contains(col)) hidden.append(col);

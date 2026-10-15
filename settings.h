@@ -176,6 +176,13 @@ public:
     // data"): Source, Name, Dir and Sev start hidden there. Merged, Session
     // and Compare windows mix sources, so `sourceTab` false keeps their
     // default of every column.
+    // Session 288: the Δt type column (LogModel::ColTypeGap), off unless
+    // turned on. Kept apart from hidden_columns, which lists what is OFF:
+    // an INI written before the column existed would show it.
+    static bool showTypeGap()
+    { QSettings s(iniPath(), QSettings::IniFormat); return s.value("ui/show_type_gap", false).toBool(); }
+    static void setShowTypeGap(bool on)
+    { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("ui/show_type_gap", on); }
     static QList<int> hiddenColumns(bool sourceTab = false)
     {
         QSettings s(iniPath(), QSettings::IniFormat);

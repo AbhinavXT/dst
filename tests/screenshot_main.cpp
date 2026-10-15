@@ -982,7 +982,7 @@ int main(int argc, char **argv)
         for (QTableView *view : w.findChildren<QTableView *>()) {
             if (!view->isVisible() || !view->model() || view->model()->rowCount() < 10) continue;
             for (int r = 0; r < view->model()->rowCount(); ++r) {
-                if (view->model()->index(r, 5).data().toString().startsWith(QLatin1String("@lsrp"))) {
+                if (view->model()->index(r, LogModel::ColMessage).data().toString().startsWith(QLatin1String("@lsrp"))) {
                     view->setCurrentIndex(view->model()->index(r, 0));
                     view->selectRow(r);
                     break;

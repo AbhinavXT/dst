@@ -14,7 +14,9 @@
 //      2  Friendly  (looked up from NameMap; falls back to raw)
 //      3  Direction ("IN" / "OUT" / "")
 //      4  Severity  (icon-only column; foreground/background drawn from data)
-//      5  Message   (the text payload, plain)
+//      5  Δt type   (session 288: time since the previous line of the same
+//                    capture tag, e.g. the last @dmi_1_1; hidden by default)
+//      6  Message   (the text payload, plain)
 //
 //  Coloring is delivered through Qt::ForegroundRole and Qt::BackgroundRole
 //  on the message column. The delegate doesn't need to parse HTML; it just
@@ -31,6 +33,7 @@
 // =============================================================================
 
 #include <QAbstractTableModel>
+#include <QHash>
 #include <QSet>
 #include <QDateTime>
 #include <QString>
@@ -63,7 +66,8 @@ public:
         ColFriendly  = 2,
         ColDirection = 3,
         ColSeverity  = 4,
-        ColMessage   = 5,
+        ColTypeGap   = 5,   // session 288; before Message, which stretches last
+        ColMessage   = 6,
         ColumnCount
     };
 
@@ -172,6 +176,12 @@ private:
     QSet<const LogEntry *> m_findHits;
     qint64 m_newestMs = 0;
     bool  m_showUtc = false;
+
+    // Session 288: per capture tag, the last line's time and its recent
+    // gaps, for ColTypeGap. Cleared with the rows.
+    struct TypeGapState { bool seen = false; qint64 lastMs = 0; QVector<qint64> recent; };
+    QHash<QString, TypeGapState> m_typeGaps;
+    void noteTypeGap(const LogEntry &e);
 
     // Helpers for data().
     QString formatTime    (qint64 epochMs)  const;

@@ -6,6 +6,61 @@
 #include <QColor>
 #include <QDateTime>
 
+#include <algorithm>
+
+namespace {
+// The capture tag a line starts with ("@dmi_1_1 2026-…" -> "@dmi_1_1"): the
+// kind ColTypeGap measures within. Any other line is the one kind "".
+QString typeGapKey(const QString &text)
+{
+    if (!text.startsWith(QLatin1Char('@'))) return QString();
+    int end = 1;
+    while (end < text.size() && !text.at(end).isSpace()) ++end;
+    return text.left(end);
+}
+
+constexpr int    kGapHistory   = 8;     // gaps the "usual" is the median of
+constexpr int    kGapMinSeen   = 3;     // fewer than this: no usual yet
+// And late by MORE than this: jitter on a 10 ms kind is not "late", nor is
+// a capture's whole-second timestamps ticking over (.cap lines carry
+// seconds: a kind sent several times a second has a usual gap of 0 there).
+constexpr qint64 kGapLateSlack = 1000;
+
+QString formatGap(qint64 ms)
+{
+    if (ms < 60'000) return QString::number(ms / 1000.0, 'f', 3) + QStringLiteral(" s");
+    const qint64 s = ms / 1000;
+    return QStringLiteral("%1 min %2 s").arg(s / 60).arg(s % 60, 2, 10, QLatin1Char('0'));
+}
+}  // namespace
+
+void LogModel::noteTypeGap(const LogEntry &e)
+{
+    // An entry shared with another model (a pop-out, the merged view) keeps
+    // the gap its first model saw: the same stream, the same answer.
+    if (e.typeGapMs != LogEntry::kGapUnread) return;
+    TypeGapState &st = m_typeGaps[typeGapKey(e.text)];
+    if (!st.seen) {
+        e.typeGapMs = LogEntry::kGapFirst;
+        st.seen = true;
+        st.lastMs = e.epochMs;
+        st.recent.reserve(kGapHistory);
+        return;
+    }
+    const qint64 gap = std::max<qint64>(0, e.epochMs - st.lastMs);
+    e.typeGapMs = gap;
+    if (st.recent.size() >= kGapMinSeen) {
+        QVector<qint64> sorted = st.recent;
+        std::sort(sorted.begin(), sorted.end());
+        const qint64 usual = sorted.at(sorted.size() / 2);
+        e.typeGapUsualMs = usual;
+        e.typeGapLate = gap > 2 * usual && gap > usual + kGapLateSlack;
+    }
+    st.recent.append(gap);
+    if (st.recent.size() > kGapHistory) st.recent.removeFirst();
+    st.lastMs = e.epochMs;
+}
+
 LogModel::LogModel(QObject *parent, int capacity, double trimFraction)
     : QAbstractTableModel(parent)
     , m_capacity (capacity > 0 ? capacity : 1)
@@ -30,6 +85,7 @@ void LogModel::appendEntry(const LogEntryPtr &entry)
     }
 
     const int row = static_cast<int>(m_entries.size());
+    noteTypeGap(*entry);
     beginInsertRows(QModelIndex(), row, row);
     m_entries.push_back(entry);
     m_newestMs = std::max(m_newestMs, entry->epochMs);
@@ -89,6 +145,7 @@ void LogModel::appendEntries(const QVector<LogEntryPtr> &batch)
     beginInsertRows(QModelIndex(), first, last);
     for (const LogEntryPtr &e : effective) {
         if (!e) continue;
+        noteTypeGap(*e);
         m_entries.push_back(e);
         m_newestMs = std::max(m_newestMs, e->epochMs);
     }
@@ -154,11 +211,18 @@ QVariant LogModel::data(const QModelIndex &index, int role) const
             case Severity::Error: return QStringLiteral("✕ ERR");
             }
             return QString();
+        case ColTypeGap:
+            if (e->typeGapMs < 0) return QString();
+            return e->typeGapLate ? QStringLiteral("\u25B2 ") + formatGap(e->typeGapMs)
+                                  : formatGap(e->typeGapMs);
         case ColMessage:   return e->text;
         }
         break;
 
     case Qt::ForegroundRole: {
+        if (col == ColTypeGap) {   // session 288: a late line of its kind
+            return e->typeGapLate ? QVariant(QBrush(UiColor::warning())) : QVariant();
+        }
         // Priority order:
         //   1. Explicit foreground from the matched ColorRule (theme-
         //      aware: dark variant on a dark theme -- ThemeUtil::isDark()).
@@ -215,9 +279,24 @@ QVariant LogModel::data(const QModelIndex &index, int role) const
         if (col == ColTime || col == ColSeverity || col == ColDirection) {
             return int(Qt::AlignCenter);
         }
+        if (col == ColTypeGap) return int(Qt::AlignRight | Qt::AlignVCenter);
         return int(Qt::AlignLeft | Qt::AlignVCenter);
 
     case Qt::ToolTipRole:
+        if (col == ColTypeGap) {
+            const QString kind = typeGapKey(e->text);
+            const QString what = kind.isEmpty() ? QStringLiteral("line that is not a capture line")
+                                                : kind + QStringLiteral(" line");
+            if (e->typeGapMs < 0) return QStringLiteral("The first %1 in this table").arg(what);
+            QString tip = QStringLiteral("%1 since the previous %2").arg(formatGap(e->typeGapMs), what);
+            if (e->typeGapUsualMs > 0) {
+                tip += QStringLiteral("\nUsual gap (median of the last %1): %2")
+                           .arg(kGapHistory).arg(formatGap(e->typeGapUsualMs));
+                if (e->typeGapLate)
+                    tip += QStringLiteral("\nMore than twice the usual: lines of this kind may be missing before this one");
+            }
+            return tip;
+        }
         // Hovering a row shows the raw (source_id, kvchId, msg_id) header
         // tuple — useful when the friendly name hides what's underneath.
         return QString("source=%1  kvch=%2  msg_id=%3  len=%4")
@@ -235,6 +314,10 @@ QVariant LogModel::data(const QModelIndex &index, int role) const
 QVariant LogModel::headerData(int section, Qt::Orientation orientation,
                               int role) const
 {
+    if (role == Qt::ToolTipRole && orientation == Qt::Horizontal && section == ColTypeGap) {
+        return QStringLiteral("Time since the previous line of the same kind (the same capture tag, "
+                              "e.g. @dmi_1_1). \u25B2 marks a gap more than twice that kind's usual one.");
+    }
     if (role != Qt::DisplayRole) return QVariant();
     if (orientation == Qt::Vertical) {
         return section + 1;   // 1-based row numbers; cheap orientation aid
@@ -248,6 +331,7 @@ QVariant LogModel::headerData(int section, Qt::Orientation orientation,
     case ColFriendly:  return QStringLiteral("Name");
     case ColDirection: return QStringLiteral("Dir");
     case ColSeverity:  return QStringLiteral("Sev");
+    case ColTypeGap:   return QStringLiteral("\u0394t type");
     case ColMessage:   return QStringLiteral("Message");
     }
     return QVariant();
@@ -277,6 +361,7 @@ void LogModel::clear()
     beginResetModel();
     m_entries.clear();
     m_newestMs = 0;
+    m_typeGaps.clear();
     endResetModel();
 }
 
@@ -293,6 +378,7 @@ QVector<LogEntryPtr> LogModel::takeAll()
     beginResetModel();
     m_entries.clear();
     m_newestMs = 0;
+    m_typeGaps.clear();
     m_findHits.clear();
     endResetModel();
     return taken;

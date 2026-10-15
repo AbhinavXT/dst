@@ -272,8 +272,10 @@ TEST_SUITE(comparerowmenu)
         bool honoured = true;
         for (int c = 0; c < LogModel::ColumnCount; ++c) {
             const bool paneHides = c == LogModel::ColSource || c == LogModel::ColFriendly;
+            // Session 288: Δt type follows its own on/off setting.
             const bool shouldHide =
-                paneHides || ((c != LogModel::ColMessage) && hidden.contains(c));
+                c == LogModel::ColTypeGap ? !Settings::showTypeGap()
+                                          : paneHides || ((c != LogModel::ColMessage) && hidden.contains(c));
             if (view->isColumnHidden(c) != shouldHide) { honoured = false; }
         }
         CHECK(honoured, "hidden columns match the setting, Source and Name "

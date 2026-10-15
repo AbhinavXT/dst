@@ -300,11 +300,13 @@ MainWindow::MenuRoots MainWindow::buildMenus()
             { LogModel::ColFriendly,  tr("Name") },
             { LogModel::ColDirection, tr("Direction") },
             { LogModel::ColSeverity,  tr("Severity") },
+            { LogModel::ColTypeGap,   tr("\u0394t type (since the same kind)") },   // session 288
         };
         for (const auto &c : cols) {
             QAction *a = columnsMenu->addAction(c.second);
             a->setCheckable(true);
-            a->setChecked(!hiddenCols.contains(c.first));
+            a->setChecked(c.first == LogModel::ColTypeGap ? Settings::showTypeGap()
+                                                          : !hiddenCols.contains(c.first));
             a->setData(c.first);
             connect(a, &QAction::triggered,
                     this, &MainWindow::onActionToggleColumn);
