@@ -7,6 +7,7 @@
 #include <QPointer>
 
 #include "blockmapwidget.h"
+#include "flasherboarddialog.h"
 #include "flasherflashingpage.h"
 #include "flasherhistorydialog.h"
 #include "flasherprofiledialog.h"
@@ -117,6 +118,9 @@ FlasherWindow::FlasherWindow(QWidget *parent, const QString &dataDirectory)
     connect(m_summaryPage, &FlasherSummaryPage::retryRequested, this, &FlasherWindow::tryAgain);
     connect(m_summaryPage, &FlasherSummaryPage::openHistoryRequested, this, &FlasherWindow::openHistory);
     connect(m_summaryPage, &FlasherSummaryPage::backToQueueRequested, this, [this]() { showPage(QueuePageIndex); });
+    connect(m_summaryPage, &FlasherSummaryPage::askBoardRequested, this, [this](const QString &address, quint16 port) {
+        openBoardDialog(address.isEmpty() ? m_batchIp : address, port != 0 ? port : m_batchPort);
+    });
 
     // ---- initial state -------------------------------------------------------------
     m_queuePage->setMode(m_mode);
@@ -258,6 +262,16 @@ QWidget *FlasherWindow::buildAppBar()
            "(HOLD), stops on an image the board refuses (REJECTED), reports a lost answer at the "
            "end as \"result unknown\", and releases a VCC that relayed a card image (BOOT)."),
         kflash::Updater::V26);
+
+    // Session 297: what a 2.6 board says about itself (INFO), and BOOT.
+    m_askBoardButton = new QToolButton(m_appBar);
+    m_askBoardButton->setObjectName(QStringLiteral("flasherAskBoard"));
+    m_askBoardButton->setText(tr("Ask board…"));
+    m_askBoardButton->setMinimumHeight(30);
+    m_askBoardButton->setToolTip(tr("Ask a board's updater what it holds: version, controller ID, flash "
+                                    "banks, firmware versions and card results; release a held board"));
+    connect(m_askBoardButton, &QToolButton::clicked, this, [this]() { openBoardDialog(); });
+    barLayout->addWidget(m_askBoardButton);
     barLayout->addSpacing(6);
 
     barLayout->addStretch(1);
@@ -357,6 +371,7 @@ void FlasherWindow::setFlashingState(bool flashing)
     m_updater26->setVisible(!flashing);
     m_updaterClassic->setEnabled(!flashing);
     m_updater26->setEnabled(!flashing);
+    m_askBoardButton->setVisible(!flashing && updater() == kflash::Updater::V26);
     m_gearButton->setEnabled(!flashing);
     if (m_profileMenuButton) m_profileMenuButton->setEnabled(!flashing);   // no profile swaps mid-flash
     refreshAppBarTarget();
@@ -394,6 +409,32 @@ void FlasherWindow::showProfileUpdater()
     const bool v26 = m_profiles.profile(m_profiles.activeName()).updater == kflash::Updater::V26;
     m_updaterClassic->setChecked(!v26);
     m_updater26->setChecked(v26);
+    m_askBoardButton->setVisible(v26 && !m_flashing);
+}
+
+FlasherBoardDialog *FlasherWindow::openBoardDialog(const QString &address, quint16 port)
+{
+    QString ip = address;
+    quint16 targetPort = port;
+    if (ip.isEmpty()) {
+        const Flasher::VccTargetList targets = m_queuePage->vccTargets();
+        if (!targets.targets.isEmpty()) {
+            ip = targets.targets.first().ip;
+            targetPort = targets.targets.first().port;
+        }
+    }
+    if (targetPort == 0) {
+        targetPort = m_queuePage->port();
+    }
+    if (m_boardDialog) {
+        m_boardDialog->close();
+    }
+    m_boardDialog = new FlasherBoardDialog(ip, targetPort,
+                                           m_profiles.profile(m_profiles.activeName()).updaterWaitSeconds,
+                                           m_queuePage->loadedImages(), this);
+    m_boardDialog->setAttribute(Qt::WA_DeleteOnClose);
+    m_boardDialog->show();
+    return m_boardDialog;
 }
 
 kflash::Updater FlasherWindow::updater() const

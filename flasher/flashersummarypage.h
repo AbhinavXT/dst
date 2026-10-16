@@ -32,6 +32,7 @@ signals:
     void retryRequested();          // failed + not-run cards
     void openHistoryRequested();
     void backToQueueRequested();
+    void askBoardRequested(const QString &address, quint16 port);   // session 297: a result unknown
 
 private:
     QFrame *buildCardPanel(const Flasher::BatchEntry &entry, int index);
@@ -43,6 +44,9 @@ private:
     QLabel      *m_headline = nullptr;
     QLabel      *m_explanation = nullptr;
     QPushButton *m_retryButton = nullptr;
+    QPushButton *m_askBoardButton = nullptr;   // session 297
+    QString      m_unknownAddress;
+    quint16      m_unknownPort = 0;
     QGridLayout *m_cardsLayout = nullptr;
     QList<QFrame *> m_cardPanels;
     QList<QPair<QLabel *, QColor (*)()>> m_badges;   // re-coloured on theme change

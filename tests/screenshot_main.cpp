@@ -70,6 +70,8 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "incidentreportwindow.h"
 #include "incidentreportdialog.h"
 #include "flasherwindow.h"
+#include "flasherboarddialog.h"
+#include "flasherfakeboard.h"
 #include "laneband.h"
 #include "fieldcatalog.h"
 #include <QMenu>
@@ -911,8 +913,26 @@ int main(int argc, char **argv)
                 if (qEnvironmentVariableIsSet("SHOT_FIELD2")) w->addField(qEnvironmentVariable("SHOT_FIELD2"));
                 win = w;
             }
+            if (which == QLatin1String("flasherboard")) {
+                // Session 297: Ask the board, answered by a fake 2.6 VCC.
+                static FlasherTest::FakeBoard board;
+                board.v26 = true;
+                board.activeCrc = 0x6A46F27Eu;
+                board.activeSize = 43500;
+                board.activeFwVersion = 0x010209u;
+                board.powerOn();
+                auto *d = new FlasherBoardDialog(QStringLiteral("127.0.0.1"), board.port(), 10,
+                                                 { qMakePair(QStringLiteral("VCC image LKAVACH_v1.2.9.appimage"), 0x6A46F27Eu) });
+                d->setAttribute(Qt::WA_DeleteOnClose, false);
+                d->ask();
+                QElapsedTimer t;
+                t.start();
+                while (!d->hasAnswer() && t.elapsed() < 5000) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+                win = d;
+            }
             if (!win) return 2;
             const bool small = which == QLatin1String("settings") || which == QLatin1String("export")
+                               || which == QLatin1String("flasherboard")
                                || which == QLatin1String("sessionkey") || which == QLatin1String("gototime");
             if (which == QLatin1String("session")) win->resize(1200, 700);   // its own default
             else if (small) {

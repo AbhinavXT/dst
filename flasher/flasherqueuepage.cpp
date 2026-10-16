@@ -611,6 +611,20 @@ void FlasherQueuePage::setMode(Flasher::Mode mode)
     refreshPreflight();
 }
 
+QVector<QPair<QString, quint32>> FlasherQueuePage::loadedImages() const
+{
+    QVector<QPair<QString, quint32>> out;
+    for (int index = 0; index < m_model->rowCount(); ++index) {
+        const FlasherQueueRow &row = m_model->row(index);
+        if (row.hasImage() && row.image.loaded) {
+            out.append(qMakePair(QStringLiteral("%1 image %2").arg(Flasher::cardShortName(row.cardType),
+                                                                    QFileInfo(row.image.path).fileName()),
+                                 row.image.crc32));
+        }
+    }
+    return out;
+}
+
 QString FlasherQueuePage::procedureNote() const
 {
     return m_procedureNote->text();

@@ -104,6 +104,23 @@ A board with an updater older than 2.2 still works in **2.6**: it isn't
 held, and the Summary says "updater older than 2.2". **Classic** is the
 flasher exactly as before.
 
+### Ask the board (2.6)
+
+**Ask board…** (top bar, 2.6 only) asks a board's updater what it holds:
+- the updater version and the controller ID;
+- both flash banks, with the firmware version in each;
+- any transfer in progress;
+- on VCC 1 controller 1, the result each card reported.
+
+Press **Ask**. If the board is running its program, power-cycle the
+chassis while the flasher asks. A 2.2+ board is then **held** in the
+updater. **Release (BOOT)** lets it start its program; otherwise it
+starts by itself after 2 minutes.
+
+If the queue has images loaded, the dialog says whether the board's
+**active bank is one of them (same CRC)**. That settles a **Result
+unknown**: the Summary has an **Ask the board…** button for it.
+
 ## What the result means
 
 | Result | Meaning | What to do |

@@ -72,6 +72,9 @@ public:
     // note depends on it here).
     void setUpdater(kflash::Updater updater);
     QString procedureNote() const;   // for the tests
+    // Session 297: the loaded images as ("VCC image LKAVACH_v1.2.9.appimage", CRC),
+    // for Ask the board to name the board's active bank.
+    QVector<QPair<QString, quint32>> loadedImages() const;
     void applyProfile(const Flasher::FlashProfile &profile);
 
     // ---- read by the window --------------------------------------------

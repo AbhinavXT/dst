@@ -648,8 +648,9 @@ QString failureExplanation(const kflash::FlashResult &result)
     if (result.result_unknown) {
         return QStringLiteral("Result unknown — the board stopped answering after the session was "
                               "up. It sends COMPLETE three times and then writes flash without "
-                              "answering, so it may have taken the image. Wait for it to boot, "
-                              "then check its firmware version before flashing again.");
+                              "answering, so it may have taken the image. To check: Ask the "
+                              "board…, power-cycle the chassis, and see whether its active bank "
+                              "is this image (same CRC).");
     }
     if (isImageFail(result)) {
         return QStringLiteral("IMAGE_FAIL — the board received every block but rejected the "
@@ -1692,6 +1693,187 @@ QString updaterSummary(const BatchEntry &entry)
         return QStringLiteral("%1 · updater older than 2.2 (answered POLL only)").arg(name);
     }
     return name;
+}
+
+// =============================================================================
+//  Session 297: INFO
+// =============================================================================
+
+namespace {
+quint32 readLe32(const QByteArray &bytes, int offset)
+{
+    const auto *p = reinterpret_cast<const uchar *>(bytes.constData()) + offset;
+    return quint32(p[0]) | (quint32(p[1]) << 8) | (quint32(p[2]) << 16) | (quint32(p[3]) << 24);
+}
+int readU8(const QByteArray &bytes, int offset)
+{
+    return static_cast<uchar>(bytes.at(offset));
+}
+QString hex32(quint32 value)
+{
+    return QStringLiteral("0x%1").arg(value, 8, 16, QLatin1Char('0')).toUpper().replace(QLatin1String("0X"), QLatin1String("0x"));
+}
+}  // namespace
+
+QString BoardInfo::updaterVersionText() const
+{
+    return QStringLiteral("%1.%2.%3").arg(verMajor).arg(verMinor).arg(verPatch);
+}
+
+bool BoardInfo::canHold() const
+{
+    return verMajor > 2 || (verMajor == 2 && verMinor >= 2);
+}
+
+BoardInfo parseInfoReply(const QByteArray &reply)
+{
+    BoardInfo info;
+    if (reply.size() < kInfoV1Bytes || readU8(reply, 0) != 0x05) {
+        return info;
+    }
+    info.valid = true;
+    info.infoVersion = readU8(reply, 1);
+    info.verMajor = readU8(reply, 2);
+    info.verMinor = readU8(reply, 3);
+    info.verPatch = readU8(reply, 4);
+    info.controllerId = readU8(reply, 5);
+    info.cardType = readU8(reply, 6);
+    info.metaValid = readU8(reply, 7) != 0;
+    info.activeBank = readU8(reply, 8);
+    info.confirmed = readU8(reply, 9) != 0;
+    info.attemptCount = readU8(reply, 10);
+    info.counterEnabled = readU8(reply, 11) != 0;
+    info.bankASize = readLe32(reply, 12);
+    info.bankACrc = readLe32(reply, 16);
+    info.bankBSize = readLe32(reply, 20);
+    info.bankBCrc = readLe32(reply, 24);
+    info.sessionState = readU8(reply, 28);
+    info.sessionCardType = readU8(reply, 29);
+    info.sessionCrc = readLe32(reply, 30);
+    info.sessionTotalBlocks = readLe32(reply, 34);
+    info.sessionBlocksReceived = readLe32(reply, 38);
+    info.uptimeMs = readLe32(reply, 42);
+    if (info.infoVersion >= 2 && reply.size() >= kInfoV2Bytes) {
+        info.hasCardResults = true;
+        info.forwardState = readU8(reply, 46);
+        info.cardResults.resize(kCardResultSlots);
+        for (int slot = 0; slot < kCardResultSlots; ++slot) {
+            const int at = 47 + slot * 5;
+            info.cardResults[slot].result = readU8(reply, at);
+            info.cardResults[slot].imageCrc = readLe32(reply, at + 1);
+        }
+    }
+    if (info.infoVersion >= 3 && reply.size() >= kInfoV3Bytes) {
+        info.hasVersions = true;
+        info.activeFwVersion = readLe32(reply, 127);
+        info.inactiveFwVersion = readLe32(reply, 131);
+        info.rejectReason = readU8(reply, 135);
+    }
+    return info;
+}
+
+QString controllerName(int controllerId)
+{
+    const int controller = (controllerId - 1) % 2 + 1;   // two controllers per card
+    if (controllerId == 1 || controllerId == 2) {
+        return QStringLiteral("VCC 1 controller %1").arg(controller);
+    }
+    if (controllerId == 3 || controllerId == 4) {
+        return QStringLiteral("VCC 2 controller %1").arg(controller);
+    }
+    if (controllerId >= 5 && controllerId <= 12) {
+        return QStringLiteral("Input card %1 controller %2").arg((controllerId - 5) / 2 + 1).arg(controller);
+    }
+    if (controllerId == 13 || controllerId == 14) {
+        return QStringLiteral("Output card controller %1").arg(controller);
+    }
+    if (controllerId == 15 || controllerId == 16) {
+        return QStringLiteral("Analog card controller %1").arg(controller);
+    }
+    return QStringLiteral("controller %1 (unknown)").arg(controllerId);
+}
+
+QString cardResultText(int result)
+{
+    switch (result) {
+    case 1: return QStringLiteral("OK — flashed");
+    case 2: return QStringLiteral("VERIFY_FAIL — the card's own CRC/SHA check failed");
+    case 3: return QStringLiteral("FLASH_FAIL — flash write failed on the card");
+    case 4: return QStringLiteral("INCOMPLETE — the card gave up with blocks missing");
+    case 5: return QStringLiteral("REJECTED — the card refused the image (wrong card, downgrade or trailer)");
+    default: return QStringLiteral("no report");
+    }
+}
+
+bool cardResultIsFailure(int result)
+{
+    return result >= 2 && result <= 5;
+}
+
+QString fwVersionText(quint32 version)
+{
+    if (version == 0) {
+        return QStringLiteral("unknown (no trailer)");
+    }
+    return QStringLiteral("%1.%2.%3").arg((version >> 16) & 0xFF).arg((version >> 8) & 0xFF).arg(version & 0xFF);
+}
+
+QString boardInfoText(const BoardInfo &info, const QVector<QPair<QString, quint32>> &queued)
+{
+    static const char *const kSession[] = { "idle", "receiving", "verified OK", "verify FAILED" };
+    static const char *const kForward[] = { "none", "forwarded, collecting card results", "forward FAILED" };
+    QStringList lines;
+    lines << QStringLiteral("Updater version : %1  (info layout v%2)").arg(info.updaterVersionText()).arg(info.infoVersion);
+    lines << QStringLiteral("Controller ID   : %1  %2").arg(info.controllerId)
+                 .arg(info.controllerId == 0 ? QStringLiteral("(UNKNOWN — check the slot/CPU straps; updates are refused)")
+                                             : QStringLiteral("(%1)").arg(controllerName(info.controllerId)));
+    lines << QStringLiteral("Card type       : %1").arg(isValidCardType(info.cardType) ? cardName(info.cardType)
+                                                                                      : QStringLiteral("unknown (%1)").arg(info.cardType));
+    lines << QStringLiteral("Metadata        : %1").arg(info.metaValid ? QStringLiteral("valid") : QStringLiteral("NOT valid (defaults shown)"));
+    lines << QStringLiteral("Active bank     : %1   confirmed=%2  attempts=%3  (boot counter %4)")
+                 .arg(info.activeBank == 0 ? QStringLiteral("A") : QStringLiteral("B"))
+                 .arg(info.confirmed ? 1 : 0).arg(info.attemptCount)
+                 .arg(info.counterEnabled ? QStringLiteral("ON") : QStringLiteral("off"));
+    lines << QStringLiteral("Bank A          : %1 bytes, CRC %2").arg(info.bankASize).arg(hex32(info.bankACrc));
+    lines << QStringLiteral("Bank B          : %1 bytes, CRC %2").arg(info.bankBSize).arg(hex32(info.bankBCrc));
+    if (info.hasVersions) {
+        lines << QStringLiteral("Active FW       : %1").arg(fwVersionText(info.activeFwVersion));
+        lines << QStringLiteral("Other bank FW   : %1").arg(fwVersionText(info.inactiveFwVersion));
+        if (info.rejectReason != 0) {
+            lines << QStringLiteral("Last rejection  : %1").arg(QString::fromLatin1(kflash::reject_reason_text(
+                         static_cast<uint8_t>(info.rejectReason))));
+        }
+    }
+    QString matched;
+    for (const auto &image : queued) {
+        if (image.second == info.activeBankCrc() && info.activeBankCrc() != 0) {
+            matched = image.first;
+            break;
+        }
+    }
+    if (!queued.isEmpty()) {
+        lines << QStringLiteral("Active bank is  : %1").arg(
+                     matched.isEmpty() ? QStringLiteral("none of the queued images (its CRC matches none of them)")
+                                       : QStringLiteral("the queued %1 (same CRC)").arg(matched));
+    }
+    lines << QStringLiteral("Session         : %1, card %2, %3/%4 blocks, CRC %5")
+                 .arg(QString::fromLatin1(info.sessionState >= 0 && info.sessionState <= 3 ? kSession[info.sessionState] : "?"))
+                 .arg(info.sessionCardType).arg(info.sessionBlocksReceived).arg(info.sessionTotalBlocks)
+                 .arg(hex32(info.sessionCrc));
+    lines << QStringLiteral("Uptime          : %1 ms").arg(info.uptimeMs);
+    if (info.hasCardResults) {
+        lines << QStringLiteral("Forward state   : %1").arg(QString::fromLatin1(
+                     info.forwardState >= 0 && info.forwardState <= 2 ? kForward[info.forwardState] : "?"));
+        for (int slot = 0; slot < info.cardResults.size(); ++slot) {
+            const CardReport &report = info.cardResults.at(slot);
+            if (report.result != 0) {
+                lines << QStringLiteral("  %1 : %2  (image CRC %3)").arg(controllerName(slot + 1),
+                                                                         cardResultText(report.result),
+                                                                         hex32(report.imageCrc));
+            }
+        }
+    }
+    return lines.join(QLatin1Char('\n'));
 }
 
 QString entryTitle(const BatchEntry &entry)

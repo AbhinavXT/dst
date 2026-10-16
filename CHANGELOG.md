@@ -11,6 +11,102 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-297"></a>
+## Session 297 — Firmware Flasher: Ask the board (INFO)
+
+The first of the four 2.6 patches Abhinav asked for after session 296:
+Ask the board, then the image trailer, card results, and the loco
+address picker. Each is its own patch.
+
+**What the operator sees.**
+- **Ask board…** in the app bar, only while the toggle is on 2.6, and out
+  of the bar while flashing. It opens **Ask the board**:
+  - the address (the queue's first VCC) and port;
+  - **Ask**, **Stop**, **Release (BOOT)**, **Copy**.
+- **Ask** keeps asking for the profile's updater wait ("power-cycle the
+  chassis if it is running its program · 41 s left"). Then it shows the
+  board's answer as `flash info` prints it:
+  - updater version and controller ID by name ("1 (VCC 1 controller 1)",
+    or UNKNOWN with the strap advice);
+  - card type, metadata, the active bank with its confirmation state;
+  - both banks' size and CRC, and the firmware version in each;
+  - the last rejection, the transfer in progress, uptime;
+  - on a VCC, the forward state and each controller's card result, in
+    words.
+- **"Active bank is : the queued VCC image LKAVACH_v1.2.9.appimage (same
+  CRC)"**, or "none of the queued images", when images are loaded.
+- **What it says about who answered:**
+  - a 2.2+ updater is **held** ("…is held in the updater (2 min idle, or
+    Release)"), and Release sends BOOT;
+  - a 2.0/2.1 updater answers but "cannot be held", and Release is off;
+  - an updater older than 2.0 answers only POLL: "has nothing to tell.
+    Use the Classic updater for it";
+  - nobody: "No answer in N s…".
+- **The Summary of a "result unknown"** has an **Ask the board…** button.
+  It opens the dialog on the board just flashed; once the chassis is back
+  in its updater, the active bank's CRC says whether the image went in.
+  The explanation now says so.
+
+**How.**
+- `Flasher::BoardInfo` and `parseInfoReply()` read the updater's
+  InfoReply by offset: v1 46 B, v2 127 B (card results), v3 136 B
+  (versions, rejection). Fields past the reply's length keep their
+  defaults.
+- `controllerName()`, `cardResultText()`, `fwVersionText()`,
+  `boardInfoText()`.
+- New `flasher/flasherboarddialog.{h,cpp}`: `BoardQuery` talks on the GUI
+  thread with a `QUdpSocket` and a 400 ms timer. Each round is HOLD +
+  INFO_REQ + POLL, as `udp_file_v5`'s hold and info commands combined.
+  STATUS alone for two rounds means an updater before 2.0. Release drains
+  late INFO replies before sending BOOT, so the asking's second INFO
+  can't pass for BOOT's acknowledgement.
+- The address goes through `kflash::parse_ipv4`. `QHostAddress` took
+  "192.168.25" as 192.168.0.25 (inet_aton shorthand) and would have asked
+  the wrong machine; the test caught it.
+
+**Files.**
+- New `flasher/flasherboarddialog.{h,cpp}`; `flasher/flasher.pri` (its
+  comment no longer calls the engine unmodified).
+- `flasher/flashercore.{h,cpp}`.
+- `flasher/flasherwindow.{h,cpp}`, `flasher/flasherqueuepage.{h,cpp}`
+  (`loadedImages()`), `flasher/flashersummarypage.{h,cpp}`.
+- `README_FLASHING_AND_CONFIG.md`: "Ask the board (2.6)".
+- Tests: `tests/flasherfakeboard.h` (INFO_REQ, an INFO built from the
+  board's state, a 2.1 board without HOLD, the active bank set by a
+  flash), new `tests/test_session297.cpp`, `tests/tests.pro`.
+- `tests/screenshot_main.cpp`: `SHOT_WINDOW=flasherboard`.
+
+**Tests.** `session297` (36 checks):
+- **A hand-built v3 reply, field by field:** identity, banks
+  (little-endian; bank B active), transfer, card results by controller
+  ID, versions, rejection. A v1 reply has only the v1 fields. A runt or
+  a STATUS is not INFO. 2.1 cannot be held. The text as `flash info`
+  prints it, with the active bank named.
+- **Controller names** from `const.h`.
+- **The dialog against FakeBoards:**
+  - a 2.6 board answers, is held, and Release boots it;
+  - a 2.1 board answers INFO_REQ, isn't held, and gets no Release;
+  - a classic board is "older than 2.0";
+  - nobody gets "No answer";
+  - a bad address is refused.
+- **The window:** no button in Classic, the button in 2.6, hidden while
+  flashing. Then a 2.6 run whose COMPLETEs are all lost (result
+  unknown): the Summary's Ask the board… opens the dialog, the board is
+  powered back on, and its active bank is the queued image.
+
+Checked on screen (`SHOT_WINDOW=flasherboard`, `flasher26`), light and
+dark.
+
+**Gate:** Qt 6 and Qt 5.15 green, 333 suites / 8464 checks, 0 failed;
+menu audit 184 ok; smoke; validators.
+
+**Not tested:**
+- **A real board:** only FakeBoards.
+- **The v2/v3 offsets** follow the guide and `udp_file_v5.cpp`; they were
+  not checked against a real reply.
+
+---
+
 <a id="session-296"></a>
 ## Session 296 — Firmware Flasher: a Classic | 2.6 updater toggle
 

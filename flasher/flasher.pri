@@ -4,8 +4,9 @@
 #  Included by dlcore.pri (compiled once into the dlcore library) so the
 #  programs cannot drift apart on which flasher files they compile.
 #
-#  flash_engine.*, flashworker.* and board_sim.py are the handoff pack's,
-#  unmodified (the wire protocol lives there). blockmapwidget.* is the
+#  flash_engine.*, flashworker.* and board_sim.py are the handoff pack's
+#  (the wire protocol lives there); session 296 added the 2.6 updater's
+#  HOLD / BOOT / REJECTED to them, behind kflash::Updater::V26. blockmapwidget.* is the
 #  handoff's with its colours mapped onto DLConsole's theme. Everything else
 #  is the DLConsole integration.
 # =============================================================================
@@ -24,7 +25,8 @@ SOURCES += \
     $$PWD/flasherhistorydialog.cpp \
     $$PWD/flasherprofiledialog.cpp \
     $$PWD/flasherwindow.cpp \
-    $$PWD/vcclistedit.cpp
+    $$PWD/vcclistedit.cpp \
+    $$PWD/flasherboarddialog.cpp
 
 HEADERS += \
     $$PWD/flash_engine.h \
@@ -39,7 +41,8 @@ HEADERS += \
     $$PWD/flasherhistorydialog.h \
     $$PWD/flasherprofiledialog.h \
     $$PWD/flasherwindow.h \
-    $$PWD/vcclistedit.h
+    $$PWD/vcclistedit.h \
+    $$PWD/flasherboarddialog.h
 
 DISTFILES += \
     $$PWD/board_sim.py

@@ -95,6 +95,31 @@ public:
     bool loseComplete = false;  // all three COMPLETE replies lost on the wire
     int  holdsSeen = 0;
     int  bootsSeen = 0;
+    // Session 297: what INFO says. updaterMinor < 2 ignores HOLD (2.0 / 2.1).
+    int     updaterMinor = 6;
+    int     controllerId = 1;
+    quint32 activeCrc = 0;          // bank A; set by a successful VCC flash
+    quint32 activeSize = 0;
+    quint32 activeFwVersion = 0;
+    int     infoRequests = 0;
+
+    QByteArray infoReply() const
+    {
+        QByteArray info(136, '\0');
+        info[0] = 5;
+        info[1] = 3;
+        info[2] = 2;
+        info[3] = static_cast<char>(updaterMinor);
+        info[4] = 1;
+        info[5] = static_cast<char>(controllerId);
+        info[6] = 1;
+        info[7] = 1;                 // metadata valid, bank A active, confirmed
+        info[9] = 1;
+        std::memcpy(info.data() + 12, &activeSize, 4);
+        std::memcpy(info.data() + 16, &activeCrc, 4);
+        std::memcpy(info.data() + 127, &activeFwVersion, 4);
+        return info;
+    }
     bool held() const { return m_held; }
 
     static qint64 sharedClockMs()
@@ -148,11 +173,17 @@ private:
         m_lastPacket.restart();
 
         const quint8 kind = static_cast<quint8>(packet.at(0));
+        if (v26 && kind == 4) {
+            ++infoRequests;
+            m_socket.writeDatagram(infoReply(), from, fromPort);
+            return;
+        }
+        if (v26 && kind == 7 && updaterMinor < 2) {
+            return;   // HOLD came with 2.2
+        }
         if (v26 && (kind == 7 || kind == 8)) {
             // HOLD / BOOT, both answered with INFO (layout v3, 136 bytes).
-            QByteArray info(136, '\0');
-            info[0] = 5;
-            info[1] = 3;
+            const QByteArray info = infoReply();
             if (kind == 7) {
                 ++holdsSeen;
                 m_held = true;
@@ -244,6 +275,10 @@ private:
                 m_socket.writeDatagram(reply, from, fromPort);
                 m_hasSession = false;
                 return;
+            }
+            if (m_session.state == 0 && m_session.card == 1) {
+                activeCrc = m_session.crc;    // the VCC writes its own image
+                activeSize = m_session.size;
             }
             if (m_session.state == 0 && loseComplete) {
                 m_mode = Mode::Application;   // flashed; nothing reached the PC

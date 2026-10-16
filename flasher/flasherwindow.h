@@ -119,6 +119,11 @@ public:
     kflash::Updater updater() const;
     QToolButton    *updaterButton(kflash::Updater updater) const;
 
+    // Session 297: "Ask board…" (2.6 only), and the dialog it opens, for the
+    // tests. `address` empty = the queue's first VCC.
+    QToolButton        *askBoardButton() const { return m_askBoardButton; }
+    class FlasherBoardDialog *openBoardDialog(const QString &address = QString(), quint16 port = 0);
+
 signals:
     // Emitted when the run has been recorded, after history has been
     // written. The tests wait on this.
@@ -184,6 +189,8 @@ private:
     QLabel                 *m_updaterLabel = nullptr;     // session 296
     QToolButton            *m_updaterClassic = nullptr;
     QToolButton            *m_updater26 = nullptr;
+    QToolButton            *m_askBoardButton = nullptr;   // session 297
+    QPointer<class FlasherBoardDialog> m_boardDialog;
     QLabel                 *m_flashingBadge = nullptr;
     QLabel                 *m_targetLabel = nullptr;
     QToolButton            *m_historyButton = nullptr;

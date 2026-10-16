@@ -66,6 +66,16 @@ FlasherSummaryPage::FlasherSummaryPage(QWidget *parent)
                                  "The pre-flight checks run again before anything is sent."));
     connect(m_retryButton, &QPushButton::clicked, this, &FlasherSummaryPage::retryRequested);
     bannerLayout->addWidget(m_retryButton, 0, Qt::AlignVCenter);
+    // Session 297: a result unknown is settled by asking the board.
+    m_askBoardButton = new QPushButton(tr("Ask the board…"), m_banner);
+    m_askBoardButton->setObjectName(QStringLiteral("summaryAskBoard"));
+    m_askBoardButton->setMinimumHeight(34);
+    m_askBoardButton->setToolTip(tr("Once the board is back in its updater, its active bank's CRC says "
+                                    "whether it took this image"));
+    connect(m_askBoardButton, &QPushButton::clicked, this,
+            [this]() { emit askBoardRequested(m_unknownAddress, m_unknownPort); });
+    bannerLayout->addWidget(m_askBoardButton, 0, Qt::AlignVCenter);
+    m_askBoardButton->hide();
     pageLayout->addWidget(m_banner);
 
     // ---- one panel per card, in a scroll area ---------------------------------
@@ -110,6 +120,16 @@ void FlasherSummaryPage::showBatch(const Flasher::BatchPlan &plan, const QString
     m_explanation->setText(verdict.explanation);
     m_explanation->setVisible(!verdict.explanation.isEmpty());
     m_retryButton->setVisible(plan.failedCount() + plan.notRunCount() > 0);
+    bool unknown = false;
+    for (const Flasher::BatchEntry &entry : plan.entries()) {
+        if (entry.result.result_unknown) {
+            unknown = true;
+            m_unknownAddress = entry.targetIp;
+            m_unknownPort = entry.targetPort;
+            break;
+        }
+    }
+    m_askBoardButton->setVisible(unknown);
 
     // Replace the card panels.
     for (QFrame *panel : m_cardPanels) {

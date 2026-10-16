@@ -390,6 +390,75 @@ private:
 // "2.6 · updater older than 2.2 (answered POLL only)", "Classic".
 QString updaterSummary(const BatchEntry &entry);
 
+// -----------------------------------------------------------------------------
+//  Session 297: what a 2.6 board says about itself (INFO, packet 0x05)
+// -----------------------------------------------------------------------------
+//
+//  The updater's InfoReply (firmware_update_user.h), little-endian, packed.
+//  It only ever grows at the end and info_version says how far it goes:
+//  v1 46 bytes (identity, banks, transfer), v2 127 (+ the VCC's card
+//  results), v3 136 (+ firmware versions from the image trailers, and the
+//  last rejection). Fields past the reply's length stay at their defaults.
+const int kInfoV1Bytes = 46;
+const int kInfoV2Bytes = 127;
+const int kInfoV3Bytes = 136;
+const int kCardResultSlots = 16;     // controller IDs 1..16
+
+struct CardReport {
+    int     result = 0;              // 0 none, 1 OK, 2 VERIFY_FAIL, 3 FLASH_FAIL, 4 INCOMPLETE, 5 REJECTED
+    quint32 imageCrc = 0;            // the image the result is about
+};
+
+struct BoardInfo {
+    bool    valid = false;           // a reply of at least kInfoV1Bytes, type 0x05
+    int     infoVersion = 0;
+    int     verMajor = 0, verMinor = 0, verPatch = 0;
+    int     controllerId = 0;        // 0 = unknown (strap fault: updates refused)
+    int     cardType = 0;
+    bool    metaValid = false;
+    int     activeBank = 0;          // 0 = A, 1 = B
+    bool    confirmed = false;
+    int     attemptCount = 0;
+    bool    counterEnabled = false;
+    quint32 bankASize = 0, bankACrc = 0;
+    quint32 bankBSize = 0, bankBCrc = 0;
+    int     sessionState = 0;        // 0 idle, 1 receiving, 2 verified OK, 3 verify failed
+    int     sessionCardType = 0;
+    quint32 sessionCrc = 0;
+    quint32 sessionTotalBlocks = 0;
+    quint32 sessionBlocksReceived = 0;
+    quint32 uptimeMs = 0;
+    // v2
+    bool    hasCardResults = false;
+    int     forwardState = 0;        // 0 none, 1 forwarded and collecting, 2 forward failed
+    QVector<CardReport> cardResults; // kCardResultSlots, index = controller ID - 1
+    // v3
+    bool    hasVersions = false;
+    quint32 activeFwVersion = 0;     // (major << 16) | (minor << 8) | patch; 0 = no trailer
+    quint32 inactiveFwVersion = 0;
+    int     rejectReason = 0;
+
+    quint32 activeBankCrc() const  { return activeBank == 0 ? bankACrc : bankBCrc; }
+    quint32 activeBankSize() const { return activeBank == 0 ? bankASize : bankBSize; }
+    QString updaterVersionText() const;   // "2.6.1"
+    bool    canHold() const;              // updater 2.2 or later
+};
+
+BoardInfo parseInfoReply(const QByteArray &reply);
+
+// "VCC 1 controller 1", "Input card 2 controller 1", "Analog card controller 2".
+QString controllerName(int controllerId);
+// "OK — flashed", "FLASH_FAIL — flash write failed on the card", ...
+QString cardResultText(int result);
+bool    cardResultIsFailure(int result);
+// "1.2.9", or "unknown (no trailer)" for 0.
+QString fwVersionText(quint32 version);
+
+// The board's answer as text, as `flash info` prints it. `queued` lists the
+// queue's loaded images ("VCC image LKAVACH_v1.2.9.appimage", CRC), so the
+// active bank can be named: that is how a "result unknown" is settled.
+QString boardInfoText(const BoardInfo &info, const QVector<QPair<QString, quint32>> &queued);
+
 // What a row, a Summary panel or a verdict calls an entry: the card's name,
 // or "VCC 192.168.25.169" when the entry has its own target.
 QString entryTitle(const BatchEntry &entry);
