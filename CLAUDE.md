@@ -102,16 +102,15 @@ Nothing is committed as a patch unless **all** of these are green:
   DMI frames are `AA AA 74 … BB BB` (116 B).
 - Turnout decoding is owned by another person — out of scope here.
 
-## Queued features (in this order)
+## Features already built (do not offer them as new)
 
-1. **Incident report pack** — pick a time window or moment; one HTML/PDF:
-   the DMI as the loco pilot saw it at key moments (DMI time travel), the
-   speed/permitted/target plot, mode changes, EB/FSB applications, reject
-   findings, the raw frames around the event.
-2. **Two-loco view** — both locos' positions and speeds and the gap between
-   them over time, with SoS, collision-target and head-on/rear-end events.
-3. **Track diagram by absolute location** — a linear line diagram (no map,
-   no internet) from RFID tags, signals and the MA end; the loco moving
-   along it over time, events pinned where they happened.
+The three features once queued here are all done:
 
-Confirm each feature's scope with Abhinav before building it.
+- **Incident report pack:** sessions 97, 133, 186.
+  Tools ▸ Monitor ▸ Reports ▸ Incident report….
+- **Two-loco view:** sessions 98, 132, 172, 186.
+- **Track diagram by absolute location:** sessions 99, 131, 207, 209.
+
+Before proposing a feature, search `CHANGELOG.md` for it. No feature is
+queued right now. Confirm each new feature's scope with Abhinav before
+building it.

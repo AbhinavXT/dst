@@ -11,6 +11,30 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-295"></a>
+## Session 295 — housekeeping: CLAUDE.md's stale queue, BUILD_SPEED.md
+
+Docs only; no code changes.
+
+**What changed and why.**
+- `CLAUDE.md`'s "Queued features" listed the incident report, two-loco
+  view and track diagram as still to build. All three have been built
+  (sessions 97–99 and later), and the stale list led to the incident
+  report being offered as new in session 294. That section is now
+  "Features already built", with the sessions for each, and a note to
+  search `CHANGELOG.md` before proposing a feature.
+- `docs/BUILD_SPEED.md` (measured at patch 267: why Windows rebuilds
+  everything, and where the Mac gate's time goes) was lying untracked in
+  the tree. It is now committed.
+
+**What the operator sees.** Nothing; the app is unchanged.
+
+**Files.** `CLAUDE.md`, `docs/BUILD_SPEED.md` (new), `CHANGELOG.md`.
+
+**Tests.** None new (no code changed). Gate green on Qt 5.15 and Qt 6 (validators, dltests, menuaudit, smoke).
+
+---
+
 <a id="session-294"></a>
 ## Session 294 — the Lanes ▾ menu: choose what the lanes over the log show
 
