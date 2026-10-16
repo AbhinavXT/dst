@@ -9,6 +9,13 @@
     "dip1": "Digital inputs, bank 1 (cab, SOS, DMI buttons)",
     "dip2": "Digital inputs, bank 2",
     "dop1": "Digital outputs, bank 1",
+    "dop2": "Digital outputs, bank 2",
+    "ccsys": "CCU self-status",
+    "dlsys": "Datalogger self-status",
+    "linfo": "Loco configuration (LOCO_INFO)",
+    "rfid": "RFID tag read",
+    "nmshlth": "NMS health telemetry",
+    "nmsrssi": "NMS radio signal strength (RSSI)",
     "dmi": "DMI display packet",
     "authkeys": "Authentication key sets from the LCU"
   },

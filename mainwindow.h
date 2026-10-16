@@ -581,6 +581,10 @@ private:
     // Session 164: custom lanes, the same for every tab (ui/customLanes).
     QVector<CustomLane> m_customLanes;
     void setCustomLanes(const QVector<CustomLane> &lanes);
+    // Session 294: built-in lanes hidden from the Lanes ▾ menu, for every tab (ui/hiddenLanes).
+    QStringList m_hiddenLanes;
+    void setHiddenLanes(const QStringList &names);
+    void connectLaneBand(class LaneBand *lanes);
     // Session 118: the frame — top strip, rail, log header.
     class QToolBar *m_strip = nullptr;
     class QToolBar *m_rail = nullptr;

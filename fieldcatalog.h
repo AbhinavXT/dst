@@ -90,12 +90,17 @@ public:
     // Reverse lookup, for display: the symbol for a numeric value.
     QString symbolFor(const QString &alias, qint64 value) const;
 
+    // Session 294: what fieldmap.json's "packets" says a capture type is
+    // ("dop1" -> "Digital outputs, bank 1"); empty when it does not say.
+    QString packetDescription(const QString &captype) const;
+
     QStringList aliases() const;
     // Aliases and their symbolic values, formatted for query completion.
     QStringList completionsFor(const QString &partial) const;
 
 private:
     QHash<QString, Entry> m_byAlias;   // key is lower-cased alias
+    QHash<QString, QString> m_packetDesc;   // lower-cased captype -> description
 };
 
 #endif // FIELDCATALOG_H

@@ -69,10 +69,11 @@ TEST_SUITE(session121)
     CHECK(band->laneNames() == QStringList({ "Mode", "Safety", "RFID", "Link", "Faults" }), "five lanes");
 
     // Hover over the mode lane says the mode; a click jumps the log there.
-    const QString said = band->describeAt(QPoint(band->width() / 2, 6 + 16 / 2));
+    // The mode lane's middle, where the band says it is (session 294 put a header row above it).
+    const QString said = band->describeAt(QPoint(band->width() / 2, band->laneRect(0).center().y()));
     CHECK(said.startsWith(QLatin1String("Mode ")), QByteArray("hovering the mode lane names the mode: ") + said.toUtf8());
     QSignalSpy jump(band, &LaneBand::timeClicked);
-    QTest::mouseClick(band, Qt::LeftButton, Qt::NoModifier, QPoint(band->width() / 2, 10));
+    QTest::mouseClick(band, Qt::LeftButton, Qt::NoModifier, QPoint(band->width() / 2, band->laneRect(0).center().y()));
     CHECK(jump.size() == 1 && jump.at(0).at(0).toLongLong() >= band->fromMs()
               && jump.at(0).at(0).toLongLong() <= band->toMs(),
           "a click asks the log to jump to that moment, inside the window");

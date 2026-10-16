@@ -680,6 +680,7 @@ void MainWindow::afterSettingsImported(const QStringList &ids)
         for (auto it = m_tabs.begin(); it != m_tabs.end(); ++it)
             if (it->lanes) it->lanes->setEnabled2(m_lanesOn);
         setCustomLanes(lanes);
+        setHiddenLanes(ini.value(QStringLiteral("ui/hiddenLanes")).toStringList());   // session 294
     }
     if (ids.contains(id(Section::Watches))) {
         if (m_watchPanel) m_watchPanel->restore();

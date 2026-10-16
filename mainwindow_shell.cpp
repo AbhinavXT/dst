@@ -239,6 +239,7 @@ void MainWindow::buildShell()
             if (parts.size() == 2 && !parts.at(0).isEmpty() && !parts.at(1).isEmpty())
                 m_customLanes << CustomLane{ parts.at(0), parts.at(1) };
         }
+        m_hiddenLanes = ini.value(QStringLiteral("ui/hiddenLanes")).toStringList();   // session 294
     }
     for (QAction *top : menuBar()->actions()) {
         if (!top->menu() || top->text().remove(QLatin1Char('&')) != QLatin1String("View")) continue;
@@ -247,7 +248,7 @@ void MainWindow::buildShell()
         lanes->setCheckable(true);
         lanes->setChecked(m_lanesOn);
         lanes->setToolTip(tr("Mode, safety, RFID, link and fault lanes above each tab's log; "
-                             "right-click them to add a lane for any packet field"));
+                             "Lanes \u25BE on the band chooses them, and adds a lane for any packet field"));
         connect(lanes, &QAction::toggled, this, [this](bool on) {
             m_lanesOn = on;
             QSettings ini(Settings::iniPath(), QSettings::IniFormat);
@@ -285,6 +286,48 @@ void MainWindow::refreshHeader()
     if (!friendly.isEmpty() && friendly != shown) meta = friendly + QStringLiteral(" · ") + meta;
     else if (shown != key) meta = key + QStringLiteral(" · ") + meta;
     m_headerMeta->setText(meta);
+}
+
+void MainWindow::setHiddenLanes(const QStringList &names)
+{
+    m_hiddenLanes = names;
+    QSettings ini(Settings::iniPath(), QSettings::IniFormat);
+    if (names.isEmpty()) ini.remove(QStringLiteral("ui/hiddenLanes"));
+    else ini.setValue(QStringLiteral("ui/hiddenLanes"), names);
+    for (auto it = m_tabs.begin(); it != m_tabs.end(); ++it)
+        if (it->lanes) it->lanes->setHiddenLanes(names);
+}
+
+// Session 164 / 294: what a band asks for changes every band.
+void MainWindow::connectLaneBand(LaneBand *lanes)
+{
+    connect(lanes, &LaneBand::addLaneRequested, this, [this](const CustomLane &lane) {
+        if (m_customLanes.contains(lane)) return;
+        QVector<CustomLane> next = m_customLanes;
+        next << lane;
+        setCustomLanes(next);
+    });
+    connect(lanes, &LaneBand::removeLaneRequested, this, [this](const CustomLane &lane) {
+        QVector<CustomLane> next = m_customLanes;
+        next.removeAll(lane);
+        setCustomLanes(next);
+    });
+    connect(lanes, &LaneBand::builtInLaneToggled, this, [this](const QString &name, bool shown) {
+        QStringList next = m_hiddenLanes;
+        next.removeAll(name);
+        if (!shown) {
+            next << name;
+            // In the band's own order, so the saved list reads naturally.
+            QStringList ordered;
+            for (const QString &l : LaneBand::builtInLanes()) if (next.contains(l)) ordered << l;
+            next = ordered;
+        }
+        setHiddenLanes(next);
+    });
+    connect(lanes, &LaneBand::resetLanesRequested, this, [this]() {
+        setHiddenLanes({});
+        setCustomLanes({});
+    });
 }
 
 void MainWindow::setCustomLanes(const QVector<CustomLane> &lanes)

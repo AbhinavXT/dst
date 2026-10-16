@@ -70,6 +70,9 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "incidentreportwindow.h"
 #include "incidentreportdialog.h"
 #include "flasherwindow.h"
+#include "laneband.h"
+#include "fieldcatalog.h"
+#include <QMenu>
 #include "flasherqueuepage.h"
 #include "flashercore.h"
 #include "layoutaudit.h"
@@ -183,6 +186,50 @@ int main(int argc, char **argv)
             if (which == QLatin1String("shortcuts")) {
                 shortcutsOwner.reset(new MainWindow);
                 win = new ShortcutsDialog(harvestShortcuts(shortcutsOwner->menuBar(), shortcutsOwner.get()), nullptr);
+            }
+            // Session 294: the lanes with Link hidden and a TRAIN_SPEED lane,
+            // and the Lanes menu and its LSRP submenu saved beside them.
+            if (which == QLatin1String("lanes")) {
+                QFile run(QStringLiteral(DL_SRC_DIR "/replay/loco_1_1_27062026_170217.cap"));
+                run.open(QIODevice::ReadOnly);
+                while (!run.atEnd()) {
+                    const QByteArray l = run.readLine().trimmed();
+                    const QList<QByteArray> tok = l.split(' ');
+                    if (!l.startsWith('@') || tok.size() < 3) continue;
+                    disp.ingestLocal(21, 1, l, QDateTime::fromString(QString::fromLatin1(tok.at(1)), Qt::ISODate).toMSecsSinceEpoch(),
+                                     QString());
+                }
+                disp.drainNow();
+                FieldCatalog::instance().load(QStringLiteral(DL_SRC_DIR "/fieldmap.json"));   // the app loads it at start
+                auto *host = new QWidget;
+                auto *lay = new QVBoxLayout(host);
+                auto *band = new LaneBand;
+                lay->addWidget(band);
+                lay->addStretch(1);
+                host->resize(1100, 230);
+                host->show();
+                band->setHiddenLanes({ QStringLiteral("Link") });
+                band->setCustomLanes({ CustomLane{ QStringLiteral("lsrp"), QStringLiteral("TRAIN_SPEED") } });
+                band->setModel(disp.modelForKey(QStringLiteral("21_1")), QStringLiteral("21_1"), QStringLiteral("21_1"));
+                QCoreApplication::processEvents();
+                QMenu *menu = band->buildLaneMenu(host);
+                menu->popup(QPoint(0, 0));
+                QCoreApplication::processEvents();
+                menu->grab().save(QStringLiteral("%1/shot_lanemenu_%2.png").arg(dir, ThemeUtil::toString(t)));
+                if (QMenu *sub = menu->findChild<QMenu *>(QStringLiteral("laneMenu_lsrp"))) {
+                    sub->popup(QPoint(0, 0));
+                    QCoreApplication::processEvents();
+                    sub->grab().save(QStringLiteral("%1/shot_lanemenu_lsrp_%2.png").arg(dir, ThemeUtil::toString(t)));
+                    sub->hide();
+                }
+                if (auto *search = menu->findChild<QLineEdit *>(QStringLiteral("laneFieldSearch"))) {
+                    search->setText(QStringLiteral("speed"));
+                    QCoreApplication::processEvents();
+                    menu->adjustSize();
+                    menu->grab().save(QStringLiteral("%1/shot_lanemenu_search_%2.png").arg(dir, ThemeUtil::toString(t)));
+                }
+                menu->hide();
+                win = host;
             }
             if (which == QLatin1String("compare")) {
                 // Two locos' worth of real traffic, so both panes have a tab.

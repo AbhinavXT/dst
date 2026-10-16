@@ -11,6 +11,109 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-294"></a>
+## Session 294 — the Lanes ▾ menu: choose what the lanes over the log show
+
+Abhinav asked for the fields shown in the lanes over the log to be
+chosen from the packets' fields, with a good UI of packet menus and
+field submenus. He chose a **Lanes ▾ menu**.
+
+He had also asked for the incident report. It already exists (session
+97, **Tools ▸ Monitor ▸ Reports ▸ Incident report…**); my list of ideas
+wrongly offered it as new, from CLAUDE.md's out-of-date queue. Asked what
+to change in it, he chose: nothing, lanes only.
+
+**What the operator sees.** The band over each tab's log has a header row:
+**Lanes ▾** on the left, and the time span the lanes cover on the right.
+The button, or a right-click anywhere on the lanes, opens one menu:
+- **Search fields…** at the top. Typing lists matching fields of every
+  packet the tab carries ("LSRP ▸ TRAIN_SPEED"), ticked when shown, up to
+  25 ("No field matches …" when none).
+- **The five built-in lanes** (Mode, Safety, RFID, Link, Faults) as tick
+  boxes, each with a tooltip saying what it shows. Untick one and it is
+  gone from every tab's band; the rows below move up.
+- **A submenu per packet** the tab carries, titled with the schema's name
+  and what `fieldmap.json` says it is ("DOP1 — Digital outputs, bank 1",
+  "LSRP — Loco → Stationary regular packet  (1)", the count being its
+  fields shown). Its fields are tick boxes: tick to add a lane, untick to
+  remove it. The search result and the submenu stay in step.
+- **A tick keeps the menu open,** so several lanes can be picked in one go.
+- **Remove lane "lsrp ▸ TRAIN_SPEED"** when right-clicking a field lane,
+  as before.
+- **Reset to default lanes:** the five built-in lanes, no field lanes. Off
+  while that is already the case.
+
+**With every lane hidden** the band stays, with its header and "Every lane
+is hidden: Lanes ▾ to choose some", so there is a way back. View ▸ Lanes
+over the log still turns the whole band off.
+
+`fieldmap.json` gains descriptions for dop2, ccsys, dlsys, linfo, rfid,
+nmshlth and nmsrssi, taken from the schema's comments.
+
+**How.** As the field lanes (session 164), hidden built-in lanes are one
+list for every tab, owned by MainWindow and handed to every band:
+`ui/hiddenLanes`, in the band's order, removed from the INI when empty.
+It is in the settings bundle's Lanes section, whose summary names the
+hidden ones. The band asks through `builtInLaneToggled` and
+`resetLanesRequested`, wired once in `MainWindow::connectLaneBand`.
+
+Inside the band, rows are mapped to lane ids, so painting, hovering and
+right-clicking skip hidden lanes. `FieldCatalog::packetDescription()`
+reads `fieldmap.json`'s `packets` block, which had been loaded and
+ignored.
+
+**Files.**
+- `laneband.{h,cpp}`, `fieldcatalog.{h,cpp}`, `fieldmap.json`.
+- `mainwindow.h`, `mainwindow_shell.cpp`, `mainwindow_tabs.cpp`,
+  `mainwindowsession.cpp`, `settingsbundle.cpp`.
+- Tests: new `tests/test_session294.cpp`, `tests/test_session121.cpp`
+  (its hover and click points now come from `laneRect(0)`; the header row
+  moved the lanes down), `tests/tests.pro`.
+- `tests/screenshot_main.cpp`: `SHOT_WINDOW=lanes`, which also saves the
+  menu, the LSRP submenu and a search.
+
+**Tests.** `session294` (30 checks), on
+`replay/loco_1_1_27062026_170217.cap`:
+- **Titles and the button:** a packet's title is its name and
+  description; a Lanes ▾ button sits in a header row above the lanes.
+- **The menu:**
+  - the five built-in lanes, ticked;
+  - an LSRP submenu with TRAIN_SPEED unticked;
+  - Reset off at the defaults;
+  - unticking Link asks for it hidden, and the band drops it;
+  - with Mode hidden too, RFID is the second row and hovers as RFID;
+  - ticking TRAIN_SPEED asks for its lane, and the band shows it.
+- **A fresh menu after that:**
+  - the LSRP title counts "(1)", TRAIN_SPEED ticked, Mode unticked,
+    Reset on;
+  - searching "train_sp" lists it ticked, and unticking it there asks
+    for removal and unticks the submenu's;
+  - no match says so, and clearing removes the results.
+- **A click keeps the menu open:** a mouse release on Safety unticks it,
+  and the menu stays shown.
+- **Reset** asks for the defaults.
+- **All hidden:** the band and its button stay.
+- **On the real MainWindow,** with two tabs: hidden on one tab is hidden
+  on both, in the band's order, and saved; Reset clears both lists
+  everywhere and in the INI.
+
+`session121`, `session164`, `session190`, `session257`, `fieldcatalog` and
+`settingsbundle` pass. Checked on screen with the screenshot harness: the
+band, the menu, the LSRP submenu and a search, in light and dark.
+
+**Gate:** Qt 6 and Qt 5.15 green, 331 suites / 8378 checks, 0 failed; menu
+audit 184 ok; smoke; validators. The first Qt 5 run caught `laneband.h`
+naming `QMenu` undeclared; Qt 6's headers had pulled it in.
+
+**Not tested:**
+- Typing into the search box of a menu open on screen (the test sets its
+  text).
+- The menu on Windows, whose style draws the "Built-in lanes" / "Packet
+  fields" section titles; the Mac draws them as plain lines.
+- A real mouse click (the test sends the release event).
+
+---
+
 <a id="session-293"></a>
 ## Session 293 — the DOP pins by name
 

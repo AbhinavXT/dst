@@ -24,6 +24,16 @@
 //    km/h, m) or one taking many values as a small line graph, its value on
 //    hover. Right-click a custom lane ▸ Remove.
 //
+//  THE LANES ▾ MENU (session 294)
+//    A button in the band's header row (and right-click anywhere on it)
+//    opens one menu for choosing what the band shows: the five built-in
+//    lanes as tick boxes, then a submenu per packet this tab carries
+//    ("DOP1 — Digital outputs, bank 1"), its fields ticked when shown; a
+//    search box at the top lists matching fields of every packet; and
+//    Reset to default lanes. Ticking keeps the menu open, so several can
+//    be picked at once. Hidden built-in lanes, like the custom lanes, are
+//    one list for every tab, owned by MainWindow (ui/hiddenLanes).
+//
 //  NOTHING NEW IS DECODED HERE
 //    It draws RunReport::summarise() — the engine the run summary and the
 //    incident pack already use — over a window, so the lanes can never say
@@ -42,6 +52,7 @@
 #include "runreport.h"
 
 class LogModel;
+class QMenu;
 class QTimer;
 
 // A custom lane: one field of one packet type ("lsrp", "TRAIN_SPEED").
@@ -65,6 +76,19 @@ public:
     void setEnabled2(bool on) { m_enabled = on; m_dirty = true; rebuildNow(); }
     // Session 164: the custom lanes (MainWindow's list, the same for every tab).
     void setCustomLanes(const QVector<CustomLane> &lanes);
+    // Session 294: built-in lanes the user has hidden ("Mode", "Link", ...),
+    // MainWindow's list, the same for every tab.
+    void setHiddenLanes(const QStringList &names);
+    const QStringList &hiddenLanes() const { return m_hidden; }
+    static QStringList builtInLanes();          // Mode, Safety, RFID, Link, Faults
+
+    // The Lanes ▾ menu, built fresh (the caller owns it; tests use it
+    // without opening it). `under` is a point on the band: a custom lane
+    // there adds "Remove lane …" (right-click).
+    QMenu *buildLaneMenu(QWidget *parent, const QPoint &under = QPoint(-1, -1));
+    // "DOP1 — Digital outputs, bank 1": a packet submenu's title.
+    static QString packetTitle(const QString &captype);
+    class QToolButton *menuButton() const { return m_menuButton; }
     const QVector<CustomLane> &customLanes() const { return m_customDefs; }
     static constexpr int kMaxSpanValues = 8;   // more distinct numbers: a graph
 
@@ -99,6 +123,9 @@ signals:
     // and hands it to every band.
     void addLaneRequested(const CustomLane &lane);
     void removeLaneRequested(const CustomLane &lane);
+    // Session 294: a built-in lane ticked or unticked; Reset to default lanes.
+    void builtInLaneToggled(const QString &name, bool shown);
+    void resetLanesRequested();
 
 protected:
     void paintEvent(QPaintEvent *) override;
@@ -106,15 +133,24 @@ protected:
     void contextMenuEvent(QContextMenuEvent *) override;
     bool event(QEvent *e) override;
     void showEvent(QShowEvent *) override;
+    void resizeEvent(QResizeEvent *) override;
 
 private:
     QRect track(int lane) const;
     int xFor(qint64 ms, const QRect &r) const;
     qint64 msFor(int x, const QRect &r) const;
 
-    int laneCount() const { return kFixedLanes + m_custom.size(); }
+    int laneCount() const { return shownFixedCount() + m_custom.size(); }
     int labelWidth() const;
     static constexpr int kFixedLanes = 5;
+    // Session 294: the display row of built-in lane `id` (0 Mode .. 4
+    // Faults), -1 while hidden; and the built-in id at a display row
+    // (-1: a custom lane, or none).
+    int rowOfFixed(int id) const;
+    int fixedAtRow(int row) const;
+    int shownFixedCount() const;
+    QStringList m_hidden;
+    class QToolButton *m_menuButton = nullptr;
 
     // One custom lane's samples in the window.
     struct LaneData {

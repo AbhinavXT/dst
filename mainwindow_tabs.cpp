@@ -249,19 +249,10 @@ void MainWindow::buildOrShowTab(const QString &tabKey,
     auto *lanes = new LaneBand;
     lanes->setEnabled2(m_lanesOn);
     lanes->setCustomLanes(m_customLanes);
+    lanes->setHiddenLanes(m_hiddenLanes);   // session 294
     lanes->setModel(model, tabKey, friendlyName);
-    // Session 164: added or removed on any tab, for every tab.
-    connect(lanes, &LaneBand::addLaneRequested, this, [this](const CustomLane &lane) {
-        if (m_customLanes.contains(lane)) return;
-        QVector<CustomLane> next = m_customLanes;
-        next << lane;
-        setCustomLanes(next);
-    });
-    connect(lanes, &LaneBand::removeLaneRequested, this, [this](const CustomLane &lane) {
-        QVector<CustomLane> next = m_customLanes;
-        next.removeAll(lane);
-        setCustomLanes(next);
-    });
+    // Session 164 / 294: changed on any tab, for every tab.
+    connectLaneBand(lanes);
     connect(lanes, &LaneBand::timeClicked,
             this, [this, tabKey](qint64 ms) { jumpToEntry(tabKey, ms); });
     connect(ribbon, &TimelineRibbon::rangeSelected,

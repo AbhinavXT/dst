@@ -47,7 +47,7 @@ QStringList iniKeys(Section s)
                  QStringLiteral("lococonsole/bigNumbersShown"), QStringLiteral("lococonsole/cabFields"),
                  QStringLiteral("lococonsole/cabShown"), QStringLiteral("lococonsole/highlightChanges") };
     case Section::Lanes:
-        return { QStringLiteral("ui/laneBand"), QStringLiteral("ui/customLanes") };
+        return { QStringLiteral("ui/laneBand"), QStringLiteral("ui/customLanes"), QStringLiteral("ui/hiddenLanes") };
     case Section::Watches:
         return { QStringLiteral("ui/watches"), QStringLiteral("ui/pin_freeze_on_watch"),
                  QStringLiteral("query/preset_names"), QStringLiteral("query/preset_queries") };
@@ -353,8 +353,12 @@ QString Bundle::summary(Section s) const
         QStringList names;
         for (const QJsonValue &v : ini.value(QStringLiteral("ui/customLanes")).toArray())
             names << v.toString().replace(QLatin1Char('\t'), QStringLiteral(" \u25B8 "));
-        return (on == QLatin1String("false") ? QObject::tr("lanes off") : QObject::tr("lanes on")) + QStringLiteral(", ")
+        QString text = (on == QLatin1String("false") ? QObject::tr("lanes off") : QObject::tr("lanes on")) + QStringLiteral(", ")
             + countAndNames(names.size(), QObject::tr("1 custom lane"), QObject::tr("%1 custom lanes"), names);
+        QStringList hidden;
+        for (const QJsonValue &v : ini.value(QStringLiteral("ui/hiddenLanes")).toArray()) hidden << v.toString();
+        if (!hidden.isEmpty()) text += QObject::tr(", hidden: %1").arg(hidden.join(QStringLiteral(", ")));   // session 294
+        return text;
     }
     case Section::Watches:
         return QObject::tr("%1 watches, %2 saved filters")

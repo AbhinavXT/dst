@@ -2,6 +2,8 @@
 
 #include "soslog.h"
 
+#include "fieldcatalog.h"
+#include "schema/schemadecoder.h"
 #include "fieldplot.h"
 #include "logmodel.h"
 #include "capturedecoder.h"
@@ -11,6 +13,7 @@
 #include <QDateTime>
 #include <QContextMenuEvent>
 #include <QHelpEvent>
+#include <QLineEdit>
 #include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
@@ -19,7 +22,11 @@
 #include <QSet>
 #include <QtMath>
 #include <QTimer>
+#include <QToolButton>
 #include <QToolTip>
+#include <QWidgetAction>
+
+#include <memory>
 
 namespace {
 const int kLaneH   = 16;
@@ -27,9 +34,42 @@ const int kLaneGap = 4;
 const int kLabelW  = 64;      // the five fixed lanes' names fit in this
 const int kLabelMaxW = 150;   // a custom lane's field name, up to this
 const int kPad     = 6;
+const int kHeaderH = 22;      // session 294: the Lanes ▾ button and the time span
 const char *kLanes[] = { "Mode", "Safety", "RFID", "Link", "Faults" };
 
 QString hm(qint64 ms) { return QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss")); }
+
+// Session 294: a click on a tick box in the Lanes menu ticks it and leaves
+// the menu open, so several lanes can be picked in one go.
+class KeepMenuOpen : public QObject
+{
+public:
+    using QObject::QObject;
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (event->type() != QEvent::MouseButtonRelease) return false;
+        auto *menu = qobject_cast<QMenu *>(watched);
+        if (!menu) return false;
+        const auto *me = static_cast<QMouseEvent *>(event);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        QAction *a = menu->actionAt(me->position().toPoint());
+#else
+        QAction *a = menu->actionAt(me->pos());
+#endif
+        if (!a || !a->isCheckable() || !a->isEnabled() || a->menu()) return false;
+        a->trigger();
+        return true;
+    }
+};
+
+const char *kLaneTips[] = {
+    QT_TRANSLATE_NOOP("LaneBand", "The loco's mode as named spans, and starts of mission"),
+    QT_TRANSLATE_NOOP("LaneBand", "Emergencies, overspeed, EB/FSB, SoS and collision detections"),
+    QT_TRANSLATE_NOOP("LaneBand", "The last RFID tag read, as a span to the next read"),
+    QT_TRANSLATE_NOOP("LaneBand", "Gaps where the source went quiet; session keys"),
+    QT_TRANSLATE_NOOP("LaneBand", "Faults raised and cleared"),
+};
 
 const QRegularExpression &numberRx()
 {
@@ -47,7 +87,66 @@ LaneBand::LaneBand(QWidget *parent) : QWidget(parent)
     m_debounce->setSingleShot(true);
     m_debounce->setInterval(3000);
     connect(m_debounce, &QTimer::timeout, this, &LaneBand::rebuildNow);
+
+    // Session 294: what the band shows, chosen here.
+    m_menuButton = new QToolButton(this);
+    m_menuButton->setObjectName(QStringLiteral("laneMenuButton"));
+    m_menuButton->setText(tr("Lanes \u25BE"));
+    m_menuButton->setAutoRaise(true);
+    m_menuButton->setToolTip(tr("Choose the lanes: the built-in ones, and any field of the packets this tab carries"));
+    QFont small = m_menuButton->font();
+    small.setPointSizeF(qMax(7.5, small.pointSizeF() - 1.0));
+    m_menuButton->setFont(small);
+    m_menuButton->setFixedHeight(kHeaderH - 2);
+    m_menuButton->move(kPad - 2, 1);
+    connect(m_menuButton, &QToolButton::clicked, this, [this]() {
+        std::unique_ptr<QMenu> menu(buildLaneMenu(this));
+        menu->exec(m_menuButton->mapToGlobal(QPoint(0, m_menuButton->height())));
+    });
     hide();                                  // until there is something to draw
+}
+
+void LaneBand::resizeEvent(QResizeEvent *e)
+{
+    QWidget::resizeEvent(e);
+    m_menuButton->move(kPad - 2, 1);
+}
+
+QStringList LaneBand::builtInLanes()
+{
+    QStringList out;
+    for (const char *l : kLanes) out << QString::fromLatin1(l);
+    return out;
+}
+
+void LaneBand::setHiddenLanes(const QStringList &names)
+{
+    if (names == m_hidden) return;
+    m_hidden = names;
+    updateGeometry();
+    update();
+}
+
+int LaneBand::rowOfFixed(int id) const
+{
+    if (id < 0 || id >= kFixedLanes || m_hidden.contains(QString::fromLatin1(kLanes[id]))) return -1;
+    int row = 0;
+    for (int i = 0; i < id; ++i) row += m_hidden.contains(QString::fromLatin1(kLanes[i])) ? 0 : 1;
+    return row;
+}
+
+int LaneBand::fixedAtRow(int row) const
+{
+    for (int id = 0; id < kFixedLanes; ++id)
+        if (rowOfFixed(id) == row) return id;
+    return -1;
+}
+
+int LaneBand::shownFixedCount() const
+{
+    int n = 0;
+    for (const char *l : kLanes) n += m_hidden.contains(QString::fromLatin1(l)) ? 0 : 1;
+    return n;
 }
 
 void LaneBand::setModel(LogModel *model, const QString &tabKey, const QString &tabName)
@@ -193,15 +292,17 @@ bool LaneBand::hasContent() const
 QStringList LaneBand::laneNames() const
 {
     QStringList out;
-    for (const char *l : kLanes) out << QString::fromLatin1(l);
+    for (const char *l : kLanes)
+        if (!m_hidden.contains(QString::fromLatin1(l))) out << QString::fromLatin1(l);
     for (const LaneData &d : m_custom) out << d.def.field;
     return out;
 }
 
 QSize LaneBand::sizeHint() const
 {
-    const int n = laneCount();
-    return QSize(400, kPad * 2 + n * kLaneH + (n - 1) * kLaneGap);
+    // One lane's height for the "all hidden" note when nothing is shown.
+    const int n = qMax(1, laneCount());
+    return QSize(400, kPad * 2 + kHeaderH + n * kLaneH + (n - 1) * kLaneGap);
 }
 
 QSize LaneBand::minimumSizeHint() const { return QSize(120, sizeHint().height()); }
@@ -209,7 +310,7 @@ QSize LaneBand::minimumSizeHint() const { return QSize(120, sizeHint().height())
 QRect LaneBand::track(int lane) const
 {
     const int x = kPad + labelWidth();
-    return QRect(x, kPad + lane * (kLaneH + kLaneGap), width() - x - kPad, kLaneH);
+    return QRect(x, kPad + kHeaderH + lane * (kLaneH + kLaneGap), width() - x - kPad, kLaneH);
 }
 
 int LaneBand::xFor(qint64 ms, const QRect &r) const
@@ -241,11 +342,25 @@ void LaneBand::paintEvent(QPaintEvent *)
     p.setFont(small);
     const QFontMetrics fm(small);
 
+    // Session 294: the header row: the Lanes ▾ button (a child widget) and
+    // the span the lanes cover.
+    if (m_to > m_from) {
+        p.setPen(UiColor::muted());
+        p.drawText(QRect(kPad, 0, width() - 2 * kPad, kHeaderH), Qt::AlignRight | Qt::AlignVCenter,
+                   tr("%1 \u2013 %2").arg(hm(m_from), hm(m_to)));
+    }
+    if (laneCount() == 0) {
+        p.setPen(UiColor::muted());
+        p.drawText(QRect(kPad, kPad + kHeaderH, width() - 2 * kPad, kLaneH), Qt::AlignLeft | Qt::AlignVCenter,
+                   tr("Every lane is hidden: Lanes \u25BE to choose some"));
+    }
+    const int fixedRows = shownFixedCount();
     for (int lane = 0; lane < laneCount(); ++lane) {
         const QRect r = track(lane);
         p.setPen(UiColor::muted());
-        const QString name = lane < kFixedLanes ? QString::fromLatin1(kLanes[lane]).toUpper()
-                                                : m_custom.at(lane - kFixedLanes).def.field;
+        const int fixedId = fixedAtRow(lane);
+        const QString name = fixedId >= 0 ? QString::fromLatin1(kLanes[fixedId]).toUpper()
+                                          : m_custom.at(lane - fixedRows).def.field;
         p.drawText(QRect(kPad, r.top(), labelWidth() - 6, r.height()), Qt::AlignLeft | Qt::AlignVCenter,
                    fm.elidedText(name, Qt::ElideRight, labelWidth() - 6));
         p.setPen(Qt::NoPen);
@@ -253,8 +368,13 @@ void LaneBand::paintEvent(QPaintEvent *)
         p.drawRoundedRect(r, 4, 4);
     }
 
+    // `lane` is a lane's id: 0..4 the built-in ones, kFixedLanes + i custom
+    // lane i. A hidden lane draws nothing.
+    auto rowFor = [&](int lane) { return lane < kFixedLanes ? rowOfFixed(lane) : fixedRows + (lane - kFixedLanes); };
     auto bar = [&](int lane, qint64 a, qint64 b, const QColor &c, const QString &label) {
-        const QRect r = track(lane);
+        const int row = rowFor(lane);
+        if (row < 0) return;
+        const QRect r = track(row);
         int x1 = xFor(a, r), x2 = xFor(b, r);
         if (x2 - x1 < 3) x2 = x1 + 3;
         const QRect br(x1, r.top(), x2 - x1, r.height());
@@ -267,7 +387,9 @@ void LaneBand::paintEvent(QPaintEvent *)
         }
     };
     auto tick = [&](int lane, qint64 ms, const QColor &c, const QString &label) {
-        const QRect r = track(lane);
+        const int row = rowFor(lane);
+        if (row < 0) return;
+        const QRect r = track(row);
         const int x = xFor(ms, r);
         p.setPen(QPen(c, 2));
         p.drawLine(x, r.top() + 2, x, r.bottom() - 2);
@@ -302,7 +424,8 @@ void LaneBand::paintEvent(QPaintEvent *)
     // Session 168: start of mission (ARP), over the mode it precedes: the
     // spell in the accent colour, at least 6 px so a few seconds still show.
     for (const RunReport::Episode &m : m_sum.missionStarts) {
-        const QRect r = track(0);
+        if (rowOfFixed(0) < 0) break;
+        const QRect r = track(rowOfFixed(0));
         const int x1 = xFor(m.fromMs, r);
         const qint64 minMs = m_to > m_from ? (m_to - m_from) * 6 / qMax(1, r.width()) : 1;
         bar(0, m.fromMs, qMax(m.toMs, qMin(m.fromMs + minMs, m_to)), UiColor::accent(), tr("Start of mission"));
@@ -313,7 +436,8 @@ void LaneBand::paintEvent(QPaintEvent *)
     for (const RunReport::Episode &e : m_sum.overspeed) bar(1, e.fromMs, qMax(e.toMs, e.fromMs + 1), UiColor::warning(), tr("overspeed"));
     // Session 178: the loco's own SoS (accent, top half) and collision detections (ticks).
     for (const RunReport::Episode &e : m_sum.selfSos) {
-        const QRect r = track(1);
+        if (rowOfFixed(1) < 0) break;
+        const QRect r = track(rowOfFixed(1));
         const int x1 = xFor(e.fromMs, r), x2 = qMax(xFor(e.toMs, r), x1 + 3);
         p.fillRect(QRect(x1, r.top(), x2 - x1, r.height() / 2), UiColor::accent());
     }
@@ -322,7 +446,8 @@ void LaneBand::paintEvent(QPaintEvent *)
     // and the brake strip: collisions in the error colour, SoS in the warning
     // colour; its brake decisions as ticks (applied: error, not applied: muted).
     for (const RunReport::Episode &e : m_sum.sosThreats) {
-        const QRect r = track(1);
+        if (rowOfFixed(1) < 0) break;
+        const QRect r = track(rowOfFixed(1));
         const int x1 = xFor(e.fromMs, r), x2 = qMax(xFor(e.toMs, r), x1 + 3);
         const int y = r.top() + r.height() / 2 + 1;
         p.fillRect(QRect(x1, y, x2 - x1, qMax(2, r.bottom() - 5 - y)),
@@ -332,7 +457,8 @@ void LaneBand::paintEvent(QPaintEvent *)
         tick(1, c.ms, c.from == QLatin1String("applied") ? UiColor::error() : UiColor::muted(), QString());
     // Session 175: EB / FSB applications, along the bottom of the Safety lane.
     for (const RunReport::BrakeEvent &b : m_sum.brakes) {
-        const QRect r = track(1);
+        if (rowOfFixed(1) < 0) break;
+        const QRect r = track(rowOfFixed(1));
         const int x1 = xFor(b.fromMs, r), x2 = qMax(xFor(b.toMs, r), x1 + 3);
         p.fillRect(QRect(x1, r.bottom() - 4, x2 - x1, 4), b.type.startsWith(QLatin1String("4")) ? UiColor::error() : UiColor::warning());
     }
@@ -348,7 +474,8 @@ void LaneBand::paintEvent(QPaintEvent *)
         if (tg.duplicateMissingMs) tick(2, tg.duplicateMissingMs, UiColor::warning(), QString());
     // Session 179: no session keys (top half of the Link lane), key loads (ticks).
     for (const RunReport::Episode &k : m_sum.noKeys) {
-        const QRect r = track(3);
+        if (rowOfFixed(3) < 0) break;
+        const QRect r = track(rowOfFixed(3));
         const int x1 = xFor(k.fromMs, r), x2 = qMax(xFor(k.toMs, r), x1 + 3);
         p.fillRect(QRect(x1, r.top(), x2 - x1, r.height() / 2), UiColor::accent());
     }
@@ -375,7 +502,7 @@ void LaneBand::paintEvent(QPaintEvent *)
             }
             continue;
         }
-        const QRect r = track(lane).adjusted(0, 2, 0, -2);
+        const QRect r = track(rowFor(lane)).adjusted(0, 2, 0, -2);
         const double span = d.hi > d.lo ? d.hi - d.lo : 1.0;
         QPainterPath path;
         bool pen = false;                        // a special value lifts the pen
@@ -399,7 +526,9 @@ QString LaneBand::describeAt(const QPoint &pos) const
         if (!r.adjusted(0, -kLaneGap / 2, 0, kLaneGap / 2).contains(pos)) continue;
         const qint64 ms = msFor(pos.x(), r);
         const qint64 slack = r.width() > 0 ? (m_to - m_from) * 4 / r.width() : 0;   // ±4 px
-        switch (lane) {
+        // Session 294: the row's lane id (built-in lanes can be hidden).
+        const int id = fixedAtRow(lane) >= 0 ? fixedAtRow(lane) : kFixedLanes + (lane - shownFixedCount());
+        switch (id) {
         case 0: {
             for (const RunReport::Episode &m : m_sum.missionStarts) {
                 if (ms < m.fromMs - slack || ms > m.toMs + slack * 2) continue;
@@ -465,7 +594,7 @@ QString LaneBand::describeAt(const QPoint &pos) const
                 if (qAbs(f.ms - ms) <= slack) return tr("%1 at %2: %3").arg(f.raised ? tr("Fault") : tr("Cleared"), hm(f.ms), f.text);
             return QString();
         default: {
-            const LaneData &d = m_custom.at(lane - kFixedLanes);
+            const LaneData &d = m_custom.at(id - kFixedLanes);
             int j = -1;                          // the last sample at or before
             for (int k = 0; k < d.ms.size() && d.ms.at(k) <= ms + slack; ++k) j = k;
             if (j < 0) return tr("@%1 %2: no value yet at %3").arg(d.def.type, d.def.field, hm(ms));
@@ -499,7 +628,7 @@ QHash<QString, QStringList> LaneBand::addableFields() const
 int LaneBand::customLaneAt(const QPoint &pos) const
 {
     for (int i = 0; i < m_custom.size(); ++i) {
-        QRect r = track(kFixedLanes + i);
+        QRect r = track(shownFixedCount() + i);
         r.setLeft(0);                            // the label counts too
         if (r.adjusted(0, -kLaneGap / 2, 0, kLaneGap / 2).contains(pos)) return i;
     }
@@ -508,42 +637,161 @@ int LaneBand::customLaneAt(const QPoint &pos) const
 
 void LaneBand::contextMenuEvent(QContextMenuEvent *e)
 {
-    QMenu menu(this);
-    QMenu *add = menu.addMenu(tr("Add lane"));
-    add->setObjectName(QStringLiteral("laneAddMenu"));
+    // Session 294: the same menu as Lanes ▾, plus Remove for a custom lane
+    // under the pointer.
+    std::unique_ptr<QMenu> menu(buildLaneMenu(this, e->pos()));
+    menu->exec(e->globalPos());
+}
+
+QString LaneBand::packetTitle(const QString &captype)
+{
+    // The schema's name for the packet ("DOP1", "LOCO_SOS (lsos)" when the
+    // capture token differs), then fieldmap.json's words for it.
+    static QHash<QString, QString> names;
+    if (names.isEmpty()) {
+        for (const Schema::Decoder::PacketFields &pf : kavachSchema().fieldsByCaptype())
+            names.insert(pf.captype.toLower(), pf.packet);
+    }
+    const QString packet = names.value(captype.toLower());
+    QString title = packet.isEmpty() ? captype.toUpper()
+                    : packet.compare(captype, Qt::CaseInsensitive) == 0 ? packet
+                    : QStringLiteral("%1 (%2)").arg(packet, captype);
+    const QString desc = FieldCatalog::instance().packetDescription(captype);
+    if (!desc.isEmpty()) title += QStringLiteral(" — ") + desc;
+    return title;
+}
+
+QMenu *LaneBand::buildLaneMenu(QWidget *parent, const QPoint &under)
+{
+    auto *menu = new QMenu(parent);
+    menu->setObjectName(QStringLiteral("laneMenu"));
+    menu->setToolTipsVisible(true);
+    auto *keepOpen = new KeepMenuOpen(menu);
+    menu->installEventFilter(keepOpen);
+
+    // Every tick box for one custom lane, wherever it shows (its packet's
+    // submenu and the search results), kept in step.
+    auto byKey = std::make_shared<QHash<QString, QList<QPointer<QAction>>>>();
+    auto fieldAction = [this, menu, byKey](const QString &text, const CustomLane &lane) {
+        auto *a = new QAction(text, menu);
+        a->setCheckable(true);
+        a->setChecked(m_customDefs.contains(lane));
+        a->setData(lane.key());
+        (*byKey)[lane.key()] << a;
+        connect(a, &QAction::toggled, this, [this, lane, byKey, a](bool on) {
+            for (const QPointer<QAction> &other : byKey->value(lane.key())) {
+                if (!other || other == a) continue;
+                const QSignalBlocker block(other.data());
+                other->setChecked(on);
+            }
+            if (on) emit addLaneRequested(lane); else emit removeLaneRequested(lane);
+        });
+        return a;
+    };
+
+    // ---- search across every packet's fields --------------------------------
+    auto *search = new QLineEdit(menu);
+    search->setObjectName(QStringLiteral("laneFieldSearch"));
+    search->setPlaceholderText(tr("Search fields…"));
+    search->setClearButtonEnabled(true);
+    search->setMinimumWidth(220);
+    auto *searchAction = new QWidgetAction(menu);
+    searchAction->setDefaultWidget(search);
+    menu->addAction(searchAction);
+    QAction *resultsEnd = menu->addSeparator();
+    auto results = std::make_shared<QList<QAction *>>();
+
     const QHash<QString, QStringList> fields = addableFields();
     QStringList types = fields.keys();
     types.sort();
+
+    // ---- the built-in lanes ---------------------------------------------------
+    menu->addSection(tr("Built-in lanes"));
+    for (int id = 0; id < kFixedLanes; ++id) {
+        const QString name = QString::fromLatin1(kLanes[id]);
+        QAction *a = menu->addAction(tr(kLanes[id]));
+        a->setObjectName(QStringLiteral("laneBuiltIn_") + name);
+        a->setCheckable(true);
+        a->setChecked(!m_hidden.contains(name));
+        a->setToolTip(tr(kLaneTips[id]));
+        connect(a, &QAction::toggled, this, [this, name](bool on) { emit builtInLaneToggled(name, on); });
+    }
+
+    // ---- a submenu per packet, its fields ticked when shown ----------------------
+    menu->addSection(tr("Packet fields"));
+    if (types.isEmpty()) {
+        menu->addAction(tr("(no decodable packets in this tab)"))->setEnabled(false);
+    }
     for (const QString &type : types) {
-        QMenu *sub = add->addMenu(type);
-        for (const QString &field : fields.value(type)) {
-            QAction *a = sub->addAction(field);
-            const CustomLane lane{ type, field };
-            a->setData(lane.key());
-            a->setCheckable(true);
-            a->setChecked(m_customDefs.contains(lane));
-            a->setEnabled(!m_customDefs.contains(lane));
+        int chosen = 0;
+        for (const QString &field : fields.value(type)) chosen += m_customDefs.contains(CustomLane{ type, field }) ? 1 : 0;
+        QString title = packetTitle(type);
+        if (chosen > 0) title += QStringLiteral("  (%1)").arg(chosen);
+        QMenu *sub = menu->addMenu(title);
+        sub->setObjectName(QStringLiteral("laneMenu_") + type);
+        sub->installEventFilter(keepOpen);
+        if (fields.value(type).isEmpty()) sub->addAction(tr("(no named fields)"))->setEnabled(false);
+        for (const QString &field : fields.value(type)) sub->addAction(fieldAction(field, CustomLane{ type, field }));
+    }
+
+    // Typing lists matching fields of every packet under the box, ticked
+    // like the submenus, so a field can be found without knowing its packet.
+    connect(search, &QLineEdit::textChanged, menu, [menu, results, resultsEnd, fields, types, fieldAction](const QString &text) {
+        for (QAction *a : *results) {
+            menu->removeAction(a);
+            a->deleteLater();
         }
+        results->clear();
+        const QString needle = text.trimmed();
+        if (needle.isEmpty()) return;
+        const int limit = 25;
+        int found = 0;
+        for (const QString &type : types) {
+            for (const QString &field : fields.value(type)) {
+                if (!field.contains(needle, Qt::CaseInsensitive)) continue;
+                if (found == limit) break;
+                QAction *a = fieldAction(QStringLiteral("%1 ▸ %2").arg(type.toUpper(), field), CustomLane{ type, field });
+                menu->insertAction(resultsEnd, a);
+                results->append(a);
+                ++found;
+            }
+        }
+        auto *note = new QAction(found == 0 ? QObject::tr("No field matches “%1”").arg(needle)
+                                 : found == limit ? QObject::tr("First %1 shown: type more to narrow").arg(limit)
+                                                  : QString(), menu);
+        if (!note->text().isEmpty()) {
+            note->setEnabled(false);
+            menu->insertAction(resultsEnd, note);
+            results->append(note);
+        } else {
+            delete note;
+        }
+    });
+    connect(menu, &QMenu::aboutToShow, search, [search]() { QTimer::singleShot(0, search, [search]() { search->setFocus(); }); });
+
+    // ---- the custom lane under a right-click ----------------------------------------
+    const int at = under.x() >= 0 ? customLaneAt(under) : -1;
+    if (at >= 0) {
+        const CustomLane lane = m_custom.at(at).def;
+        menu->addSeparator();
+        QAction *remove = menu->addAction(tr("Remove lane “%1 ▸ %2”").arg(lane.type, lane.field));
+        remove->setObjectName(QStringLiteral("laneRemove"));
+        connect(remove, &QAction::triggered, this, [this, lane]() { emit removeLaneRequested(lane); });
     }
-    if (types.isEmpty()) add->addAction(tr("(no decodable packets in this tab)"))->setEnabled(false);
-    QAction *remove = nullptr;
-    const int under = customLaneAt(e->pos());
-    if (under >= 0) {
-        const CustomLane &d = m_custom.at(under).def;
-        remove = menu.addAction(tr("Remove lane \u201C%1 \u25B8 %2\u201D").arg(d.type, d.field));
-    }
-    // Emitted after the menu has closed: the owner rebuilds every band, and
-    // this menu's actions must not be freed while one is delivering.
-    QAction *chosen = menu.exec(e->globalPos());
-    if (!chosen) return;
-    if (chosen == remove) { emit removeLaneRequested(m_custom.at(under).def); return; }
-    const QStringList parts = chosen->data().toString().split(QLatin1Char('\t'));
-    if (parts.size() == 2) emit addLaneRequested(CustomLane{ parts.at(0), parts.at(1) });
+
+    menu->addSeparator();
+    QAction *reset = menu->addAction(tr("Reset to default lanes"));
+    reset->setObjectName(QStringLiteral("laneReset"));
+    reset->setToolTip(tr("All five built-in lanes, no field lanes"));
+    reset->setEnabled(!m_hidden.isEmpty() || !m_customDefs.isEmpty());
+    connect(reset, &QAction::triggered, this, &LaneBand::resetLanesRequested);
+    return menu;
 }
 
 void LaneBand::mousePressEvent(QMouseEvent *e)
 {
     if (e->button() != Qt::LeftButton) return;
+    if (e->pos().y() < kPad + kHeaderH || laneCount() == 0) return;   // the header row
     const QRect r = track(0);
     if (e->pos().x() < r.left()) return;
     emit timeClicked(msFor(e->pos().x(), r));

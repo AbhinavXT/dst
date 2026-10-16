@@ -11,7 +11,7 @@ FieldCatalog &FieldCatalog::instance()
     return c;
 }
 
-void FieldCatalog::clear() { m_byAlias.clear(); }
+void FieldCatalog::clear() { m_byAlias.clear(); m_packetDesc.clear(); }
 
 bool FieldCatalog::load(const QString &path, QString *err)
 {
@@ -28,6 +28,7 @@ bool FieldCatalog::load(const QString &path, QString *err)
 bool FieldCatalog::loadFromJson(const QByteArray &json, QString *err)
 {
     m_byAlias.clear();
+    m_packetDesc.clear();
 
     QJsonParseError perr{};
     const QJsonDocument doc = QJsonDocument::fromJson(json, &perr);
@@ -40,6 +41,11 @@ bool FieldCatalog::loadFromJson(const QByteArray &json, QString *err)
         if (err) *err = QStringLiteral("expected a JSON object with a 'fields' array");
         return false;
     }
+
+    // Session 294: "packets": { "dop1": "Digital outputs, bank 1", ... }
+    const QJsonObject packets = doc.object().value("packets").toObject();
+    for (auto it = packets.begin(); it != packets.end(); ++it)
+        m_packetDesc.insert(it.key().trimmed().toLower(), it.value().toString().trimmed());
 
     const QJsonArray fields = doc.object().value("fields").toArray();
     for (const QJsonValue &v : fields) {
@@ -70,6 +76,11 @@ bool FieldCatalog::loadFromJson(const QByteArray &json, QString *err)
         return false;
     }
     return true;
+}
+
+QString FieldCatalog::packetDescription(const QString &captype) const
+{
+    return m_packetDesc.value(captype.trimmed().toLower());
 }
 
 const FieldCatalog::Entry *FieldCatalog::find(const QString &alias) const
