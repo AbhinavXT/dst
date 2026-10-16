@@ -49,6 +49,16 @@ public:
     void addNext();                       // + Add VCC
     bool addRange(const QString &range, QString *error);   // Add range… after its prompt
 
+    // Session 300: the 2.6 updater's per-loco addresses. "Loco ▾" (shown
+    // with the 2.6 updater only) picks one controller, or all four of a
+    // loco; a row whose address is a loco controller is labelled with it.
+    void setLocoPicker(bool shown);
+    bool locoPickerShown() const;
+    void pickAddress(const QString &ip);  // one row: replaces it; several: adds a row
+    void pickLoco(int loco);              // the list becomes the loco's four controllers
+    QString rowLabel(int row) const;      // "Loco 1 · VCC 1 controller 1", or empty
+    class QToolButton *locoButton() const { return m_locoButton; }
+
 signals:
     void changed();
 
@@ -58,6 +68,7 @@ private:
         QCheckBox   *tick = nullptr;
         QLineEdit   *edit = nullptr;
         QToolButton *remove = nullptr;
+        QLabel      *name = nullptr;      // session 300: the loco controller, when known
         bool         marked = false;
     };
     void    refresh();                    // marks, summary, buttons; emits changed()
@@ -68,6 +79,7 @@ private:
     QVBoxLayout  *m_rowsLayout = nullptr;
     QPushButton  *m_addButton = nullptr;
     QPushButton  *m_rangeButton = nullptr;
+    QToolButton  *m_locoButton = nullptr;  // session 300
     QLabel       *m_summary = nullptr;
     bool          m_quiet = false;        // inside setText: one changed() at the end
 };

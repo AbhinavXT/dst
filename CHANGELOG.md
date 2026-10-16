@@ -11,6 +11,97 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-300"></a>
+## Session 300 — Firmware Flasher: the 2.6 updater's loco addresses
+
+The last of the four 2.6 patches. Since updater 2.6.0, each VCC
+controller answers on its application's address, per loco: loco 1
+`.16/.102/.103/.104`, loco 2 `.77/.105/.106/.107`, loco 3
+`.87/.88/.96/.97` on 192.168.25.x. `.167` is a controller with an
+unknown ID.
+
+**What the operator sees.** With the toggle on **2.6**:
+- **Loco addresses ▾** under + Add VCC / Add range…. A submenu per loco
+  lists its four controllers, with VCC 1 controller 1 marked "(card
+  images)", then **All 4 controllers (VCC image)**.
+  - With one row, a controller replaces it.
+  - With several rows, it is added (never twice).
+  - All 4 makes the list that loco's four rows, flashed at once
+    (session 291).
+- **A label under every row whose address is a loco controller:** "Loco
+  1 · VCC 1 controller 1".
+- **Pre-flight:**
+  - "Target: Loco 1 · VCC 1 controller 2" for one known VCC.
+  - **Refused:** an Input/Output/Analog image to any controller but VCC
+    1 controller 1. "Input card images go to VCC 1 controller 1 of the
+    loco (192.168.25.77); 192.168.25.105 is Loco 2 · VCC 1 controller 2,
+    which would refuse them". The board drops such a META without a
+    reply, which used to show only as "META never acknowledged".
+  - **Refused:** `.167`, "a controller whose ID is unknown (a strap
+    fault): it refuses every image".
+  - **A ⚠, not a block:** any other 192.168.25.x, such as the old `.168`:
+    "is not a 2.6 controller address".
+  - **127.0.0.1** (the simulator) gets no warning.
+- **Classic:** no button, no labels, no address checks.
+
+**How.**
+- `Flasher::LocoController`, `locoControllers()`, `locoControllerAt()`,
+  `locoRelayIp()` and `kUnknownControllerIp`, from the guide's table.
+  The firmware has it in `enet_user.c`'s `kLocoIpLastOctet`.
+- `evaluatePreflight` checks every target in 2.6.
+- `VccListEdit`:
+  - `setLocoPicker()`, `pickAddress()`, `pickLoco()`, `rowLabel()`;
+  - each row is two lines, the second the label (hidden unless known);
+  - the button sits on its own line: beside the other two it cut "Add
+    range…" in the 300 px column, which the screenshot showed.
+- `FlasherQueuePage` shows the picker when the profile or the toggle is
+  2.6.
+
+**Decisions.**
+- **The `.168` default for new profiles is unchanged.** New profiles
+  start on Classic (session 296), and in 2.6 the ⚠ says what to do.
+- **Three locos, as in the firmware's table.** A new loco is a row in
+  `locoControllers()`, as it is a row in `kLocoIpLastOctet`.
+
+**Files.**
+- `flasher/flashercore.{h,cpp}`, `flasher/vcclistedit.{h,cpp}`,
+  `flasher/flasherqueuepage.cpp`.
+- `README_FLASHING_AND_CONFIG.md`: "Loco addresses (2.6)".
+- New `tests/test_session300.cpp`, `tests/tests.pro`.
+- `tests/screenshot_main.cpp`: `SHOT_WINDOW=flasherloco`.
+
+**Tests.** `session300` (26 checks):
+- **The table, loco by loco:** an address (port ignored) names its
+  controller; `.168` is none; each loco's relay is VCC 1 controller 1.
+- **Pre-flight:**
+  - a known VCC named;
+  - a card image to the wrong controller refused, with the exact
+    sentence;
+  - a card image to its relay ready;
+  - `.167` refused; `.168` warned;
+  - Classic and 127.0.0.1 untouched;
+  - a loco's four VCCs ready.
+- **The list:**
+  - hidden and unlabelled in Classic;
+  - labelled in 2.6;
+  - the menu's three submenus, six items each;
+  - one controller replaces one row; All 4 gives four labelled rows;
+  - an added controller is not added twice;
+  - an address outside the table is unlabelled.
+- **The queue page** follows the toggle and the profile.
+
+Checked on screen (`SHOT_WINDOW=flasherloco`), light and dark.
+
+**Gate:** Qt 6 and Qt 5.15 green, 336 suites / 8538 checks, 0 failed;
+menu audit 184 ok; smoke; validators.
+
+**Not tested:**
+- **A real loco's network.**
+- **The loco table** is the guide's (`06-ethernet-udp.md`); not compared
+  with a running board.
+
+---
+
 <a id="session-299"></a>
 ## Session 299 — Firmware Flasher: the cards' own results (2.6)
 

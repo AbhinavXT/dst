@@ -104,6 +104,30 @@ A board with an updater older than 2.2 still works in **2.6**: it isn't
 held, and the Summary says "updater older than 2.2". **Classic** is the
 flasher exactly as before.
 
+### Loco addresses (2.6)
+
+A 2.6 board answers on its **loco's address**, the same one its
+application uses:
+
+| | VCC 1 ctrl 1 | VCC 1 ctrl 2 | VCC 2 ctrl 1 | VCC 2 ctrl 2 |
+|---|---|---|---|---|
+| **Loco 1** | .16 | .102 | .103 | .104 |
+| **Loco 2** | .77 | .105 | .106 | .107 |
+| **Loco 3** | .87 | .88 | .96 | .97 |
+
+All on `192.168.25.x`. With **2.6**, the target box has **Loco
+addresses ▾**: pick one controller, or **All 4 controllers** of a loco
+for a VCC image. Each known address is labelled under its row ("Loco 1 ·
+VCC 1 controller 1").
+
+- **Input, Output and Analog images** go to **VCC 1 controller 1** of
+  the loco, which passes them on over CAN. Sending one to any other
+  controller is refused before anything is sent.
+- **`.167`** is a controller whose ID is unknown (a strap fault). It
+  refuses every image.
+- **Any other `192.168.25.x`**, such as the old `.168`, gets a ⚠: a 2.6
+  board won't answer there.
+
 ### The image trailer (2.6)
 
 A **stamped** image (made with `fw_stamp.py`) ends in a short trailer

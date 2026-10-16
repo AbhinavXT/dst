@@ -8,6 +8,7 @@
 #include <QCheckBox>
 #include <QHash>
 #include <QHBoxLayout>
+#include <QMenu>
 #include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
@@ -42,8 +43,42 @@ VccListEdit::VccListEdit(QWidget *parent)
     m_rangeButton->setToolTip(tr("Add several VCCs at once, e.g. 192.168.25.168-175"));
     connect(m_rangeButton, &QPushButton::clicked, this, &VccListEdit::askForRange);
     buttons->addWidget(m_rangeButton);
+
+    // Session 300: the 2.6 addresses, loco by loco.
+    m_locoButton = new QToolButton(this);
+    m_locoButton->setObjectName(QStringLiteral("vccLocoButton"));
+    m_locoButton->setText(tr("Loco addresses"));
+    m_locoButton->setToolTip(tr("The 2.6 updater's addresses: each VCC controller of each loco.\n"
+                                "Input, Output and Analog images go to VCC 1 controller 1."));
+    m_locoButton->setPopupMode(QToolButton::InstantPopup);
+    m_locoButton->setMinimumHeight(m_addButton->sizeHint().height());
+    auto *menu = new QMenu(m_locoButton);
+    for (int loco = 1; loco <= Flasher::locoCount(); ++loco) {
+        QMenu *sub = menu->addMenu(tr("Loco %1").arg(loco));
+        for (const Flasher::LocoController &controller : Flasher::locoControllers()) {
+            if (controller.loco != loco) continue;
+            QString text = tr("VCC %1 controller %2   %3").arg(controller.vcc).arg(controller.controller)
+                               .arg(controller.ip.mid(controller.ip.lastIndexOf(QLatin1Char('.'))));
+            if (controller.vcc == 1 && controller.controller == 1) {
+                text += tr("   (card images)");
+            }
+            const QString ip = controller.ip;
+            sub->addAction(text, this, [this, ip]() { pickAddress(ip); });
+        }
+        sub->addSeparator();
+        sub->addAction(tr("All 4 controllers (VCC image)"), this, [this, loco]() { pickLoco(loco); });
+    }
+    m_locoButton->setMenu(menu);
+    m_locoButton->hide();
     buttons->addStretch(1);
     outer->addLayout(buttons);
+    // On a line of its own: beside the other two it cut "Add range…" in the
+    // flasher's left column.
+    auto *locoLine = new QHBoxLayout();
+    locoLine->setSpacing(6);
+    locoLine->addWidget(m_locoButton);
+    locoLine->addStretch(1);
+    outer->addLayout(locoLine);
 
     m_summary = new QLabel(this);
     m_summary->setObjectName(QStringLiteral("vccListSummary"));
@@ -64,7 +99,12 @@ void VccListEdit::addRow(const QString &ip, bool ticked)
 {
     Row row;
     row.widget = new QWidget(this);
-    auto *layout = new QHBoxLayout(row.widget);
+    // Session 300: two lines, the row and under it the loco controller.
+    auto *outerRow = new QVBoxLayout(row.widget);
+    outerRow->setContentsMargins(0, 0, 0, 0);
+    outerRow->setSpacing(1);
+    auto *layout = new QHBoxLayout();
+    outerRow->addLayout(layout);
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(6);
 
@@ -84,6 +124,13 @@ void VccListEdit::addRow(const QString &ip, bool ticked)
     row.remove->setToolTip(tr("Remove this VCC"));
     row.remove->setAutoRaise(true);
     layout->addWidget(row.remove);
+
+    // Session 300: under the row, which loco controller the address is.
+    row.name = new QLabel(row.widget);
+    row.name->setStyleSheet(UiColor::mutedStyle());
+    row.name->setContentsMargins(row.tick->sizeHint().width() + 6, 0, 0, 0);
+    row.name->hide();
+    outerRow->addWidget(row.name);
 
     QWidget *key = row.widget;
     connect(row.tick, &QCheckBox::toggled, this, [this]() { refresh(); });
@@ -293,6 +340,61 @@ void VccListEdit::askForRange()
 }
 
 // -----------------------------------------------------------------------------
+//  Session 300: loco addresses
+// -----------------------------------------------------------------------------
+
+void VccListEdit::setLocoPicker(bool shown)
+{
+    m_locoButton->setVisible(shown);
+    m_locoButton->setProperty("shown", shown);
+    refresh();
+}
+
+bool VccListEdit::locoPickerShown() const
+{
+    return m_locoButton->property("shown").toBool();
+}
+
+void VccListEdit::pickAddress(const QString &ip)
+{
+    for (const Row &row : m_rows) {
+        if (row.edit->text().trimmed() == ip) {
+            row.tick->setChecked(true);
+            return;   // already listed
+        }
+    }
+    if (m_rows.size() == 1) {
+        m_rows[0].edit->setText(ip);
+        m_rows[0].tick->setChecked(true);
+        return;
+    }
+    if (m_rows.last().edit->text().trimmed().isEmpty()) {
+        m_rows.last().edit->setText(ip);
+        return;
+    }
+    if (m_rows.size() < Flasher::kMaxParallelVccs) {
+        addRow(ip);
+    }
+}
+
+void VccListEdit::pickLoco(int loco)
+{
+    QStringList ips;
+    for (const Flasher::LocoController &controller : Flasher::locoControllers()) {
+        if (controller.loco == loco) ips << controller.ip;
+    }
+    setText(ips.join(QStringLiteral(", ")));
+}
+
+QString VccListEdit::rowLabel(int row) const
+{
+    if (row < 0 || row >= m_rows.size() || m_rows.at(row).name->isHidden()) {
+        return QString();
+    }
+    return m_rows.at(row).name->text();
+}
+
+// -----------------------------------------------------------------------------
 //  Marks, summary, buttons
 // -----------------------------------------------------------------------------
 
@@ -338,6 +440,14 @@ void VccListEdit::refresh()
             row.edit->setStyleSheet(QString());
             row.edit->setToolTip(tr("VCC address. a.b.c.d:port sets a port for this VCC only."));
         }
+    }
+
+    // Session 300: label each row with its loco controller (2.6 only).
+    for (Row &row : m_rows) {
+        const Flasher::LocoController controller = Flasher::locoControllerAt(row.edit->text());
+        const bool known = locoPickerShown() && controller.loco != 0 && !row.marked;
+        row.name->setText(known ? controller.name() : QString());
+        row.name->setVisible(known);
     }
 
     // The summary, once there is more than one row.

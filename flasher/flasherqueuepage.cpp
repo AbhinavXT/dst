@@ -633,6 +633,7 @@ QString FlasherQueuePage::procedureNote() const
 void FlasherQueuePage::setUpdater(kflash::Updater updater)
 {
     m_profile.updater = updater;
+    m_vccList->setLocoPicker(updater == kflash::Updater::V26);   // session 300
     refreshPreflight();
 }
 
@@ -643,6 +644,7 @@ void FlasherQueuePage::applyProfile(const Flasher::FlashProfile &profile)
         // One preflight refresh at the end, not one per field.
         const QSignalBlocker ipBlocker(m_vccList);
         const QSignalBlocker portBlocker(m_portSpin);
+        m_vccList->setLocoPicker(profile.updater == kflash::Updater::V26);   // session 300
         m_vccList->setText(profile.vccIp);
         m_portSpin->setValue(profile.port);
     }

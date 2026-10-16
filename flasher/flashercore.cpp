@@ -1067,6 +1067,38 @@ PreflightReport evaluatePreflight(const PreflightInput &input)
         }
     }
 
+    // ---- session 300: the 2.6 updater's addresses ------------------------
+    if (ipValid && input.port != 0 && input.updater == kflash::Updater::V26) {
+        int selectedCard = 0;
+        for (const PreflightRow &row : input.rows) {
+            if (row.ticked) {
+                selectedCard = row.cardType;
+                break;
+            }
+        }
+        for (const VccTarget &target : targets.targets) {
+            const LocoController controller = locoControllerAt(target.ip);
+            if (target.ip == QLatin1String(kUnknownControllerIp)) {
+                add(PreflightItem::State::Warning,
+                    QStringLiteral("%1 is a controller whose ID is unknown (a strap fault): it refuses every "
+                                   "image — check its slot/CPU straps").arg(target.ip), true);
+            } else if (controller.loco != 0 && selectedCard != 0 && selectedCard != CardVcc
+                       && !(controller.vcc == 1 && controller.controller == 1)) {
+                add(PreflightItem::State::Warning,
+                    QStringLiteral("%1 images go to VCC 1 controller 1 of the loco (%2); %3 is %4, which "
+                                   "would refuse them")
+                        .arg(cardName(selectedCard), locoRelayIp(controller.loco), target.ip, controller.name()),
+                    true);
+            } else if (controller.loco != 0 && vccCount == 1) {
+                add(PreflightItem::State::Ok, QStringLiteral("Target: %1").arg(controller.name()), false);
+            } else if (controller.loco == 0 && target.ip.startsWith(QLatin1String("192.168.25."))) {
+                add(PreflightItem::State::Warning,
+                    QStringLiteral("%1 is not a 2.6 controller address: a 2.6 board answers on its loco's "
+                                   "addresses (Loco ▾)").arg(target.ip), false);
+            }
+        }
+    }
+
     // ---- the adapter -----------------------------------------------------
     // In Operator mode an adapter off the board's subnet blocks the run: on a
     // production bench that is always a wrong cable or a wrong IP. An
@@ -1894,6 +1926,62 @@ BoardInfo parseInfoReply(const QByteArray &reply)
         info.rejectReason = readU8(reply, 135);
     }
     return info;
+}
+
+// =============================================================================
+//  Session 300: loco addresses
+// =============================================================================
+
+QString LocoController::name() const
+{
+    return QStringLiteral("Loco %1 · VCC %2 controller %3").arg(loco).arg(vcc).arg(controller);
+}
+
+QVector<LocoController> locoControllers()
+{
+    static const int kOctets[3][4] = { { 16, 102, 103, 104 }, { 77, 105, 106, 107 }, { 87, 88, 96, 97 } };
+    QVector<LocoController> out;
+    for (int loco = 0; loco < 3; ++loco) {
+        for (int column = 0; column < 4; ++column) {
+            LocoController controller;
+            controller.loco = loco + 1;
+            controller.vcc = column / 2 + 1;
+            controller.controller = column % 2 + 1;
+            controller.ip = QStringLiteral("192.168.25.%1").arg(kOctets[loco][column]);
+            out.append(controller);
+        }
+    }
+    return out;
+}
+
+int locoCount()
+{
+    return 3;
+}
+
+LocoController locoControllerAt(const QString &ip)
+{
+    QString bare = ip.trimmed();
+    const int colon = bare.indexOf(QLatin1Char(':'));
+    if (colon >= 0) {
+        bare = bare.left(colon);
+    }
+    for (const LocoController &controller : locoControllers()) {
+        if (controller.ip == bare) {
+            return controller;
+        }
+    }
+    return LocoController();
+}
+
+QString locoRelayIp(int loco)
+{
+    for (const LocoController &controller : locoControllers()) {
+        if (controller.loco == loco && controller.vcc == 1 && controller.controller == 1) {
+            return controller.ip;
+        }
+    }
+    return QString();
 }
 
 QStringList cardReportLines(const kflash::FlashResult &result)

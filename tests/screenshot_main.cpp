@@ -627,6 +627,11 @@ int main(int argc, char **argv)
                 profile.updaterWaitSeconds = Flasher::kMinUpdaterWaitSeconds;
                 // Session 296: flasher26 is the queue with the 2.6 updater on.
                 if (which == QLatin1String("flasher26")) profile.updater = kflash::Updater::V26;
+                // Session 300: flasherloco, loco 1's four VCCs with 2.6 on.
+                if (which == QLatin1String("flasherloco")) {
+                    profile.updater = kflash::Updater::V26;
+                    profile.vccIp = QStringLiteral("192.168.25.16, 192.168.25.102, 192.168.25.103, 192.168.25.104");
+                }
                 // Session 299: flashercards, a 2.6 Input run whose two
                 // controllers report back, on its Summary.
                 static FlasherTest::FakeBoard cardsBoard;
@@ -643,10 +648,11 @@ int main(int argc, char **argv)
                 store.setActiveName(profile.name);
                 store.save();
                 auto *w = new FlasherWindow(nullptr, flashDir.path());
-                w->queuePage()->selectCard(which.startsWith(QLatin1String("flashervccs")) ? Flasher::CardVcc
+                w->queuePage()->selectCard(which.startsWith(QLatin1String("flashervccs")) || which == QLatin1String("flasherloco")
+                                               ? Flasher::CardVcc
                                                                                          : Flasher::CardInput);
                 if (which != QLatin1String("flasher") && which != QLatin1String("flashervccsq")
-                    && which != QLatin1String("flasher26")) {
+                    && which != QLatin1String("flasher26") && which != QLatin1String("flasherloco")) {
                     w->resize(1100, 720);
                     w->show();
                     w->startBatch(false);

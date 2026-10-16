@@ -204,6 +204,38 @@ struct VccTargetList {
 VccTargetList parseVccTargets(const QString &text);
 
 // -----------------------------------------------------------------------------
+//  Session 300: the 2.6 updater's addresses (updater 2.6.0, enet_user.c)
+// -----------------------------------------------------------------------------
+//
+//  Each VCC controller answers on the same address as its application, per
+//  loco (kLocoIpLastOctet), on 192.168.25.x:
+//
+//              VCC1 ctrl1  VCC1 ctrl2  VCC2 ctrl1  VCC2 ctrl2
+//      loco 1     .16         .102        .103        .104
+//      loco 2     .77         .105        .106        .107
+//      loco 3     .87         .88         .96         .97
+//
+//  .167 is a controller whose ID is unknown (a strap fault): it refuses every
+//  image. Input/Output/Analog images go to VCC 1 controller 1 of the loco,
+//  which relays them over CAN; any other VCC controller refuses them.
+struct LocoController {
+    int     loco = 0;            // 1..3
+    int     vcc = 0;             // 1..2
+    int     controller = 0;      // 1..2
+    QString ip;                  // "192.168.25.16"
+    QString name() const;        // "Loco 1 · VCC 1 controller 1"
+};
+
+const char *const kUnknownControllerIp = "192.168.25.167";
+
+QVector<LocoController> locoControllers();          // the 12 above, loco by loco
+int                     locoCount();                // 3
+// The controller at `ip` (port ignored), or loco == 0 when it is not one.
+LocoController          locoControllerAt(const QString &ip);
+// VCC 1 controller 1 of `loco`: where its card images go.
+QString                 locoRelayIp(int loco);
+
+// -----------------------------------------------------------------------------
 //  Profiles: one bench or site, with its address, default images and tuning
 // -----------------------------------------------------------------------------
 struct FlashProfile {
