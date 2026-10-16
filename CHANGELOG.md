@@ -11,6 +11,71 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-302"></a>
+## Session 302 — the Decode Workbench shows the annexures' field descriptions
+
+The first of the three windows after session 301's data.
+
+**What the operator sees.** In **Decode Workbench**, hovering a decoded
+row shows what RDSO's annexure says that field is. The Field cell and
+the Value cell both show it.
+- **The hover text:**
+  - the annexure's field name and size ("AUTHORIZED_SPEED · 6 bits");
+  - its description and values, word for word;
+  - a DLConsole note where the annexure is odd, marked as ours;
+  - where it comes from ("Annexure-C — Multiple Access Scheme & Radio
+    Communication Protocol, C.4.2, page 20" and "RDSO/SPN/196/2020
+    Version 4.0, Amdt-10, effective 27.06.2024").
+- **Covered:** every field row of an SLRP (sub-packets included: a
+  `speed[n]` item shows its distance, class and value), LSRP, AAP, AEP
+  and ARP from Annexure C.
+- **RFID tags,** from Annexure D, for the tag's own type: an LC tag's
+  placement mentions the G-tag, a junction tag's TINs are TIN -1/-2.
+- **No hover text:** the capture line's own rows (type, rtc, seq, frame
+  len, loco / ctrl), fields the annexures don't define (the reader id,
+  the message header, health bits), and packets they don't cover (DMI,
+  IOA, CCSYS, NMS…). They look as before.
+- **The Field header's tooltip** says the rows explain themselves.
+
+**How.** `decodeNow()` asks `describe()` for the raw values too (for an
+RFID tag's type) and sets `FieldDocs::tooltip()` on both cells.
+`FieldDocs::isCaptureRow()` is new: the unindented rows `describe()`
+writes for the capture line. An RFID frame has both the capture's `type`
+and the tag's indented `type`; only the tag's is Annexure D's.
+
+**Files.**
+- `decodeworkbench.{h,cpp}` (`fieldTable()` for the tests),
+  `fielddocs.{h,cpp}`.
+- New `tests/test_session302.cpp`, `tests/tests.pro`.
+- `tests/screenshot_main.cpp`: `SHOT_WINDOW=fielddoctip
+  SHOT_FIELD=packet:name[:tagType]` draws a description as its tooltip
+  draws it.
+
+**Tests.** `session302` (16 checks), on real lines from `replay/`:
+- **An SLRP:**
+  - PKT_TYPE's text, value and page, on both cells;
+  - SOURCE_STN_ID described as SOURCE_STN_ILC_IBS_ID;
+  - a `speed[n]` item with its three spec fields;
+  - every indented field row described;
+  - the capture rows not.
+- **An RFID tag:**
+  - placement from D 2;
+  - the tag's `type` described, the capture's not;
+  - the `tin` group with both halves;
+  - `reader_id` not.
+- **A DMI frame:** no descriptions.
+
+Checked on screen with `SHOT_WINDOW=fielddoctip`
+(slrp:AUTHORIZED_SPEED, slrp:speed, rfid:placement:10).
+
+**Gate:** Qt 6 and Qt 5.15 green, 338 suites / 8577 checks, 0 failed;
+validators; menu audit 184 ok; smoke.
+
+**Not tested:** a real tooltip popping up under the mouse. The harness
+draws the same HTML in a tooltip-styled label.
+
+---
+
 <a id="session-301"></a>
 ## Session 301 — field descriptions from Annexure C and D (the data)
 

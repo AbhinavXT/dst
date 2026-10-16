@@ -70,6 +70,8 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "incidentreportwindow.h"
 #include "incidentreportdialog.h"
 #include "flasherwindow.h"
+#include "fielddocs.h"
+#include <QToolTip>
 #include "flasherboarddialog.h"
 #include "flasherfakeboard.h"
 #include "laneband.h"
@@ -931,6 +933,21 @@ int main(int argc, char **argv)
                 if (qEnvironmentVariableIsSet("SHOT_FIELD2")) w->addField(qEnvironmentVariable("SHOT_FIELD2"));
                 win = w;
             }
+            if (which == QLatin1String("fielddoctip")) {
+                // Session 302: a field description as its tooltip draws it (a
+                // word-wrapped rich-text label in the tooltip palette).
+                // SHOT_FIELD = "packet:name[:tagType]".
+                const QStringList spec = (qEnvironmentVariableIsEmpty("SHOT_FIELD") ? QStringLiteral("slrp:AUTHORIZED_SPEED")
+                                                                                   : qEnvironmentVariable("SHOT_FIELD")).split(QLatin1Char(':'));
+                auto *tip = new QLabel(FieldDocs::instance().tooltip(spec.value(0), spec.value(1), spec.value(2).toInt()));
+                tip->setWordWrap(true);
+                tip->setAutoFillBackground(true);
+                tip->setPalette(QToolTip::palette());
+                tip->setFont(QToolTip::font());
+                tip->setMargin(6);
+                tip->setAttribute(Qt::WA_DeleteOnClose, false);
+                win = tip;
+            }
             if (which == QLatin1String("flasherboard")) {
                 // Session 297: Ask the board, answered by a fake 2.6 VCC.
                 static FlasherTest::FakeBoard board;
@@ -950,7 +967,7 @@ int main(int argc, char **argv)
             }
             if (!win) return 2;
             const bool small = which == QLatin1String("settings") || which == QLatin1String("export")
-                               || which == QLatin1String("flasherboard")
+                               || which == QLatin1String("flasherboard") || which == QLatin1String("fielddoctip")
                                || which == QLatin1String("sessionkey") || which == QLatin1String("gototime");
             if (which == QLatin1String("session")) win->resize(1200, 700);   // its own default
             else if (small) {

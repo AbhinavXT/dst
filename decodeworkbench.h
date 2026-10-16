@@ -46,6 +46,10 @@ public:
     // overrides it with its own tag, which is the more reliable statement.
     void loadBuffer(const QString &text, const QString &typeToken = QString());
 
+    // For the tests: the decoded table (session 302: its rows carry the
+    // annexures' descriptions as tooltips).
+    QTableWidget *fieldTable() const { return m_table; }
+
 private slots:
     // Repopulate the session-key picker from the store, keeping the operator's
     // choice selected if it still exists.

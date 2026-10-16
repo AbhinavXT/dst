@@ -1,4 +1,5 @@
 #include "decodeworkbench.h"
+#include "fielddocs.h"
 #include "uistyle.h"
 #include "statusline.h"
 #include "uicolors.h"
@@ -133,6 +134,11 @@ DecodeWorkbench::DecodeWorkbench(QWidget *parent, SessionKeyStore *keys)
     // --- decoded field table -------------------------------------------
     m_table = new QTableWidget(0, 2, central);
     m_table->setHorizontalHeaderLabels({tr("Field"), tr("Value")});
+    // Session 302: say that the rows explain themselves.
+    if (QTableWidgetItem *header = m_table->horizontalHeaderItem(0)) {
+        header->setToolTip(tr("Hover a field for its description from RDSO Annexure C (radio packets) "
+                              "or Annexure D (RFID tags)"));
+    }
     m_table->verticalHeader()->setVisible(false);
     m_table->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_table->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -311,11 +317,20 @@ void DecodeWorkbench::decodeNow()
 
     // ---- field table ----
     const int keyId = m_keyBox ? m_keyBox->currentData().toInt() : 0;
-    const QVector<FieldRow> rows = CaptureDecoder::describe(c, nullptr, keyId, nullptr, m_keys);
+    QHash<QString, qint64> rawValues;
+    const QVector<FieldRow> rows = CaptureDecoder::describe(c, nullptr, keyId, &rawValues, m_keys);
+    // Session 302: an RFID field's description depends on the tag type.
+    const int tagType = c.typeToken == QLatin1String("rfid") ? int(rawValues.value(QStringLiteral("type"))) : 0;
     m_table->setRowCount(rows.size());
     for (int i = 0; i < rows.size(); ++i) {
         QTableWidgetItem *f = new QTableWidgetItem(rows.at(i).field);
         QTableWidgetItem *v = new QTableWidgetItem(rows.at(i).value);
+        const QString doc = FieldDocs::isCaptureRow(rows.at(i).field)
+            ? QString() : FieldDocs::instance().tooltip(c.typeToken, rows.at(i).field, tagType);
+        if (!doc.isEmpty()) {
+            f->setToolTip(doc);
+            v->setToolTip(doc);
+        }
         const QString val = rows.at(i).value;
         if (val == QLatin1String("FAIL"))      { v->setForeground(failColor()); }
         else if (val == QLatin1String("PASS")) { v->setForeground(okColor()); }

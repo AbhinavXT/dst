@@ -71,6 +71,11 @@ public:
     static QString normalizeName(const QString &shown);
     // "arprecv" is an ARP; any case.
     static QString normalizePacket(const QString &packet);
+    // Session 302: a decoded row that belongs to the capture line, not the
+    // packet: describe() writes those unindented ("type", "rtc", "seq",
+    // "frame len", "loco / ctrl"). An RFID frame has both the capture's
+    // "type" and, indented, the tag's; only the tag's is Annexure D's.
+    static bool isCaptureRow(const QString &shown);
 
 private:
     QVector<FieldDoc>             m_docs;

@@ -44,6 +44,16 @@ QString FieldDocs::normalizeName(const QString &shown)
     return name.trimmed();
 }
 
+bool FieldDocs::isCaptureRow(const QString &shown)
+{
+    if (shown.startsWith(QLatin1Char(' '))) {
+        return false;
+    }
+    static const QStringList captureRows = { QStringLiteral("type"), QStringLiteral("rtc"), QStringLiteral("seq"),
+                                             QStringLiteral("frame len"), QStringLiteral("loco / ctrl") };
+    return captureRows.contains(shown);
+}
+
 bool FieldDocs::loadFromJson(const QByteArray &json, QString *err)
 {
     m_docs.clear();
