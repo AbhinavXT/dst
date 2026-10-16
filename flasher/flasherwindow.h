@@ -21,8 +21,18 @@
 //      FlasherProfileDialog      one bench/site's settings (app bar ▸ ⚙)
 //
 //  THREADING
-//    One QThread + one FlashWorker for the window's lifetime. The worker
-//    runs ONE card per call (FlashEngine::run is blocking).
+//    A QThread + FlashWorker per transfer running at once, kept for the
+//    window's lifetime. A worker runs ONE card per call (FlashEngine::run
+//    is blocking). One card uses one worker.
+//
+//  SEVERAL VCCS AT ONCE (session 291)
+//    The VCC IP field can list up to eight VCCs. Each is its own board on
+//    its own IP, so each gets its own worker: its own engine, socket,
+//    handshake wait, first pass, resends and adaptive rate, all running in
+//    parallel. The engine takes STATUS only from the IP it is flashing, so
+//    the transfers cannot answer for each other. One VCC failing stops no
+//    other; Abort stops all of them. Every chassis still needs its own
+//    power cycle, which the operator does while the flasher waits.
 //
 //  ONE CARD PER RUN
 //    The Kavach updater runs only after a power-on, listens for 5 s, and
@@ -76,6 +86,7 @@ public:
     int currentPage() const;
 
     // For the tests.
+    int workerCount() const { return m_workers.size(); }
     FlasherQueuePage    *queuePage() const { return m_queuePage; }
     FlasherFlashingPage *flashingPage() const { return m_flashingPage; }
     FlasherSummaryPage  *summaryPage() const { return m_summaryPage; }
@@ -113,9 +124,6 @@ protected:
 
 private slots:
     void onFlashRequested();
-    void onProgress(const kflash::Progress &progress);
-    void onLogLine(int level, const QString &text);
-    void onCardFinished(const kflash::FlashResult &result);
     void onAbortRequested();
     void onProfileChosen(int comboIndex);
     void editProfile();
@@ -130,7 +138,11 @@ private:
     QWidget *buildAppBar();
     void     restyleAppBar();
     void     setFlashingState(bool flashing);
-    void     startNextCard();
+    void     ensureWorkers(int count);
+    void     startEntry(int worker, int index);
+    void     onProgress(int worker, const kflash::Progress &progress);
+    void     onLogLine(int worker, int level, const QString &text);
+    void     onCardFinished(int worker, const kflash::FlashResult &result);
     void     finishBatch();
     void     reloadProfileCombo();
     void     applyActiveProfile();
@@ -144,15 +156,16 @@ private:
     Flasher::Mode           m_mode = Flasher::Mode::Engineer;
 
     // ---- the run --------------------------------------------------------------
-    QThread                *m_thread = nullptr;
-    FlashWorker            *m_worker = nullptr;
+    QVector<QThread *>      m_threads;
+    QVector<FlashWorker *>  m_workers;
+    QVector<int>            m_workerEntry;       // worker -> the plan entry it runs, -1 = idle
+    QVector<bool>           m_alreadyHeld;       // per plan entry
     Flasher::BatchPlan      m_plan;
     Flasher::FlashProfile   m_batchProfile;      // snapshot taken at batch start
     QString                 m_batchId;
     QString                 m_batchIp;
     quint16                 m_batchPort = 0;
     bool                    m_flashing = false;
-    bool                    m_currentAlreadyHeld = false;
     bool                    m_closeWhenIdle = false;
 
     // ---- widgets --------------------------------------------------------------

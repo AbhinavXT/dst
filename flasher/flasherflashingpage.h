@@ -9,6 +9,11 @@
 //  log lines) and forwards the two buttons back as signals. Keeping the page
 //  passive means the batch rules stay in one place (BatchPlan) and the page
 //  can be driven in a test with made-up Progress values.
+//
+//  Session 291: several VCCs run at once, so the page keeps what it knows
+//  per entry (an EntryView). The batch column has a row per VCC with its
+//  phase and progress; the centre shows one of them in full: the selected
+//  row (click another to switch). One card is simply a batch of one.
 // =============================================================================
 #include <QElapsedTimer>
 #include <QStringList>
@@ -64,19 +69,36 @@ class FlasherBatchRow : public QWidget
 {
     Q_OBJECT
 public:
-    FlasherBatchRow(int cardType, const QString &fileName, QWidget *parent = nullptr);
+    // `title` replaces the card's name (session 291: "VCC 192.168.25.169").
+    FlasherBatchRow(int cardType, const QString &fileName, QWidget *parent = nullptr,
+                    const QString &title = QString());
     void setOutcome(Flasher::CardOutcome outcome, const QString &statusText);
     Flasher::CardOutcome outcome() const { return m_outcome; }
+    QString statusText() const;
+
+    // Session 291: the second line, when the file is the same on every row
+    // (several VCCs): "Send 45 % · 980 KB/s · 12 resent".
+    void setDetail(const QString &text);
+    QString detail() const { return m_fileName; }
+
+    // The row the centre is showing (several VCCs), marked with a bar.
+    void setShown(bool shown);
+    bool isShown() const { return m_shown; }
+
+signals:
+    void clicked();
 
 protected:
     void paintEvent(QPaintEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;   // re-elides the file name to the width it has
+    void mousePressEvent(QMouseEvent *event) override;
 
 private:
     Flasher::CardOutcome m_outcome = Flasher::CardOutcome::Queued;
     QLabel *m_status = nullptr;
     QLabel *m_file = nullptr;
     QString m_fileName;
+    bool    m_shown = false;
 };
 
 class FlasherFlashingPage : public QWidget
@@ -93,6 +115,19 @@ public:
 
     // A card has finished (the plan has already recorded the outcome).
     void finishCard(int index, const Flasher::BatchEntry &entry);
+
+    // Session 291: one entry's reports, while several run at once. The
+    // index-less slots below report for the entry begun last.
+    void onProgressFor(int index, const kflash::Progress &progress);
+    void onBitmapFor(int index, const QByteArray &bitmap, quint32 totalBlocks);
+    void appendLogFor(int index, int level, const QString &text);
+
+    // Which entry the centre shows; a click on a row does this.
+    void showEntry(int index);
+    int  shownEntry() const { return m_shown; }
+    int  rowCount() const { return m_batchRows.size(); }
+    FlasherBatchRow *row(int index) const { return m_batchRows.value(index); }
+    QString waitText() const;   // the power-cycle prompt, for the tests
 
     // Mark the not-run cards once the batch ends.
     void refreshBatchRows(const Flasher::BatchPlan &plan);
@@ -111,6 +146,7 @@ public:
     void setMaxRounds(int rounds) { m_maxRounds = rounds; }
 
     BlockMapWidget *blockMap() const { return m_blockMap; }
+    QString cardTitle() const;
     QStringList logLines() const { return m_logLines; }   // plain text, for history and Save .log
 
 public slots:
@@ -126,6 +162,29 @@ private slots:
     void saveLog();
 
 private:
+    // What the page knows of one entry (session 291).
+    struct EntryView {
+        int               cardType = 0;
+        QString           title;
+        QString           subtitle;
+        quint32           totalBlocks = 0;
+        QElapsedTimer     clock;
+        kflash::Progress  lastProgress;
+        bool              haveProgress = false;
+        kflash::Phase     phase = kflash::Phase::Idle;
+        qint64            phaseStartMs[5] = { 0, 0, 0, 0, 0 };   // indexed by kflash::Phase
+        qint64            phaseEndMs[5] = { 0, 0, 0, 0, 0 };
+        bool              finished = false;
+        bool              succeeded = false;
+        qint64            endedMs = 0;   // the clock when it finished
+        QByteArray        bitmap;
+    };
+    bool     parallel() const { return m_views.size() > 1; }
+    bool     anyRunning() const;
+    void     updateRow(int index);
+    void     updateBatchCount();
+    void     showStats(const EntryView &view);
+
     QWidget *buildBatchColumn();
     QWidget *buildCentre();
     QWidget *buildStatsColumn();
@@ -134,17 +193,10 @@ private:
     void     updateStepper();
     void     updateWaitPrompt();
 
-    // ---- current card ----------------------------------------------------
-    int               m_currentIndex = -1;
-    int               m_currentCardType = 0;
-    QElapsedTimer     m_cardClock;
-    kflash::Progress  m_lastProgress;
-    bool              m_haveProgress = false;
-    kflash::Phase     m_phase = kflash::Phase::Idle;
-    qint64            m_phaseStartMs[5] = { 0, 0, 0, 0, 0 };   // indexed by kflash::Phase
-    qint64            m_phaseEndMs[5] = { 0, 0, 0, 0, 0 };
-    bool              m_cardFinished = false;
-    bool              m_cardSucceeded = false;
+    // ---- the entries --------------------------------------------------------
+    QVector<EntryView> m_views;
+    int               m_currentIndex = -1;   // the entry begun last
+    int               m_shown = -1;          // the entry the centre shows
 
     // ---- log ---------------------------------------------------------------
     QStringList       m_logLines;
@@ -153,6 +205,7 @@ private:
     QVBoxLayout       *m_batchRowsLayout = nullptr;
     QVector<FlasherBatchRow *> m_batchRows;
     QLabel            *m_batchCount = nullptr;
+    QLabel            *m_batchTitle = nullptr;
     QPushButton       *m_abortButton = nullptr;
     QLabel            *m_cardTitle = nullptr;
     QLabel            *m_cardSubtitle = nullptr;

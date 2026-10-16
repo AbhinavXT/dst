@@ -11,6 +11,143 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-291"></a>
+## Session 291 — Firmware Flasher: several VCCs at once
+
+Abhinav asked for the flasher to flash four or eight VCCs at the same
+time, with each VCC's flashing and retransmission running in parallel.
+He chose:
+- **different IPs on one switch**: each VCC has its own address;
+- **one image for all**;
+- **the VCC card only**;
+- **inside the Firmware Flasher**, not a new window.
+
+**What the operator sees.**
+- **The VCC IP field takes a list:** `192.168.25.168, 192.168.25.169`, or
+  a range of the last number, `192.168.25.168-175` (up to 8). A line under
+  the field shows what it read ("8 VCCs, flashed at once: …").
+  `a.b.c.d:port` overrides the port for one entry; the board simulator on
+  127.0.0.1 needs that, a real chassis does not.
+- **Pre-flight:**
+  - "8 VCCs, flashed in parallel: each has its own transfer and resends".
+  - Refused, by name: more than 8, the same VCC twice, a bad entry
+    ("“192.168.25” in the VCC list is not a valid IPv4 address"), a range
+    into .255 or running backwards.
+  - Refused: an Input/Output/Analog row with several addresses. Those
+    images go through their own VCC's relay.
+  - A VCC that no adapter reaches is named.
+  - The procedure line asks to power-cycle all N chassis.
+- **The button** reads **Flash 8 VCCs**.
+- **Flashing page:**
+  - The left column ("VCCs", "3 of 8 done") has a row per VCC: its phase,
+    and on the second line its progress ("45 % · 980 KB/s · 12 resent").
+  - **Clicking a row** shows that VCC's stepper, block map and numbers.
+  - The power-cycle prompt stays up until the last VCC answers ("Power-cycle
+    all 8 chassis now — 3 of 8 still waiting for the updater · 41 s left").
+  - The log carries every VCC, each line starting with `[VCC 192.168.25.169]`.
+  - **Abort all…** stops every transfer.
+- **Summary:**
+  - A panel per VCC, named by address. The headline reads "All 8 VCCs
+    updated" or "7 of 8 VCCs updated", naming the ones that failed.
+  - **Try again** goes back with only the VCCs **not** updated in the
+    field, so a verified VCC is not flashed twice.
+  - History has one record per VCC, with that VCC's own address. The
+    report has a section per VCC.
+
+**How.** Each VCC gets its own `FlashWorker` on its own thread, so each
+runs a full, separate engine session in parallel with the others:
+- its own socket;
+- its own handshake wait for the power cycle;
+- its own first pass with checkpoint repairs;
+- its own NAK-driven resend rounds;
+- its own adaptive rate and RTT.
+
+The engine already accepts STATUS only from the IP it is flashing, so the
+transfers can't answer for each other.
+
+The window keeps a pool of workers (one is made at start, more when
+needed). `BatchPlan` gains `startAll()` / `finishEntry()`: every entry
+runs at once, one failing stops no other (they are separate boards), and
+the batch ends with the last one. One card is now a batch of one on the
+same path. The wire protocol, `flash_engine.*` and `flashworker.*` are
+unchanged.
+
+**Decisions.**
+- **The settled rate** from several VCCs at once is not saved as the
+  profile's next start rate. It is each VCC's share of a busy link, not
+  what one board can take.
+- **Eight is the cap:** a worker thread each, and the PC's link shared
+  eight ways.
+- **Stop on first failure** doesn't apply across VCCs.
+
+**Files.**
+- `flasher/flashercore.{h,cpp}`: `parseVccTargets`, `VccTarget(List)`,
+  `kMaxParallelVccs`, `BatchEntry::targetIp/targetPort`, the parallel
+  `BatchPlan`, `entryTitle`, and the pre-flight, verdict, history record
+  and report.
+- `flasher/flasherwindow.{h,cpp}`: the worker pool, per-worker routing,
+  Abort all, and Try again.
+- `flasher/flasherflashingpage.{h,cpp}`: a view per entry, clickable rows,
+  rows in a scroll area, the shared prompt and the log prefix.
+- `flasher/flasherqueuepage.{h,cpp}`: the target list, hint, entries and
+  button.
+- `flasher/flashersummarypage.{h,cpp}`, `flasher/flasherprofiledialog.cpp`
+  (the profile accepts a list).
+- `README_FLASHING_AND_CONFIG.md`: "Flashing several VCCs at once".
+- Tests: `tests/flasherfakeboard.h` (FakeBoard moved out of
+  `test_flasher.cpp`, plus a lossy-link option and DATA timestamps), new
+  `tests/test_session291.cpp`, `tests/tests.pro`.
+- `tests/screenshot_main.cpp`: `SHOT_WINDOW=flashervccs` / `flashervccsq`.
+
+**Tests.** `session291` (47 checks):
+- **The list:** a single address, commas, a range, ports, nine, a
+  duplicate, a bad entry named, the old single-address message, and bad
+  ranges.
+- **Pre-flight:** ready with four VCCs, an IOA card refused, a VCC off
+  the subnet named, eleven refused.
+- **The plan:** four at once, one failing stops none, the batch is
+  finished only with the last, the verdict names the VCC, history keeps
+  each address, the report lists the targets.
+- **The real window, against four FakeBoards on 127.0.0.1 (each its own
+  port):**
+  - one worker per VCC;
+  - the prompt asks for all four chassis;
+  - a row per VCC, and a click switches the centre;
+  - one board drops every 7th DATA: it was repaired by its own resends,
+    while the clean boards resent nothing;
+  - one rejects the image: IMAGE_FAIL, on its own;
+  - the three good transfers overlapped in time (each board's first DATA
+    came before any board's last);
+  - "3 of 4 VCCs updated", four history records;
+  - no settled rate saved;
+  - Try again lists only the failed VCC.
+- **Eight at once,** every link lossy differently: all eight verified,
+  each with its own resends.
+- **Abort** cancels all four.
+
+Ran 15 times locally, all green. `flasher`, `flasherrun`, `flasherroute`,
+`session94`, `134`, `135`, `146`, `257` and `280` pass unchanged. Checked on
+screen with the screenshot harness: the queue and the flashing page with
+eight VCCs.
+
+**Gate:** Qt 6 and Qt 5.15 green, 328 suites / 8309 checks, 0 failed; menu
+audit 184 ok; smoke; validators.
+
+**Not tested:**
+- **Real VCCs, and more than one physical chassis.** The fake updaters run
+  on loopback, where the link is not the limit. On a real switch, eight
+  transfers share the PC's port; each engine backs its own rate off on
+  loss, but how fast eight go together on a 100 Mbit link is unmeasured.
+- **The pacer under load.** Each worker's pacer spins (with yield) between
+  packets. Eight at once used 2.4 s of CPU over 3 s here; an older office
+  PC was not tried.
+- **Same IP on several adapters.** Every VCC keeping 192.168.25.168, each
+  on its own adapter, is not supported. It would need each socket bound to
+  an adapter, and Windows routes by destination.
+- Windows itself, beyond CI.
+
+---
+
 <a id="session-290"></a>
 ## Session 290 — Help ▸ Keyboard Shortcuts (F1)
 

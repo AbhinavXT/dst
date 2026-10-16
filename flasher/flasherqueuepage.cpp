@@ -298,6 +298,12 @@ QWidget *FlasherQueuePage::buildLeftColumn()
     m_ipEdit->setFont(UiStyle::monoFont());
     m_ipEdit->setPlaceholderText(QStringLiteral("192.168.25.168"));
     m_ipEdit->setMinimumHeight(34);
+    // Session 291: several VCCs, flashed at once, each its own transfer.
+    m_ipEdit->setToolTip(tr("One VCC, or up to %1 flashed at once:\n"
+                            "  192.168.25.168, 192.168.25.169\n"
+                            "  192.168.25.168-175   (the last number runs from 168 to 175)\n"
+                            "Each VCC gets its own transfer, resends and rate.")
+                             .arg(Flasher::kMaxParallelVccs));
     ipColumn->addWidget(m_ipEdit);
     ipRow->addLayout(ipColumn, 1);
 
@@ -311,6 +317,14 @@ QWidget *FlasherQueuePage::buildLeftColumn()
     portColumn->addWidget(m_portSpin);
     ipRow->addLayout(portColumn);
     targetLayout->addLayout(ipRow);
+
+    // What the list came to, when it is more than one VCC.
+    m_targetsHint = new QLabel(targetCard);
+    m_targetsHint->setObjectName(QStringLiteral("flasherTargetsHint"));
+    m_targetsHint->setWordWrap(true);
+    m_targetsHint->setStyleSheet(UiColor::mutedStyle());
+    m_targetsHint->hide();
+    targetLayout->addWidget(m_targetsHint);
 
     auto *adapterHeader = new QHBoxLayout();
     adapterHeader->addWidget(new QLabel(tr("Send from adapter"), targetCard), 1);
@@ -361,7 +375,7 @@ QWidget *FlasherQueuePage::buildLeftColumn()
     m_route = new FlasherRouteDiagram(routeCard);
     routeLayout->addWidget(m_route);
     auto *routeNote = new QLabel(tr("IOA images are sent to the VCC, which relays them by card ID. "
-                                    "One chassis at a time."), routeCard);
+                                    "Several VCCs at once: list their addresses under Target."), routeCard);
     routeNote->setWordWrap(true);
     routeNote->setStyleSheet(UiColor::mutedStyle());
     routeLayout->addWidget(routeNote);
@@ -645,6 +659,16 @@ QString FlasherQueuePage::vccIp() const
     return m_ipEdit->text().trimmed();
 }
 
+void FlasherQueuePage::setVccIpText(const QString &text)
+{
+    m_ipEdit->setText(text);   // textChanged refreshes the pre-flight and the bar
+}
+
+Flasher::VccTargetList FlasherQueuePage::vccTargets() const
+{
+    return Flasher::parseVccTargets(vccIp());
+}
+
 quint16 FlasherQueuePage::port() const
 {
     return static_cast<quint16>(m_portSpin->value());
@@ -680,13 +704,27 @@ Flasher::PreflightReport FlasherQueuePage::preflight() const
     input.vccIp = vccIp();
     input.port = port();
 
+    // Session 291: every VCC listed must be reachable; the subnet text is
+    // the first one's.
+    const Flasher::VccTargetList targets = vccTargets();
     uint32_t targetIp = 0;
-    const bool targetParsed = kflash::parse_ipv4(input.vccIp.toStdString(), &targetIp);
+    const bool targetParsed = targets.ok()
+                              && kflash::parse_ipv4(targets.targets.first().ip.toStdString(), &targetIp);
     const quint32 adapterIp = selectedAdapterIp();
     const quint32 adapterMask = selectedAdapterMask();
     input.adapterDescription = adapterDescription();
     if (targetParsed) {
         input.adapterOnSubnet = Flasher::sameSubnet(adapterIp, adapterMask, targetIp);
+        if (targets.targets.size() > 1) {
+            for (const Flasher::VccTarget &target : targets.targets) {
+                uint32_t ip = 0;
+                kflash::parse_ipv4(target.ip.toStdString(), &ip);
+                if (!Flasher::sameSubnet(adapterIp, adapterMask, ip)) {
+                    input.offSubnetTargets.append(target.ip);
+                }
+            }
+            input.adapterOnSubnet = input.offSubnetTargets.isEmpty();
+        }
         // Describe the subnet the TARGET is on, with the adapter's mask when
         // there is one and a /24 otherwise (the usual Kavach bench layout).
         quint32 maskForText = adapterMask;
@@ -724,6 +762,17 @@ QVector<Flasher::BatchEntry> FlasherQueuePage::batchEntries() const
         Flasher::BatchEntry entry;
         entry.cardType = row.cardType;
         entry.image = row.image;
+        // Session 291: several VCCs, one entry each, the same image.
+        const Flasher::VccTargetList targets = vccTargets();
+        if (row.cardType == Flasher::CardVcc && targets.ok() && targets.targets.size() > 1) {
+            for (const Flasher::VccTarget &target : targets.targets) {
+                Flasher::BatchEntry one = entry;
+                one.targetIp = target.ip;
+                one.targetPort = target.port == port() ? 0 : target.port;
+                entries.append(one);
+            }
+            continue;
+        }
         entries.append(entry);
     }
     return entries;
@@ -809,17 +858,41 @@ void FlasherQueuePage::refreshPreflight()
     }
     m_route->setIncludedCards(included);
 
+    // Session 291: what the target list came to.
+    const Flasher::VccTargetList targets = vccTargets();
+    const int vccCount = targets.ok() ? targets.targets.size() : 0;
+    if (vccCount > 1) {
+        QStringList names;
+        for (const Flasher::VccTarget &target : targets.targets) {
+            names << target.text(port());
+        }
+        m_targetsHint->setText(tr("%1 VCCs, flashed at once: %2").arg(vccCount).arg(names.join(QStringLiteral(", "))));
+        m_targetsHint->show();
+    } else {
+        m_targetsHint->hide();
+    }
+
     // The action bar: button label, enabled state, first blocker inline.
     const int selectedRow = m_model->tickedRow();
-    if (selectedRow >= 0) {
+    if (selectedRow >= 0 && vccCount > 1 && m_model->row(selectedRow).cardType == Flasher::CardVcc) {
+        m_flashButton->setText(tr("Flash %1 VCCs").arg(vccCount));
+    } else if (selectedRow >= 0) {
         m_flashButton->setText(tr("Flash %1").arg(Flasher::cardName(m_model->row(selectedRow).cardType)));
     } else {
         m_flashButton->setText(tr("Flash"));
     }
-    m_procedureNote->setText(tr("Press Flash, then power-cycle the chassis. The updater listens for "
-                                "%1 s after power-on; the flasher keeps calling it for up to %2 s.")
-                                 .arg(Flasher::kUpdaterListenSeconds)
-                                 .arg(m_profile.updaterWaitSeconds));
+    if (vccCount > 1) {
+        m_procedureNote->setText(tr("Press Flash, then power-cycle all %1 chassis. Each updater listens for "
+                                    "%2 s after power-on; the flasher keeps calling each for up to %3 s.")
+                                     .arg(vccCount)
+                                     .arg(Flasher::kUpdaterListenSeconds)
+                                     .arg(m_profile.updaterWaitSeconds));
+    } else {
+        m_procedureNote->setText(tr("Press Flash, then power-cycle the chassis. The updater listens for "
+                                    "%1 s after power-on; the flasher keeps calling it for up to %2 s.")
+                                     .arg(Flasher::kUpdaterListenSeconds)
+                                     .arg(m_profile.updaterWaitSeconds));
+    }
     m_flashButton->setEnabled(report.ready);
     // Hidden when empty (session 134): an empty label still took half the
     // bar, the procedure note wrapped to five lines, and the bar's height
@@ -887,8 +960,9 @@ void FlasherQueuePage::refreshAdapters()
 
 void FlasherQueuePage::preselectAdapterForTarget()
 {
+    const Flasher::VccTargetList targets = vccTargets();
     uint32_t targetIp = 0;
-    if (!kflash::parse_ipv4(vccIp().toStdString(), &targetIp)) {
+    if (!targets.ok() || !kflash::parse_ipv4(targets.targets.first().ip.toStdString(), &targetIp)) {
         return;
     }
     // Keep the current choice if it already reaches the board.

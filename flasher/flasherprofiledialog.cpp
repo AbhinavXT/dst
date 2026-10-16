@@ -79,6 +79,8 @@ FlasherProfileDialog::FlasherProfileDialog(const Flasher::FlashProfile &profile,
     basics->addWidget(new QLabel(tr("VCC IP address"), form), 2, 0, 1, 2);
     basics->addWidget(new QLabel(tr("UDP port"), form), 2, 2);
     m_ip = new QLineEdit(profile.vccIp, form);
+    m_ip->setToolTip(tr("One VCC, or up to %1 flashed at once: \"192.168.25.168, 192.168.25.169\" "
+                        "or \"192.168.25.168-175\".").arg(Flasher::kMaxParallelVccs));
     m_ip->setFont(UiStyle::monoFont());
     m_ip->setMinimumHeight(34);
     basics->addWidget(m_ip, 3, 0, 1, 2);
@@ -333,9 +335,12 @@ bool FlasherProfileDialog::validate(QString *problem) const
         *problem = tr("Another profile is already called \"%1\".").arg(name);
         return false;
     }
-    uint32_t ip = 0;
-    if (!kflash::parse_ipv4(m_ip->text().trimmed().toStdString(), &ip) || ip == 0 || ip == 0xFFFFFFFFu) {
-        *problem = tr("The VCC IP address is not a valid IPv4 address.");
+    // One VCC, or several flashed at once (session 291).
+    const Flasher::VccTargetList targets = Flasher::parseVccTargets(m_ip->text());
+    if (!targets.ok()) {
+        *problem = targets.targets.isEmpty() && targets.error.startsWith(QLatin1String("VCC IP address is not"))
+                       ? tr("The VCC IP address is not a valid IPv4 address.")
+                       : targets.error + QLatin1Char('.');
         return false;
     }
     if (m_maxRate->value() < m_minRate->value()) {

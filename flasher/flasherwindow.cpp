@@ -105,16 +105,8 @@ FlasherWindow::FlasherWindow(QWidget *parent, const QString &dataDirectory)
     centralLayout->addWidget(m_stack, 1);
     setCentralWidget(central);
 
-    // ---- worker thread ------------------------------------------------------------
-    m_thread = new QThread(this);
-    m_worker = new FlashWorker;           // no parent: it is moved to the thread
-    m_worker->moveToThread(m_thread);
-    connect(m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
-    connect(m_worker, &FlashWorker::progressChanged, this, &FlasherWindow::onProgress);
-    connect(m_worker, &FlashWorker::bitmapChanged, m_flashingPage->blockMap(), &BlockMapWidget::setBitmap);
-    connect(m_worker, &FlashWorker::logLine, this, &FlasherWindow::onLogLine);
-    connect(m_worker, &FlashWorker::cardFinished, this, &FlasherWindow::onCardFinished);
-    m_thread->start();
+    // ---- worker threads: one now, more when several VCCs run at once ---------------
+    ensureWorkers(1);
 
     // ---- page signals ---------------------------------------------------------------
     connect(m_queuePage, &FlasherQueuePage::flashRequested, this, &FlasherWindow::onFlashRequested);
@@ -141,11 +133,43 @@ FlasherWindow::~FlasherWindow()
     // otherwise), but a parent tearing everything down at application exit
     // does not go through closeEvent. Cancel whatever is running so run()
     // returns, then stop the thread and wait for it.
-    if (m_flashing && m_worker != nullptr) {
-        m_worker->requestCancel();
+    if (m_flashing) {
+        for (FlashWorker *worker : m_workers) {
+            worker->requestCancel();
+        }
     }
-    m_thread->quit();
-    m_thread->wait();
+    for (QThread *thread : m_threads) {
+        thread->quit();
+    }
+    for (QThread *thread : m_threads) {
+        thread->wait();
+    }
+}
+
+void FlasherWindow::ensureWorkers(int count)
+{
+    while (m_workers.size() < count) {
+        const int slot = m_workers.size();
+        auto *thread = new QThread(this);
+        auto *worker = new FlashWorker;       // no parent: it is moved to the thread
+        worker->moveToThread(thread);
+        connect(thread, &QThread::finished, worker, &QObject::deleteLater);
+        // Each worker's reports carry which worker sent them, so each lands
+        // on its own entry.
+        connect(worker, &FlashWorker::progressChanged, this,
+                [this, slot](const kflash::Progress &progress) { onProgress(slot, progress); });
+        connect(worker, &FlashWorker::bitmapChanged, this, [this, slot](const QByteArray &bitmap, quint32 total) {
+            m_flashingPage->onBitmapFor(m_workerEntry.value(slot, -1), bitmap, total);
+        });
+        connect(worker, &FlashWorker::logLine, this,
+                [this, slot](int level, const QString &text) { onLogLine(slot, level, text); });
+        connect(worker, &FlashWorker::cardFinished, this,
+                [this, slot](const kflash::FlashResult &result) { onCardFinished(slot, result); });
+        thread->start();
+        m_threads.append(thread);
+        m_workers.append(worker);
+        m_workerEntry.append(-1);
+    }
 }
 
 QString FlasherWindow::profilesPath() const
@@ -271,7 +295,9 @@ void FlasherWindow::restyleAppBar()
 
 void FlasherWindow::refreshAppBarTarget()
 {
-    if (m_flashing) {
+    if (m_flashing && m_plan.size() > 1) {
+        m_targetLabel->setText(tr("%1 VCCs · port %2").arg(m_plan.size()).arg(m_batchPort));
+    } else if (m_flashing) {
         m_targetLabel->setText(QStringLiteral("%1:%2").arg(m_batchIp).arg(m_batchPort));
     } else {
         m_targetLabel->setText(QStringLiteral("%1:%2").arg(m_queuePage->vccIp()).arg(m_queuePage->port()));
@@ -458,37 +484,43 @@ bool FlasherWindow::startBatch(bool confirmNames)
     m_batchId = Flasher::newBatchId(QDateTime::currentDateTimeUtc());
     m_closeWhenIdle = false;
 
+    m_alreadyHeld = QVector<bool>(m_plan.size(), false);
     m_flashingPage->beginBatch(m_plan);
     setFlashingState(true);
     showPage(FlashingPageIndex);
-    startNextCard();
+
+    // Every entry at once (session 291): one VCC, or one per VCC listed.
+    const QVector<int> started = m_plan.startAll();
+    if (started.isEmpty()) {
+        finishBatch();
+        return true;
+    }
+    ensureWorkers(started.size());
+    for (int worker = 0; worker < started.size(); ++worker) {
+        startEntry(worker, started.at(worker));
+    }
     return true;
 }
 
-void FlasherWindow::startNextCard()
+void FlasherWindow::startEntry(int worker, int index)
 {
-    const int index = m_plan.startNext();
-    if (index < 0) {
-        finishBatch();
-        return;
-    }
     const Flasher::BatchEntry &entry = m_plan.entry(index);
 
     kflash::FlashConfig config;
-    config.receiver_ip = m_batchIp.toStdString();
-    config.port = m_batchPort;
+    config.receiver_ip = (entry.targetIp.isEmpty() ? m_batchIp : entry.targetIp).toStdString();
+    config.port = entry.targetPort != 0 ? entry.targetPort : m_batchPort;
     config.card_type = entry.cardType;
     config.image.assign(entry.image.bytes.constBegin(), entry.image.bytes.constEnd());
     config.tuning = Flasher::effectiveTuning(m_batchProfile);
 
-    m_currentAlreadyHeld = false;
+    m_workerEntry[worker] = index;
     m_flashingPage->setMaxRounds(config.tuning.max_rounds);
     m_flashingPage->setUpdaterWaitMs(static_cast<qint64>(m_batchProfile.updaterWaitSeconds) * 1000);
     m_flashingPage->beginCard(index, entry);
 
     // Queued: flashCard() runs on the worker thread and blocks it for the
     // length of the card.
-    QMetaObject::invokeMethod(m_worker, "flashCard", Qt::QueuedConnection,
+    QMetaObject::invokeMethod(m_workers[worker], "flashCard", Qt::QueuedConnection,
                               Q_ARG(kflash::FlashConfig, config));
 }
 
@@ -496,44 +528,49 @@ void FlasherWindow::startNextCard()
 //  During a card
 // =============================================================================
 
-void FlasherWindow::onProgress(const kflash::Progress &progress)
+void FlasherWindow::onProgress(int worker, const kflash::Progress &progress)
 {
     // FlashEngine::run() clears its cancel flag when it starts. An Abort
     // pressed in the moment between invokeMethod() and run() starting would
     // be wiped, so while an abort is pending, repeat it on every progress
     // report until the card ends.
     if (m_plan.abortRequested()) {
-        m_worker->requestCancel();
+        m_workers[worker]->requestCancel();
     }
-    m_flashingPage->onProgress(progress);
+    m_flashingPage->onProgressFor(m_workerEntry.value(worker, -1), progress);
 }
 
-void FlasherWindow::onLogLine(int level, const QString &text)
+void FlasherWindow::onLogLine(int worker, int level, const QString &text)
 {
-    m_flashingPage->appendLog(level, text);
-    const int index = m_plan.currentIndex();
-    if (index >= 0) {
+    const int index = m_workerEntry.value(worker, -1);
+    m_flashingPage->appendLogFor(index, level, text);
+    if (index >= 0 && index < m_plan.size()) {
         // The page stamps the line; history keeps the same stamped text.
         m_plan.entry(index).log.append(m_flashingPage->logLines().last());
-    }
-    if (Flasher::logLineMeansAlreadyHeld(text)) {
-        m_currentAlreadyHeld = true;
+        if (Flasher::logLineMeansAlreadyHeld(text)) {
+            m_alreadyHeld[index] = true;
+        }
     }
 }
 
 void FlasherWindow::onAbortRequested()
 {
-    if (!m_flashing || m_plan.currentIndex() < 0) {
+    if (!m_flashing || m_plan.runningCount() == 0) {
         return;
     }
     QString question;
-    if (m_flashingPage->waitingForUpdater()) {
+    if (m_plan.size() > 1) {
+        question = tr("Abort all %1 VCC transfers now?\n\n"
+                      "A VCC already verified keeps its new image. The others keep running their "
+                      "current firmware; flashing them needs a fresh run and another power cycle.")
+                       .arg(m_plan.runningCount());
+    } else if (m_flashingPage->waitingForUpdater()) {
         question = tr("Stop waiting for the updater?\n\nNothing has been sent to the board yet.");
     } else {
         question = tr("Abort the transfer to the %1 now?\n\n"
                       "The updater discards a part-received image; the card keeps running its "
                       "current firmware. Flashing it needs a fresh run and another power cycle.")
-                       .arg(Flasher::cardName(m_plan.entry(m_plan.currentIndex()).cardType));
+                       .arg(Flasher::cardName(m_plan.entries().first().cardType));
     }
     const auto answer = QMessageBox::warning(this, windowTitle(), question,
                                              QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
@@ -549,24 +586,30 @@ void FlasherWindow::abortCurrent()
         return;
     }
     m_plan.requestAbort();
-    // Direct call, not queued: see the class comment.
-    m_worker->requestCancel();
+    // Direct calls, not queued: see the class comment.
+    for (int worker = 0; worker < m_workers.size(); ++worker) {
+        if (m_workerEntry[worker] >= 0) {
+            m_workers[worker]->requestCancel();
+        }
+    }
     m_flashingPage->setAborting();
 }
 
-void FlasherWindow::onCardFinished(const kflash::FlashResult &result)
+void FlasherWindow::onCardFinished(int worker, const kflash::FlashResult &result)
 {
-    const int index = m_plan.currentIndex();
+    const int index = m_workerEntry.value(worker, -1);
     if (index < 0) {
         return;
     }
-    m_plan.finishCurrent(result, m_currentAlreadyHeld);
+    m_workerEntry[worker] = -1;
+    m_plan.finishEntry(index, result, m_alreadyHeld.value(index));
     const Flasher::BatchEntry &entry = m_plan.entry(index);
     m_flashingPage->finishCard(index, entry);
 
     // "Start from this bench's last settled rate": remember where the pacer
-    // settled on a card that actually transferred.
-    if (entry.outcome == Flasher::CardOutcome::Accepted && result.final_rate_kBps >= 1.0) {
+    // settled on a card that actually transferred. Not from several VCCs at
+    // once: there the rate is each one's share of a busy link.
+    if (m_plan.size() == 1 && entry.outcome == Flasher::CardOutcome::Accepted && result.final_rate_kBps >= 1.0) {
         Flasher::FlashProfile profile = m_profiles.profile(m_batchProfile.name);
         if (m_profiles.contains(m_batchProfile.name)) {
             profile.lastSettledRateKBps = result.final_rate_kBps;
@@ -574,7 +617,9 @@ void FlasherWindow::onCardFinished(const kflash::FlashResult &result)
             saveProfiles();
         }
     }
-    startNextCard();
+    if (m_plan.isFinished()) {
+        finishBatch();
+    }
 }
 
 // =============================================================================
@@ -639,6 +684,20 @@ void FlasherWindow::tryAgain()
     // which file is queued before sending it again.
     if (m_plan.size() > 0) {
         m_queuePage->selectCard(m_plan.entries().first().cardType);
+    }
+    // Several VCCs (session 291): only the ones not updated go again; a
+    // verified VCC is not flashed twice.
+    if (m_plan.size() > 1 && !m_plan.entries().first().targetIp.isEmpty()) {
+        QStringList again;
+        for (const Flasher::BatchEntry &entry : m_plan.entries()) {
+            if (!Flasher::outcomeIsSuccess(entry.outcome)) {
+                again << (entry.targetPort != 0 ? QStringLiteral("%1:%2").arg(entry.targetIp).arg(entry.targetPort)
+                                                : entry.targetIp);
+            }
+        }
+        if (!again.isEmpty()) {
+            m_queuePage->setVccIpText(again.join(QStringLiteral(", ")));
+        }
     }
     showPage(QueuePageIndex);
 }

@@ -143,6 +143,35 @@ const int kMinUpdaterWaitSeconds    = 10;
 const int kMaxUpdaterWaitSeconds    = 600;
 
 // -----------------------------------------------------------------------------
+//  Several VCCs at once (session 291)
+// -----------------------------------------------------------------------------
+//
+//  The VCC IP field takes a list: "192.168.25.168, 192.168.25.169", or a
+//  range of the last octet, "192.168.25.168-175". Each VCC is its own board
+//  on its own IP, so each gets its own engine, socket and thread, and its
+//  own resends and rate; the engine already takes STATUS only from the IP
+//  it is flashing. "a.b.c.d:port" overrides the port for one entry (the
+//  board simulator on 127.0.0.1 needs it; a real chassis does not).
+//
+//  Only the VCC card: an IOA image goes THROUGH its VCC's relay, and several
+//  chassis at once is a VCC release going out to a batch of locos.
+const int kMaxParallelVccs = 8;
+
+struct VccTarget {
+    QString ip;
+    quint16 port = 0;            // 0 = the port field's
+    QString text(quint16 defaultPort) const;   // "192.168.25.169", or "127.0.0.1:50012"
+};
+
+struct VccTargetList {
+    QVector<VccTarget> targets;  // in the order typed, a range expanded
+    QString error;               // empty = usable
+    bool ok() const { return error.isEmpty() && !targets.isEmpty(); }
+};
+
+VccTargetList parseVccTargets(const QString &text);
+
+// -----------------------------------------------------------------------------
 //  Profiles: one bench or site, with its address, default images and tuning
 // -----------------------------------------------------------------------------
 struct FlashProfile {
@@ -285,6 +314,8 @@ bool isImageFail(const kflash::FlashResult &result);
 struct BatchEntry {
     int          cardType = 0;
     ImageInfo    image;
+    QString      targetIp;        // session 291: this entry's VCC when several run at once; empty = the batch's
+    quint16      targetPort = 0;  // 0 = the batch's
     CardOutcome  outcome = CardOutcome::Queued;
     kflash::FlashResult result;
     QStringList  log;             // this card's session log, timestamped, for history
@@ -304,6 +335,16 @@ public:
 
     // Record the engine's result for the card currently Running.
     void finishCurrent(const kflash::FlashResult &result, bool alreadyHeld);
+
+    // Session 291: every entry at once, one engine each (several VCCs).
+    // startAll() marks every Queued entry Running and returns them; each
+    // finishes on its own with finishEntry(). One VCC failing stops no
+    // other: they are separate boards. The batch is finished when the last
+    // one is. Abort cancels them all.
+    QVector<int> startAll();
+    void finishEntry(int index, const kflash::FlashResult &result, bool alreadyHeld);
+    bool isParallel() const   { return m_parallel; }
+    int  runningCount() const;
 
     void requestStopAfterCurrent() { m_stopAfterCurrent = true; }
     void requestAbort()            { m_aborted = true; }
@@ -333,9 +374,14 @@ private:
     bool    m_aborted = false;
     bool    m_stopping = false;
     bool    m_finished = false;
+    bool    m_parallel = false;
     int     m_current = -1;
     QString m_stopReason;
 };
+
+// What a row, a Summary panel or a verdict calls an entry: the card's name,
+// or "VCC 192.168.25.169" when the entry has its own target.
+QString entryTitle(const BatchEntry &entry);
 
 // The Summary's verdict banner. Written for one card per run (the flasher's
 // mode since the updater only runs after a power cycle); the multi-card
@@ -375,6 +421,9 @@ struct PreflightInput {
     QString subnetText;             // "192.168.25.x"
     int     updaterWaitSeconds = kDefaultUpdaterWaitSeconds;
     QVector<PreflightRow> rows;     // queue order
+    // Session 291: with several VCCs, the ones no adapter reaches (then
+    // adapterOnSubnet is false). Empty with one VCC.
+    QStringList offSubnetTargets;
 };
 
 struct PreflightItem {

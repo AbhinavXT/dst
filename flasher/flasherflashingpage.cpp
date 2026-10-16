@@ -15,6 +15,7 @@
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QMouseEvent>
 #include <QMessageBox>
 #include <QPainter>
 #include <QPainterPath>
@@ -180,7 +181,7 @@ void FlasherPhaseStepper::paintEvent(QPaintEvent *)
 //  FlasherBatchRow
 // =============================================================================
 
-FlasherBatchRow::FlasherBatchRow(int cardType, const QString &fileName, QWidget *parent)
+FlasherBatchRow::FlasherBatchRow(int cardType, const QString &fileName, QWidget *parent, const QString &title)
     : QWidget(parent)
 {
     auto *rowLayout = new QHBoxLayout(this);
@@ -194,7 +195,7 @@ FlasherBatchRow::FlasherBatchRow(int cardType, const QString &fileName, QWidget 
     textColumn->setSpacing(2);
     auto *nameRow = new QHBoxLayout();
     nameRow->setSpacing(8);
-    auto *name = new QLabel(Flasher::cardName(cardType), this);
+    auto *name = new QLabel(title.isEmpty() ? Flasher::cardName(cardType) : title, this);
     QFont nameFont = name->font();
     nameFont.setBold(true);
     name->setFont(nameFont);
@@ -238,6 +239,31 @@ void FlasherBatchRow::setOutcome(Flasher::CardOutcome outcome, const QString &st
     update();
 }
 
+QString FlasherBatchRow::statusText() const
+{
+    return m_status->text();
+}
+
+void FlasherBatchRow::setDetail(const QString &text)
+{
+    m_fileName = text;
+    m_file->setToolTip(text);
+    m_file->setText(m_file->fontMetrics().elidedText(m_fileName, Qt::ElideRight, qMax(40, m_file->width())));
+}
+
+void FlasherBatchRow::setShown(bool shown)
+{
+    if (m_shown == shown) return;
+    m_shown = shown;
+    update();
+}
+
+void FlasherBatchRow::mousePressEvent(QMouseEvent *event)
+{
+    QWidget::mousePressEvent(event);
+    emit clicked();
+}
+
 void FlasherBatchRow::resizeEvent(QResizeEvent *event)
 {
     QWidget::resizeEvent(event);
@@ -256,6 +282,10 @@ void FlasherBatchRow::paintEvent(QPaintEvent *)
     // Row separator.
     painter.setPen(FlasherStyle::border());
     painter.drawLine(rect().topLeft(), rect().topRight());
+    // The row the centre shows, when there are several (session 291).
+    if (m_shown) {
+        painter.fillRect(QRect(0, 0, 4, height()), FlasherStyle::primary());
+    }
 
     // The dot: filled + tick = accepted, filled = active, red + cross =
     // failed, hollow ring = queued / not run. Shape carries the meaning as
@@ -328,18 +358,29 @@ QWidget *FlasherFlashingPage::buildBatchColumn()
 
     auto *titleRow = new QHBoxLayout();
     titleRow->setContentsMargins(18, 0, 18, 0);
-    auto *title = new QLabel(tr("Card"), card);
-    m_sectionLabels.append(title);
-    titleRow->addWidget(title, 1);
+    m_batchTitle = new QLabel(tr("Card"), card);
+    m_sectionLabels.append(m_batchTitle);
+    titleRow->addWidget(m_batchTitle, 1);
     m_batchCount = new QLabel(card);
     m_batchCount->setStyleSheet(UiColor::mutedStyle());
     titleRow->addWidget(m_batchCount);
     cardLayout->addLayout(titleRow);
 
-    m_batchRowsLayout = new QVBoxLayout();
+    // Rows scroll (session 291): eight VCCs are taller than a laptop's page.
+    auto *rowsScroll = new QScrollArea(card);
+    rowsScroll->setObjectName(QStringLiteral("flasherBatchScroll"));
+    rowsScroll->setWidgetResizable(true);
+    rowsScroll->setFrameShape(QFrame::NoFrame);
+    rowsScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    rowsScroll->viewport()->setAutoFillBackground(false);
+    auto *rows = new QWidget(rowsScroll);
+    rows->setAutoFillBackground(false);
+    m_batchRowsLayout = new QVBoxLayout(rows);
+    m_batchRowsLayout->setContentsMargins(0, 0, 0, 0);
     m_batchRowsLayout->setSpacing(0);
-    cardLayout->addLayout(m_batchRowsLayout);
-    cardLayout->addStretch(1);
+    m_batchRowsLayout->addStretch(1);
+    rowsScroll->setWidget(rows);
+    cardLayout->addWidget(rowsScroll, 1);
 
     auto *buttons = new QVBoxLayout();
     buttons->setContentsMargins(18, 0, 18, 0);
@@ -578,81 +619,128 @@ void FlasherFlashingPage::restyle()
 void FlasherFlashingPage::beginBatch(const Flasher::BatchPlan &plan)
 {
     for (FlasherBatchRow *row : m_batchRows) {
+        row->hide();
         row->deleteLater();
     }
     m_batchRows.clear();
-    for (const Flasher::BatchEntry &entry : plan.entries()) {
-        auto *row = new FlasherBatchRow(entry.cardType, QFileInfo(entry.image.path).fileName(), this);
-        m_batchRowsLayout->addWidget(row);
+    m_views.clear();
+    m_currentIndex = -1;
+    m_shown = -1;
+    for (int index = 0; index < plan.size(); ++index) {
+        const Flasher::BatchEntry &entry = plan.entries().at(index);
+        EntryView view;
+        view.cardType = entry.cardType;
+        view.title = Flasher::entryTitle(entry);
+        view.subtitle = Flasher::deliveryText(entry.cardType);
+        view.totalBlocks = entry.image.blockCount;
+        m_views.append(view);
+
+        auto *row = new FlasherBatchRow(entry.cardType, QFileInfo(entry.image.path).fileName(), this,
+                                        plan.size() > 1 ? view.title : QString());
+        // Several VCCs share one file: the second line says how each is doing.
+        if (plan.size() > 1) {
+            row->setDetail(tr("Queued"));
+        }
+        connect(row, &FlasherBatchRow::clicked, this, [this, index]() { showEntry(index); });
+        m_batchRowsLayout->insertWidget(m_batchRowsLayout->count() - 1, row);
         m_batchRows.append(row);
     }
+    m_batchTitle->setText(plan.size() > 1 ? tr("VCCs") : tr("Card"));
+    FlasherStyle::makeSectionLabel(m_batchTitle);
     m_log->clear();
     m_logLines.clear();
     m_abortButton->setEnabled(true);
-    m_abortButton->setText(tr("Abort now…"));
+    m_abortButton->setText(plan.size() > 1 ? tr("Abort all…") : tr("Abort now…"));
     m_batchCount->clear();
 }
 
 void FlasherFlashingPage::beginCard(int index, const Flasher::BatchEntry &entry)
 {
-    m_currentIndex = index;
-    m_currentCardType = entry.cardType;
-    m_haveProgress = false;
-    m_lastProgress = kflash::Progress();
-    m_phase = kflash::Phase::Idle;
-    m_cardFinished = false;
-    m_cardSucceeded = false;
-    for (int slot = 0; slot < 5; ++slot) {
-        m_phaseStartMs[slot] = 0;
-        m_phaseEndMs[slot] = 0;
+    if (index < 0) {
+        return;
     }
-    m_cardClock.start();
+    // A page driven without beginBatch (a test) still gets a view.
+    while (m_views.size() <= index) {
+        m_views.append(EntryView());
+    }
+    EntryView &view = m_views[index];
+    const quint32 totalBlocks = entry.image.blockCount;
+    view = EntryView();
+    view.cardType = entry.cardType;
+    view.title = parallel() ? Flasher::entryTitle(entry) : Flasher::cardName(entry.cardType);
+    view.subtitle = Flasher::deliveryText(entry.cardType);
+    if (!entry.targetIp.isEmpty()) {
+        view.subtitle = tr("%1 · %2").arg(entry.targetIp, view.subtitle);
+    }
+    view.totalBlocks = totalBlocks;
+    view.clock.start();
+    m_currentIndex = index;
 
-    m_cardTitle->setText(Flasher::cardName(entry.cardType));
-    m_cardSubtitle->setText(Flasher::deliveryText(entry.cardType));
-    m_batchCount->clear();
-
-    if (index >= 0 && index < m_batchRows.size()) {
+    if (index < m_batchRows.size()) {
         m_batchRows[index]->setOutcome(Flasher::CardOutcome::Running, tr("Waiting"));
     }
-
-    m_blockMap->reset(entry.image.blockCount);
-    m_stepper->reset();
-
-    m_statBlocks->setText(QStringLiteral("0"));
-    m_statBlocksSub->setText(tr("of %1").arg(entry.image.blockCount));
-    m_statRound->setText(QStringLiteral("—"));
-    m_statRoundSub->setText(tr("of %1 max").arg(m_maxRounds));
-    m_statResent->setText(QStringLiteral("0"));
-    m_statResentSub->setText(tr("blocks"));
-    m_statRate->setText(QStringLiteral("—"));
-    m_statRateSub->setText(QString());
-    m_statRtt->setText(QStringLiteral("—"));
-    m_statRttSub->setText(QString());
+    updateRow(index);
+    // The first entry begun is the one on show; later ones wait for a click.
+    if (m_shown < 0 || !parallel()) {
+        showEntry(index);
+    }
+    updateBatchCount();
 
     // A divider in the log between cards, so one saved log reads as a batch.
-    appendLog(static_cast<int>(kflash::LogLevel::Info),
-              tr("==== %1 · %2 · %3 ====").arg(Flasher::cardName(entry.cardType),
-                                               QFileInfo(entry.image.path).fileName(),
-                                               entry.image.crcText()));
+    appendLogFor(index, static_cast<int>(kflash::LogLevel::Info),
+                 tr("==== %1 · %2 · %3 ====").arg(view.title, QFileInfo(entry.image.path).fileName(),
+                                                  entry.image.crcText()));
     m_tickTimer->start();
+    tick();
+}
+
+void FlasherFlashingPage::showEntry(int index)
+{
+    if (index < 0 || index >= m_views.size()) {
+        return;
+    }
+    m_shown = index;
+    for (int row = 0; row < m_batchRows.size(); ++row) {
+        m_batchRows[row]->setShown(parallel() && row == index);
+    }
+    const EntryView &view = m_views.at(index);
+    m_cardTitle->setText(view.title);
+    m_cardSubtitle->setText(view.subtitle);
+
+    m_blockMap->reset(view.totalBlocks);
+    if (!view.bitmap.isEmpty()) {
+        m_blockMap->setBitmap(view.bitmap, view.totalBlocks);
+    }
+    if (view.phase == kflash::Phase::InitialSend) {
+        m_blockMap->setSendCursor(view.lastProgress.sent_cursor);
+    }
+    m_stepper->reset();
+    showStats(view);
     tick();
 }
 
 void FlasherFlashingPage::finishCard(int index, const Flasher::BatchEntry &entry)
 {
-    m_cardFinished = true;
-    m_cardSucceeded = Flasher::outcomeIsSuccess(entry.outcome);
-    const qint64 now = m_cardClock.elapsed();
-    if (m_phase != kflash::Phase::Idle) {
-        m_phaseEndMs[phaseSlot(m_phase)] = now;
+    if (index < 0 || index >= m_views.size()) {
+        return;
     }
-    m_tickTimer->stop();
-    tick();
-
-    if (index >= 0 && index < m_batchRows.size()) {
+    EntryView &view = m_views[index];
+    view.finished = true;
+    view.succeeded = Flasher::outcomeIsSuccess(entry.outcome);
+    const qint64 now = view.clock.isValid() ? view.clock.elapsed() : 0;
+    view.endedMs = now;
+    if (view.phase != kflash::Phase::Idle) {
+        view.phaseEndMs[phaseSlot(view.phase)] = now;
+    }
+    if (!anyRunning()) {
+        m_tickTimer->stop();
+    }
+    if (index < m_batchRows.size()) {
         m_batchRows[index]->setOutcome(entry.outcome, Flasher::outcomeText(entry.outcome));
     }
+    updateRow(index);
+    updateBatchCount();
+    tick();
 }
 
 void FlasherFlashingPage::refreshBatchRows(const Flasher::BatchPlan &plan)
@@ -672,6 +760,26 @@ void FlasherFlashingPage::setAborting()
     m_abortButton->setEnabled(false);
 }
 
+bool FlasherFlashingPage::anyRunning() const
+{
+    for (const EntryView &view : m_views) {
+        if (view.clock.isValid() && !view.finished) {
+            return true;
+        }
+    }
+    return false;
+}
+
+QString FlasherFlashingPage::cardTitle() const
+{
+    return m_cardTitle->text();
+}
+
+QString FlasherFlashingPage::waitText() const
+{
+    return m_waitBanner->isVisibleTo(const_cast<FlasherFlashingPage *>(this)) ? m_waitText->text() : QString();
+}
+
 bool FlasherFlashingPage::waitingForUpdater() const
 {
     return m_waitBanner->isVisibleTo(const_cast<FlasherFlashingPage *>(this));
@@ -679,20 +787,33 @@ bool FlasherFlashingPage::waitingForUpdater() const
 
 void FlasherFlashingPage::updateWaitPrompt()
 {
-    // Waiting = the card has started, is not finished, and the engine has not
-    // left the handshake (Idle before its first report, Handshake after).
-    const bool waiting = m_cardClock.isValid() && !m_cardFinished
-                         && (m_phase == kflash::Phase::Idle || m_phase == kflash::Phase::Handshake);
-    if (!waiting) {
+    // Waiting = an entry has started, is not finished, and its engine has
+    // not left the handshake (Idle before its first report, Handshake after).
+    // With several VCCs the prompt stays up until the last one answers.
+    int waiting = 0;
+    qint64 elapsed = 0;
+    for (const EntryView &view : m_views) {
+        if (view.clock.isValid() && !view.finished
+            && (view.phase == kflash::Phase::Idle || view.phase == kflash::Phase::Handshake)) {
+            ++waiting;
+            elapsed = qMax(elapsed, view.clock.elapsed());
+        }
+    }
+    if (waiting == 0) {
         m_waitBanner->hide();
         return;
     }
-    qint64 remainingMs = m_updaterWaitMs - m_cardClock.elapsed();
+    qint64 remainingMs = m_updaterWaitMs - elapsed;
     if (remainingMs < 0) {
         remainingMs = 0;
     }
-    m_waitText->setText(tr("Power-cycle the chassis now — waiting for the updater · %1 s left")
-                            .arg((remainingMs + 999) / 1000));
+    const qint64 seconds = (remainingMs + 999) / 1000;
+    if (parallel()) {
+        m_waitText->setText(tr("Power-cycle all %1 chassis now — %2 of %1 still waiting for the updater · %3 s left")
+                                .arg(m_views.size()).arg(waiting).arg(seconds));
+    } else {
+        m_waitText->setText(tr("Power-cycle the chassis now — waiting for the updater · %1 s left").arg(seconds));
+    }
     m_waitBanner->show();
 }
 
@@ -702,31 +823,76 @@ void FlasherFlashingPage::updateWaitPrompt()
 
 void FlasherFlashingPage::onProgress(const kflash::Progress &progress)
 {
-    const qint64 now = m_cardClock.elapsed();
+    onProgressFor(m_currentIndex, progress);
+}
+
+void FlasherFlashingPage::onProgressFor(int index, const kflash::Progress &progress)
+{
+    if (index < 0 || index >= m_views.size()) {
+        return;
+    }
+    EntryView &view = m_views[index];
+    const qint64 now = view.clock.isValid() ? view.clock.elapsed() : 0;
 
     // Phase transitions: close the old phase, open the new one. Done is not
     // tracked as a phase of its own: the engine enters it on success AND on
-    // failure, so it says nothing about which. Keeping m_phase at the last
-    // working phase is what lets the stepper mark the phase a card failed in.
-    if (progress.phase != m_phase && progress.phase != kflash::Phase::Done) {
-        if (m_phase != kflash::Phase::Idle) {
-            m_phaseEndMs[phaseSlot(m_phase)] = now;
+    // failure, so it says nothing about which. Keeping the phase at the last
+    // working one is what lets the stepper mark the phase a card failed in.
+    if (progress.phase != view.phase && progress.phase != kflash::Phase::Done) {
+        if (view.phase != kflash::Phase::Idle) {
+            view.phaseEndMs[phaseSlot(view.phase)] = now;
         }
-        m_phase = progress.phase;
-        if (m_phaseStartMs[phaseSlot(m_phase)] == 0) {
-            m_phaseStartMs[phaseSlot(m_phase)] = now;
+        view.phase = progress.phase;
+        if (view.phaseStartMs[phaseSlot(view.phase)] == 0) {
+            view.phaseStartMs[phaseSlot(view.phase)] = now;
         }
     }
-    m_lastProgress = progress;
-    m_haveProgress = true;
-
-    // During the first pass the map also shows what has been SENT but not yet
-    // confirmed, which is most of it until the first checkpoint STATUS.
-    if (progress.phase == kflash::Phase::InitialSend) {
-        m_blockMap->setSendCursor(progress.sent_cursor);
+    view.lastProgress = progress;
+    view.haveProgress = true;
+    if (progress.total_blocks > 0) {
+        view.totalBlocks = progress.total_blocks;
     }
 
-    // ---- stats -----------------------------------------------------------------
+    updateRow(index);
+    if (index == m_shown) {
+        // During the first pass the map also shows what has been SENT but
+        // not yet confirmed, which is most of it until the first checkpoint.
+        if (progress.phase == kflash::Phase::InitialSend) {
+            m_blockMap->setSendCursor(progress.sent_cursor);
+        }
+        showStats(view);
+        updateStepper();
+    }
+    updateWaitPrompt();
+}
+
+void FlasherFlashingPage::onBitmapFor(int index, const QByteArray &bitmap, quint32 totalBlocks)
+{
+    if (index < 0 || index >= m_views.size()) {
+        return;
+    }
+    m_views[index].bitmap = bitmap;
+    if (index == m_shown) {
+        m_blockMap->setBitmap(bitmap, totalBlocks);
+    }
+}
+
+void FlasherFlashingPage::showStats(const EntryView &view)
+{
+    const kflash::Progress &progress = view.lastProgress;
+    if (!view.haveProgress) {
+        m_statBlocks->setText(QStringLiteral("0"));
+        m_statBlocksSub->setText(tr("of %1").arg(view.totalBlocks));
+        m_statRound->setText(QStringLiteral("—"));
+        m_statRoundSub->setText(tr("of %1 max").arg(m_maxRounds));
+        m_statResent->setText(QStringLiteral("0"));
+        m_statResentSub->setText(tr("blocks"));
+        m_statRate->setText(QStringLiteral("—"));
+        m_statRateSub->setText(QString());
+        m_statRtt->setText(QStringLiteral("—"));
+        m_statRttSub->setText(QString());
+        return;
+    }
     m_statBlocks->setText(QString::number(progress.acked_blocks));
     m_statBlocksSub->setText(tr("of %1").arg(progress.total_blocks));
     if (progress.phase == kflash::Phase::Repair || progress.phase == kflash::Phase::Done) {
@@ -748,62 +914,115 @@ void FlasherFlashingPage::onProgress(const kflash::Progress &progress)
         m_statRtt->setText(QStringLiteral("—"));
     }
     m_statRttSub->setText(tr("ms · poll timeout %1 ms").arg(progress.poll_timeout_ms));
+}
 
-    // The batch row names the phase the card is in.
-    if (m_currentIndex >= 0 && m_currentIndex < m_batchRows.size()) {
+// The batch row: the phase in its status, and with several VCCs the
+// progress on its second line, so all of them can be watched at once.
+void FlasherFlashingPage::updateRow(int index)
+{
+    if (index < 0 || index >= m_batchRows.size() || index >= m_views.size()) {
+        return;
+    }
+    const EntryView &view = m_views.at(index);
+    FlasherBatchRow *row = m_batchRows[index];
+    const kflash::Progress &progress = view.lastProgress;
+    if (!view.finished && view.clock.isValid() && view.haveProgress) {
         QString phaseWord = QString::fromLatin1(kflash::phase_name(progress.phase));
         if (progress.phase == kflash::Phase::Repair) {
             phaseWord = tr("Repair %1").arg(progress.round);
         } else if (progress.phase == kflash::Phase::Handshake) {
             phaseWord = tr("Waiting");
         }
-        m_batchRows[m_currentIndex]->setOutcome(Flasher::CardOutcome::Running, phaseWord);
+        row->setOutcome(Flasher::CardOutcome::Running, phaseWord);
     }
-    updateStepper();
-    updateWaitPrompt();
+    if (!parallel()) {
+        return;
+    }
+    QString detail;
+    if (!view.clock.isValid()) {
+        detail = tr("Queued");
+    } else if (!view.haveProgress || progress.phase == kflash::Phase::Handshake
+               || (progress.phase == kflash::Phase::Idle && !view.finished)) {
+        detail = view.finished ? QString() : tr("waiting for the updater");
+    } else {
+        const quint32 total = qMax<quint32>(1, progress.total_blocks);
+        quint32 done = progress.acked_blocks;
+        if (progress.phase == kflash::Phase::InitialSend) {
+            done = qMax(done, progress.sent_cursor);
+        }
+        detail = tr("%1 % · %2 KB/s · %3 resent")
+                     .arg(qMin<quint32>(100, 100 * done / total))
+                     .arg(qRound(progress.wire_rate_kBps))
+                     .arg(progress.blocks_resent);
+        if (view.finished) {
+            detail = tr("%1 resent · %2").arg(progress.blocks_resent)
+                         .arg(Flasher::formatDuration(view.endedMs));
+        }
+    }
+    if (view.finished && detail.isEmpty()) {
+        detail = view.succeeded ? tr("nothing sent") : tr("no answer");
+    }
+    row->setDetail(detail);
+}
+
+void FlasherFlashingPage::updateBatchCount()
+{
+    if (!parallel()) {
+        m_batchCount->clear();
+        return;
+    }
+    int done = 0;
+    for (const EntryView &view : m_views) {
+        done += view.finished ? 1 : 0;
+    }
+    m_batchCount->setText(tr("%1 of %2 done").arg(done).arg(m_views.size()));
 }
 
 void FlasherFlashingPage::updateStepper()
 {
-    const qint64 now = m_cardClock.elapsed();
+    if (m_shown < 0 || m_shown >= m_views.size()) {
+        return;
+    }
+    const EntryView &view = m_views.at(m_shown);
+    const qint64 now = view.finished ? view.endedMs : (view.clock.isValid() ? view.clock.elapsed() : 0);
 
     // Duration of a phase: end - start once it has ended, now - start while
     // it is the current one, empty if it never started.
-    auto phaseTime = [this, now](kflash::Phase phase) -> QString {
+    auto phaseTime = [&view, now](kflash::Phase phase) -> QString {
         const int slot = phaseSlot(phase);
-        if (m_phaseStartMs[slot] == 0 && m_phase != phase) {
+        if (view.phaseStartMs[slot] == 0 && view.phase != phase) {
             return QString();
         }
-        qint64 end = m_phaseEndMs[slot];
+        qint64 end = view.phaseEndMs[slot];
         if (end == 0) {
             end = now;
         }
-        return Flasher::formatDuration(end - m_phaseStartMs[slot]);
+        return Flasher::formatDuration(end - view.phaseStartMs[slot]);
     };
 
     double fraction = 0.0;
-    if (m_lastProgress.total_blocks > 0) {
-        fraction = static_cast<double>(m_lastProgress.acked_blocks) / m_lastProgress.total_blocks;
+    if (view.lastProgress.total_blocks > 0) {
+        fraction = static_cast<double>(view.lastProgress.acked_blocks) / view.lastProgress.total_blocks;
     }
 
     // Where each step stands, from the current phase. The engine moves
     // strictly forward (Handshake -> InitialSend -> Repair -> Done), except
     // that an "already held" image goes straight from Handshake to Done.
     using StepState = FlasherPhaseStepper::StepState;
-    const int currentPhase = phaseSlot(m_phase);
+    const int currentPhase = phaseSlot(view.phase);
     auto stateFor = [&](kflash::Phase phase) -> StepState {
         const int slot = phaseSlot(phase);
-        if (m_cardFinished && !m_cardSucceeded && slot == currentPhase) {
+        if (view.finished && !view.succeeded && slot == currentPhase) {
             return StepState::Failed;
         }
         if (currentPhase > slot) {
-            if (m_phaseStartMs[slot] == 0 && phase != kflash::Phase::Handshake) {
+            if (view.phaseStartMs[slot] == 0 && phase != kflash::Phase::Handshake) {
                 return StepState::Pending;   // skipped (already held)
             }
             return StepState::Done;
         }
         if (currentPhase == slot) {
-            if (m_cardFinished) {
+            if (view.finished) {
                 return StepState::Done;
             }
             return StepState::Active;
@@ -820,24 +1039,24 @@ void FlasherFlashingPage::updateStepper()
     m_stepper->setStep(FlasherPhaseStepper::StepSession, stateFor(kflash::Phase::Handshake), 0.5,
                        sessionLabel, phaseTime(kflash::Phase::Handshake));
     double sendFraction = fraction;
-    if (m_lastProgress.total_blocks > 0 && m_phase == kflash::Phase::InitialSend) {
-        sendFraction = static_cast<double>(m_lastProgress.sent_cursor) / m_lastProgress.total_blocks;
+    if (view.lastProgress.total_blocks > 0 && view.phase == kflash::Phase::InitialSend) {
+        sendFraction = static_cast<double>(view.lastProgress.sent_cursor) / view.lastProgress.total_blocks;
     }
     m_stepper->setStep(FlasherPhaseStepper::StepSend, stateFor(kflash::Phase::InitialSend), sendFraction,
                        tr("Send + early repair"), phaseTime(kflash::Phase::InitialSend));
 
     QString repairLabel = tr("Repair");
-    if (m_phaseStartMs[phaseSlot(kflash::Phase::Repair)] != 0 || m_phase == kflash::Phase::Repair) {
-        repairLabel = tr("Repair · round %1").arg(m_lastProgress.round);
+    if (view.phaseStartMs[phaseSlot(kflash::Phase::Repair)] != 0 || view.phase == kflash::Phase::Repair) {
+        repairLabel = tr("Repair · round %1").arg(view.lastProgress.round);
     }
     m_stepper->setStep(FlasherPhaseStepper::StepRepair, stateFor(kflash::Phase::Repair), fraction,
                        repairLabel, phaseTime(kflash::Phase::Repair));
 
     StepState acceptedState = StepState::Pending;
     QString acceptedLabel = tr("Accepted");
-    if (m_cardFinished && m_cardSucceeded) {
+    if (view.finished && view.succeeded) {
         acceptedState = StepState::Done;
-    } else if (m_cardFinished) {
+    } else if (view.finished) {
         acceptedState = StepState::Failed;
         acceptedLabel = tr("Not accepted");
     }
@@ -846,8 +1065,10 @@ void FlasherFlashingPage::updateStepper()
 
 void FlasherFlashingPage::tick()
 {
-    if (m_cardClock.isValid()) {
-        m_elapsed->setText(Flasher::formatClock(m_cardClock.elapsed()));
+    if (m_shown >= 0 && m_shown < m_views.size() && m_views.at(m_shown).clock.isValid()) {
+        const EntryView &view = m_views.at(m_shown);
+        // A finished entry's clock stops where it ended.
+        m_elapsed->setText(Flasher::formatClock(view.finished ? view.endedMs : view.clock.elapsed()));
     }
     updateWaitPrompt();
     updateStepper();
@@ -855,7 +1076,17 @@ void FlasherFlashingPage::tick()
 
 void FlasherFlashingPage::appendLog(int level, const QString &text)
 {
+    appendLogFor(m_currentIndex, level, text);
+}
+
+void FlasherFlashingPage::appendLogFor(int index, int level, const QString &rawText)
+{
     const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss.zzz"));
+    // Several VCCs share the log: each line says whose it is.
+    QString text = rawText;
+    if (parallel() && index >= 0 && index < m_views.size() && !rawText.startsWith(QLatin1String("===="))) {
+        text = QStringLiteral("[%1] %2").arg(m_views.at(index).title, rawText);
+    }
 
     // Colour by level, and pick out the session/rate lines -- the ones an
     // engineer scans for when a transfer is slow -- in the accent colour.
@@ -867,10 +1098,10 @@ void FlasherFlashingPage::appendLog(int level, const QString &text)
     } else if (level == static_cast<int>(kflash::LogLevel::Error)) {
         colour = FlasherStyle::danger();
         levelTag = QStringLiteral("FAIL");
-    } else if (text.contains(QLatin1String("Session"), Qt::CaseInsensitive)
-               || text.contains(QLatin1String("META"))
-               || text.contains(QLatin1String("rate"), Qt::CaseInsensitive)
-               || text.contains(QLatin1String("RTT"))) {
+    } else if (rawText.contains(QLatin1String("Session"), Qt::CaseInsensitive)
+               || rawText.contains(QLatin1String("META"))
+               || rawText.contains(QLatin1String("rate"), Qt::CaseInsensitive)
+               || rawText.contains(QLatin1String("RTT"))) {
         colour = FlasherStyle::primary();
     }
 

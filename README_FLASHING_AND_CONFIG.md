@@ -54,6 +54,34 @@ calling the board while you power-cycle, so you don't have to be quick.
 To flash another card: go **Back to queue**, select the next card, and
 repeat from step 5. **Every card needs its own power cycle.**
 
+## Flashing several VCCs at once
+
+Up to **8 VCCs** can get the same VCC image in one run, for example a
+batch of locos on one switch. Each VCC needs **its own IP address**.
+
+1. In **VCC IP address**, list the VCCs:
+   - separated by commas: `192.168.25.168, 192.168.25.169`
+   - or as a range of the last number: `192.168.25.168-175` (8 VCCs)
+
+   The line under the field shows the VCCs it read.
+2. Select the **VCC** row. Several addresses work only for the VCC card;
+   Input, Output and Analog images go through their own VCC, one chassis
+   at a time.
+3. Press **Flash 8 VCCs**, then **power-cycle every chassis**. Each VCC is
+   waited for on its own, up to the time on the bar.
+
+Every VCC runs its own transfer at the same time: its own resends after
+lost packets, and its own speed. A VCC that fails does not stop the
+others. **Abort all** stops all of them.
+
+While it runs, the left column has one row per VCC with its progress.
+**Click a row** to see that VCC's block map and numbers. The log shows
+every VCC, each line starting with its address.
+
+On the **Summary**, each VCC has its own result. **Try again** goes back
+with only the VCCs that were **not** updated in the address field, so a
+verified VCC is not flashed twice. History has one record per VCC.
+
 ## What the result means
 
 | Result | Meaning | What to do |

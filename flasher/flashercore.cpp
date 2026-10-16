@@ -8,6 +8,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QRandomGenerator>
+#include <QRegularExpression>
 #include <QSaveFile>
 #include <QTextStream>
 
@@ -785,6 +786,11 @@ Verdict batchVerdict(const BatchPlan &plan)
     if (total == 1) {
         cardWord = QStringLiteral("card");
     }
+    // Session 291: several VCCs at once are named by their address.
+    const bool byTarget = total > 1 && !plan.entries().first().targetIp.isEmpty();
+    if (byTarget) {
+        cardWord = QStringLiteral("VCCs");
+    }
 
     if (failed == 0 && notRun == 0) {
         verdict.tone = Verdict::Tone::Success;
@@ -798,8 +804,10 @@ Verdict batchVerdict(const BatchPlan &plan)
                 verdict.explanation = successExplanation(only.cardType);
             }
         } else {
-            verdict.headline = QStringLiteral("All %1 cards updated").arg(total);
-            verdict.explanation = QStringLiteral("Every card in the batch reported COMPLETE for its image.");
+            verdict.headline = QStringLiteral("All %1 %2 updated").arg(total).arg(cardWord);
+            verdict.explanation = byTarget
+                ? QStringLiteral("Every VCC reported COMPLETE for the image. %1").arg(successExplanation(CardVcc))
+                : QStringLiteral("Every card in the batch reported COMPLETE for its image.");
         }
         return verdict;
     }
@@ -822,7 +830,9 @@ Verdict batchVerdict(const BatchPlan &plan)
         return verdict;
     }
 
-    if (notRun > 0) {
+    if (byTarget) {
+        verdict.headline = QStringLiteral("%1 of %2 VCCs updated").arg(succeeded).arg(total);
+    } else if (notRun > 0) {
         verdict.headline = QStringLiteral("Batch stopped — %1 of %2 %3 updated")
                                .arg(succeeded).arg(total).arg(cardWord);
     } else {
@@ -836,14 +846,14 @@ Verdict batchVerdict(const BatchPlan &plan)
     for (const BatchEntry &entry : plan.entries()) {
         if (entry.outcome == CardOutcome::Failed) {
             if (isImageFail(entry.result)) {
-                failedNames.append(QStringLiteral("%1 failed image verification").arg(cardName(entry.cardType)));
+                failedNames.append(QStringLiteral("%1 failed image verification").arg(entryTitle(entry)));
             } else {
-                failedNames.append(QStringLiteral("%1 failed").arg(cardName(entry.cardType)));
+                failedNames.append(QStringLiteral("%1 failed").arg(entryTitle(entry)));
             }
         } else if (entry.outcome == CardOutcome::Cancelled) {
-            failedNames.append(QStringLiteral("%1 was aborted").arg(cardName(entry.cardType)));
+            failedNames.append(QStringLiteral("%1 was aborted").arg(entryTitle(entry)));
         } else if (entry.outcome == CardOutcome::NotRun) {
-            notRunNames.append(cardName(entry.cardType));
+            notRunNames.append(entryTitle(entry));
         }
     }
 
@@ -927,13 +937,25 @@ PreflightReport evaluatePreflight(const PreflightInput &input)
     };
 
     // ---- the target ------------------------------------------------------
-    uint32_t targetIp = 0;
-    const bool ipValid = kflash::parse_ipv4(input.vccIp.toStdString(), &targetIp)
-                         && targetIp != 0 && targetIp != 0xFFFFFFFFu;
+    // Session 291: one address, or a list of VCCs flashed at once.
+    const VccTargetList targets = parseVccTargets(input.vccIp);
+    const bool ipValid = targets.ok();
+    const int vccCount = targets.targets.size();
     if (!ipValid) {
-        add(PreflightItem::State::Warning, QStringLiteral("VCC IP address is not a valid IPv4 address"), true);
+        add(PreflightItem::State::Warning, targets.error, true);
     } else if (input.port == 0) {
         add(PreflightItem::State::Warning, QStringLiteral("Port must be 1–65535"), true);
+    } else if (vccCount > 1) {
+        add(PreflightItem::State::Ok,
+            QStringLiteral("%1 VCCs, flashed in parallel: each has its own transfer and resends").arg(vccCount), false);
+        for (const PreflightRow &row : input.rows) {
+            if (row.ticked && row.cardType != CardVcc) {
+                add(PreflightItem::State::Warning,
+                    QStringLiteral("Several VCC addresses: only the VCC card is flashed on several chassis at once "
+                                   "— select the VCC row, or list one address"), true);
+                break;
+            }
+        }
     }
 
     // ---- the adapter -----------------------------------------------------
@@ -945,6 +967,10 @@ PreflightReport evaluatePreflight(const PreflightInput &input)
         if (input.adapterOnSubnet) {
             add(PreflightItem::State::Ok,
                 QStringLiteral("Adapter on the %1 subnet").arg(input.subnetText), false);
+        } else if (!input.offSubnetTargets.isEmpty()) {
+            add(PreflightItem::State::Warning,
+                QStringLiteral("No adapter on the subnet of %1").arg(input.offSubnetTargets.join(QStringLiteral(", "))),
+                input.mode == Mode::Operator);
         } else {
             QString text = QStringLiteral("No adapter on the board's subnet");
             if (!input.subnetText.isEmpty()) {
@@ -1043,9 +1069,15 @@ PreflightReport evaluatePreflight(const PreflightInput &input)
 
     // Always last, never blocking: the procedure. The PC cannot power the
     // chassis, so the checklist states what the operator does next.
-    add(PreflightItem::State::Warning,
-        QStringLiteral("After pressing Flash, power-cycle the chassis — the flasher waits up to "
-                       "%1 s for the updater").arg(input.updaterWaitSeconds), false);
+    if (vccCount > 1) {
+        add(PreflightItem::State::Warning,
+            QStringLiteral("After pressing Flash, power-cycle all %1 chassis — the flasher waits up to "
+                           "%2 s for each updater").arg(vccCount).arg(input.updaterWaitSeconds), false);
+    } else {
+        add(PreflightItem::State::Warning,
+            QStringLiteral("After pressing Flash, power-cycle the chassis — the flasher waits up to "
+                           "%1 s for the updater").arg(input.updaterWaitSeconds), false);
+    }
 
     report.ready = report.firstBlocker.isEmpty();
     return report;
@@ -1135,7 +1167,7 @@ HistoryRecord makeHistoryRecord(const BatchEntry &entry, const QString &batchId,
     record.batchId = batchId;
     record.operatorName = operatorName;
     record.chassis = chassis;
-    record.vccIp = vccIp;
+    record.vccIp = entry.targetIp.isEmpty() ? vccIp : entry.targetIp;
     record.cardType = entry.cardType;
     record.imagePath = entry.image.path;
     // The CRC is always the PC's own, computed when the file was loaded:
@@ -1405,7 +1437,11 @@ QString batchReportText(const BatchPlan &plan, const QString &batchId,
     out << "Batch     : " << batchId << "\n";
     out << "Operator  : " << operatorName << "\n";
     out << "Chassis   : " << chassis << "\n";
-    out << "Target    : " << vccIp << ":" << port << "\n";
+    if (plan.size() > 1 && !plan.entries().first().targetIp.isEmpty()) {
+        out << "Targets   : " << plan.size() << " VCCs (" << vccIp << "), port " << port << "\n";
+    } else {
+        out << "Target    : " << vccIp << ":" << port << "\n";
+    }
     out << "Written   : " << QDateTime::currentDateTime().toString(Qt::ISODate) << "\n\n";
     out << verdict.headline << "\n";
     if (!verdict.explanation.isEmpty()) {
@@ -1414,7 +1450,7 @@ QString batchReportText(const BatchPlan &plan, const QString &batchId,
     out << "\n";
 
     for (const BatchEntry &entry : plan.entries()) {
-        out << "---- " << cardName(entry.cardType) << " (" << cardIdText(entry.cardType) << ") ----\n";
+        out << "---- " << entryTitle(entry) << " (" << cardIdText(entry.cardType) << ") ----\n";
         out << "Result          : " << outcomeText(entry.outcome) << "\n";
         out << "Image           : " << entry.image.path << "\n";
         if (entry.image.loaded) {
@@ -1444,6 +1480,178 @@ QString batchReportText(const BatchPlan &plan, const QString &batchId,
     }
     out.flush();
     return text;
+}
+
+// =============================================================================
+//  Session 291: several VCCs at once
+// =============================================================================
+
+QString VccTarget::text(quint16 defaultPort) const
+{
+    if (port == 0 || port == defaultPort) {
+        return ip;
+    }
+    return QStringLiteral("%1:%2").arg(ip).arg(port);
+}
+
+namespace {
+bool usableIp(const QString &text, uint32_t *value)
+{
+    return kflash::parse_ipv4(text.toStdString(), value) && *value != 0 && *value != 0xFFFFFFFFu;
+}
+}  // namespace
+
+VccTargetList parseVccTargets(const QString &text)
+{
+    VccTargetList out;
+    const QStringList tokens = text.split(QRegularExpression(QStringLiteral("[\\s,;]+")),
+#if QT_VERSION >= QT_VERSION_CHECK(5, 14, 0)
+                                          Qt::SkipEmptyParts
+#else
+                                          QString::SkipEmptyParts
+#endif
+    );
+    if (tokens.isEmpty()) {
+        out.error = QStringLiteral("VCC IP address is not a valid IPv4 address");
+        return out;
+    }
+    // One address keeps the message the single-VCC flasher always gave.
+    auto bad = [&](const QString &token) {
+        out.targets.clear();
+        if (tokens.size() == 1) {
+            out.error = QStringLiteral("VCC IP address is not a valid IPv4 address");
+        } else {
+            out.error = QStringLiteral("“%1” in the VCC list is not a valid IPv4 address").arg(token);
+        }
+        return out;
+    };
+
+    for (const QString &token : tokens) {
+        QString address = token;
+        quint16 port = 0;
+        const int colon = address.indexOf(QLatin1Char(':'));
+        if (colon >= 0) {
+            bool portOk = false;
+            const int value = address.mid(colon + 1).toInt(&portOk);
+            if (!portOk || value < 1 || value > 65535) {
+                return bad(token);
+            }
+            port = static_cast<quint16>(value);
+            address = address.left(colon);
+        }
+
+        // "192.168.25.168-175": the last octet runs from 168 to 175.
+        const int dash = address.indexOf(QLatin1Char('-'));
+        if (dash >= 0) {
+            const QString first = address.left(dash);
+            uint32_t from = 0;
+            bool lastOk = false;
+            const int last = address.mid(dash + 1).toInt(&lastOk);
+            if (!usableIp(first, &from) || !lastOk || last < static_cast<int>(from & 0xFF) || last > 254) {
+                return bad(token);
+            }
+            const QString prefix = first.left(first.lastIndexOf(QLatin1Char('.')) + 1);
+            const int count = last - static_cast<int>(from & 0xFF) + 1;
+            if (out.targets.size() + count > kMaxParallelVccs) {
+                out.error = QStringLiteral("%1 VCCs listed; at most %2 are flashed at once")
+                                .arg(out.targets.size() + count).arg(kMaxParallelVccs);
+                out.targets.clear();
+                return out;
+            }
+            for (int octet = static_cast<int>(from & 0xFF); octet <= last; ++octet) {
+                out.targets.append({ prefix + QString::number(octet), port });
+            }
+            continue;
+        }
+        uint32_t value = 0;
+        if (!usableIp(address, &value)) {
+            return bad(token);
+        }
+        out.targets.append({ address, port });
+    }
+
+    if (out.targets.size() > kMaxParallelVccs) {
+        const int listed = out.targets.size();
+        out.targets.clear();
+        out.error = QStringLiteral("%1 VCCs listed; at most %2 are flashed at once").arg(listed).arg(kMaxParallelVccs);
+        return out;
+    }
+    // Twice the same board would interleave two transfers to one updater.
+    QSet<QString> seen;
+    for (const VccTarget &target : out.targets) {
+        const QString key = target.text(0);
+        if (seen.contains(key)) {
+            out.targets.clear();
+            out.error = QStringLiteral("%1 is listed twice").arg(key);
+            return out;
+        }
+        seen.insert(key);
+    }
+    return out;
+}
+
+QVector<int> BatchPlan::startAll()
+{
+    QVector<int> started;
+    if (m_finished) {
+        return started;
+    }
+    m_parallel = true;
+    const QDateTime now = QDateTime::currentDateTimeUtc();
+    for (int index = 0; index < m_entries.size(); ++index) {
+        if (m_entries[index].outcome == CardOutcome::Queued) {
+            m_entries[index].outcome = CardOutcome::Running;
+            m_entries[index].startedAt = now;
+            started.append(index);
+        }
+    }
+    if (started.isEmpty()) {
+        m_finished = true;
+    }
+    return started;
+}
+
+void BatchPlan::finishEntry(int index, const kflash::FlashResult &result, bool alreadyHeld)
+{
+    if (index < 0 || index >= m_entries.size() || m_entries[index].outcome != CardOutcome::Running) {
+        return;
+    }
+    BatchEntry &entry = m_entries[index];
+    entry.result = result;
+    if (result.success) {
+        entry.outcome = alreadyHeld ? CardOutcome::AlreadyHeld : CardOutcome::Accepted;
+    } else if (result.cancelled || m_aborted) {
+        entry.outcome = CardOutcome::Cancelled;
+    } else {
+        entry.outcome = CardOutcome::Failed;
+    }
+    if (m_aborted && m_stopReason.isEmpty()) {
+        m_stopReason = QStringLiteral("the batch was aborted");
+    }
+    if (runningCount() == 0) {
+        m_finished = true;
+    }
+}
+
+int BatchPlan::runningCount() const
+{
+    int count = 0;
+    for (const BatchEntry &entry : m_entries) {
+        count += entry.outcome == CardOutcome::Running ? 1 : 0;
+    }
+    return count;
+}
+
+QString entryTitle(const BatchEntry &entry)
+{
+    if (entry.targetIp.isEmpty()) {
+        return cardName(entry.cardType);
+    }
+    QString title = QStringLiteral("%1 %2").arg(cardShortName(entry.cardType), entry.targetIp);
+    if (entry.targetPort != 0) {
+        title += QStringLiteral(":%1").arg(entry.targetPort);
+    }
+    return title;
 }
 
 // =============================================================================

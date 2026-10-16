@@ -70,14 +70,17 @@ public:
     void applyProfile(const Flasher::FlashProfile &profile);
 
     // ---- read by the window --------------------------------------------
-    QString vccIp() const;
+    QString vccIp() const;                     // the field as typed: one address, or a list (session 291)
+    Flasher::VccTargetList vccTargets() const;  // that text, parsed
+    void    setVccIpText(const QString &text);  // Try again: only the VCCs not updated
     quint16 port() const;
     QString adapterDescription() const;
     FlasherQueueModel *model() const { return m_model; }
 
     Flasher::PreflightReport preflight() const;
 
-    // The selected card as a one-entry batch. Only call when
+    // The selected card as a one-entry batch; the VCC with several
+    // addresses is one entry per VCC (session 291). Only call when
     // preflight().ready is true.
     QVector<Flasher::BatchEntry> batchEntries() const;
 
@@ -131,6 +134,7 @@ private:
     FlasherQueueModel   *m_model = nullptr;
     QTableView          *m_table = nullptr;
     QLineEdit           *m_ipEdit = nullptr;
+    QLabel              *m_targetsHint = nullptr;   // "4 VCCs, flashed at once: …"
     PortEdit            *m_portSpin = nullptr;
     QComboBox           *m_adapterCombo = nullptr;
     FlasherRouteDiagram *m_route = nullptr;

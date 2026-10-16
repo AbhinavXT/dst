@@ -565,6 +565,13 @@ int main(int argc, char **argv)
                 profile.name = QStringLiteral("Bench 2");
                 profile.vccIp = QStringLiteral("127.0.0.1");
                 profile.port = 9;   // discard: nothing answers
+                // Session 291: eight VCCs at once (flashervccs: flashing,
+                // flashervccsq: the queue). Ports 9-16: nothing answers.
+                if (which.startsWith(QLatin1String("flashervccs"))) {
+                    QStringList eight;
+                    for (int port = 9; port < 17; ++port) eight << QStringLiteral("127.0.0.1:%1").arg(port);
+                    profile.vccIp = eight.join(QStringLiteral(", "));
+                }
                 profile.defaultImages.insert(Flasher::CardInput, writeImg(QStringLiteral("KAVACH_Input_Card_v5.appimage"), 40 * 1450));
                 profile.defaultImages.insert(Flasher::CardOutput, writeImg(QStringLiteral("KAVACH_Output_Card_v5.appimage"), 25 * 1450));
                 profile.defaultImages.insert(Flasher::CardVcc, writeImg(QStringLiteral("LKAVACH_v1.2.9.appimage"), 30 * 1450));
@@ -573,14 +580,16 @@ int main(int argc, char **argv)
                 store.setActiveName(profile.name);
                 store.save();
                 auto *w = new FlasherWindow(nullptr, flashDir.path());
-                w->queuePage()->selectCard(Flasher::CardInput);
-                if (which != QLatin1String("flasher")) {
+                w->queuePage()->selectCard(which.startsWith(QLatin1String("flashervccs")) ? Flasher::CardVcc
+                                                                                         : Flasher::CardInput);
+                if (which != QLatin1String("flasher") && which != QLatin1String("flashervccsq")) {
                     w->resize(1100, 720);
                     w->show();
                     w->startBatch(false);
                     QElapsedTimer t;
                     t.start();
-                    const qint64 until = which == QLatin1String("flasherrun") ? 2500 : 60000;
+                    const qint64 until = which == QLatin1String("flasherrun") || which == QLatin1String("flashervccs")
+                                             ? 2500 : 60000;
                     while (t.elapsed() < until && !(which == QLatin1String("flashersum")
                                                     && w->currentPage() == FlasherWindow::SummaryPageIndex))
                         QCoreApplication::processEvents(QEventLoop::AllEvents, 20);

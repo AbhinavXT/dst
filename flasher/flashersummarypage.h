@@ -38,6 +38,7 @@ private:
     void    restyle();
 
     Flasher::Verdict::Tone m_tone = Flasher::Verdict::Tone::Success;
+    bool         m_several = false;   // several VCCs at once (session 291)
     QFrame      *m_banner = nullptr;
     QLabel      *m_headline = nullptr;
     QLabel      *m_explanation = nullptr;

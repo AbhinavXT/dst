@@ -118,6 +118,7 @@ void FlasherSummaryPage::showBatch(const Flasher::BatchPlan &plan, const QString
     }
     m_cardPanels.clear();
     m_badges.clear();
+    m_several = plan.size() > 1;
     const int columns = 3;
     for (int index = 0; index < plan.size(); ++index) {
         QFrame *panel = buildCardPanel(plan.entries().at(index), index);
@@ -152,7 +153,7 @@ QFrame *FlasherSummaryPage::buildCardPanel(const Flasher::BatchEntry &entry, int
     panelLayout->setSpacing(8);
 
     auto *titleRow = new QHBoxLayout();
-    auto *title = new QLabel(tr("%1 · %2").arg(Flasher::cardName(entry.cardType),
+    auto *title = new QLabel(tr("%1 · %2").arg(Flasher::entryTitle(entry),
                                                Flasher::cardIdText(entry.cardType)), panel);
     title->setFont(FlasherStyle::scaledFont(title->font(), 1.15, true));
     titleRow->addWidget(title, 1);
@@ -221,8 +222,11 @@ QFrame *FlasherSummaryPage::buildCardPanel(const Flasher::BatchEntry &entry, int
         addRow(tr("Bytes on wire"), Flasher::formatBytes(result.bytes_on_wire), true);
         addRow(tr("Avg throughput"), Flasher::formatRate(result.avg_kBps), true);
         if (entry.outcome == Flasher::CardOutcome::Accepted) {
+            // Several VCCs at once share the link: their rates are not saved (session 291).
             addRow(tr("Settled rate"),
-                   tr("%1 · saved as next start rate").arg(Flasher::formatRate(result.final_rate_kBps)), false);
+                   m_several ? Flasher::formatRate(result.final_rate_kBps)
+                             : tr("%1 · saved as next start rate").arg(Flasher::formatRate(result.final_rate_kBps)),
+                   false);
         }
         addRow(tr("Phases"),
                tr("%1 · %2 · %3").arg(Flasher::formatDuration(result.handshake_ms),
