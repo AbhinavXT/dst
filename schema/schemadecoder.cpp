@@ -6,6 +6,7 @@
 #include "schemadecoder.h"
 
 #include <QFile>
+#include <QRegularExpression>
 #include <QSet>
 #include <QStringList>
 #include <functional>
@@ -490,6 +491,16 @@ bool Decoder::validateConditions(const QDomElement &root, QString *err)
         }
     }
     return true;
+}
+
+QStringList repeatLabels(const QDomElement &repeat)
+{
+    QStringList out;
+    for (const QString &label : repeat.attribute(QStringLiteral("labels"))
+                                    .split(QRegularExpression(QStringLiteral("[\\s,]+")))) {
+        if (!label.isEmpty()) out << label;
+    }
+    return out;
 }
 
 QStringList captypeTokens(const QString &match)
@@ -1033,6 +1044,12 @@ void Decoder::walkFlat(QDomElement node, Cursor &c, Ctx &ctx,
         const int base = (node.attribute("index0") == "true") ? 0 : 1;
         const QString sep = node.hasAttribute("sep") ? node.attribute("sep")
                                                      : QStringLiteral("  ");
+        // labels="a b c": entry i is named labels[i], not name[i] (session 293).
+        const QStringList labels = repeatLabels(node);
+        auto entryName = [&](qint64 i) {
+            return i < labels.size() ? labels.at(static_cast<int>(i))
+                                     : QStringLiteral("%1[%2]").arg(nm).arg(i + base);
+        };
         if (node.attribute("expand") == "true") {  // each child field -> its own row
             QVector<QDomElement> kids;
             int ebits = 0;
@@ -1045,8 +1062,7 @@ void Decoder::walkFlat(QDomElement node, Cursor &c, Ctx &ctx,
                 for (const QDomElement &k : kids) {
                     qint64 iv = 0; double dv = 0.0; QString sv;
                     const Kind kind = readTyped(k, c, &iv, &dv, &sv);
-                    const QString label = QStringLiteral("  %1[%2] %3")
-                                              .arg(nm).arg(i + base).arg(k.attribute("name"));
+                    const QString label = QStringLiteral("  %1 %2").arg(entryName(i), k.attribute("name"));
                     if (kind == Kind::Real) {
                         rows.push_back({ label, fmtFloatVal(k, dv) });
                     } else if (kind == Kind::Text) {
@@ -1063,7 +1079,7 @@ void Decoder::walkFlat(QDomElement node, Cursor &c, Ctx &ctx,
         for (qint64 i = 0; i < cnt && c.pos < c.limit; ++i) {
             Ctx ev = ctx;                              // entry-local scope
             const QString line = walkEntry(node, c, ev, grp, geo, sep);
-            rows.push_back({ QStringLiteral("  %1[%2]").arg(nm).arg(i + base), line });
+            rows.push_back({ QStringLiteral("  ") + entryName(i), line });
         }
         return;
     }

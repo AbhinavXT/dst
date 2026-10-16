@@ -238,6 +238,12 @@ fixed-size arrays like the 16 dop pins.
 Entry labels normally start at 1 (`pin[1]`). `index0="true"` makes them start
 at 0 (`pin[0]`) to match the dop hand decoder.
 
+### Entry names — `labels="a b c"`
+`labels` names the entries in order: entry *i* is labelled `labels[i]`
+instead of `pin[i]`, and Packet Maker's fields are `labels[i].field`. The
+dop pins use it for STRUCT_LOCO_OUTPUT's bits (`kavach_ok`, `kavach_not_ok`,
+`sos`, …, `spare_15`). An entry past the list keeps `name[i]`.
+
 ### Entry token separator — `sep=" "`
 Entry tokens normally join with two spaces. `sep=" "` uses a single space (dop
 renders `a=1 b=1 fault=1 trans=0 output=1`).

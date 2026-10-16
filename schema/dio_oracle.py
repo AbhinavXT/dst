@@ -36,6 +36,11 @@ def decodeDigitalIn2(b):
     if len(b) < 4: return [("dip2", "(short frame, need 4 B)")]
     return [_row(b, pos, name) for pos, name in DIP2]
 
+# STRUCT_LOCO_OUTPUT: pin i is bit i (session 293); "spare: 6" is pins 10-15.
+DOP = ["kavach_ok","kavach_not_ok","sos","buzzer","horn","normal_brake",
+    "full_service_brake","emergency_brake","no_sos_green_led","light_engine_brake",
+    "spare_10","spare_11","spare_12","spare_13","spare_14","spare_15"]
+
 def decodeDigitalOut(b):
     if len(b) < 16: return [("dop", "(short frame, need 16 B)")]
     r = []
@@ -43,5 +48,5 @@ def decodeDigitalOut(b):
         base = pin * 8
         a  = dioBit(b, 0, base + 0); bb = dioBit(b, 0, base + 1)
         fl = dioBit(b, 0, base + 2); tr = dioBit(b, 0, base + 3); ou = dioBit(b, 0, base + 4)
-        r.append((f"pin[{pin}]", f"a={a} b={bb} fault={fl} trans={tr} output={ou}"))
+        r.append((DOP[pin], f"a={a} b={bb} fault={fl} trans={tr} output={ou}"))
     return r

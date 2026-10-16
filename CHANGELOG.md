@@ -11,6 +11,82 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-293"></a>
+## Session 293 — the DOP pins by name
+
+Abhinav sent the three structs (`STRUCT_CAB_INPUTS_SIFA_EXTENDED_SET1` for
+@dip1, `_SET2` for @dip2, `STRUCT_LOCO_OUTPUT` for @dop1 and @dop2) and
+asked for the fields' names everywhere instead of input or pin numbers.
+
+**What changed.**
+- **@dop1 / @dop2:** the sixteen outputs were `pin[0]`…`pin[15]`. Pin
+  *i* is bit *i* of `STRUCT_LOCO_OUTPUT`, so each is now named after its
+  bit: `kavach_ok`, `kavach_not_ok`, `sos`, `buzzer`, `horn`,
+  `normal_brake`, `full_service_brake`, `emergency_brake`,
+  `no_sos_green_led`, `light_engine_brake`, and `spare_10`…`spare_15` for
+  the struct's `spare: 6`.
+  - Each row's value is unchanged ("a=1 b=1 fault=1 trans=0 output=1").
+  - The names show in the Decode Workbench, the Loco Console, plots and
+    pins: they all read the same decoder.
+  - **Packet Maker's** fields are `emergency_brake.output`,
+    `kavach_ok.fault`, …
+  - The **IO timeline's** rows are "DOP1 buzzer", not "DOP1 pin 3".
+- **@dip1 / @dip2 already matched the structs** bit for bit, including the
+  swapped `sifa_or_veb_relay_fb_nc`/`_no` at bits 28/29 of set 2.
+  Unchanged: their rows keep the 1-based bit in front (`24 cab1_active`),
+  which `fieldmap.json`, test cases and saved setups refer to.
+
+**How.** `<repeat labels="a b c …">` in the schema: entry *i* is named
+`labels[i]`, and an entry past the list keeps `name[i]`. It is read by
+the C++ decoder (`Schema::repeatLabels`), the Python engine
+(`engine.py`, which the validators run) and the encoder (Packet Maker's
+`labels[i].field`). `dio_oracle.py` takes the same names, so
+`validate_dio.py` still compares every real frame.
+
+**Mapping assumed:** pin *i* = struct bit *i*, which is how the struct
+reads. In the real frames, `kavach_ok` (pin 0) reads output 1 and
+`kavach_not_ok` (pin 1) output 0, which fits. Not confirmed against the
+IOA firmware's pin table.
+
+**Breaks:** a pin, custom lane or watch saved under an old `pin[i]` name
+no longer matches and needs re-adding.
+
+**Files.**
+- `schema/kavach.xml` (DOP1/DOP2 `labels`).
+- `schema/schemadecoder.{h,cpp}`, `schema/schemaencoder.cpp`,
+  `schema/engine.py`, `schema/dio_oracle.py`, `schema/SCHEMA_GUIDE.md`.
+- `iotimeline.{h,cpp}`.
+- Tests: `tests/test_packetbuilder.cpp`, `tests/test_session176.cpp`, new
+  `tests/test_session293.cpp`, `tests/tests.pro`.
+
+**Tests.**
+- `validate_dio.py`: dip1 288/288, dip2 281/281, dop1 34844/34844, dop2
+  34843/34843, by name.
+- `session293` (14 checks), on the real frames of
+  `replay/2026-10-08/loco_1_1_08102026_101300.cap`:
+  - sixteen outputs in the struct's order, no `pin[` row;
+  - `kavach_ok` = pin 0's 0x17, `kavach_not_ok` = pin 1's 0x0C,
+    `full_service_brake` = pin 6, `spare_15` = pin 15;
+  - @dop2 named the same;
+  - @dip2 by name, the sifa_or_veb pair in the struct's order;
+  - Packet Maker's dop1 fields are named, `emergency_brake.output = 1`
+    sets pin 7's output bit, and it decodes back under the same name.
+- `session176` (IO timeline): outputs by name (pin 2 is `sos`).
+- `packetbuilder`: `buzzer.output`.
+
+**Gate:**
+- **Qt 5.15:** green, 330 suites / 8348 checks, 0 failed; menu audit 184
+  ok; smoke; validators.
+- **Qt 6:** validators, menu audit (184 ok) and smoke green. Its unit
+  suite was killed from outside mid-run (SIGKILL, no failed check, no
+  crash report), while nothing else touched the tree. The suite was rerun
+  on the same build: 330 suites / 8348 checks, 0 failed.
+
+**Not tested:** that the IOA's physical pin order is the struct's bit
+order (see above).
+
+---
+
 <a id="session-292"></a>
 ## Session 292 — Firmware Flasher: the VCC list as rows
 

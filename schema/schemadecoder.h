@@ -49,6 +49,11 @@ namespace Schema {
 // still gets its own element.
 QStringList captypeTokens(const QString &match);
 
+// A <repeat labels="a b c">'s entry names, in order (session 293: the
+// sixteen DOP pins, named after STRUCT_LOCO_OUTPUT's bits). Empty when the
+// repeat has none; an entry past the list keeps its name[i] label.
+QStringList repeatLabels(const QDomElement &repeat);
+
 class Decoder
 {
 public:

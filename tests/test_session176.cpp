@@ -56,8 +56,8 @@ TEST_SUITE(session176)
           "traction cut off six times (active-low feedback reads the same way)");
     CHECK(barsOf(QStringLiteral("DIP2 eb_relay_fb_no"), nullptr) == 1 && barsOf(QStringLiteral("DIP1 horn1_solenoid_no"), nullptr) == 2,
           "the EB relay once, the horn twice");
-    CHECK(t.rows.contains(QStringLiteral("DOP1 pin 2")) && !t.rows.contains(QStringLiteral("DIP1 dmi1_sos_nc")),
-          "outputs by pin; a signal that never changes has no row");
+    CHECK(t.rows.contains(QStringLiteral("DOP1 sos")) && !t.rows.contains(QStringLiteral("DIP1 dmi1_sos_nc")),
+          "outputs by name (pin 2 is sos); a signal that never changes has no row");
     CHECK(!t.modes.isEmpty(), "under the loco's mode");
 
     IoTimelineWindow w(model, QStringLiteral("81_1"), QStringLiteral("81_1"));

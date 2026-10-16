@@ -1056,9 +1056,12 @@
   </packet>
 
   <!-- @dop1: 16 output pins, 1 byte each. Per byte: a,b,fault,trans,output (5
-       bits LSB-first) + 3 pad. -->
+       bits LSB-first) + 3 pad. Pin i is bit i of STRUCT_LOCO_OUTPUT (kavach_ok,
+       kavach_not_ok, ... light_engine_brake, spare: 6), so labels= names each
+       pin's row after it (session 293). -->
   <packet name="DOP1" match="captype==dop1" wire="lsb-first" trailer_bytes="0">
-    <repeat name="pin" count="16" index0="true" sep=" ">
+    <repeat name="pin" count="16" index0="true" sep=" "
+            labels="kavach_ok kavach_not_ok sos buzzer horn normal_brake full_service_brake emergency_brake no_sos_green_led light_engine_brake spare_10 spare_11 spare_12 spare_13 spare_14 spare_15">
       <field name="a"      bits="1"/>
       <field name="b"      bits="1"/>
       <field name="fault"  bits="1"/>
@@ -1068,9 +1071,10 @@
     </repeat>
   </packet>
 
-  <!-- @dop2: identical layout to @dop1 -->
+  <!-- @dop2: identical layout to @dop1, and the same STRUCT_LOCO_OUTPUT names -->
   <packet name="DOP2" match="captype==dop2" wire="lsb-first" trailer_bytes="0">
-    <repeat name="pin" count="16" index0="true" sep=" ">
+    <repeat name="pin" count="16" index0="true" sep=" "
+            labels="kavach_ok kavach_not_ok sos buzzer horn normal_brake full_service_brake emergency_brake no_sos_green_led light_engine_brake spare_10 spare_11 spare_12 spare_13 spare_14 spare_15">
       <field name="a"      bits="1"/>
       <field name="b"      bits="1"/>
       <field name="fault"  bits="1"/>

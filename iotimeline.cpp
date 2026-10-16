@@ -17,7 +17,7 @@ struct Signal {
     QVector<QString> v;
 };
 
-// "5 dmi1_common_nc" -> "dmi1_common_nc"; "pin[3]" stays.
+// "5 dmi1_common_nc" -> "dmi1_common_nc"; an output's name ("kavach_ok") stays.
 QString signalName(const QString &field)
 {
     static const QRegularExpression lead(QStringLiteral("^\\d+\\s+"));
@@ -53,16 +53,15 @@ FaultTimeline::Timeline build(const LogModel *model)
         static const QRegularExpression numbered(QStringLiteral("^\\d+\\s+\\w+$"));
         for (const FieldRow &r : CaptureDecoder::describe(cap)) {
             const QString field = r.field.trimmed();
-            // Inputs are numbered ("5 dmi1_common_nc"); outputs are pin[i].
-            if (out ? !field.startsWith(QLatin1String("pin[")) : !numbered.match(field).hasMatch()) continue;
-            QString name = signalName(field);
+            // Inputs are numbered ("5 dmi1_common_nc"); outputs are named
+            // after STRUCT_LOCO_OUTPUT ("kavach_ok", session 293), their
+            // value "a=1 b=1 fault=1 trans=0 output=1".
             QString value = r.value.trimmed();
+            const int at = value.indexOf(QLatin1String("output="));
+            if (out ? at < 0 : !numbered.match(field).hasMatch()) continue;
+            QString name = signalName(field);
             if (out) {
-                // "a=1 b=1 fault=1 trans=0 output=1": the output bit.
-                const int at = value.indexOf(QLatin1String("output="));
-                if (!name.startsWith(QLatin1String("pin[")) || at < 0) continue;
                 value = value.mid(at + 7, 1);
-                name = QStringLiteral("pin %1").arg(name.mid(4, name.indexOf(QLatin1Char(']')) - 4));
             }
             if (value != QLatin1String("0") && value != QLatin1String("1")) continue;
             Signal &s = sigs[group + QLatin1Char(' ') + name];

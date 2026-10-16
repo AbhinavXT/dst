@@ -14,7 +14,7 @@
 //  low feedback: a DMI button press, the cab switched to reverse, the horn
 //  solenoid, traction cut off. The bar says which value it read.
 //    inputs   @dip1 / @dip2 fields ("5 dmi1_common_nc" -> "DIP1 dmi1_common_nc")
-//    outputs  @dop1 / @dop2 pin[i] output= bit ("DOP1 pin 3")
+//    outputs  @dop1 / @dop2 each pin's output= bit, by name ("DOP1 buzzer")
 // =============================================================================
 
 #include "faulttimeline.h"

@@ -465,10 +465,13 @@ void Encoder::collectFields(const QDomElement &parent, const QString &whenCtx,
                 ri.fields.push_back(f);
             }
             const int rows = isNum ? lit : ri.cmax;
+            // Session 293: labels= names the rows ("kavach_ok.output", not "pin[0].output").
+            const QStringList labels = repeatLabels(e);
             for (int i = 0; i < rows; ++i) {
                 const QString rowWhen = isNum ? QString() : QStringLiteral("%1 > %2").arg(cattr).arg(i);
+                const QString rowName = i < labels.size() ? labels.at(i) : QStringLiteral("%1[%2]").arg(ri.name).arg(i);
                 for (FieldInfo f : ri.fields) {
-                    if (!f.name.isEmpty()) { f.name = QStringLiteral("%1[%2].%3").arg(ri.name).arg(i).arg(f.name); }
+                    if (!f.name.isEmpty()) { f.name = QStringLiteral("%1.%2").arg(rowName, f.name); }
                     f.when = combine(whenCtx, rowWhen);
                     out.push_back(f);
                 }

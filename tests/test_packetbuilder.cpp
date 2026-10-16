@@ -140,7 +140,7 @@ TEST_SUITE(packetbuilder)
     {
         // DOP1 is 16 fixed rows of pins; it was refused until session 244.
         QHash<QString, qint64> h;
-        h["pin[3].output"] = 1;
+        h["buzzer.output"] = 1;   // pin 3 (session 293: named after STRUCT_LOCO_OUTPUT)
         const PacketBuilder::Result r = pb.build("dop1", h, {}, key);
         CHECK(r.ok && r.frame.size() == 16 && quint8(r.frame[3]) == 0x10,
               "dop1 builds: 16 pin bytes, pin 3's output bit set");

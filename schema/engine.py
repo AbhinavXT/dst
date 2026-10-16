@@ -463,6 +463,10 @@ def walk_flat(cur, fld, sch, ctx, rows):
         nm = fld.get('name')
         base = 0 if fld.get('index0') == 'true' else 1
         sep = fld.get('sep', '  ')
+        # labels="a b c": entry i is named labels[i] (session 293: DOP pins)
+        labels = [l for l in re.split(r'[\s,]+', fld.get('labels', '')) if l]
+        def ename(i):
+            return labels[i] if i < len(labels) else f"{nm}[{i+base}]"
         if fld.get('expand') == 'true':            # each child -> its own row
             kids = [k for k in fld if k.tag == 'field']
             ebits = sum(int(k.get('bits')) for k in kids)
@@ -471,13 +475,13 @@ def walk_flat(cur, fld, sch, ctx, rows):
                 for k in kids:
                     v = _read(cur, k)
                     ctx[k.get('name')] = v
-                    rows.append((f"  {nm}[{i+base}] {k.get('name')}", _full(k, sch, v)))
+                    rows.append((f"  {ename(i)} {k.get('name')}", _full(k, sch, v)))
             return
         grp = {'seg': 0, 'tag': 0}
         for i in range(cnt):
             if cur.pos >= cur.limit: break
             ev = dict(ctx)
-            rows.append((f"  {nm}[{i+base}]", walk_entry(cur, fld, sch, ev, grp, sep)))
+            rows.append((f"  {ename(i)}", walk_entry(cur, fld, sch, ev, grp, sep)))
         return
 
 def walk_entry(cur, rep, sch, ctx, grp, sep="  "):
