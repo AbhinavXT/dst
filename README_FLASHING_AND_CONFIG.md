@@ -104,6 +104,22 @@ A board with an updater older than 2.2 still works in **2.6**: it isn't
 held, and the Summary says "updater older than 2.2". **Classic** is the
 flasher exactly as before.
 
+### The image trailer (2.6)
+
+A **stamped** image (made with `fw_stamp.py`) ends in a short trailer
+that says which card it is built for and its version. With **2.6** the
+queue reads it:
+- **It matches the card:** the pre-flight shows "Image trailer: Input
+  card · 1.2.9 · built …", and the file name doesn't matter.
+- **It's built for another card:** Flash is off. The board would refuse
+  it.
+- **The trailer is damaged:** Flash is off. Re-stamp the image.
+- **No trailer (unstamped):** a ⚠ line. The card is checked by the file
+  name, as before.
+
+The image's row shows the version (`… · v1.2.9`). The detail strip shows
+the whole trailer.
+
 ### Ask the board (2.6)
 
 **Ask board…** (top bar, 2.6 only) asks a board's updater what it holds:

@@ -102,6 +102,37 @@ QList<int> cardsNamedIn(const QString &fileName);
 NameCheckResult checkImageName(const QString &fileName, int cardType);
 
 // -----------------------------------------------------------------------------
+//  Session 298: the image trailer (updater 2.5+, tools/fw_stamp.py)
+// -----------------------------------------------------------------------------
+//
+//  24 bytes at the end of a stamped .appimage, little-endian, packed:
+//  magic "FWTR" (0x52545746), trailer_version (1), card_type, hw_rev,
+//  reserved, fw_version ((maj << 16) | (min << 8) | patch), build_time (UNIX
+//  s), image_len (bytes before the trailer), and the firmware's CRC
+//  (crcFast) over the 20 bytes before it. It is part of the image, so the
+//  CRC-32 / SHA-256 cover it; the board checks it after them and refuses a
+//  wrong card type or a damaged trailer (STATUS REJECTED).
+const int     kTrailerBytes = 24;
+const quint32 kTrailerMagic = 0x52545746u;
+
+struct ImageTrailer {
+    enum class State { None, Valid, Damaged };
+    State   state = State::None;     // None: no magic at the end (an unstamped image)
+    QString damage;                  // for Damaged: "trailer CRC mismatch", ...
+    int     cardType = 0;
+    int     hwRev = 0;
+    quint32 fwVersion = 0;
+    quint32 buildTime = 0;           // UNIX seconds
+    quint32 imageLength = 0;
+
+    // "Input card · 1.2.9 · built 2026-10-16 17:41 UTC"
+    QString text() const;
+};
+
+// fw_stamp.py's parse_trailer(), and the board's check_image_trailer().
+ImageTrailer readImageTrailer(const QByteArray &bytes);
+
+// -----------------------------------------------------------------------------
 //  An image on disk, read and hashed
 // -----------------------------------------------------------------------------
 struct ImageInfo {
@@ -114,6 +145,7 @@ struct ImageInfo {
     QByteArray sha256;             // 32 raw bytes, kflash::image_sha256
     QDateTime  modified;
     QByteArray bytes;              // the whole file: the engine wants it in memory anyway
+    ImageTrailer trailer;          // session 298
 
     QString crcText() const;       // "0x1A2B3C4D"
     QString shaHex() const;        // 64 lower-case hex characters
@@ -490,6 +522,7 @@ struct PreflightRow {           // one queue row as the checklist sees it
     NameCheckResult nameCheck;
     bool      shaPinMismatch = false;   // profile pinned a SHA and the file no longer matches
     QString   engineProblem;            // non-empty = FlashEngine::validate refused it
+    ImageTrailer trailer;               // session 298: read in 2.6 only
 };
 
 struct PreflightInput {
@@ -504,6 +537,8 @@ struct PreflightInput {
     // Session 291: with several VCCs, the ones no adapter reaches (then
     // adapterOnSubnet is false). Empty with one VCC.
     QStringList offSubnetTargets;
+    // Session 298: with 2.6, the image trailer is checked (Classic: as before).
+    kflash::Updater updater = kflash::Updater::Classic;
 };
 
 struct PreflightItem {

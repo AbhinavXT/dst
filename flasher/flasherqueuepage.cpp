@@ -745,6 +745,7 @@ Flasher::PreflightReport FlasherQueuePage::preflight() const
         input.subnetText = Flasher::subnetDescription(targetIp, maskForText);
     }
     input.updaterWaitSeconds = m_profile.updaterWaitSeconds;
+    input.updater = m_profile.updater;
 
     for (const FlasherQueueRow &row : m_model->rows()) {
         Flasher::PreflightRow preflightRow;
@@ -756,6 +757,7 @@ Flasher::PreflightReport FlasherQueuePage::preflight() const
         preflightRow.loadError = row.image.error;
         preflightRow.fileName = QFileInfo(row.image.path).fileName();
         preflightRow.nameCheck = row.nameCheck();
+        preflightRow.trailer = row.image.trailer;
         preflightRow.shaPinMismatch = row.shaPinMismatch;
         preflightRow.engineProblem = m_engineProblem.value(row.cardType);
         input.rows.append(preflightRow);
@@ -1113,8 +1115,15 @@ void FlasherQueuePage::updateDetailStrip()
     m_detailPath->setText(QDir::toNativeSeparators(row.image.path));
     if (row.image.loaded) {
         m_detailSha->setText(row.image.shaHex());
-        m_detailModified->setText(tr("%1 · re-hashed if the file changes")
-                                      .arg(row.image.modified.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss"))));
+        QString modified = tr("%1 · re-hashed if the file changes")
+                               .arg(row.image.modified.toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")));
+        // Session 298: what the image's trailer says it is.
+        if (row.image.trailer.state == Flasher::ImageTrailer::State::Valid) {
+            modified += tr("\nTrailer: %1").arg(row.image.trailer.text());
+        } else if (row.image.trailer.state == Flasher::ImageTrailer::State::Damaged) {
+            modified += tr("\nTrailer: damaged (%1)").arg(row.image.trailer.damage);
+        }
+        m_detailModified->setText(modified);
     } else {
         m_detailSha->setText(QStringLiteral("—"));
         m_detailModified->setText(row.image.error);

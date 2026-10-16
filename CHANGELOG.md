@@ -11,6 +11,85 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-298"></a>
+## Session 298 — Firmware Flasher: the image trailer (2.6)
+
+The second of the four 2.6 patches.
+
+**What the operator sees.** With the toggle on **2.6**, the queue reads
+the trailer a stamped image ends in (`fw_stamp.py`): its card type,
+version and build time.
+- **It matches the card:** "Image trailer: Input card · 1.2.9 · built
+  2026-10-16 17:41 UTC" in the pre-flight. The file name is then not
+  asked about: no name warning, no confirmation box.
+- **It's built for another card:** Flash is off. "Output card: the
+  image's trailer says it is built for the Input card — the board would
+  refuse it". This holds whatever the file name says, in both modes
+  (Engineer is the only mode since session 280).
+- **The trailer is damaged** (CRC, unknown trailer version, or a length
+  that isn't the file's): Flash is off, with the reason and "re-stamp it
+  with fw_stamp.py".
+- **No trailer:** "Input card: no image trailer (unstamped) — its card
+  is checked by its name only", a ⚠ that doesn't block. The name check
+  runs as before.
+- **The row's second line** ends in the version, `… · v1.2.9` (in either
+  mode: it is what the file says). The detail strip adds "Trailer: Input
+  card · 1.2.9 · built …", or "Trailer: damaged (…)".
+- **Classic:** no trailer lines, the name check as before.
+
+**How.** `Flasher::ImageTrailer` and `readImageTrailer()` follow
+`fw_stamp.py`'s `parse_trailer()` and the board's
+`check_image_trailer()`:
+- the magic "FWTR" at the end;
+- trailer version 1;
+- `crcFast` over the first 20 bytes (the engine's `image_crc32`, the same
+  CRC);
+- `image_len` = the file minus 24.
+
+`loadImage()` reads it with the hashes. `PreflightRow` carries it, and
+`PreflightInput::updater` decides whether it is checked. Toggling the
+updater refreshes the pre-flight (session 296's `setUpdater`).
+
+**Decisions.**
+- **Blocks rather than warns** on a wrong card or a damaged trailer: the
+  board is certain to refuse either (STATUS REJECTED).
+- **A valid trailer outranks the name.** It is written by the build, not
+  by whoever renamed the file.
+- **No downgrade warning:** that needs the board's version (INFO) before
+  the run. Not asked for; left out.
+
+**Files.**
+- `flasher/flashercore.{h,cpp}`, `flasher/flasherqueuepage.cpp`,
+  `flasher/flasherqueuemodel.cpp`.
+- `README_FLASHING_AND_CONFIG.md`: "The image trailer (2.6)".
+- New `tests/fixtures/fw_trailer/`: a 5000-byte image stamped by the
+  updater repo's own `fw_stamp.py` (card 2, version 1.2.9), with a README
+  saying how.
+- New `tests/test_session298.cpp`, `tests/tests.pro`.
+
+**Tests.** `session298` (23 checks):
+- `crcFast("123456789")` = 0x2DFD2D88, as `fw_stamp.py` documents.
+- **The fixture reads** as card 2, 1.2.9, hw rev 0, 5000 bytes, built at
+  the time `fw_stamp.py show` printed.
+- **Damage:** a changed field (CRC mismatch), trailer version 2, a moved
+  trailer (length). The unstamped bytes and a short file have none.
+- **Pre-flight in 2.6:** match OK with no name question; wrong card
+  blocks; damaged blocks; unstamped flagged, not blocked, name checked.
+  Classic: no trailer lines.
+- **The queue page:** the row shows `v1.2.9`. The Input row is ready, the
+  Output row with the same file isn't in 2.6. In Classic it only asks for
+  name confirmation, as before.
+
+Checked on screen (`SHOT_WINDOW=flasher26`).
+
+**Gate:** Qt 6 and Qt 5.15 green, 334 suites / 8487 checks, 0 failed;
+menu audit 184 ok; smoke; validators.
+
+**Not tested:** a real build's stamped `.appimage`. The fixture is
+random bytes stamped by the real tool.
+
+---
+
 <a id="session-297"></a>
 ## Session 297 — Firmware Flasher: Ask the board (INFO)
 

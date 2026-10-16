@@ -116,8 +116,13 @@ QVariant FlasherQueueModel::data(const QModelIndex &index, int role) const
             // column each, and with those the name got ~100 px of a 1100-px
             // window ("KAV…age"); the folder this line showed is in the
             // detail strip, in full.
-            return tr("%1 · %2 blocks · CRC %3").arg(Flasher::formatBytes(static_cast<quint64>(row.image.sizeBytes)))
+            QString line = tr("%1 · %2 blocks · CRC %3").arg(Flasher::formatBytes(static_cast<quint64>(row.image.sizeBytes)))
                                                 .arg(row.image.blockCount).arg(row.image.crcText());
+            // Session 298: a stamped image says its version (the trailer).
+            if (row.image.trailer.state == Flasher::ImageTrailer::State::Valid) {
+                line += tr(" · v%1").arg(Flasher::fwVersionText(row.image.trailer.fwVersion));
+            }
+            return line;
         }
         if (role == MonospaceRole) {
             return row.hasImage();

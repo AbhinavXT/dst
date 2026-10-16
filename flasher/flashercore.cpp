@@ -167,6 +167,54 @@ QString ImageInfo::shaHex() const
     return QString::fromLatin1(sha256.toHex());
 }
 
+QString ImageTrailer::text() const
+{
+    QString card = isValidCardType(cardType) ? cardName(cardType) : QStringLiteral("card type %1").arg(cardType);
+    QString out = QStringLiteral("%1 · %2").arg(card, fwVersionText(fwVersion));
+    if (buildTime != 0) {
+        out += QStringLiteral(" · built %1 UTC").arg(
+            QDateTime::fromSecsSinceEpoch(buildTime, Qt::UTC).toString(QStringLiteral("yyyy-MM-dd HH:mm")));
+    }
+    return out;
+}
+
+ImageTrailer readImageTrailer(const QByteArray &bytes)
+{
+    ImageTrailer trailer;
+    if (bytes.size() < kTrailerBytes) {
+        return trailer;
+    }
+    const int at = bytes.size() - kTrailerBytes;
+    const auto *t = reinterpret_cast<const uchar *>(bytes.constData()) + at;
+    auto le32 = [t](int offset) {
+        return quint32(t[offset]) | (quint32(t[offset + 1]) << 8) | (quint32(t[offset + 2]) << 16)
+             | (quint32(t[offset + 3]) << 24);
+    };
+    if (le32(0) != kTrailerMagic) {
+        return trailer;
+    }
+    trailer.state = ImageTrailer::State::Damaged;
+    if (t[4] != 1) {
+        trailer.damage = QStringLiteral("unknown trailer version %1").arg(t[4]);
+        return trailer;
+    }
+    if (le32(20) != kflash::image_crc32(t, 20)) {
+        trailer.damage = QStringLiteral("trailer CRC mismatch");
+        return trailer;
+    }
+    if (le32(16) != quint32(at)) {
+        trailer.damage = QStringLiteral("image length %1 does not match the file (%2)").arg(le32(16)).arg(at);
+        return trailer;
+    }
+    trailer.state = ImageTrailer::State::Valid;
+    trailer.cardType = t[5];
+    trailer.hwRev = t[6];
+    trailer.fwVersion = le32(8);
+    trailer.buildTime = le32(12);
+    trailer.imageLength = le32(16);
+    return trailer;
+}
+
 ImageInfo loadImage(const QString &path)
 {
     ImageInfo info;
@@ -209,6 +257,7 @@ ImageInfo loadImage(const QString &path)
     info.sizeBytes = info.bytes.size();
     info.blockCount = blocksForSize(info.sizeBytes);
     info.modified = fileInfo.lastModified();
+    info.trailer = readImageTrailer(info.bytes);
     info.loaded = true;
     return info;
 }
@@ -1014,6 +1063,9 @@ PreflightReport evaluatePreflight(const PreflightInput &input)
     QStringList nameProblems;
     QStringList pinProblems;
     QStringList tooLarge;
+    QStringList trailerProblems;   // session 298
+    QStringList trailerNotes;
+    QStringList unstamped;
     int loadedCount = 0;
 
     for (const PreflightRow &row : input.rows) {
@@ -1039,7 +1091,31 @@ PreflightReport evaluatePreflight(const PreflightInput &input)
         if (!row.engineProblem.isEmpty()) {
             refusedByEngine.append(QStringLiteral("%1: %2").arg(cardName(row.cardType), row.engineProblem));
         }
-        if (row.nameCheck.kind != NameCheck::Matches) {
+        // Session 298: with 2.6, a valid trailer says what the image is, so
+        // its name is not asked; a wrong card or a damaged trailer would be
+        // refused by the board, so the run is not started.
+        const bool trailerSpeaks = input.updater == kflash::Updater::V26
+                                   && row.trailer.state == ImageTrailer::State::Valid;
+        if (input.updater == kflash::Updater::V26) {
+            if (row.trailer.state == ImageTrailer::State::Valid && row.trailer.cardType != row.cardType) {
+                trailerProblems.append(QStringLiteral("%1: the image's trailer says it is built for the %2 — "
+                                                      "the board would refuse it")
+                                           .arg(cardName(row.cardType),
+                                                isValidCardType(row.trailer.cardType)
+                                                    ? cardName(row.trailer.cardType)
+                                                    : QStringLiteral("card type %1").arg(row.trailer.cardType)));
+            } else if (row.trailer.state == ImageTrailer::State::Valid) {
+                trailerNotes.append(QStringLiteral("Image trailer: %1").arg(row.trailer.text()));
+            } else if (row.trailer.state == ImageTrailer::State::Damaged) {
+                trailerProblems.append(QStringLiteral("%1: the image trailer is damaged (%2) — the board would "
+                                                      "refuse it; re-stamp it with fw_stamp.py")
+                                           .arg(cardName(row.cardType), row.trailer.damage));
+            } else {
+                unstamped.append(QStringLiteral("%1: no image trailer (unstamped) — its card is checked by "
+                                                "its name only").arg(cardName(row.cardType)));
+            }
+        }
+        if (row.nameCheck.kind != NameCheck::Matches && !trailerSpeaks) {
             nameProblems.append(row.nameCheck.explanation);
         }
         if (row.shaPinMismatch) {
@@ -1068,7 +1144,17 @@ PreflightReport evaluatePreflight(const PreflightInput &input)
         add(PreflightItem::State::Warning, text, true);
     }
 
-    if (loadedCount > 0) {
+    for (const QString &text : trailerProblems) {
+        add(PreflightItem::State::Warning, text, true);
+    }
+    for (const QString &text : trailerNotes) {
+        add(PreflightItem::State::Ok, text, false);
+    }
+    for (const QString &text : unstamped) {
+        add(PreflightItem::State::Warning, text, false);
+    }
+
+    if (loadedCount > 0 && !(trailerNotes.size() == loadedCount && nameProblems.isEmpty())) {
         if (nameProblems.isEmpty()) {
             add(PreflightItem::State::Ok, QStringLiteral("Card IDs match image names"), false);
         } else {

@@ -1,0 +1,11 @@
+# fw_trailer
+
+`KAVACH_Input_Card_stamped_1.2.9.appimage`: 5000 random bytes (seed 298)
+stamped by the updater repo's own `tools/fw_stamp.py` (updater 2.6.1):
+
+    python fw_stamp.py stamp body.bin KAVACH_Input_Card_stamped_1.2.9.appimage --card 2 --version 1.2.9
+
+so the flasher's trailer reader is checked against the real tool's output
+(session 298). `fw_stamp.py show` reports: card 2 (Input), version 1.2.9,
+hw rev 0, image 5000 bytes + 24-byte trailer, built 2026-10-16 23:11:20
+(local time, UNIX 0x6AD261C0).
