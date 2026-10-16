@@ -11,6 +11,90 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-299"></a>
+## Session 299 — Firmware Flasher: the cards' own results (2.6)
+
+The third of the four 2.6 patches.
+
+**What the operator sees.** With **2.6**, an Input, Output or Analog
+image no longer ends at "the VCC verified it":
+- **Collecting:** the Flashing page's last step reads **Card reports**
+  while the flasher collects each card controller's own result. The log
+  has a line per report ("controller 6 reported FLASH_FAIL - flash write
+  failed on the card").
+- **Every reporting controller OK:** "Input card — updated, the card
+  reported OK". The explanation lists them ("Input card 1 controller 1
+  (5): OK — flashed; …").
+- **A controller reports VERIFY_FAIL, FLASH_FAIL, INCOMPLETE or
+  REJECTED:** the card is **Failed**, "Input card — card update failed".
+  The explanation names the failing controller and says the others are
+  listed. The last step reads "Card update failed".
+- **No report:** "Input card — accepted by the VCC, no card reported
+  back", in amber. It says the card may still have updated, and to Ask
+  the board or check its version.
+- **A VCC on an updater before 2.1** (INFO without card results): the
+  verdict is as before.
+- **The Summary panel** has a **Card reports** row, one line per
+  controller ("none received" when none came). So does the report.
+
+**How.**
+- **A new engine phase** `kflash::Phase::CardResults`, between Repair and
+  Done, only in 2.6 after a card image is accepted.
+- **`collect_card_results()`** is `udp_file_v5`'s step [4/4]:
+  - INFO_REQ every `card_wait_poll_ms` (500), for at most
+    `card_wait_total_ms` (20 000);
+  - stop once `card_wait_quiet_ms` (4000) pass without a new report;
+  - only results carrying this image's CRC count;
+  - silence means ask again (the VCC doesn't answer while relaying).
+- **`FlashResult`** gains `card_results_asked`, `card_results_supported`,
+  `card_reports` and `card_failed`. A failure reported by a card turns
+  `success` false.
+- **BOOT to a held VCC now goes after the reports.** In session 296 it
+  went at once and cut the VCC's result window short. BOOT also goes
+  after a card failure: the VCC did its part.
+- **The three waits are TransferTuning fields,** saved with the
+  profile's tuning (not in the ⚙ dialog).
+
+**Files.**
+- `flasher/flash_engine.{h,cpp}`.
+- `flasher/flashercore.{h,cpp}`: `cardReportLines`, the explanation,
+  verdict and report, tuning JSON.
+- `flasher/flasherflashingpage.{h,cpp}`: the phase arrays and the last
+  step.
+- `flasher/flashersummarypage.cpp`.
+- `README_FLASHING_AND_CONFIG.md`: "Card results (2.6)".
+- Tests: `tests/flasherfakeboard.h` (after a card image the 2.6 VCC stays
+  in the updater; reports reach its INFO one by one with the relayed
+  CRC; an INFO v1 option), `tests/test_session296.cpp` (a short card
+  wait: its boards send no reports), new `tests/test_session299.cpp`,
+  `tests/tests.pro`.
+- `tests/screenshot_main.cpp`: `SHOT_WINDOW=flashercards`.
+
+**Tests.** `session299` (25 checks), the engine against FakeBoards:
+- **Input:** two OK reports, the quiet rule ends the wait early, then
+  BOOT; verdict and lines.
+- **Output, one FLASH_FAIL:** the run fails with that controller named
+  (and not the OK one); BOOT still sent.
+- **Analog, no report:** amber "no card reported back".
+- **An INFO v1 VCC:** not supported, verdict as before.
+- **A stale report** for a previous image is ignored.
+- **Classic and VCC images** are never asked.
+
+Then the window: the profile keeps the waits; the Summary headline and a
+row per controller; the report.
+
+Checked on screen (`SHOT_WINDOW=flashercards`: one OK, one FLASH_FAIL).
+
+**Gate:** Qt 6 and Qt 5.15 green, 335 suites / 8512 checks, 0 failed;
+menu audit 184 ok; smoke; validators.
+
+**Not tested:**
+- **Real cards over CAN:** the fake VCC invents the reports.
+- **The VCC's own 15 s result window when not held:** the fake doesn't
+  model it.
+
+---
+
 <a id="session-298"></a>
 ## Session 298 — Firmware Flasher: the image trailer (2.6)
 

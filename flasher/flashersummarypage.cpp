@@ -229,6 +229,11 @@ QFrame *FlasherSummaryPage::buildCardPanel(const Flasher::BatchEntry &entry, int
     addRow(tr("CRC-32"), entry.image.crcText(), true);
     if (ran) {
         addRow(tr("Updater"), Flasher::updaterSummary(entry), false);
+        // Session 299: each card controller's own result (2.6, card images).
+        if (result.card_results_asked) {
+            const QStringList reports = Flasher::cardReportLines(result);
+            addRow(tr("Card reports"), reports.isEmpty() ? tr("none received") : reports.join(QLatin1Char('\n')), false);
+        }
     }
     if (!ran) {
         addRow(tr("Reason"), tr("Batch stopped"), false);

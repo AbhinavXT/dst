@@ -21,6 +21,8 @@
 #include <QObject>
 #include <QString>
 #include <QUdpSocket>
+#include <QVector>
+#include <QPair>
 
 #include <cstring>
 
@@ -73,6 +75,7 @@ public:
         m_mode = Mode::Updater;
         m_hasSession = false;
         m_held = false;
+        m_forwardClock.invalidate();
         m_lastPacket.start();
     }
     void powerOff() { m_mode = Mode::Off; }
@@ -102,6 +105,12 @@ public:
     quint32 activeSize = 0;
     quint32 activeFwVersion = 0;
     int     infoRequests = 0;
+    // Session 299: after relaying a card image, the controllers' reports
+    // (controller ID, result) reach the VCC one by one, reportDelayMs apart,
+    // and show in its INFO with the relayed image's CRC.
+    QVector<QPair<int, int>> cardReports;
+    int     reportDelayMs = 200;
+    int     infoLayout = 3;          // 1: a 2.0 updater's 46-byte INFO (no card results)
 
     QByteArray infoReply() const
     {
@@ -118,6 +127,21 @@ public:
         std::memcpy(info.data() + 12, &activeSize, 4);
         std::memcpy(info.data() + 16, &activeCrc, 4);
         std::memcpy(info.data() + 127, &activeFwVersion, 4);
+        if (infoLayout == 1) {
+            info[1] = 1;
+            return info.left(46);
+        }
+        if (m_forwardClock.isValid()) {
+            info[46] = 1;            // forwarded, collecting card results
+            for (int index = 0; index < cardReports.size(); ++index) {
+                if (m_forwardClock.elapsed() < qint64(reportDelayMs) * (index + 1)) {
+                    break;
+                }
+                const int slot = cardReports.at(index).first - 1;
+                info[47 + slot * 5] = static_cast<char>(cardReports.at(index).second);
+                std::memcpy(info.data() + 47 + slot * 5 + 1, &m_forwardCrc, 4);
+            }
+        }
         return info;
     }
     bool held() const { return m_held; }
@@ -267,9 +291,14 @@ private:
                 return;
             }
             reply.append(m_session.have);
-            if (m_session.state == 0 && m_held && m_session.card != 1) {
-                // 2.6, held VCC, a card image: it relays it over CAN, clears
-                // its session and waits in the updater for BOOT.
+            if (m_session.state == 0 && v26 && m_session.card != 1) {
+                // 2.6, a card image: the VCC relays it over CAN, clears its
+                // session and stays in the updater for the cards' results
+                // (held: until BOOT).
+                if (!m_forwardClock.isValid() || m_forwardCrc != m_session.crc) {
+                    m_forwardCrc = m_session.crc;
+                    m_forwardClock.start();
+                }
                 m_socket.writeDatagram(reply, from, fromPort);
                 m_socket.writeDatagram(reply, from, fromPort);
                 m_socket.writeDatagram(reply, from, fromPort);
@@ -301,6 +330,8 @@ private:
     Session       m_session;
     bool          m_hasSession = false;
     bool          m_held = false;
+    quint32       m_forwardCrc = 0;
+    QElapsedTimer m_forwardClock;
     Mode          m_mode = Mode::Off;
     QElapsedTimer m_lastPacket;
 };

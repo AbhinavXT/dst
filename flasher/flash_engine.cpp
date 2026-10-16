@@ -55,7 +55,9 @@ static const uint8_t PKT_TYPE_POLL   = 0x02;
 static const uint8_t PKT_TYPE_STATUS = 0x03;
 
 /* ---- session 296: updater 2.2+ (Updater::V26 only) ---- */
+static const uint8_t PKT_TYPE_INFO_REQ = 0x04;  /* session 299: card results       */
 static const uint8_t PKT_TYPE_INFO    = 0x05;   /* the board's answer to HOLD / BOOT */
+static const int     kInfoV2Bytes     = 127;    /* + forward_state, card_results[16] */
 static const uint8_t PKT_TYPE_HOLD    = 0x07;
 static const uint8_t PKT_TYPE_BOOT    = 0x08;
 static const int     kInfoV1Bytes     = 46;     /* the shortest INFO reply           */
@@ -117,6 +119,7 @@ const char* phase_name(Phase phase)
         case Phase::Handshake:   return "Session";
         case Phase::InitialSend: return "Send";
         case Phase::Repair:      return "Repair";
+        case Phase::CardResults: return "Card results";
         case Phase::Done:        return "Done";
     }
     return "?";
@@ -534,6 +537,7 @@ private:
     bool        v26() const { return config_.updater == Updater::V26; }
     WaitOutcome wait_for_board_and_hold(uint32_t budget_ms);
     bool        send_boot(uint32_t budget_ms);
+    void        collect_card_results();
     void        note_rejected(int received_len);
 
     /* ---- adaptation ---- */
@@ -1111,6 +1115,100 @@ WaitOutcome Session::wait_for_board_and_hold(uint32_t budget_ms)
     }
 }
 
+/* Session 299 (udp_file_v5 FEATURE 2, step [4/4]): after a card image the
+ * VCC relays it over CAN and each card controller reports its own result
+ * back to it. Ask the VCC's INFO every card_wait_poll_ms, for at most
+ * card_wait_total_ms, and stop once card_wait_quiet_ms pass without a new
+ * report. Only results for this image's CRC count; the VCC does not answer
+ * while it is still relaying, so silence just means "ask again". */
+void Session::collect_card_results()
+{
+    result_.card_results_asked = true;
+    std::vector<int> seen(17, 0);
+    const Clock::time_point start = Clock::now();
+    Clock::time_point last_new = start;
+    bool any = false;
+    const uint8_t request = PKT_TYPE_INFO_REQ;
+
+    while (!cancel_.load()) {
+        const long long total_ms = ms_since(start);
+        if (total_ms >= tuning_.card_wait_total_ms) {
+            break;
+        }
+        if (any && ms_since(last_new) >= tuning_.card_wait_quiet_ms) {
+            break;
+        }
+        sendto(sock_, reinterpret_cast<const char*>(&request), 1, 0,
+               reinterpret_cast<const sockaddr*>(&receiver_), sizeof(receiver_));
+        const Clock::time_point deadline =
+            Clock::now() + std::chrono::milliseconds(tuning_.card_wait_poll_ms);
+        bool older = false;
+        while (true) {
+            const long long remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - Clock::now()).count();
+            if (remaining_ms <= 0 || cancel_.load()) {
+                break;
+            }
+            sockaddr_in from;
+            memset(&from, 0, sizeof(from));
+            const int received = receive_with_timeout(
+                sock_, receive_buffer_.data(), static_cast<int>(receive_buffer_.size()),
+                static_cast<int>(remaining_ms), &from);
+            if (received < 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+            if (received < kInfoV1Bytes || from.sin_addr.s_addr != receiver_.sin_addr.s_addr
+                || receive_buffer_[0] != PKT_TYPE_INFO) {
+                continue;
+            }
+            if (receive_buffer_[1] < 2 || received < kInfoV2Bytes) {
+                older = true;
+                break;
+            }
+            result_.card_results_supported = true;
+            for (int slot = 0; slot < 16; ++slot) {
+                const uint8_t* entry = receive_buffer_.data() + 47 + slot * 5;
+                uint32_t crc = 0;
+                memcpy(&crc, entry + 1, 4);
+                const int report = entry[0];
+                if (report == 0 || crc != image_crc_ || seen[slot + 1] == report) {
+                    continue;
+                }
+                seen[slot + 1] = report;
+                any = true;
+                last_new = Clock::now();
+                std::ostringstream text;
+                text << "  controller " << (slot + 1) << " reported "
+                     << (report == 1 ? "OK - flashed"
+                       : report == 2 ? "VERIFY_FAIL - the card's own CRC/SHA check failed"
+                       : report == 3 ? "FLASH_FAIL - flash write failed on the card"
+                       : report == 4 ? "INCOMPLETE - the card gave up with blocks missing"
+                       : report == 5 ? "REJECTED - the card refused the image"
+                       : "an unknown result");
+                log(report == 1 ? LogLevel::Info : LogLevel::Error, text.str());
+            }
+        }
+        if (older) {
+            log(LogLevel::Warn, "The VCC's updater has no card result reporting (before 2.1)");
+            break;
+        }
+    }
+
+    for (int id = 1; id <= 16; ++id) {
+        if (seen[id] != 0) {
+            result_.card_reports.push_back(FlashResult::CardReport{ id, seen[id] });
+            if (seen[id] != 1) {
+                result_.card_failed = true;
+            }
+        }
+    }
+    if (result_.card_results_supported && result_.card_reports.empty()) {
+        log(LogLevel::Warn, "No card controller reported a result. The card may still have updated: "
+                            "Ask the board, or check its firmware version.");
+    }
+}
+
 /* BOOT until the board acknowledges with INFO or budget_ms passes. A VCC
  * relaying an image over CAN does not read the network until it is done, so
  * the acknowledgement can take as long as the relay. */
@@ -1445,13 +1543,40 @@ FlashResult Session::run()
 
     result_.repair_ms       = ms_since(phase_start);
 
+    /* 2.6, a card image: collect the cards' own results from the VCC before
+     * anything else (session 299). A controller that reports a failure makes
+     * the card's run a failure: the VCC accepting it is not the card taking it. */
+    if (v26() && success && config_.card_type != 1 && !cancel_.load()) {
+        progress_.phase = Phase::CardResults;
+        emit_progress(true);
+        log(LogLevel::Info, "Waiting for the card controllers to report (the VCC relays the image over CAN)");
+        collect_card_results();
+        if (result_.card_failed) {
+            success = false;
+            std::ostringstream text;
+            text << "Card update failed: the VCC accepted the image, but";
+            for (const FlashResult::CardReport& report : result_.card_reports) {
+                if (report.result != 1) {
+                    text << " controller " << report.controller_id << " reported "
+                         << (report.result == 2 ? "VERIFY_FAIL" : report.result == 3 ? "FLASH_FAIL"
+                           : report.result == 4 ? "INCOMPLETE" : report.result == 5 ? "REJECTED" : "?") << ";";
+                }
+            }
+            result_.message = text.str();
+            result_.message.pop_back();
+            log(LogLevel::Error, result_.message);
+        }
+    }
+
     /* 2.6: release a held VCC that took an Input/Output/Analog image. It
      * relays the image over CAN and then, being held, waits for BOOT rather
      * than its own 15 s; without BOOT it would sit in the updater for 2 min.
      * A VCC image needs nothing (the VCC flashes and boots by itself), and a
-     * failed transfer leaves the board held for a retry. */
+     * failed transfer leaves the board held for a retry. Since session 299
+     * BOOT goes after the card results, and after a card failure too: the
+     * VCC itself did its part. */
     if (v26() && result_.board_held) {
-        if (success && config_.card_type != 1 && !cancel_.load()) {
+        if ((success || result_.card_failed) && config_.card_type != 1 && !cancel_.load()) {
             log(LogLevel::Info, "Releasing the VCC: BOOT (it answers once its CAN relay is done)");
             if (send_boot(30000)) {
                 log(LogLevel::Info, "VCC acknowledged BOOT and is starting its application");

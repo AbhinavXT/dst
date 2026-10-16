@@ -49,6 +49,7 @@ enum class Phase {
     Handshake,
     InitialSend,
     Repair,
+    CardResults,   /* session 299: 2.6, a card image: collecting the cards' own results */
     Done
 };
 
@@ -87,6 +88,11 @@ struct TransferTuning {
     int      meta_repeats           = 3;
     int      meta_handshake_tries   = 2;
     int      max_image_fail_restarts = 1;
+
+    /* ---- session 299: card results after a card image (2.6) ---- */
+    uint32_t card_wait_total_ms     = 20000;  /* udp_file_v5 CARD_WAIT_TOTAL_MS  */
+    uint32_t card_wait_quiet_ms     = 4000;   /* stop once reports stop coming  */
+    uint32_t card_wait_poll_ms      = 500;
 };
 
 struct FlashConfig {
@@ -140,6 +146,16 @@ struct FlashResult {
     bool        result_unknown   = false; /* silence after the session was up     */
     bool        boot_sent        = false; /* BOOT sent to release a held VCC      */
     bool        boot_acknowledged = false;
+
+    /* ---- session 299: what each card controller reported (2.6, card images) ----
+     * Read from the VCC's INFO (v2+): only results for this image's CRC.
+     * result: 1 OK, 2 VERIFY_FAIL, 3 FLASH_FAIL, 4 INCOMPLETE, 5 REJECTED. */
+    struct CardReport { int controller_id; int result; };
+    bool        card_results_asked = false;   /* the VCC was asked for them        */
+    bool        card_results_supported = false; /* its INFO carries them (2.1+)    */
+    std::vector<CardReport> card_reports;     /* in controller-ID order             */
+    bool        card_failed      = false;     /* a controller reported a failure:
+                                                 then success is false              */
 };
 
 enum class LogLevel { Info, Warn, Error };

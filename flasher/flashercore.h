@@ -478,6 +478,11 @@ struct BoardInfo {
 
 BoardInfo parseInfoReply(const QByteArray &reply);
 
+// Session 299: what the card controllers reported after a card image (2.6),
+// one line each: "Input card 1 controller 1 (5): OK — flashed". Empty when
+// the VCC was not asked.
+QStringList cardReportLines(const kflash::FlashResult &result);
+
 // "VCC 1 controller 1", "Input card 2 controller 1", "Analog card controller 2".
 QString controllerName(int controllerId);
 // "OK — flashed", "FLASH_FAIL — flash write failed on the card", ...

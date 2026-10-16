@@ -172,8 +172,8 @@ private:
         kflash::Progress  lastProgress;
         bool              haveProgress = false;
         kflash::Phase     phase = kflash::Phase::Idle;
-        qint64            phaseStartMs[5] = { 0, 0, 0, 0, 0 };   // indexed by kflash::Phase
-        qint64            phaseEndMs[5] = { 0, 0, 0, 0, 0 };
+        qint64            phaseStartMs[6] = { 0, 0, 0, 0, 0, 0 };   // indexed by kflash::Phase
+        qint64            phaseEndMs[6] = { 0, 0, 0, 0, 0, 0 };
         bool              finished = false;
         bool              succeeded = false;
         qint64            endedMs = 0;   // the clock when it finished

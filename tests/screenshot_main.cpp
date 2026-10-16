@@ -627,6 +627,18 @@ int main(int argc, char **argv)
                 profile.updaterWaitSeconds = Flasher::kMinUpdaterWaitSeconds;
                 // Session 296: flasher26 is the queue with the 2.6 updater on.
                 if (which == QLatin1String("flasher26")) profile.updater = kflash::Updater::V26;
+                // Session 299: flashercards, a 2.6 Input run whose two
+                // controllers report back, on its Summary.
+                static FlasherTest::FakeBoard cardsBoard;
+                if (which == QLatin1String("flashercards")) {
+                    cardsBoard.v26 = true;
+                    cardsBoard.cardReports = { qMakePair(5, 1), qMakePair(6, 3) };
+                    profile.updater = kflash::Updater::V26;
+                    profile.port = cardsBoard.port();
+                    profile.tuning.card_wait_total_ms = 3000;
+                    profile.tuning.card_wait_quiet_ms = 600;
+                    QTimer::singleShot(300, []() { cardsBoard.powerOn(); });
+                }
                 store.upsert(profile, store.names().first());
                 store.setActiveName(profile.name);
                 store.save();
@@ -642,7 +654,7 @@ int main(int argc, char **argv)
                     t.start();
                     const qint64 until = which == QLatin1String("flasherrun") || which == QLatin1String("flashervccs")
                                              ? 2500 : 60000;
-                    while (t.elapsed() < until && !(which == QLatin1String("flashersum")
+                    while (t.elapsed() < until && !((which == QLatin1String("flashersum") || which == QLatin1String("flashercards"))
                                                     && w->currentPage() == FlasherWindow::SummaryPageIndex))
                         QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
                 }

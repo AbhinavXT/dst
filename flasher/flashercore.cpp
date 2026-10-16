@@ -284,6 +284,8 @@ QJsonObject tuningToJson(const kflash::TransferTuning &tuning)
     object[QStringLiteral("meta_repeats")]            = tuning.meta_repeats;
     object[QStringLiteral("meta_handshake_tries")]    = tuning.meta_handshake_tries;
     object[QStringLiteral("max_image_fail_restarts")] = tuning.max_image_fail_restarts;
+    object[QStringLiteral("card_wait_total_ms")]      = static_cast<double>(tuning.card_wait_total_ms);   // session 299
+    object[QStringLiteral("card_wait_quiet_ms")]      = static_cast<double>(tuning.card_wait_quiet_ms);
     return object;
 }
 
@@ -330,6 +332,8 @@ kflash::TransferTuning tuningFromJson(const QJsonObject &object)
     tuning.meta_repeats            = readInt(object, "meta_repeats", tuning.meta_repeats);
     tuning.meta_handshake_tries    = readInt(object, "meta_handshake_tries", tuning.meta_handshake_tries);
     tuning.max_image_fail_restarts = readInt(object, "max_image_fail_restarts", tuning.max_image_fail_restarts);
+    tuning.card_wait_total_ms = readUnsigned(object, "card_wait_total_ms", tuning.card_wait_total_ms);
+    tuning.card_wait_quiet_ms = readUnsigned(object, "card_wait_quiet_ms", tuning.card_wait_quiet_ms);
     return tuning;
 }
 
@@ -688,6 +692,14 @@ QString failureExplanation(const kflash::FlashResult &result)
                               "The board is left part-way through a transfer; a fresh run "
                               "starts it again from the beginning.");
     }
+    // Session 299: the VCC took the image, a card controller did not.
+    if (result.card_failed) {
+        return QStringLiteral("CARD UPDATE FAILED — the VCC verified and relayed the image, but a card "
+                              "controller reported a failure: %1. The other controllers' reports are "
+                              "listed below.").arg(cardReportLines(result).filter(
+                                  QRegularExpression(QStringLiteral(": (VERIFY_FAIL|FLASH_FAIL|INCOMPLETE|REJECTED)")))
+                                  .join(QStringLiteral("; ")));
+    }
     // Session 296: the 2.6 updater's two final answers.
     if (result.rejected) {
         return QStringLiteral("REJECTED — the board received the whole image intact and refused "
@@ -866,6 +878,23 @@ Verdict batchVerdict(const BatchPlan &plan)
             if (only.outcome == CardOutcome::AlreadyHeld) {
                 verdict.headline = QStringLiteral("%1 already had this image").arg(cardName(only.cardType));
                 verdict.explanation = QStringLiteral("Nothing was sent.");
+            } else if (only.result.card_results_asked && !only.result.card_reports.empty()) {
+                // Session 299: every card controller that reported, reported OK.
+                verdict.headline = QStringLiteral("%1 — updated, the card reported OK").arg(cardName(only.cardType));
+                verdict.explanation = QStringLiteral("The VCC verified the image and relayed it over CAN; %1 "
+                                                     "reported writing it: %2.")
+                                          .arg(only.result.card_reports.size() == 1
+                                                   ? QStringLiteral("the card controller")
+                                                   : QStringLiteral("%1 card controllers").arg(only.result.card_reports.size()))
+                                          .arg(cardReportLines(only.result).join(QStringLiteral("; ")));
+            } else if (only.result.card_results_asked && only.result.card_results_supported) {
+                verdict.tone = Verdict::Tone::Partial;
+                verdict.headline = QStringLiteral("%1 — accepted by the VCC, no card reported back")
+                                       .arg(cardName(only.cardType));
+                verdict.explanation = QStringLiteral("The VCC verified the image and relayed it over CAN, but no "
+                                                     "card controller reported a result while the flasher "
+                                                     "waited. The card may still have updated: Ask the "
+                                                     "board…, or check its firmware version.");
             } else {
                 verdict.headline = QStringLiteral("%1 — image verified").arg(cardName(only.cardType));
                 verdict.explanation = successExplanation(only.cardType);
@@ -895,6 +924,8 @@ Verdict batchVerdict(const BatchPlan &plan)
             verdict.headline = QStringLiteral("%1 — result unknown").arg(cardName(only.cardType));
         } else if (only.result.rejected) {
             verdict.headline = QStringLiteral("%1 — image refused by the board").arg(cardName(only.cardType));
+        } else if (only.result.card_failed) {
+            verdict.headline = QStringLiteral("%1 — card update failed").arg(cardName(only.cardType));
         } else {
             verdict.headline = QStringLiteral("%1 — not updated").arg(cardName(only.cardType));
         }
@@ -917,7 +948,9 @@ Verdict batchVerdict(const BatchPlan &plan)
     QStringList notRunNames;
     for (const BatchEntry &entry : plan.entries()) {
         if (entry.outcome == CardOutcome::Failed) {
-            if (entry.result.result_unknown) {
+            if (entry.result.card_failed) {
+                failedNames.append(QStringLiteral("%1: card update failed").arg(entryTitle(entry)));
+            } else if (entry.result.result_unknown) {
                 failedNames.append(QStringLiteral("%1: result unknown").arg(entryTitle(entry)));
             } else if (entry.result.rejected) {
                 failedNames.append(QStringLiteral("%1: image refused by the board").arg(entryTitle(entry)));
@@ -1581,6 +1614,11 @@ QString batchReportText(const BatchPlan &plan, const QString &batchId,
         if (ran) {
             const kflash::FlashResult &result = entry.result;
             out << "Updater         : " << updaterSummary(entry) << "\n";
+            if (result.card_results_asked) {
+                const QStringList reports = cardReportLines(result);
+                out << "Card reports    : " << (reports.isEmpty() ? QStringLiteral("none") : reports.join(QStringLiteral("\n                  ")))
+                    << "\n";
+            }
             out << "Engine message  : " << QString::fromStdString(result.message) << "\n";
             if (!outcomeIsSuccess(entry.outcome)) {
                 out << "What it means   : " << failureExplanation(result) << "\n";
@@ -1856,6 +1894,16 @@ BoardInfo parseInfoReply(const QByteArray &reply)
         info.rejectReason = readU8(reply, 135);
     }
     return info;
+}
+
+QStringList cardReportLines(const kflash::FlashResult &result)
+{
+    QStringList lines;
+    for (const kflash::FlashResult::CardReport &report : result.card_reports) {
+        lines << QStringLiteral("%1 (%2): %3").arg(controllerName(report.controller_id))
+                     .arg(report.controller_id).arg(cardResultText(report.result));
+    }
+    return lines;
 }
 
 QString controllerName(int controllerId)

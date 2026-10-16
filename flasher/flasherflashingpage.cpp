@@ -895,7 +895,8 @@ void FlasherFlashingPage::showStats(const EntryView &view)
     }
     m_statBlocks->setText(QString::number(progress.acked_blocks));
     m_statBlocksSub->setText(tr("of %1").arg(progress.total_blocks));
-    if (progress.phase == kflash::Phase::Repair || progress.phase == kflash::Phase::Done) {
+    if (progress.phase == kflash::Phase::Repair || progress.phase == kflash::Phase::CardResults
+        || progress.phase == kflash::Phase::Done) {
         m_statRound->setText(QString::number(progress.round));
     } else {
         m_statRound->setText(QStringLiteral("—"));
@@ -1054,7 +1055,19 @@ void FlasherFlashingPage::updateStepper()
 
     StepState acceptedState = StepState::Pending;
     QString acceptedLabel = tr("Accepted");
-    if (view.finished && view.succeeded) {
+    // Session 299: with 2.6, after a card image the VCC has accepted it and
+    // the cards' own results are being collected.
+    const bool cardsAsked = view.phaseStartMs[phaseSlot(kflash::Phase::CardResults)] != 0;
+    if (!view.finished && view.phase == kflash::Phase::CardResults) {
+        acceptedState = StepState::Active;
+        acceptedLabel = tr("Card reports");
+    } else if (view.finished && view.succeeded && cardsAsked) {
+        acceptedState = StepState::Done;
+        acceptedLabel = tr("Cards reported");
+    } else if (view.finished && !view.succeeded && cardsAsked) {
+        acceptedState = StepState::Failed;
+        acceptedLabel = tr("Card update failed");
+    } else if (view.finished && view.succeeded) {
         acceptedState = StepState::Done;
     } else if (view.finished) {
         acceptedState = StepState::Failed;

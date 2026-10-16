@@ -120,6 +120,20 @@ queue reads it:
 The image's row shows the version (`… · v1.2.9`). The detail strip shows
 the whole trailer.
 
+### Card results (2.6)
+
+With **2.6**, an Input, Output or Analog image doesn't stop at "the VCC
+accepted it". The VCC passes it to the card over CAN, and **each card
+controller reports back** how its update ended. The flasher waits for
+those reports (up to 20 s, less once they stop coming), then releases the
+VCC.
+
+| Summary says | Meaning |
+|---|---|
+| **updated, the card reported OK** | Every controller that reported wrote the image. Each one is listed. |
+| **card update failed** | A controller reported VERIFY_FAIL, FLASH_FAIL, INCOMPLETE or REJECTED. It is named, and the card keeps its old firmware. |
+| **accepted by the VCC, no card reported back** | No report arrived. The card may still have updated: use Ask the board, or check its version. |
+
 ### Ask the board (2.6)
 
 **Ask board…** (top bar, 2.6 only) asks a board's updater what it holds:

@@ -81,6 +81,7 @@ kflash::FlashConfig configFor(const FakeBoard &board, kflash::Updater updater, i
     config.updater = updater;
     config.tuning.poll_give_up_ms = 1000;
     config.tuning.meta_handshake_tries = 3;
+    config.tuning.card_wait_total_ms = 1500;   // session 299: no fake card reports here
     return config;
 }
 
