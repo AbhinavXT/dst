@@ -114,6 +114,11 @@ public:
     QStringList profileNames() const { return m_profiles.names(); }
     Flasher::FlashProfile profileNamed(const QString &name) const { return m_profiles.profile(name); }
 
+    // Session 296: the app bar's Updater toggle (Classic | 2.6). It shows
+    // and sets the active profile's updater, and is saved with the profile.
+    kflash::Updater updater() const;
+    QToolButton    *updaterButton(kflash::Updater updater) const;
+
 signals:
     // Emitted when the run has been recorded, after history has been
     // written. The tests wait on this.
@@ -133,6 +138,7 @@ private slots:
     void exportReport();
     void tryAgain();
     void refreshAppBarTarget();
+    void onUpdaterChosen(kflash::Updater updater);
 
 private:
     QWidget *buildAppBar();
@@ -146,6 +152,7 @@ private:
     void     finishBatch();
     void     reloadProfileCombo();
     void     applyActiveProfile();
+    void     showProfileUpdater();
     void     saveProfiles();
     void     showPage(int page);
 
@@ -174,6 +181,9 @@ private:
     QLabel                 *m_appTitle = nullptr;
     QLabel                 *m_profileLabel = nullptr;
     QComboBox              *m_profileCombo = nullptr;
+    QLabel                 *m_updaterLabel = nullptr;     // session 296
+    QToolButton            *m_updaterClassic = nullptr;
+    QToolButton            *m_updater26 = nullptr;
     QLabel                 *m_flashingBadge = nullptr;
     QLabel                 *m_targetLabel = nullptr;
     QToolButton            *m_historyButton = nullptr;

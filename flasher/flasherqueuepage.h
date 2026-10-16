@@ -68,6 +68,10 @@ public:
 
     // Replace the target and the images with the profile's defaults. Rows
     // with no default image are cleared.
+    // Session 296: the app bar's updater toggle changed (only the procedure
+    // note depends on it here).
+    void setUpdater(kflash::Updater updater);
+    QString procedureNote() const;   // for the tests
     void applyProfile(const Flasher::FlashProfile &profile);
 
     // ---- read by the window --------------------------------------------

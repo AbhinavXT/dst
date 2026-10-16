@@ -10,6 +10,12 @@ that make a real board drop packets:
   * first META lost (ARP resolution on a real link)
 
 Usage: python3 board_sim.py [--port 50001] [--proc-us 600] [--loss 0.003] [--rcvbuf 24000]
+                            [--v26] [--reject REASON]
+
+--v26 answers HOLD (0x07) and BOOT (0x08) with an INFO reply (0x05, layout
+v3, 136 bytes), as updater 2.2+ does; without it HOLD and BOOT are ignored,
+like an older updater. --reject N (with --v26) answers a verified image with
+STATUS REJECTED (0x04) and reason byte N instead of COMPLETE.
 """
 import argparse
 import hashlib
@@ -21,7 +27,8 @@ import zlib
 
 BLOCK = 1450
 META, DATA, POLL, STATUS = 0, 1, 2, 3
-COMPLETE, INCOMPLETE, NEED_META, IMAGE_FAIL = 0, 1, 2, 3
+INFO, HOLD, BOOT = 5, 7, 8
+COMPLETE, INCOMPLETE, NEED_META, IMAGE_FAIL, REJECTED = 0, 1, 2, 3, 4
 
 
 def crc_fw(data: bytes) -> int:
@@ -42,6 +49,8 @@ def main():
     ap.add_argument("--loss", type=float, default=0.003)
     ap.add_argument("--rcvbuf", type=int, default=24000)
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--v26", action="store_true")
+    ap.add_argument("--reject", type=int, default=0)
     a = ap.parse_args()
     random.seed(a.seed)
 
@@ -59,6 +68,15 @@ def main():
         if random.random() < a.loss:
             continue
         kind = pkt[0]
+
+        if a.v26 and kind in (HOLD, BOOT):
+            info = bytearray(136)
+            info[0], info[1] = INFO, 3
+            s.sendto(bytes(info), addr)
+            if kind == BOOT:
+                print("sim: BOOT - leaving the updater", flush=True)
+                session = None
+            continue
 
         if kind == META:
             if not first_meta_dropped:
@@ -95,6 +113,12 @@ def main():
                 ok = (crc_fw(bytes(session["buf"])) == session["crc"] and
                       hashlib.sha256(session["buf"]).digest() == session["sha"])
                 session["state"] = COMPLETE if ok else IMAGE_FAIL
+                if ok and a.v26 and a.reject:
+                    session["state"] = REJECTED
+            if session["state"] == REJECTED:
+                s.sendto(struct.pack("<BBIIIHB", STATUS, REJECTED, session["crc"],
+                                     session["nblk"], session["got"], 0, a.reject), addr)
+                continue
             hdr = struct.pack("<BBIIIH", STATUS, session["state"], session["crc"],
                               session["nblk"], session["got"], len(session["have"]))
             s.sendto(hdr + bytes(session["have"]), addr)

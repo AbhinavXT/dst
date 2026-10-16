@@ -72,6 +72,7 @@ public:
     {
         m_mode = Mode::Updater;
         m_hasSession = false;
+        m_held = false;
         m_lastPacket.start();
     }
     void powerOff() { m_mode = Mode::Off; }
@@ -87,6 +88,15 @@ public:
     int    dataSeen = 0;        // DATA packets that reached the board, dropped ones too
     qint64 firstDataMs = -1;
     qint64 lastDataMs = -1;
+    // Session 296: the 2.6 updater. With v26 off the board is a classic one
+    // and ignores HOLD and BOOT, as an updater before 2.2 does.
+    bool v26 = false;
+    int  rejectReason = 0;      // REJECTED (with this reason) instead of COMPLETE
+    bool loseComplete = false;  // all three COMPLETE replies lost on the wire
+    int  holdsSeen = 0;
+    int  bootsSeen = 0;
+    bool held() const { return m_held; }
+
     static qint64 sharedClockMs()
     {
         static QElapsedTimer clock;
@@ -129,14 +139,32 @@ private:
             return;   // off, or running the application: nobody is listening
         }
         // The updater's boot watchdog: 5 s without a firmware packet and it
-        // boots the application (checked lazily, on the next arrival).
-        if (m_lastPacket.elapsed() > 5000) {
+        // boots the application (checked lazily, on the next arrival); held
+        // (2.6), 2 minutes.
+        if (m_lastPacket.elapsed() > (m_held ? 120000 : 5000)) {
             m_mode = Mode::Application;
             return;
         }
         m_lastPacket.restart();
 
         const quint8 kind = static_cast<quint8>(packet.at(0));
+        if (v26 && (kind == 7 || kind == 8)) {
+            // HOLD / BOOT, both answered with INFO (layout v3, 136 bytes).
+            QByteArray info(136, '\0');
+            info[0] = 5;
+            info[1] = 3;
+            if (kind == 7) {
+                ++holdsSeen;
+                m_held = true;
+            } else {
+                ++bootsSeen;
+            }
+            m_socket.writeDatagram(info, from, fromPort);
+            if (kind == 8) {
+                m_mode = Mode::Application;   // FW_BOOT_DELAY_MS later
+            }
+            return;
+        }
         if (kind == 0 && packet.size() >= static_cast<int>(sizeof(FakeMeta))) {
             FakeMeta meta;
             std::memcpy(&meta, packet.constData(), sizeof(meta));
@@ -186,7 +214,9 @@ private:
                     reinterpret_cast<const uint8_t *>(m_session.buffer.constData()),
                     static_cast<size_t>(m_session.buffer.size()));
                 const bool good = (crc == m_session.crc) && (m_session.card != rejectCardType);
-                if (good) {
+                if (good && v26 && rejectReason != 0) {
+                    m_session.state = 4;   // REJECTED: intact, but refused
+                } else if (good) {
                     m_session.state = 0;   // COMPLETE
                 } else {
                     m_session.state = 3;   // IMAGE_FAIL
@@ -198,7 +228,27 @@ private:
             status.got = m_session.got;
             status.bitmapBytes = static_cast<quint16>(m_session.have.size());
             QByteArray reply(reinterpret_cast<const char *>(&status), sizeof(status));
+            if (m_session.state == 4) {
+                status.bitmapBytes = 0;
+                reply = QByteArray(reinterpret_cast<const char *>(&status), sizeof(status));
+                reply.append(static_cast<char>(rejectReason));
+                m_socket.writeDatagram(reply, from, fromPort);
+                return;
+            }
             reply.append(m_session.have);
+            if (m_session.state == 0 && m_held && m_session.card != 1) {
+                // 2.6, held VCC, a card image: it relays it over CAN, clears
+                // its session and waits in the updater for BOOT.
+                m_socket.writeDatagram(reply, from, fromPort);
+                m_socket.writeDatagram(reply, from, fromPort);
+                m_socket.writeDatagram(reply, from, fromPort);
+                m_hasSession = false;
+                return;
+            }
+            if (m_session.state == 0 && loseComplete) {
+                m_mode = Mode::Application;   // flashed; nothing reached the PC
+                return;
+            }
             if (m_session.state == 0) {
                 // COMPLETE goes out FW_COMPLETE_REPEATS times, then the board
                 // writes flash and Boot_Switch() jumps into the application.
@@ -215,6 +265,7 @@ private:
     QUdpSocket    m_socket;
     Session       m_session;
     bool          m_hasSession = false;
+    bool          m_held = false;
     Mode          m_mode = Mode::Off;
     QElapsedTimer m_lastPacket;
 };

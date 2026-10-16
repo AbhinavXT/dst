@@ -14,6 +14,22 @@
  *   - stale STATUS draining, source-address check, bitmap bounds checks
  *   - IMAGE_FAIL restarts capped
  *   - cancellable from another thread
+ *
+ * Session 296: two updaters. Classic is the protocol above, unchanged. The
+ * 2.6 updater (updater/guide in the firmware repo) adds packets the engine
+ * uses only when FlashConfig::updater says so:
+ *   - HOLD (0x07): keep the board in the updater (2 min idle instead of
+ *     5 s). Sent with a POLL while waiting for the power cycle; the board
+ *     answers HOLD with INFO (0x05), an updater before 2.2 answers the POLL
+ *     only.
+ *   - BOOT (0x08): leave the updater now. Sent to a held VCC after it
+ *     accepted an Input/Output/Analog image (it relays it over CAN and
+ *     would otherwise wait for BOOT until its 2 min run out).
+ *   - STATUS REJECTED (0x04) + a reason byte: the image is intact but the
+ *     board refuses it (wrong card, downgrade, trailer). Final: no resend.
+ *   - Silence after the session was up is "result unknown", not a failure:
+ *     the board sends COMPLETE three times and then flashes without
+ *     answering, so all three may have been lost.
  * ========================================================================= */
 #pragma once
 
@@ -37,6 +53,15 @@ enum class Phase {
 };
 
 const char* phase_name(Phase phase);
+
+/* Which updater the board runs (session 296). Classic: the protocol as it
+ * was before. V26: updater 2.2+ packets (HOLD, BOOT, REJECTED, INFO). */
+enum class Updater { Classic, V26 };
+
+const char* updater_name(Updater updater);   /* "Classic", "2.6" */
+
+/* The board's reason byte after STATUS REJECTED (FW_REJECT_* in the updater). */
+const char* reject_reason_text(uint8_t reason);
 const char* card_type_name(int card_type);
 
 /* Everything an engineer might want to tune. The defaults are what the GUI
@@ -70,6 +95,7 @@ struct FlashConfig {
     int                  card_type = 1;     /* VCC(1) Input(2) Output(3) Analog(4) */
     std::vector<uint8_t> image;             /* whole .appimage in memory            */
     TransferTuning       tuning;
+    Updater              updater   = Updater::Classic;
 };
 
 /* Live state for progress bars and the stats column. */
@@ -104,6 +130,16 @@ struct FlashResult {
     double      avg_kBps         = 0.0;
     double      final_rate_kBps  = 0.0; /* worth saving per profile as next start */
     uint32_t    image_crc        = 0;
+
+    /* ---- session 296: the 2.6 updater (all false / 0 with Classic) ---- */
+    Updater     updater          = Updater::Classic;
+    bool        board_held       = false; /* answered HOLD: stays 2 min idle      */
+    bool        older_updater    = false; /* answered POLL but not HOLD (< 2.2)   */
+    bool        rejected         = false; /* STATUS REJECTED: final               */
+    uint8_t     reject_reason    = 0;
+    bool        result_unknown   = false; /* silence after the session was up     */
+    bool        boot_sent        = false; /* BOOT sent to release a held VCC      */
+    bool        boot_acknowledged = false;
 };
 
 enum class LogLevel { Info, Warn, Error };

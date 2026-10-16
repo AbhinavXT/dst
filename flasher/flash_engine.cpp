@@ -22,6 +22,9 @@
     #include <ws2tcpip.h>
     #include <windows.h>
     #include <mmsystem.h>
+    #ifndef SIO_UDP_CONNRESET   /* not in every MinGW header set; value from mswsock.h */
+        #define SIO_UDP_CONNRESET _WSAIOW(IOC_VENDOR, 12)
+    #endif
     #ifdef _MSC_VER
         #pragma comment(lib, "Ws2_32.lib")
         #pragma comment(lib, "winmm.lib")
@@ -51,11 +54,18 @@ static const uint8_t PKT_TYPE_DATA   = 0x01;
 static const uint8_t PKT_TYPE_POLL   = 0x02;
 static const uint8_t PKT_TYPE_STATUS = 0x03;
 
+/* ---- session 296: updater 2.2+ (Updater::V26 only) ---- */
+static const uint8_t PKT_TYPE_INFO    = 0x05;   /* the board's answer to HOLD / BOOT */
+static const uint8_t PKT_TYPE_HOLD    = 0x07;
+static const uint8_t PKT_TYPE_BOOT    = 0x08;
+static const int     kInfoV1Bytes     = 46;     /* the shortest INFO reply           */
+
 /* ---- STATUS status codes ---- */
 static const uint8_t FW_STATUS_COMPLETE   = 0x00;
 static const uint8_t FW_STATUS_INCOMPLETE = 0x01;
 static const uint8_t FW_STATUS_NEED_META  = 0x02;
 static const uint8_t FW_STATUS_IMAGE_FAIL = 0x03;
+static const uint8_t FW_STATUS_REJECTED   = 0x04;   /* V26: one reason byte follows */
 
 #pragma pack(push, 1)
 struct MetaHeader {
@@ -110,6 +120,22 @@ const char* phase_name(Phase phase)
         case Phase::Done:        return "Done";
     }
     return "?";
+}
+
+const char* updater_name(Updater updater)
+{
+    return updater == Updater::V26 ? "2.6" : "Classic";
+}
+
+const char* reject_reason_text(uint8_t reason)
+{
+    switch (reason) {
+        case 1: return "the image has no trailer, and the board requires one";
+        case 2: return "the image is built for a different card type than it was sent as";
+        case 3: return "downgrade: the image is older than the one running, and downgrades are blocked";
+        case 4: return "the image trailer is damaged";
+        default: return "no reason given";
+    }
 }
 
 const char* card_type_name(int card_type)
@@ -446,7 +472,9 @@ private:
 
 enum class PollOutcome { Reply, Timeout, Cancelled };
 
-enum class PassOutcome { Finished, NeedMeta, ImageFail, Complete, Cancelled };
+enum class PassOutcome { Finished, NeedMeta, ImageFail, Complete, Cancelled, Rejected };
+
+enum class WaitOutcome { Held, OlderUpdater, Timeout, Cancelled };
 
 } // namespace
 
@@ -502,6 +530,12 @@ private:
     PassOutcome send_pass(bool with_checkpoints);
     PassOutcome handle_checkpoint_reply(int received_len, uint32_t eval_from, uint32_t eval_to);
 
+    /* ---- session 296: the 2.6 updater ---- */
+    bool        v26() const { return config_.updater == Updater::V26; }
+    WaitOutcome wait_for_board_and_hold(uint32_t budget_ms);
+    bool        send_boot(uint32_t budget_ms);
+    void        note_rejected(int received_len);
+
     /* ---- adaptation ---- */
     uint32_t current_poll_timeout_ms(int attempt) const;
     void     record_rtt_sample(double sample_ms);
@@ -551,6 +585,20 @@ bool Session::open_socket()
     int send_buffer_bytes = 1 << 20;
     setsockopt(sock_, SOL_SOCKET, SO_SNDBUF,
                reinterpret_cast<const char*>(&send_buffer_bytes), sizeof(send_buffer_bytes));
+
+#ifdef _WIN32
+    /* Session 296 (HOST #5 in udp_file_v5): while a board boots, lwIP has
+     * not bound the port yet and an ICMP "port unreachable" comes back;
+     * Windows then fails the next receive with WSAECONNRESET instead of
+     * waiting. The 2.6 wait sends to a booting board on purpose, so switch
+     * that off. Classic keeps its socket as it was. */
+    if (v26()) {
+        BOOL  connreset = FALSE;
+        DWORD returned  = 0;
+        WSAIoctl(sock_, SIO_UDP_CONNRESET, &connreset, sizeof(connreset),
+                 nullptr, 0, &returned, nullptr, nullptr);
+    }
+#endif
 
     uint32_t ip_host_order = 0;
     parse_ipv4(config_.receiver_ip, &ip_host_order); /* validated earlier */
@@ -898,6 +946,10 @@ PassOutcome Session::handle_checkpoint_reply(int received_len, uint32_t eval_fro
     if (header.status == FW_STATUS_COMPLETE) {
         return PassOutcome::Complete;
     }
+    if (v26() && header.status == FW_STATUS_REJECTED) {
+        note_rejected(received_len);
+        return PassOutcome::Rejected;
+    }
     if (!status_bitmap_is_valid(header, received_len)) {
         return PassOutcome::Finished; /* ignore this checkpoint, keep sending */
     }
@@ -982,12 +1034,131 @@ PassOutcome Session::send_pass(bool with_checkpoints)
     return PassOutcome::Finished;
 }
 
+/* ----------------------------------------------- the 2.6 updater --- */
+
+/* Records a STATUS REJECTED: the reason byte follows the 16-byte header. */
+void Session::note_rejected(int received_len)
+{
+    result_.rejected = true;
+    result_.reject_reason = received_len > static_cast<int>(sizeof(StatusHeader))
+        ? receive_buffer_[sizeof(StatusHeader)] : 0;
+    std::ostringstream text;
+    text << "REJECTED by the board (reason " << static_cast<int>(result_.reject_reason)
+         << "): " << reject_reason_text(result_.reject_reason) << ". Resending cannot change this.";
+    result_.message = text.str();
+    log(LogLevel::Error, result_.message);
+}
+
+/* HOLD and a POLL, again and again, until the board answers or budget_ms
+ * passes (udp_file_v5's wait_for_board_and_hold). The operator power-cycles
+ * the chassis meanwhile. A 2.2+ updater answers HOLD with INFO and from then
+ * on waits 2 minutes of idle time; an older one ignores HOLD but answers the
+ * POLL with STATUS, so it is found too (and is not held: it still boots after
+ * 5 s of silence). Within one round an INFO wins over a STATUS, whichever
+ * comes first, because a held board sends both. */
+WaitOutcome Session::wait_for_board_and_hold(uint32_t budget_ms)
+{
+    const uint8_t hold = PKT_TYPE_HOLD;
+    PollPacket poll;
+    poll.type      = PKT_TYPE_POLL;
+    poll.image_crc = 0;
+
+    const Clock::time_point start = Clock::now();
+    const uint32_t round_ms = tuning_.poll_timeout_max_ms;
+    while (true) {
+        if (cancel_.load()) {
+            return WaitOutcome::Cancelled;
+        }
+        sendto(sock_, reinterpret_cast<const char*>(&hold), 1, 0,
+               reinterpret_cast<const sockaddr*>(&receiver_), sizeof(receiver_));
+        sendto(sock_, reinterpret_cast<const char*>(&poll), sizeof(poll), 0,
+               reinterpret_cast<const sockaddr*>(&receiver_), sizeof(receiver_));
+
+        const Clock::time_point deadline = Clock::now() + std::chrono::milliseconds(round_ms);
+        bool got_status = false;
+        while (true) {
+            const long long remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - Clock::now()).count();
+            if (remaining_ms <= 0 || cancel_.load()) {
+                break;
+            }
+            sockaddr_in from;
+            memset(&from, 0, sizeof(from));
+            const int received = receive_with_timeout(
+                sock_, receive_buffer_.data(), static_cast<int>(receive_buffer_.size()),
+                static_cast<int>(remaining_ms), &from);
+            if (received < 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+            if (received == 0 || from.sin_addr.s_addr != receiver_.sin_addr.s_addr) {
+                continue;
+            }
+            if (receive_buffer_[0] == PKT_TYPE_INFO && received >= kInfoV1Bytes) {
+                return WaitOutcome::Held;
+            }
+            if (receive_buffer_[0] == PKT_TYPE_STATUS
+                && received >= static_cast<int>(sizeof(StatusHeader))) {
+                got_status = true;   /* keep listening: its INFO may follow */
+            }
+        }
+        if (got_status) {
+            return WaitOutcome::OlderUpdater;
+        }
+        if (static_cast<uint32_t>(ms_since(start)) >= budget_ms) {
+            return WaitOutcome::Timeout;
+        }
+    }
+}
+
+/* BOOT until the board acknowledges with INFO or budget_ms passes. A VCC
+ * relaying an image over CAN does not read the network until it is done, so
+ * the acknowledgement can take as long as the relay. */
+bool Session::send_boot(uint32_t budget_ms)
+{
+    const uint8_t boot = PKT_TYPE_BOOT;
+    const Clock::time_point start = Clock::now();
+    result_.boot_sent = true;
+    while (!cancel_.load()) {
+        sendto(sock_, reinterpret_cast<const char*>(&boot), 1, 0,
+               reinterpret_cast<const sockaddr*>(&receiver_), sizeof(receiver_));
+        const Clock::time_point deadline =
+            Clock::now() + std::chrono::milliseconds(tuning_.poll_timeout_max_ms);
+        while (true) {
+            const long long remaining_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                deadline - Clock::now()).count();
+            if (remaining_ms <= 0) {
+                break;
+            }
+            sockaddr_in from;
+            memset(&from, 0, sizeof(from));
+            const int received = receive_with_timeout(
+                sock_, receive_buffer_.data(), static_cast<int>(receive_buffer_.size()),
+                static_cast<int>(remaining_ms), &from);
+            if (received < 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                continue;
+            }
+            if (received >= kInfoV1Bytes && from.sin_addr.s_addr == receiver_.sin_addr.s_addr
+                && receive_buffer_[0] == PKT_TYPE_INFO) {
+                result_.boot_acknowledged = true;
+                return true;
+            }
+        }
+        if (static_cast<uint32_t>(ms_since(start)) >= budget_ms) {
+            break;
+        }
+    }
+    return false;
+}
+
 /* --------------------------------------------------------------- run --- */
 
 FlashResult Session::run()
 {
     const Clock::time_point run_start = Clock::now();
     result_.total_blocks = block_count_;
+    result_.updater = config_.updater;
     progress_.total_blocks = block_count_;
 
     /* ---- hash once; per-block CRCs once (v5 recomputed on every resend) ---- */
@@ -1028,9 +1199,43 @@ FlashResult Session::run()
     emit_progress(true);
     Clock::time_point phase_start = Clock::now();
 
+    /* 2.6: find the board and hold it first, within the same wait the
+     * Classic handshake spends offering META. Once it answers, a few META
+     * rounds are plenty: a held board listens for 2 minutes. */
+    int handshake_tries = tuning_.meta_handshake_tries;
+    if (v26()) {
+        const uint32_t wait_ms = static_cast<uint32_t>(tuning_.meta_handshake_tries)
+                               * tuning_.poll_give_up_ms;
+        log(LogLevel::Info, "Waiting for the updater: HOLD + POLL until the board answers");
+        const WaitOutcome wait = wait_for_board_and_hold(wait_ms);
+        if (wait == WaitOutcome::Cancelled) {
+            result_.cancelled = true;
+            result_.message   = "Cancelled while waiting for the updater";
+            result_.total_ms  = ms_since(run_start);
+            return result_;
+        }
+        if (wait == WaitOutcome::Timeout) {
+            result_.message = "META never acknowledged - the board did not answer HOLD or POLL "
+                              "(check link / IP / that the chassis was power-cycled)";
+            log(LogLevel::Error, result_.message);
+            result_.handshake_ms = ms_since(phase_start);
+            result_.total_ms = ms_since(run_start);
+            return result_;
+        }
+        if (wait == WaitOutcome::Held) {
+            result_.board_held = true;
+            log(LogLevel::Info, "Board held in the updater (it now waits 2 min idle instead of 5 s)");
+        } else {
+            result_.older_updater = true;
+            log(LogLevel::Warn, "Board answered POLL but not HOLD: its updater is older than 2.2 "
+                                "and cannot be held - it boots after 5 s of silence");
+        }
+        handshake_tries = 3;
+    }
+
     bool session_up    = false;
     bool already_there = false;
-    for (int attempt = 0; attempt < tuning_.meta_handshake_tries && !session_up; ++attempt) {
+    for (int attempt = 0; attempt < handshake_tries && !session_up; ++attempt) {
         send_meta_burst();
         int received_len = 0;
         const PollOutcome outcome = poll_for_status(tuning_.poll_give_up_ms, false, &received_len);
@@ -1048,6 +1253,12 @@ FlashResult Session::run()
         if (header.status == FW_STATUS_NEED_META) {
             log(LogLevel::Warn, "[handshake] META not yet received, re-sending");
             continue;
+        }
+        if (v26() && header.status == FW_STATUS_REJECTED) {
+            note_rejected(received_len);
+            result_.handshake_ms = ms_since(phase_start);
+            result_.total_ms = ms_since(run_start);
+            return result_;
         }
         session_up = true;
         if (header.status == FW_STATUS_COMPLETE) {
@@ -1107,7 +1318,7 @@ FlashResult Session::run()
     std::vector<uint32_t> resent_last_round;
     int round = 0;
 
-    for (round = 0; round < tuning_.max_rounds && !success; ++round) {
+    for (round = 0; round < tuning_.max_rounds && !success && !result_.rejected; ++round) {
         progress_.round = round;
         emit_progress(true);
 
@@ -1121,6 +1332,21 @@ FlashResult Session::run()
         if (outcome == PollOutcome::Timeout) {
             std::ostringstream text;
             text << "No STATUS for " << tuning_.poll_give_up_ms << " ms - aborting";
+            if (v26()) {
+                /* udp_file_v5 HOST #4: the board sends COMPLETE three times
+                 * and then flashes without answering. Every block it
+                 * reported missing has been resent, so it may well have
+                 * them all: silence is not proof of failure. */
+                result_.result_unknown = true;
+                text.str(std::string());
+                text << "Result unknown: no STATUS for " << tuning_.poll_give_up_ms
+                     << " ms after the session was up. The board ";
+                if (progress_.acked_blocks == block_count_) {
+                    text << "had every block, so it is most likely flashing and rebooting.";
+                } else {
+                    text << "may have received the rest and started flashing, or the link is down.";
+                }
+            }
             result_.message = text.str();
             log(LogLevel::Error, text.str());
             break;
@@ -1128,6 +1354,11 @@ FlashResult Session::run()
 
         StatusHeader header;
         memcpy(&header, receive_buffer_.data(), sizeof(header));
+
+        if (v26() && header.status == FW_STATUS_REJECTED) {
+            note_rejected(received_len);
+            break;
+        }
 
         if (header.status == FW_STATUS_COMPLETE) {
             std::ostringstream text;
@@ -1213,6 +1444,27 @@ FlashResult Session::run()
     }
 
     result_.repair_ms       = ms_since(phase_start);
+
+    /* 2.6: release a held VCC that took an Input/Output/Analog image. It
+     * relays the image over CAN and then, being held, waits for BOOT rather
+     * than its own 15 s; without BOOT it would sit in the updater for 2 min.
+     * A VCC image needs nothing (the VCC flashes and boots by itself), and a
+     * failed transfer leaves the board held for a retry. */
+    if (v26() && result_.board_held) {
+        if (success && config_.card_type != 1 && !cancel_.load()) {
+            log(LogLevel::Info, "Releasing the VCC: BOOT (it answers once its CAN relay is done)");
+            if (send_boot(30000)) {
+                log(LogLevel::Info, "VCC acknowledged BOOT and is starting its application");
+            } else {
+                log(LogLevel::Warn, "VCC did not acknowledge BOOT within 30 s; it boots by itself "
+                                    "after 2 minutes without traffic");
+            }
+        } else if (!success) {
+            log(LogLevel::Warn, "The board stays in the updater for a retry; it boots its current "
+                                "firmware by itself after 2 minutes without traffic");
+        }
+    }
+
     result_.repair_rounds   = round;
     result_.success         = success;
     result_.total_ms        = ms_since(run_start);

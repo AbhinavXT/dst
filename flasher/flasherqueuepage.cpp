@@ -611,6 +611,17 @@ void FlasherQueuePage::setMode(Flasher::Mode mode)
     refreshPreflight();
 }
 
+QString FlasherQueuePage::procedureNote() const
+{
+    return m_procedureNote->text();
+}
+
+void FlasherQueuePage::setUpdater(kflash::Updater updater)
+{
+    m_profile.updater = updater;
+    refreshPreflight();
+}
+
 void FlasherQueuePage::applyProfile(const Flasher::FlashProfile &profile)
 {
     m_profile = profile;
@@ -857,7 +868,17 @@ void FlasherQueuePage::refreshPreflight()
     } else {
         m_flashButton->setText(tr("Flash"));
     }
-    if (vccCount > 1) {
+    if (m_profile.updater == kflash::Updater::V26 && vccCount > 1) {
+        // Session 296: a 2.6 updater is held as soon as it answers.
+        m_procedureNote->setText(tr("Press Flash, then power-cycle all %1 chassis. The flasher calls each "
+                                    "updater for up to %2 s and holds it there as soon as it answers.")
+                                     .arg(vccCount)
+                                     .arg(m_profile.updaterWaitSeconds));
+    } else if (m_profile.updater == kflash::Updater::V26) {
+        m_procedureNote->setText(tr("Press Flash, then power-cycle the chassis. The flasher calls the "
+                                    "updater for up to %1 s and holds it there as soon as it answers.")
+                                     .arg(m_profile.updaterWaitSeconds));
+    } else if (vccCount > 1) {
         m_procedureNote->setText(tr("Press Flash, then power-cycle all %1 chassis. Each updater listens for "
                                     "%2 s after power-on; the flasher keeps calling each for up to %3 s.")
                                      .arg(vccCount)

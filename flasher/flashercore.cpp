@@ -316,6 +316,8 @@ QJsonObject FlashProfile::toJson() const
     object[QStringLiteral("start_from_last_settled")] = startFromLastSettled;
     object[QStringLiteral("last_settled_rate_kBps")] = lastSettledRateKBps;
     object[QStringLiteral("updater_wait_s")] = updaterWaitSeconds;
+    object[QStringLiteral("updater")] = updater == kflash::Updater::V26 ? QStringLiteral("2.6")
+                                                                       : QStringLiteral("classic");
     return object;
 }
 
@@ -364,6 +366,9 @@ FlashProfile FlashProfile::fromJson(const QJsonObject &object)
         waitSeconds = kMaxUpdaterWaitSeconds;
     }
     profile.updaterWaitSeconds = waitSeconds;
+    if (object.value(QStringLiteral("updater")).toString() == QLatin1String("2.6")) {
+        profile.updater = kflash::Updater::V26;
+    }
     return profile;
 }
 
@@ -634,6 +639,18 @@ QString failureExplanation(const kflash::FlashResult &result)
                               "The board is left part-way through a transfer; a fresh run "
                               "starts it again from the beginning.");
     }
+    // Session 296: the 2.6 updater's two final answers.
+    if (result.rejected) {
+        return QStringLiteral("REJECTED — the board received the whole image intact and refused "
+                              "it: %1. Resending the same file will be refused the same way.")
+            .arg(QString::fromLatin1(kflash::reject_reason_text(result.reject_reason)));
+    }
+    if (result.result_unknown) {
+        return QStringLiteral("Result unknown — the board stopped answering after the session was "
+                              "up. It sends COMPLETE three times and then writes flash without "
+                              "answering, so it may have taken the image. Wait for it to boot, "
+                              "then check its firmware version before flashing again.");
+    }
     if (isImageFail(result)) {
         return QStringLiteral("IMAGE_FAIL — the board received every block but rejected the "
                               "image. Resending the same file won't help — check it's the "
@@ -823,6 +840,11 @@ Verdict batchVerdict(const BatchPlan &plan)
         const BatchEntry &only = plan.entries().first();
         if (only.outcome == CardOutcome::Cancelled) {
             verdict.headline = QStringLiteral("%1 — aborted").arg(cardName(only.cardType));
+        } else if (only.result.result_unknown) {
+            verdict.tone = Verdict::Tone::Partial;
+            verdict.headline = QStringLiteral("%1 — result unknown").arg(cardName(only.cardType));
+        } else if (only.result.rejected) {
+            verdict.headline = QStringLiteral("%1 — image refused by the board").arg(cardName(only.cardType));
         } else {
             verdict.headline = QStringLiteral("%1 — not updated").arg(cardName(only.cardType));
         }
@@ -845,7 +867,11 @@ Verdict batchVerdict(const BatchPlan &plan)
     QStringList notRunNames;
     for (const BatchEntry &entry : plan.entries()) {
         if (entry.outcome == CardOutcome::Failed) {
-            if (isImageFail(entry.result)) {
+            if (entry.result.result_unknown) {
+                failedNames.append(QStringLiteral("%1: result unknown").arg(entryTitle(entry)));
+            } else if (entry.result.rejected) {
+                failedNames.append(QStringLiteral("%1: image refused by the board").arg(entryTitle(entry)));
+            } else if (isImageFail(entry.result)) {
                 failedNames.append(QStringLiteral("%1 failed image verification").arg(entryTitle(entry)));
             } else {
                 failedNames.append(QStringLiteral("%1 failed").arg(entryTitle(entry)));
@@ -1101,6 +1127,9 @@ QJsonObject HistoryRecord::toJson() const
     object[QStringLiteral("sha256")] = sha256;
     object[QStringLiteral("result")] = result;
     object[QStringLiteral("message")] = message;
+    if (!updater.isEmpty()) {
+        object[QStringLiteral("updater")] = updater;
+    }
     object[QStringLiteral("total_ms")] = static_cast<double>(totalMs);
     object[QStringLiteral("handshake_ms")] = static_cast<double>(handshakeMs);
     object[QStringLiteral("send_ms")] = static_cast<double>(sendMs);
@@ -1130,6 +1159,7 @@ HistoryRecord HistoryRecord::fromJson(const QJsonObject &object)
     record.sha256 = object.value(QStringLiteral("sha256")).toString();
     record.result = object.value(QStringLiteral("result")).toString();
     record.message = object.value(QStringLiteral("message")).toString();
+    record.updater = object.value(QStringLiteral("updater")).toString();
     record.totalMs = static_cast<qint64>(object.value(QStringLiteral("total_ms")).toDouble());
     record.handshakeMs = static_cast<qint64>(object.value(QStringLiteral("handshake_ms")).toDouble());
     record.sendMs = static_cast<qint64>(object.value(QStringLiteral("send_ms")).toDouble());
@@ -1178,6 +1208,7 @@ HistoryRecord makeHistoryRecord(const BatchEntry &entry, const QString &batchId,
     }
     record.result = outcomeText(entry.outcome);
     record.message = QString::fromStdString(entry.result.message);
+    record.updater = QString::fromLatin1(kflash::updater_name(entry.updater));
     if (entry.outcome == CardOutcome::NotRun) {
         record.message = QStringLiteral("Batch stopped before this card");
     }
@@ -1462,6 +1493,7 @@ QString batchReportText(const BatchPlan &plan, const QString &batchId,
         const bool ran = entry.outcome != CardOutcome::NotRun && entry.outcome != CardOutcome::Queued;
         if (ran) {
             const kflash::FlashResult &result = entry.result;
+            out << "Updater         : " << updaterSummary(entry) << "\n";
             out << "Engine message  : " << QString::fromStdString(result.message) << "\n";
             if (!outcomeIsSuccess(entry.outcome)) {
                 out << "What it means   : " << failureExplanation(result) << "\n";
@@ -1640,6 +1672,26 @@ int BatchPlan::runningCount() const
         count += entry.outcome == CardOutcome::Running ? 1 : 0;
     }
     return count;
+}
+
+QString updaterSummary(const BatchEntry &entry)
+{
+    const QString name = QString::fromLatin1(kflash::updater_name(entry.updater));
+    const kflash::FlashResult &result = entry.result;
+    if (result.board_held) {
+        if (result.boot_acknowledged) {
+            return QStringLiteral("%1 · board held, released with BOOT").arg(name);
+        }
+        if (result.boot_sent) {
+            return QStringLiteral("%1 · board held; BOOT not acknowledged (it boots by itself "
+                                  "after 2 min idle)").arg(name);
+        }
+        return QStringLiteral("%1 · board held in the updater").arg(name);
+    }
+    if (result.older_updater) {
+        return QStringLiteral("%1 · updater older than 2.2 (answered POLL only)").arg(name);
+    }
+    return name;
 }
 
 QString entryTitle(const BatchEntry &entry)

@@ -201,6 +201,11 @@ struct FlashProfile {
     // chassis (see kDefaultUpdaterWaitSeconds). Clamped to [min, max].
     int    updaterWaitSeconds = kDefaultUpdaterWaitSeconds;
 
+    // Session 296: which updater this bench's boards run. Classic is the
+    // flasher as it was; 2.6 adds HOLD / BOOT / REJECTED (flash_engine.h).
+    // A profile saved before session 296 has no key and stays Classic.
+    kflash::Updater updater = kflash::Updater::Classic;
+
     QJsonObject toJson() const;
     static FlashProfile fromJson(const QJsonObject &object);
 };
@@ -315,6 +320,7 @@ struct BatchEntry {
     int          cardType = 0;
     ImageInfo    image;
     QString      targetIp;        // session 291: this entry's VCC when several run at once; empty = the batch's
+    kflash::Updater updater = kflash::Updater::Classic;   // session 296: the batch profile's
     quint16      targetPort = 0;  // 0 = the batch's
     CardOutcome  outcome = CardOutcome::Queued;
     kflash::FlashResult result;
@@ -378,6 +384,11 @@ private:
     int     m_current = -1;
     QString m_stopReason;
 };
+
+// Session 296: which updater an entry was flashed for, and what the board
+// did about HOLD and BOOT: "2.6 · board held, released with BOOT",
+// "2.6 · updater older than 2.2 (answered POLL only)", "Classic".
+QString updaterSummary(const BatchEntry &entry);
 
 // What a row, a Summary panel or a verdict calls an entry: the card's name,
 // or "VCC 192.168.25.169" when the entry has its own target.
@@ -466,6 +477,7 @@ struct HistoryRecord {
     QString     sha256;
     QString     result;             // outcomeText()
     QString     message;            // engine message
+    QString     updater;            // session 296: "Classic" / "2.6"; empty in older records (= Classic)
     qint64      totalMs = 0;
     qint64      handshakeMs = 0;
     qint64      sendMs = 0;

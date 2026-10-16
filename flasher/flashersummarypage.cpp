@@ -207,11 +207,16 @@ QFrame *FlasherSummaryPage::buildCardPanel(const Flasher::BatchEntry &entry, int
 
     const kflash::FlashResult &result = entry.result;
     addRow(tr("CRC-32"), entry.image.crcText(), true);
+    if (ran) {
+        addRow(tr("Updater"), Flasher::updaterSummary(entry), false);
+    }
     if (!ran) {
         addRow(tr("Reason"), tr("Batch stopped"), false);
     } else if (failed) {
         if (Flasher::isImageFail(result)) {
             addRow(tr("Last status"), QStringLiteral("IMAGE_FAIL (0x03)"), true);
+        } else if (result.rejected) {
+            addRow(tr("Last status"), QStringLiteral("REJECTED (0x04), reason %1").arg(result.reject_reason), true);
         }
         addRow(tr("Engine message"), QString::fromStdString(result.message), false);
         addRow(tr("Blocks resent"), tr("%1 / %2").arg(result.blocks_resent).arg(result.total_blocks), true);

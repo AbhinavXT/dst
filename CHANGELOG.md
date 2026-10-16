@@ -11,6 +11,134 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-296"></a>
+## Session 296 — Firmware Flasher: a Classic | 2.6 updater toggle
+
+Abhinav brought the new updater (firmware 2.6.1 and its host tool
+`udp_file_v5.cpp`) and asked to keep **both** flashers, chosen by a
+toggle at the top of the Flasher window. He chose:
+- **the choice saved per profile**;
+- **the toggle first, with the 2.6 basics**, then one patch per 2.6
+  feature.
+
+This is that first patch.
+
+**What the operator sees.**
+- **Updater: Classic | 2.6** in the app bar, beside Profile. It shows the
+  active profile's updater. Clicking the other side saves it into that
+  profile, and choosing another profile shows that profile's choice.
+- **While flashing it is locked and out of the bar**, like the Profile
+  label. That keeps session 146's 1100 px with Qt 5's wider fonts.
+- **The note under the queue follows it.** In 2.6: "The flasher calls the
+  updater for up to N s and holds it there as soon as it answers".
+- **Classic is the flasher as it was.** Same packets, same timing, same
+  messages.
+- **2.6:**
+  - **Waiting for the power cycle:** HOLD + POLL instead of META. The
+    log says "Board held in the updater (it now waits 2 min idle
+    instead of 5 s)". An updater older than 2.2 answers the POLL only:
+    it is flashed unheld, and the log and Summary say "updater older
+    than 2.2".
+  - **STATUS REJECTED** (0x04) stops the card at once, with the board's
+    reason: no trailer, wrong card, downgrade, damaged trailer. The
+    Summary reads "VCC (master) — image refused by the board", and
+    nothing is resent.
+  - **Silence after the session was up** is "result unknown", in amber,
+    not "not updated". The board sends COMPLETE three times and then
+    flashes without answering. The Summary says to check the version
+    before flashing again.
+  - **A held VCC that accepted an Input/Output/Analog image** is sent
+    BOOT, up to 30 s while it relays over CAN. Otherwise it would sit in
+    the updater for its 2 minutes. A VCC image needs no BOOT. A failed
+    card leaves the board held for a retry.
+- **The Summary** has an Updater row, e.g. "2.6 · board held, released
+  with BOOT". The report has the same line, and history records the
+  updater (older records show as Classic).
+
+**How.** `kflash::Updater` (`Classic`, `V26`) on `FlashConfig`. Every
+2.6 step in `flash_engine.cpp` is behind it:
+- `wait_for_board_and_hold()`, within the same wait the Classic
+  handshake spends on META;
+- `send_boot()`;
+- `note_rejected()`;
+- the unknown branch of the repair timeout;
+- on Windows, `SIO_UDP_CONNRESET` off, as in the host tool's HOST #5.
+
+`FlashResult` gains:
+- `updater`;
+- `board_held`, `older_updater`;
+- `rejected`, `reject_reason`;
+- `result_unknown`;
+- `boot_sent`, `boot_acknowledged`.
+
+The profile stores `"updater": "classic" | "2.6"`; a profile with no key
+is Classic. Each `BatchEntry` carries the batch profile's updater.
+
+**Decisions.**
+- **Default:** Classic for new and existing profiles, so nothing changes
+  until someone flips it.
+- **REJECTED and unknown stay CardOutcome::Failed,** with their own
+  headline and explanation. No new outcome, so the history filters are
+  unchanged. "Stop batch on first failure" treats them as failures.
+- **Card results are not collected yet** (the next 2.6 patch). So BOOT
+  is sent as soon as the image is accepted. The VCC reads it once its
+  CAN relay is done and boots 200 ms later. Cards that report after that
+  go unheard, as with the classic flasher.
+- **Abort leaves a held board held:** it boots by itself after 2 minutes,
+  as the host tool does.
+
+**Files.**
+- `flasher/flash_engine.{h,cpp}`.
+- `flasher/flashercore.{h,cpp}`: profile, entry, history, `updaterSummary`,
+  explanations, verdict, report.
+- `flasher/flasherwindow.{h,cpp}`: the toggle.
+- `flasher/flasherqueuepage.{h,cpp}`: the note.
+- `flasher/flashersummarypage.cpp`, `flasher/flasherhistorydialog.cpp`.
+- `flasher/board_sim.py`: `--v26`, `--reject N`.
+- `README_FLASHING_AND_CONFIG.md`: "Which updater: Classic or 2.6".
+- Tests: `tests/flasherfakeboard.h` (v26: HOLD/BOOT → INFO, REJECTED,
+  lost COMPLETE, the held VCC after a card image), new
+  `tests/test_session296.cpp`, `tests/tests.pro`.
+- `tests/screenshot_main.cpp`: `SHOT_WINDOW=flasher26`.
+
+**Tests.** `session296` (50 checks), the engine against FakeBoards:
+- Classic sends neither HOLD nor BOOT, even to a 2.6 board.
+- 2.6, VCC image: held, verified, no BOOT.
+- 2.6, Input image: held, then BOOT acknowledged and the board leaves
+  the updater.
+- 2.6 against an older board: found by POLL, flashed, not held, no BOOT.
+- REJECTED reason 2: stops, says why, no restart, the board stays held,
+  verdict "image refused by the board".
+- Every COMPLETE lost: "result unknown" in 2.6 (amber verdict), "No
+  STATUS … aborting" in Classic, as before.
+- No board: "META never acknowledged" within the wait.
+
+Then the profile JSON (old profiles are Classic), history, report and
+`updaterSummary`. Then the real window:
+- the toggle shows the profile's choice and saves it;
+- the profile combo switches it;
+- the note follows it;
+- a 2.6 run through the window is held, verified, recorded as 2.6, and
+  the toggle is locked and hidden meanwhile.
+
+`flasher`, `flasherrun`, `flasherroute`, `session291`, `292`, `94`,
+`134`, `146`, `257` and `280` pass unchanged. Checked on screen with the
+screenshot harness (`SHOT_WINDOW=flasher26`, `flasherrun`), light and
+dark.
+
+**Gate:** Qt 6 and Qt 5.15 green, 332 suites / 8428 checks, 0 failed;
+menu audit 184 ok; smoke; validators. The first Qt 5.15 run caught the
+toggle widening the flashing bar past 1100 px (`session146`), hence it
+hides while flashing.
+
+**Not tested:**
+- **Against a real board:** only the FakeBoard and `board_sim.py`'s
+  code. `board_sim.py --v26` was not run (nothing in the gate drives it).
+- **On Windows:** the `SIO_UDP_CONNRESET` call compiles only there, so
+  CI's MSVC build is its first check.
+
+---
+
 <a id="session-295"></a>
 ## Session 295 — housekeeping: CLAUDE.md's stale queue, BUILD_SPEED.md
 

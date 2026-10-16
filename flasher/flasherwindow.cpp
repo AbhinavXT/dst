@@ -22,6 +22,7 @@
 #include "windowgeometry.h"
 
 #include <QCloseEvent>
+#include <QButtonGroup>
 #include <QComboBox>
 #include <QDir>
 #include <QFile>
@@ -224,6 +225,41 @@ QWidget *FlasherWindow::buildAppBar()
     connect(m_profileCombo, QOverload<int>::of(&QComboBox::activated), this, &FlasherWindow::onProfileChosen);
     barLayout->addWidget(m_profileCombo);
 
+    // Session 296: which updater the boards run, as a two-way switch. It
+    // belongs to the profile (one bench's boards run one updater) and is
+    // locked while flashing, like the profile itself.
+    barLayout->addSpacing(6);
+    m_updaterLabel = new QLabel(tr("Updater"), m_appBar);
+    barLayout->addWidget(m_updaterLabel);
+    auto *updaterGroup = new QButtonGroup(m_appBar);
+    updaterGroup->setExclusive(true);
+    auto makeUpdaterButton = [this, barLayout, updaterGroup](const QString &text, const QString &name,
+                                                             const QString &tip, kflash::Updater updater) {
+        auto *button = new QToolButton(m_appBar);
+        button->setObjectName(name);
+        button->setText(text);
+        button->setCheckable(true);
+        button->setAutoRaise(false);
+        button->setMinimumHeight(30);
+        button->setToolTip(tip);
+        updaterGroup->addButton(button);
+        connect(button, &QToolButton::clicked, this, [this, updater]() { onUpdaterChosen(updater); });
+        barLayout->addWidget(button);
+        return button;
+    };
+    m_updaterClassic = makeUpdaterButton(
+        tr("Classic"), QStringLiteral("flasherUpdaterClassic"),
+        tr("Boards with the classic updater: the flasher offers META while the chassis is "
+           "power-cycled, and the board must be caught in its 5 s window."),
+        kflash::Updater::Classic);
+    m_updater26 = makeUpdaterButton(
+        tr("2.6"), QStringLiteral("flasherUpdater26"),
+        tr("Boards with updater 2.2 or later (2.6): the flasher holds the board in the updater "
+           "(HOLD), stops on an image the board refuses (REJECTED), reports a lost answer at the "
+           "end as \"result unknown\", and releases a VCC that relayed a card image (BOOT)."),
+        kflash::Updater::V26);
+    barLayout->addSpacing(6);
+
     barLayout->addStretch(1);
 
     // Shown only while flashing: the caution, and where it is going.
@@ -313,6 +349,14 @@ void FlasherWindow::setFlashingState(bool flashing)
     // Nothing that would change what is being flashed can be touched while
     // a batch runs. History stays available: it is read-only.
     m_profileCombo->setEnabled(!flashing);
+    // Session 296: the updater is the profile's, so it is locked too; and
+    // hidden, like the Profile label, so the caution and the target keep
+    // their room (session 146's 1100 px, with Qt 5's wider fonts).
+    m_updaterLabel->setVisible(!flashing);
+    m_updaterClassic->setVisible(!flashing);
+    m_updater26->setVisible(!flashing);
+    m_updaterClassic->setEnabled(!flashing);
+    m_updater26->setEnabled(!flashing);
     m_gearButton->setEnabled(!flashing);
     if (m_profileMenuButton) m_profileMenuButton->setEnabled(!flashing);   // no profile swaps mid-flash
     refreshAppBarTarget();
@@ -342,6 +386,41 @@ void FlasherWindow::reloadProfileCombo()
 void FlasherWindow::applyActiveProfile()
 {
     m_queuePage->applyProfile(m_profiles.profile(m_profiles.activeName()));
+    showProfileUpdater();
+}
+
+void FlasherWindow::showProfileUpdater()
+{
+    const bool v26 = m_profiles.profile(m_profiles.activeName()).updater == kflash::Updater::V26;
+    m_updaterClassic->setChecked(!v26);
+    m_updater26->setChecked(v26);
+}
+
+kflash::Updater FlasherWindow::updater() const
+{
+    return m_updater26->isChecked() ? kflash::Updater::V26 : kflash::Updater::Classic;
+}
+
+QToolButton *FlasherWindow::updaterButton(kflash::Updater updater) const
+{
+    return updater == kflash::Updater::V26 ? m_updater26 : m_updaterClassic;
+}
+
+void FlasherWindow::onUpdaterChosen(kflash::Updater updater)
+{
+    if (m_flashing) {
+        showProfileUpdater();
+        return;
+    }
+    Flasher::FlashProfile profile = m_profiles.profile(m_profiles.activeName());
+    if (profile.updater == updater) {
+        return;
+    }
+    profile.updater = updater;
+    m_profiles.upsert(profile);
+    saveProfiles();
+    showProfileUpdater();
+    m_queuePage->setUpdater(updater);
 }
 
 void FlasherWindow::saveProfiles()
@@ -477,8 +556,12 @@ bool FlasherWindow::startBatch(bool confirmNames)
     // Snapshot everything the batch depends on, so an edit made while it
     // runs (the fields are disabled, but the files on disk are not) cannot
     // change what the rest of the batch sends.
-    m_plan = Flasher::BatchPlan(m_queuePage->batchEntries(), true);
     m_batchProfile = m_profiles.profile(m_profiles.activeName());
+    QVector<Flasher::BatchEntry> entries = m_queuePage->batchEntries();
+    for (Flasher::BatchEntry &entry : entries) {
+        entry.updater = m_batchProfile.updater;   // session 296
+    }
+    m_plan = Flasher::BatchPlan(entries, true);
     m_batchIp = m_queuePage->vccIp();
     m_batchPort = m_queuePage->port();
     m_batchId = Flasher::newBatchId(QDateTime::currentDateTimeUtc());
@@ -512,6 +595,7 @@ void FlasherWindow::startEntry(int worker, int index)
     config.card_type = entry.cardType;
     config.image.assign(entry.image.bytes.constBegin(), entry.image.bytes.constEnd());
     config.tuning = Flasher::effectiveTuning(m_batchProfile);
+    config.updater = entry.updater;
 
     m_workerEntry[worker] = index;
     m_flashingPage->setMaxRounds(config.tuning.max_rounds);

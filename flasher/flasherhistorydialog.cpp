@@ -274,6 +274,7 @@ void FlasherHistoryDialog::onRowSelected()
                  .arg(record.repairRounds).arg(record.blocksResent).arg(record.totalBlocks)
                  .arg(Flasher::formatBytes(record.bytesOnWire), Flasher::formatRate(record.avgKBps));
     facts << tr("Message   %1").arg(record.message);
+    facts << tr("Updater   %1").arg(record.updater.isEmpty() ? QStringLiteral("Classic") : record.updater);
     m_detailFacts->setText(facts.join(QLatin1Char('\n')));
     m_detailLog->setPlainText(record.log.join(QLatin1Char('\n')));
 }

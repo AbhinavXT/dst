@@ -623,13 +623,16 @@ int main(int argc, char **argv)
                 profile.defaultImages.insert(Flasher::CardOutput, writeImg(QStringLiteral("KAVACH_Output_Card_v5.appimage"), 25 * 1450));
                 profile.defaultImages.insert(Flasher::CardVcc, writeImg(QStringLiteral("LKAVACH_v1.2.9.appimage"), 30 * 1450));
                 profile.updaterWaitSeconds = Flasher::kMinUpdaterWaitSeconds;
+                // Session 296: flasher26 is the queue with the 2.6 updater on.
+                if (which == QLatin1String("flasher26")) profile.updater = kflash::Updater::V26;
                 store.upsert(profile, store.names().first());
                 store.setActiveName(profile.name);
                 store.save();
                 auto *w = new FlasherWindow(nullptr, flashDir.path());
                 w->queuePage()->selectCard(which.startsWith(QLatin1String("flashervccs")) ? Flasher::CardVcc
                                                                                          : Flasher::CardInput);
-                if (which != QLatin1String("flasher") && which != QLatin1String("flashervccsq")) {
+                if (which != QLatin1String("flasher") && which != QLatin1String("flashervccsq")
+                    && which != QLatin1String("flasher26")) {
                     w->resize(1100, 720);
                     w->show();
                     w->startBatch(false);
