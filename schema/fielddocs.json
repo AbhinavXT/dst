@@ -1,0 +1,3909 @@
+{
+ "_comment": "Field descriptions shown when hovering a field (session 301). Texts are copied from the annexures named in 'sources': only PDF line-break hyphens are rejoined; wording, values and the annexures' own typos are kept. 'names' are the names DLConsole shows (schema field, group or repeat names; a row's [n] index and ' (…)' suffix are ignored); 'field' is the annexure's name. 'note' is DLConsole's, never the annexure's. Built by schema/build_fielddocs.py.",
+ "sources": {
+  "C": {
+   "title": "Annexure-C — Multiple Access Scheme & Radio Communication Protocol",
+   "doc": "RDSO/SPN/196/2020 Version 4.0, Amdt-10, effective 27.06.2024"
+  },
+  "D": {
+   "title": "Annexure-D — KAVACH RFID Tag Data Format",
+   "doc": "RDSO/SPN/196/2020 Version 4.0, Amdt-7, effective 07.06.2024"
+  }
+ },
+ "docs": [
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "PKT_TYPE"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 12,
+   "parts": [
+    {
+     "field": "PKT_TYPE",
+     "bits": 4,
+     "text": "1001 (9)\n0000- 0111: Radio packets for KAVACH V3.2\nRadio packets for KAVACH V4.0:\n1000: Reserved for future use\n1001: Station to Onboard Regular Packet\n1010: Onboard to Station Regular Packet\n1011: Access Authority Packet\n1100: Additional Emergency Packet\n1101: Onboard Access Request\n1110 to 1111: Reserved for future use"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "PKT_LENGTH"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 12,
+   "parts": [
+    {
+     "field": "PKT_LENGTH",
+     "bits": 10,
+     "text": "Packet Length is in terms of bytes\n00 0000 0000 - 1 byte\n00 000 0001 – 2 bytes\n…………\n11 1111 1111 – 1024 bytes"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "FRAME_NUM"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 12,
+   "parts": [
+    {
+     "field": "FRAME_NUM",
+     "bits": 17,
+     "text": "1 to 86400 ((hr * 3600 + mm * 60 + ss)+ 1)\nExample: 00:00:00 - Frame No 1\n00:00:02 - Frame No. 3\n……\n23:59:58 - Frame No 86399"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "SOURCE_STN_ID"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 13,
+   "parts": [
+    {
+     "field": "SOURCE_STN_ILC_IBS_ID",
+     "bits": 16,
+     "text": "Unique Code, Valid values from 1 to 65535 (Purchaser Railway to Decide) (It will be unique for one KMS)"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "STN_VERSION"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 13,
+   "parts": [
+    {
+     "field": "SOURCE_STN_ILC_IBS_VERSION",
+     "bits": 3,
+     "text": "0: Not used\n1 to 7: Kavach Version\n1 : Kavach Specification 3.2\n2 : Kavach Specification 4.0"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "DEST_LOCO_ID"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 13,
+   "parts": [
+    {
+     "field": "DEST_LOCO_ID",
+     "bits": 20,
+     "text": "1 to 999999"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "REF_PROF_ID"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 13,
+   "parts": [
+    {
+     "field": "REF_PROF_ID",
+     "bits": 4,
+     "text": "This is the Profile number of the below packets transmitted to Onboard KAVACH and is specific to it. On every update of MA, these packets are to be retransmitted.\n0000: No profile information. On receipt of Access Authority Packet, the onboard KAVACH shall send ‘0000’ retaining the profile already available for speed supervision. Stationary KAVACH shall send REF_PROF_ID as “0000” when route is not known.\n0001 to 1111: Valid profile information\nThis is associated with TurnOut_INFO, TSR_INFO, TAG_LINKING, NEUTRAL _INFO, etc., Onboard KAVACH is expected to acknowledge the receipt of this profile ID. Stationary KAVACH will stop transmission of this profile after the receipt of acknowledgement."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "LAST_REF_RFID"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 14,
+   "parts": [
+    {
+     "field": "LAST_REF_RFID",
+     "bits": 10,
+     "text": "Below track profile data is given from last RFID as a reference position. This RFID shall be one of the last ten tags read by Onboard KAVACH. Onboard KAVACH shall retain last 11 RFID Tags along with their location. From the last 10 RFID Tags reported by Onboard KAVACH, Stationary KAVACH shall send the profile with respect to the most recently received tag. Stationary KAVACH shall send the actual distances of start and end locations of each element in the profile with respect to LAST_REF_RFID. Stationary and Onboard KAVACH shall not consider Foreign tags and wrong line tags as LAST_REF_RFID."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "DIST_PKT_START"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 14,
+   "parts": [
+    {
+     "field": "DIST_PKT_START",
+     "bits": 15,
+     "text": "Signed Value. -16384m to +16383m. Distance in meters from LAST_REF_RFID from where below sub packets data starts. For this distance there is no profile or already profile might be given. When the value is negative, the onboard KAVACH shall supervise the profile from the REAR end of the train. When the value is positive, the onboard KAVACH shall merge with the existing profile, if available and supervise MRSP. Positive correction shall be sent by Stationary KAVACH in exceptional cases. When current Onboard route is unknown, this value to be from shifted position reference (eg. from approaching signal foot)."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "PKT_DIR"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 14,
+   "parts": [
+    {
+     "field": "PKT_DIR",
+     "bits": 2,
+     "text": "00-unidentified\n01- Nominal\n10- Reverse"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "subpkt"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 15,
+   "parts": [
+    {
+     "field": "SUB_PKT_TYPE",
+     "bits": 4,
+     "text": "0000: Movement Authority\n0001: Static Speed Profile\n0010: Gradient Profile\n0011: LC gate profile\n0100: Turnout Speed Profile\n0101: Tag Linking Information\n0110: Track Condition data\n0111: Temporary speed Restrictions Profile\n1000 to 1111: Reserved for future use"
+    },
+    {
+     "field": "SUB_PKT_LENGTH",
+     "bits": 7,
+     "text": "Length in bytes. Max 128 bytes (1024 bits)."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "FRAME_OFFSET"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 15,
+   "parts": [
+    {
+     "field": "FRAME_OFFSET",
+     "bits": 4,
+     "text": "0001 to 1110\nFrame offset = (Stationary Kavach frame number - last received Onboard Kavach frame number)/2\nCyclic substraction to be ensured at 00:00 hours."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "DEST_LOCO_SOS"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 15,
+   "parts": [
+    {
+     "field": "DEST_LOCO_SOS",
+     "bits": 4,
+     "text": "SoS/ Emergency Condition to Specific Onboard under following conditions\n0000: No SoS /Emergency\n0001: Foreign RFID\n0010: Reserved.\n0011: Onboard Odo error is >= 120m\n0100: Detection of SPAD\n0101: Rear-end collision\n0110: Head-On collision\n0111: Violation of Shunting limits in shunt mode\n1000: Station General SoS\n1001 to 1111: Reserved"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "TRAIN_SECTION_TYPE"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 15,
+   "parts": [
+    {
+     "field": "TRAIN_SECTION_TYPE",
+     "bits": 2,
+     "text": "00: Station Section\n01: Absolute Block\n10: Autoblock\n11: Reserved"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "CUR_SIG_INFO"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 16,
+   "parts": [
+    {
+     "field": "CUR_SIG_INFO",
+     "bits": 17,
+     "text": "a16a15a14a13a12a11a10a9a8a7a6a5a4a3a2a1a0\na4 to a0 : (to be defined and displayed only for applicable Home / Routing Home / Starter / Intermediate Starter)\n00000: To be sent when line number information is not applicable.\n11111: Line Number in excess of 30 Decimal, in this case, no line number to be displayed on DMI.\n11110: Goods Lines (in case of any Goods Line > 30 Decimal, no need to display Line Number on DMI, however, the information to be displayed on DMI that the Train is going to Goods Line). It is clarified that even for multiple Goods Lines, Line Number shall not be communicated to Onboard KAVACH Unit and distinction among Goods Line would not be available through DMI to Onboard Pilot.\na8 to a5: Line Name\n0000-Up Signal\n0001-Down Signal\n0010-Up Fast Signal\n0011-Down Fast Signal\n1000-Up Slow Signal\n1001-Down Slow Signal\n1010-Up Main Signal\n1011-Down Main Signal\n1100-Up Sub Signal\n1101-Down Sub Signal\n1110-UP BI-Direction\n1111-DN BI-Direction\n0100 to 0111-Future Use.\nThis field is not to be used for any purpose other than display associated with signal.\na14 to a9: Type of Signal\n0 Undefined - nothing to be displayed on DMI\n010xxx Various Distant Signals & Auto Signals: 010000 – Distant Signal; 010001 - Inner Distant Signal; 010010 - Gate Distant Signal; 010011 - Gate Inner Distant Signal; 010100 - IB Distant Signal; 010101 - IB Inner Distant Signal; 010110 - Auto Signal (Excludes Gate Stop Signal in Auto Territory); 010111 - Semi-Automatic Signal with A-marker lit; 100100- Semi Automatic Signal without A marker lit\n0110xx Various Home Signals: 011000 - Main Home without Junction Route Indicator; 011001 - Main Home with Junction Route Indicator; 011010 - Routing Home without Junction Type Route Indicator; 011011 - Routing Home with Junction Type Route Indicator\n0111xx Various types of Starter Signals: 011100 - Mainline Starter; 011101 - Loopline Starter; 011110 - Intermediate Starter\nx0xxxx Other Misc Signals: 000001 - Advanced Starter Signal; 000010 - IB Stop Signal; 000011 - Gate Stop Signal; 000100 - Calling-on Signal; 000101 - Advanced Starter-cum-Gate Signal; 000110 - Gate-cum-Distant Signal; 000111 - Advanced Starter-cum-Distant Signal; 100011 - Gate Stop Signal in Auto Territory; 100100 - Semi Automatic Signal without A marker lit; 100101- Advance Starter-cum-Gate Inner Distant Signal; 100110- Gate-cum-Inner Distant Signal; 100111- Gate Inner Distant-cum-Distant Signal; 101000- IB Signal-cum-Gate Distant Signal; 101001- IB Signal-cum-Gate Inner Distant Signal; 101010- IB Signal-cum-Distant Signal; 101011- Advanced Starter-cum- IB Distant; 101100- Starter-cum- IB Distant Signal; 101101- Stop Board/Buffer Stop; 101110- Gate cum IB Distant Signal; 101111- Gate cum IB Inner Distant Signal; 110000- Advance Starter-cum-Gate Distant Signal\n001000 - Only in RFID Tag, not in Radio Packet. OnboardKavach shall apply Brake when it crosses signal with this code (dead stop locations - such as end of berthing tracks with Shunt Signals) in normal mode.\nThe full list of signals along with corresponding binary codes will be issued through a Technical Advisory Note (TAN). Modification of nomenclature shall not result in change of Executive Software.\na15: Signal override permission when danger (0: at standstill, 1: while running- permissive signals controlled by such stop signals shall also be considered)\na16 Stop Signal (0: No, 1: Yes)"
+    }
+   ],
+   "note": "The annexure prints CUR_SIG_ASPECT's codes and a15/a16 between pages 18 and 20; a15 and a16 are part of CUR_SIG_INFO's 17 bits."
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "CUR_SIG_ASPECT"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 19,
+   "parts": [
+    {
+     "field": "CUR_SIG_ASPECT",
+     "bits": 6,
+     "text": "0 Unidentified\n000001 Red\n000010 Yellow without Display of Route Indication\n000011 Yellow with Pos1 Junction Type Route Indication (left)\n000100 Yellow with Pos2 Junction Type Route Indication (left)\n000101 Yellow with Pos3 Junction Type Route Indication (left)\n000110 Yellow with Pos4 Junction Type Route Indication (right)\n000111 Yellow with Pos5 Junction Type Route Indication (right)\n001000 Yellow with Pos6 Junction Type Route Indication (right)\n001001 Spare\n001010 Double Yellow\n001011 Green\n001100 Double Yellow with Pos1 Junction Type Route Indication (left)\n001101 Double Yellow with Pos4 Junction Type Route Indication (right)\n001110 AG Marker OFF\n001111 Red with Calling-on at OFF\n010000 to 010111 Spare\n011000 Stop Board / Buffer Stop\n011001 to 011111 Spare\n100000 to 111111 Yellow with Stencil route 1 to 32"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "NEXT_SIG_ASPECT"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 20,
+   "parts": [
+    {
+     "field": "NEXT_SIG_ASPECT",
+     "bits": 6,
+     "text": "0 In case current Signal Aspect is RED (Undefined)\nCodes as given in CUR_SIG_ASPECT above"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "APPR_SIG_DIST"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 20,
+   "parts": [
+    {
+     "field": "APPR_SIG_DIST",
+     "bits": 15,
+     "text": "Approaching signal distance in meter from the last reference RFID Tag (valid up to 32767m)"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "AUTHORITY_TYPE"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 20,
+   "parts": [
+    {
+     "field": "AUTHORITY_TYPE",
+     "bits": 2,
+     "text": "00: Not to be used\n01: OS Authority (Distance allowed in OS mode with speed restriction)\n10: FS Authority (Distance allowed in FS mode)\n11: SR Authority. When MA is required to be extended beyond border signal and adjacent S-KAVACH communication failed, Authorised speed shall be unknown (63). Onboard KAVACH shall ignore APPR_SIG_DIST and MA_W_R_T_SIG."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "AUTHORIZED_SPEED"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 20,
+   "parts": [
+    {
+     "field": "AUTHORIZED_SPEED",
+     "bits": 6,
+     "text": "Only If AUTHORITY_TYPE = ’01, AUTHORIZED_SPEED variables follows.\n0-50: 0 to 250 kmph, (in revolution of 5Kmph) i.e 3: 15 kmph to be sent for unknown route. No Track profile packets to be sent.\n51-61: Reserved for future use,\n62: 8 Kmph (Configuarble) for auto signal override during night\n63: Unknown."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "MA_W_R_T_SIG"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 20,
+   "parts": [
+    {
+     "field": "MA_W_R_T_SIG",
+     "bits": 16,
+     "text": "0 to 65534 in meters.\n65535: Unknown (Onboard Kavach continues in SR Mode).\nThe Movement Authority transmitted shall be the distance of End of Authority from reference RFID position. In order to cater the delays and failure in acquiring information due to missing radio frames, the Movement Authority in Onboard shall be deduced as the Movement authority corresponding to particular frame received from Stationary Kavach Unit minus the actual distance traveled by the Onboard from that reference RFID position."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "REQ_SHORTEN_MA"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 21,
+   "parts": [
+    {
+     "field": "REQ_SHORTEN_MA",
+     "bits": 1,
+     "text": "0: No request from trackside for shortening MA\n1: New request from trackside for shortening MA\n(New, Future Use)"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "NEW_MA"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 21,
+   "parts": [
+    {
+     "field": "NEW_MA",
+     "bits": 16,
+     "text": "Only If REQ_SHORTEN_MA = 1, NEW_MA variables follow.\nNew MA due to signal cancellation request from EI\n(New, Future Use)"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "TRN_LEN_INFO_STS"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 21,
+   "parts": [
+    {
+     "field": "TRN_LEN_INFO_STS",
+     "bits": 1,
+     "text": "0 – No Train Length Info,\n1 – Train Length Info follows\nOnly If TRN_LEN_INFO_STS = 1, TRN_LEN_INFO_TYPE and remaining variables follow."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "TRN_LEN_INFO_TYPE"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 21,
+   "parts": [
+    {
+     "field": "TRN_LEN_INFO_TYPE",
+     "bits": 1,
+     "text": "0 – means. REF_FRAME_NUM_TL and REF_OFFSET_INT_TL pertain to “Start” frame and offset.\n1 - means REF_FRAME_NUM_TL and REF_OFFSET_INT_TL pertain to “END” frame and offset."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "REF_FRAME_NUM_TLM"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 21,
+   "parts": [
+    {
+     "field": "REF_FRAME_NUM_TLM",
+     "bits": 17,
+     "text": "1 to 86400 ((hr * 3600 + mm * 60 + ss)+ 1)\nExample: 00:00:00 - Frame No 1\n00:00:02 - Frame No. 3\n……\n23:59:58 - Frame No 86399"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "REF_OFFSET_INT_TLM"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 22,
+   "parts": [
+    {
+     "field": "REF_OFFSET_INT_TLM",
+     "bits": 8,
+     "text": "0 to 200 (10ms resolution)"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "NEXT_STN_COMM"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 22,
+   "parts": [
+    {
+     "field": "NEXT_STN_COMM",
+     "bits": 1,
+     "text": "0 – No next station handover\n1 – Requires next station handover\nOnly If NEXT_STN_COMM = 1, APPR_STN_ILC_IBS_ID variables follow."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "APPR_STN_ILC_IBS_ID"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 22,
+   "parts": [
+    {
+     "field": "APPR_STN_ILC_IBS_ID",
+     "bits": 16,
+     "text": "1 to 65535\nApproaching next stationary Kavach ID"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "LM_Speed_Info_CNT"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 22,
+   "parts": [
+    {
+     "field": "LM_Speed_Info_CNT",
+     "bits": 5,
+     "text": "1 to 31"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "speed"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 22,
+   "parts": [
+    {
+     "field": "LM_Static_Speed_Distance",
+     "bits": 15,
+     "text": "Value in meters i.e. ranging from 0 – 32.76 km"
+    },
+    {
+     "field": "LM_Static_Speed_Class",
+     "bits": 1,
+     "text": "0 – Universal Speed will follow\n1 – Classified Speeds A,B,C will follow"
+    },
+    {
+     "field": "LM_Static_Speed_Value",
+     "bits": 6,
+     "text": "0: Reserved\n1- 50: 5-250 Kmph, Speed in steps of 5kmph. Max Speed = 250 kmph\n51--61: Reserved for future use\n62 – 8 Kmph\n63 : Unknown\nClass 0: Universal Static Speed\nClass 1: Static Speed for Category A Trains (LE / Passenger Trains); Static Speed for Category B Trains (Loaded Goods Trains); Static Speed for Category C Trains (Empty Goods Trains)"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "LM_Grad_Info_CNT"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 23,
+   "parts": [
+    {
+     "field": "LM_Grad_Info_CNT",
+     "bits": 5,
+     "text": "1 to 31"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "grad"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 23,
+   "parts": [
+    {
+     "field": "LM_Gradient_Distance",
+     "bits": 15,
+     "text": "Value in meters i.e. ranging from 0 – 32.76 km"
+    },
+    {
+     "field": "LM_GDIR",
+     "bits": 1,
+     "text": "0 = downhill\n1 = uphill"
+    },
+    {
+     "field": "LM_GRADIENT_VALUE",
+     "bits": 5,
+     "text": "This is the absolute value of the average gradient between two defined position as described in Annexure-I. Values lie between 0 to 30. Value 31: reserved.\n0: Gradient not steeper than “1 in 1000”. Includes Level Gradient\n1: Gradient from “1 in 1000” to not steeper than “1 in 500”\n2: Gradient from “1 in 500” to not steeper than “1 in 333”\n3: Gradient from “1 in 333” to not steeper than “1 in 250”\n4: Gradient from “1 in 250” to not steeper than “1 in 200”\n….\nn: Gradient from “1 in (1000/n)” to not steeper than “1 in {1000/(n+1)}”\n….\n30: Gradient steeper than “1 in 33”\n31: Reserved"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "LM_LC_Info_CNT"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 24,
+   "parts": [
+    {
+     "field": "LM_LC_Info_CNT",
+     "bits": 5,
+     "text": "0 to 31"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "lc"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 25,
+   "parts": [
+    {
+     "field": "LM_LC_Distance",
+     "bits": 15,
+     "text": "Value in meters i.e. ranging from 0 – 32.76 km\nThis is the start distance of the LC gate from reference position."
+    },
+    {
+     "field": "LM_LC_ID_Numeric",
+     "bits": 10,
+     "text": "0: Invalid\n1 – 1021: LC Gate Number\n1022: LC Gate Number other than 1 to 1022 - out of range (Display xx on DMI)\n1023: Spare"
+    },
+    {
+     "field": "LM_LC_ID_Alpha_Suffix",
+     "bits": 3,
+     "text": "000 No suffix\n001 a\n010 b\n011 c\n100 d\n101 e\n110 Out of Range (Display xx on DMI)\n111 Spare"
+    },
+    {
+     "field": "LM_LC_Manning_Type",
+     "bits": 1,
+     "text": "0 : Manned, 1 : Unmanned"
+    },
+    {
+     "field": "LM_LC_Class",
+     "bits": 3,
+     "text": "000 Spl\n001 A\n000 B1\n011 B2\n100 B (where not specified in terms of B1/B2)\n101 C\n110 D\n111 Spare"
+    },
+    {
+     "field": "LM_LC_Auto_Whistling_Enabled",
+     "bits": 1,
+     "text": "0 : No, 1 : Yes"
+    },
+    {
+     "field": "LM_LC_Auto_Whistling_Type",
+     "bits": 2,
+     "text": "00 Distance Based\n01 Time Based (Not Used)\n10 Configured Pattern Based (Not Used)\n11 Spare"
+    }
+   ],
+   "note": "LM_LC_Class: the annexure's table prints 000 for both Spl and B1."
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "TO_CNT"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 26,
+   "parts": [
+    {
+     "field": "TO_CNT",
+     "bits": 2,
+     "text": "Number of turnouts from reference position\n0: No turnouts\n1-3: No.of turnouts follow"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "to"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 26,
+   "parts": [
+    {
+     "field": "TO_SPEED",
+     "bits": 5,
+     "text": "00000 Not Used\n00001 Upto 5 kmph\n00010 Upto 10 kmph\n00011 Upto 15 kmph\n--\n--\n10010 Upto 90 Kmph\n10011-11110 Reserved for future use\n11111 Unrestricted"
+    },
+    {
+     "field": "DIFF_DIST_TO",
+     "bits": 15,
+     "text": "Only If TO_SPEED = restricted, DIFF_DIST_TO variable follow.\nStarting Distance of the turnout from last reference RFID. Value in meters i.e. ranging from 0 – 32.76 km"
+    },
+    {
+     "field": "TO_SPEED_REL_DIST",
+     "bits": 12,
+     "text": "Only If TO_SPEED = restricted, DIFF_DIST_TO variable follow.\nTurnout release distance. Value in meters i.e. ranging from 0 - 4095 m. Value to be given upto end of turnout or upto other location will be defined by railways."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "DIST_DUP_TAG"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 27,
+   "parts": [
+    {
+     "field": "DIST_DUP_TAG",
+     "bits": 4,
+     "text": "Distance between Main and duplicate tag. 0000 shall be sent when the tags are placed closer than 1 meter. 1111 is invalid\nIn a yard, the distance between main and duplicate tag is mentioned in the RFID Tag data format. This distance shall be kept common for a yard and shall be sent by a stationary KAVACH in TLI subpacket."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "ROUTE_RFID_CNT"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 27,
+   "parts": [
+    {
+     "field": "ROUTE_RFID_CNT",
+     "bits": 6,
+     "text": "List of expected approaching RFID tags from reference position up to the End of Authority. Station updates the new list only when required.\n0: No tag shall be crossed by Onboard KAVACH. eg: In approach of danger signal."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "tag"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 28,
+   "parts": [
+    {
+     "field": "DIST_NXT_RFID",
+     "bits": 11,
+     "text": "Distance of next RFID from previous RFID (first tag will be from last reference RFID) in meters i.e. 2047 meter."
+    },
+    {
+     "field": "NXT_RFID_TAG_ID",
+     "bits": 10,
+     "text": "Next RFID Tag ID"
+    },
+    {
+     "field": "DUP_TAG_DIR",
+     "bits": 1,
+     "text": "Linking Direction of Duplicate Tag w.r.t Main Tag\n0: Duplicate Tag in Nominal Direction (+)/No Linking distance correction is required for T-Tag and A-Tag\n1: Duplicate Tag in Reverse Direction (-)"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "LOC_RESET"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 28,
+   "parts": [
+    {
+     "field": "ABS_LOC_RESET",
+     "bits": 1,
+     "text": "0–No Locational Error (The following bits will not be padded)\n1–Location Correction (New Section)\nLocation shall get corrected in block section after 100m from Advance Starter. Onboard shall not apply brakes due to any of these reasons. When this information is not available, linking distance given in N-tag shall be used to avoid abnormal train trip due to location correction.\nStation shall able to transmit MA, SSP, TSR and maintain radio communication even after location reset.\nOnly If ABS_LOC_RESET>0, below variables follow.\nIn Given MA, single location reset is considered."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "START_DIST_TO_LOC_RESET"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 29,
+   "parts": [
+    {
+     "field": "START_DIST_TO_LOC_RESET",
+     "bits": 15,
+     "text": "This is the start distance of the Normal tag (from the Onboard current location) in which location correction is done. Value in meters."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "ADJ_LOCO_DIR"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 29,
+   "parts": [
+    {
+     "field": "ADJ_LOCO_DIR",
+     "bits": 2,
+     "text": "This is expected Onboard direction after passing location correction N-tag\n00 – Not Known\n01 – Nominal\n10 – Reverse\n11 – Deduce from Tags"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "ABS_LOC_CORRECTION"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 29,
+   "parts": [
+    {
+     "field": "ABS_LOC_CORRECTION",
+     "bits": 23,
+     "text": "This is the new absolute location from Adjustment/Junction Tag location correction"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "ADJ_LINE_CNT"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 29,
+   "parts": [
+    {
+     "field": "ADJ_LINE_CNT",
+     "bits": 3,
+     "text": "Adjacent line TINs along the MA for unusual stoppage detection.\n0: No adjacent lines, Self block section TIN will follow.\n1-5: Number of Adjacent lines including occupied self block section TIN.\n6: Reserved\n7: unknown"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "line_tin",
+    "TIN"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 29,
+   "parts": [
+    {
+     "field": "LINE_TIN",
+     "bits": 9,
+     "text": "Self and Adjacent Line TIN\nOnly If ADJ_LINE_CNT = 0 to 5, LINE_TIN variable will follow."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "TRACKCOND_CNT"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 30,
+   "parts": [
+    {
+     "field": "TRACKCOND_CNT",
+     "bits": 4,
+     "text": "Track condition in MA region from reference RFID"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "tc"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 30,
+   "parts": [
+    {
+     "field": "TRACKCOND_TYPE",
+     "bits": 4,
+     "text": "0000: Not used\n0001: Dead Stop\n0010: Radio hole (MA is valid upto Comm. fail time out)\n0011: Non stopping area\n0100: Tunnel stopping area\n0101: Powerless section (Neutral section)\n0110: Sound horn\n0111: Reversing area\n1000: Fouling Mark location\n1001: KAVACH Territory Exit. (Not to validate RFID linking beyond this location).\n1010 to 1111: Reserved for future use"
+    },
+    {
+     "field": "START_DIST_TRACKCOND",
+     "bits": 15,
+     "text": "Start distance to Track condition from reference RFID. Value in meters i.e. ranging from 0 – 32.76 km"
+    },
+    {
+     "field": "LENGTH_TRACKCOND",
+     "bits": 15,
+     "text": "Length of the Track condition. Value in meters i.e. ranging from 0 – 32.76 km"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "TSR_STATUS"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 31,
+   "parts": [
+    {
+     "field": "TSR_STATUS",
+     "bits": 2,
+     "text": "00 – No applicable TSR for the current MA\n01 – No Latest TSR Information (Onboard KAVACH shall transit to SR Mode, No MA to be extended by Stationary KAVACH).\n10 – Latest TSR Information\n11 – Reserved"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "TSR_Info_CNT"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 31,
+   "parts": [
+    {
+     "field": "TSR_Info_CNT",
+     "bits": 5,
+     "text": "0 to 31"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "tsr"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 31,
+   "parts": [
+    {
+     "field": "TSR_ID",
+     "bits": 8,
+     "text": "This is the ID of TSR received from TSR management system."
+    },
+    {
+     "field": "TSR_Distance",
+     "bits": 15,
+     "text": "This is the distance to TSR starting point from reference RFID. Value in meters i.e. ranging from 0 – 32.76 km"
+    },
+    {
+     "field": "TSR_Length",
+     "bits": 15,
+     "text": "Length of TSR. Value in meters i.e. ranging from 0 – 32.76km"
+    },
+    {
+     "field": "TSR_Class",
+     "bits": 1,
+     "text": "0 – Universal Speed\n1 – Classified Speed"
+    },
+    {
+     "field": "TSR_Universal_Speed",
+     "bits": 6,
+     "text": "only if Q_TSR_CLASS = 0, LM_TSR_Universal_Speed variable follow\n0 Dead stop\nN = 1 to 40: Speed in kmph = 5*N (5,10,15, ....,200 kmph)\n41 to 61 Reserved for future use\n62 8 kmph\n63 Unknown"
+    },
+    {
+     "field": "TSR_ClassA_Speed / TSR_ClassB_Speed / TSR_ClassC_Speed",
+     "bits": 6,
+     "text": "only if LM_TSR_Class = 1, LM_TSR_ClassA_Speed (B, C) variable follow. Values are Same as LM_TSR_Universal_Speed."
+    },
+    {
+     "field": "TSR_Whistle",
+     "bits": 2,
+     "text": "00: No Whistle\n01: Whistle blow\n10-11: Spare"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "MAC_CODE"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 32,
+   "parts": [
+    {
+     "field": "LOCO_Specific_MAC_CODE",
+     "bits": 32,
+     "text": "Calculated from starting field PACKET_TYPE to last Sub-Packet padding bits"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "slrp"
+   ],
+   "names": [
+    "CRC"
+   ],
+   "src": "C",
+   "clause": "C.4.2",
+   "page": 32,
+   "parts": [
+    {
+     "field": "PKT_CRC",
+     "bits": 32,
+     "text": "Packet CRC"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "PKT_TYPE"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 32,
+   "parts": [
+    {
+     "field": "PKT_TYPE",
+     "bits": 4,
+     "text": "1010 (10)\n0000: Undefined\n0000- 0111: Radio packets for KAVACH V3.2\nRadio packets for KAVACH V4.0:\n1000: Reserved for future use\n1001: Station to Onboard Regular Packet\n1010: Onboard to Station Regular Packet\n1011: Access Authority Packet\n1100: Additional Emergency Packet\n1101: Onboard Access Request\n1110 to 1111: Reserved for future use"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "PKT_LENGTH"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 32,
+   "parts": [
+    {
+     "field": "PKT_LENGTH",
+     "bits": 7,
+     "text": "Packet Length is in terms of bytes\n000 0000 - 1 byte\n000 0001 – 2 bytes\n…………\n111 1111 – 128 bytes"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "FRAME_NUM"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 33,
+   "parts": [
+    {
+     "field": "FRAME_NUM",
+     "bits": 17,
+     "text": "1 to 86400 ((hr * 3600 + mm * 60 + ss)+ 1)\nExample: 00:00:00 - Frame No 1\n00:00:02 - Frame No. 3\n……\n23:59:58 - Frame No 86399"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "SOURCE_LOCO_ID"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 33,
+   "parts": [
+    {
+     "field": "SOURCE_LOCO_ID",
+     "bits": 20,
+     "text": "1 to 999999 (Separate Look up table for EMU/DEMU)\n0 is an invalid Loco ID."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "LOCO_VERSION"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 33,
+   "parts": [
+    {
+     "field": "SOURCE_LOCO_VERSION",
+     "bits": 3,
+     "text": "0: Not used\n1 to 7: Kavach Version\n1: Kavach Specification 3.2\n2: Kavach Specification 4.0"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "ABS_LOCO_LOC"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 33,
+   "parts": [
+    {
+     "field": "ABS_LOCO_LOC",
+     "bits": 23,
+     "text": "Absolute Location in meters shall comensate for Reader Offset in rear end and reader offset in front\n8388607 is invalid Location."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "L_DOUBTOVER"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 33,
+   "parts": [
+    {
+     "field": "L_DOUBTOVER",
+     "bits": 9,
+     "text": "This is the over-reading amount plus the 5 m location accuracy of RFID Tag + 5% odometery error. This information shall be used for distance supervision of targets on safe-side (eg. PSR, TSR, Rear End Collision etc.)"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "L_DOUBTUNDER"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 33,
+   "parts": [
+    {
+     "field": "L_DOUBTUNDER",
+     "bits": 9,
+     "text": "This is the under-reading amount plus the 5 m location accuracy of RFID Tag + 5% odometery error. This information shall be used for supervision of location for discarding the Tag identified beyond this length (eg. Linking, Head on Collision etc.)"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "TRAIN_INT"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 34,
+   "parts": [
+    {
+     "field": "TRAIN_INT",
+     "bits": 2,
+     "text": "Train Integrity status of the train\n00: No Train Integrity information available\n01: Train integrity confirmed by integrity monitoring device\n10: Train integrity confirmed by Loco Pilot\n11: Reserved\n(New, Future Use)"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "TRAIN_LENGTH"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 34,
+   "parts": [
+    {
+     "field": "TRAIN_LENGTH",
+     "bits": 11,
+     "text": "0: Unidentified/ Invalid\n1 to 2047: Train length in mtrs (It shall include both L_doubt Over and L_doubt under)."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "TRAIN_SPEED"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 34,
+   "parts": [
+    {
+     "field": "TRAIN_SPEED",
+     "bits": 9,
+     "text": "0 to 400 Train Speed in kmph\n401 to 510 Reserved for future use\n511 Train Speed unidentified"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "MOVEMENT_DIR"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 34,
+   "parts": [
+    {
+     "field": "MOVEMENT_DIR",
+     "bits": 2,
+     "text": "00 Traffic Direction not established / unidentified\n01 Nominal\n10 Reverse\n11 Reserved for future use"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "EMERGENCY_STATUS"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 34,
+   "parts": [
+    {
+     "field": "EMERGENCY_STATUS",
+     "bits": 3,
+     "text": "000 No Emergency - Regular Packet\n001 Unusual Stoppage in block section\n010 SoS\n011 Roll Back Detected\n100 Head On Collision\n101 Rear End Collision\n110 Parting SoS\n111 Spare"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "LOCO_MODE"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 34,
+   "parts": [
+    {
+     "field": "LOCO_MODE",
+     "bits": 4,
+     "text": "0001 Stand_By\n0010 Staff_Responsible_Mode\n0011 Limited_Supervision\n0100 Full_Supervision\n0101 Override\n0110 On_Sight\n0111 Trip\n1000 Post_Trip\n1001 Reverse\n1010 Shunting\n1011 Non_Leading\n1100 System_Failure\n1101 Isolation"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "LAST_RFID_TAG"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 35,
+   "parts": [
+    {
+     "field": "LAST_RFID_TAG",
+     "bits": 10,
+     "text": "Tag ID of Last RFID Tag Read"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "TAG_DUP"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 35,
+   "parts": [
+    {
+     "field": "TAG_DUP",
+     "bits": 1,
+     "text": "0: Main Tag\n1: Duplicate Tag"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "TAG_LINK_INFO"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 35,
+   "parts": [
+    {
+     "field": "TAG_LINK_INFO",
+     "bits": 3,
+     "text": "000 No Tag missing\n001 Duplicate Tag missing\n010 Main Tag missing\n011 Both Tag missing\n100 Tag position interchanged\n101 Both Tags have same location info\n110 Intertag distance less than DIST_DUP_TAG\n111 Intertag distance greater than DIST_DUP_TAG"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "TIN"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 35,
+   "parts": [
+    {
+     "field": "TIN",
+     "bits": 9,
+     "text": "Each TIN is 9 bits. Track identification number occupied by front end of onboard KAVACH.\n0 Ignore / Don‟t Care\n1 to 250 Track Identity Number as per Track Section Occupied\n251 Onboard shed TIN\n252-511 Reserved for future use"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "Brake_Applied"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 35,
+   "parts": [
+    {
+     "field": "Brake_Applied",
+     "bits": 3,
+     "text": "0 No over speed, No brakes by Kavach\n1 Over speed but no brakes by Kavach\n10 Normal Service Brake by Kavach (not to be sent when hardwire interface is not done. For ex: in EMUs and Trainsets )\n11 Full Service Brake by Kavach\n100 Emergency Brake by Kavach\n101 to 111 Spare"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "NEW_MA_REPLY"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 36,
+   "parts": [
+    {
+     "field": "NEW_MA_REPLY",
+     "bits": 2,
+     "text": "0: No request for Shorten MA from Station KAVACH\n1: Request to Shorten MA granted\n2: Request to Shorten MA rejected\n3: reserved\n(New, Future Use)"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "LAST_REF_PROFILE_NUM"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 36,
+   "parts": [
+    {
+     "field": "LAST_REF_PROFILE_NUM",
+     "bits": 4,
+     "text": "Indicates the last track profile number received. To ensure RFID linking and TSR data received and taken into cognizance by Onboard.\n0: Indicates no track profile data with Onboard KAVACH in given MA. On receipt of Access Authority Packet, the onboard KAVACH shall send ‘0000’ retaining the profile already available for speed supervision."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "SIG_OV"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 36,
+   "parts": [
+    {
+     "field": "SIG_OV",
+     "bits": 1,
+     "text": "Request for OS MA to pass the approaching signal at danger when Authority to Proceed is available with LP.\n0: Signal Override Inactive\n1: Signal Override Active"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "Info_Ack"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 36,
+   "parts": [
+    {
+     "field": "Info_Ack",
+     "bits": 4,
+     "text": "0: No Ack\n1: Loco Specific SoS Ack by LP\n2: FS to LS Ack by LP\n3: LS to SR Ack by LP\n4: FS to SR Ack by LP\n5: OS to SR Ack by LP\n6: OV to SR Ack by LP\n7: Trip Ack by LP\n8: PTRIP to SR Ack by LP\n9: Auto horn Ack by LP\n10: Train Length Measurement (TLM) Start packet received Ack from Onboard KAVACH\n11: TLM End packet received Ack from Onboard KAVACH\n12: Unusual Stoppage Ack by LP\n13: Manual SoS Ack by LP\n14: Spare\n15: Spare\nWhen event is started, flag is to set and when event ends flag is to be reset. The Ack shall be sent for minimum 5 (five) cycle or as long as flag is set high. The expected functionality in the Stationary KAVACH (SVK), is to log the event in case of mode transitions. In cases of SoS acknowledgement, it would be released by SVK. In case of TLM Start/End acknowledgement, STCAS would act on transmission of TLM. Acknowledgement by LP for onboard specific sos and TLM Start/End can occur simultaneously."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "Loco_Health",
+    "Health_Raw_Stale"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 37,
+   "parts": [
+    {
+     "field": "Loco_Health_Status",
+     "bits": 6,
+     "text": "(Only for NMS Logging and report generation)\nOnboard Kavach health shall be prepared for length of 24bits and same to be included in each radio packet as per below procedure. Each bit indicates status of each sub system in the OnboardKavach unit\nFrame Number in Binary xxxx xxxx xxxx x001: First 6 bits of Onboard Health\nxxxx xxxx xxxx x011: Second 6 bits of Onboard Health\nxxxx xxxx xxxx x101: Third 6 bits of Onboard Health\nxxxx xxxx xxxx x111: Fourth 6 bits of Onboard Health\nOnboard Kavach Health (as prescribed in Clause 6.1.24 of Annexure-G)"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "MAC_CODE"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 38,
+   "parts": [
+    {
+     "field": "MAC_CODE",
+     "bits": 32,
+     "text": "Calculated from PKT_TYPE to Onboard_Health_Status fields"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "lsrp"
+   ],
+   "names": [
+    "CRC"
+   ],
+   "src": "C",
+   "clause": "C.4.3",
+   "page": 38,
+   "parts": [
+    {
+     "field": "PKT_CRC",
+     "bits": 32,
+     "text": "Packet CRC"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aap"
+   ],
+   "names": [
+    "PKT_TYPE"
+   ],
+   "src": "C",
+   "clause": "C.4.4",
+   "page": 38,
+   "parts": [
+    {
+     "field": "PKT_TYPE",
+     "bits": 4,
+     "text": "1011 (11)\n0000- 0111: Radio packets for KAVACH V3.2\nRadio packets for KAVACH V4.0:\n1000: Reserved for future use\n1001: Station to Onboard Regular Packet\n1010: Onboard to Station Regular Packet\n1011: Access Authority Packet\n1100: Additional Emergency Packet\n1101: Onboard Access Request\n1110 to 1111: Reserved for future use"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aap"
+   ],
+   "names": [
+    "PKT_LENGTH"
+   ],
+   "src": "C",
+   "clause": "C.4.4",
+   "page": 38,
+   "parts": [
+    {
+     "field": "PKT_LENGTH",
+     "bits": 7,
+     "text": "Packet Length is in terms of bytes\n000 0000 - 1 byte\n000 0001 – 2 bytes\n…………\n111 1111 – 128 bytes"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aap"
+   ],
+   "names": [
+    "FRAME_NUM"
+   ],
+   "src": "C",
+   "clause": "C.4.4",
+   "page": 38,
+   "parts": [
+    {
+     "field": "FRAME_NUM",
+     "bits": 17,
+     "text": "1 to 86400 ((hr * 3600 + mm * 60 + ss)+ 1)\nExample: 00:00:00 - Frame No 1\n00:00:02 - Frame No. 3\n……\n23:59:58 - Frame No 86399"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aap"
+   ],
+   "names": [
+    "SOURCE_STN_ID"
+   ],
+   "src": "C",
+   "clause": "C.4.4",
+   "page": 39,
+   "parts": [
+    {
+     "field": "SOURCE_STN_ILC_IBS_ID",
+     "bits": 16,
+     "text": "Unique Code, Valid values from 1 to 65535 (Purchaser Railway to Decide) (It will be unique for one KMS)"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aap"
+   ],
+   "names": [
+    "STN_VERSION"
+   ],
+   "src": "C",
+   "clause": "C.4.4",
+   "page": 39,
+   "parts": [
+    {
+     "field": "SOURCE_STN_ILC_IBS_VERSION",
+     "bits": 3,
+     "text": "0: Not used\n1 to 7: Kavach Version\n1 : Kavach Specification 3.2\n2 : Kavach Specification 4.0"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aap"
+   ],
+   "names": [
+    "STN_ILC_IBS_LOC"
+   ],
+   "src": "C",
+   "clause": "C.4.4",
+   "page": 39,
+   "parts": [
+    {
+     "field": "STN_ILC_IBS_LOC",
+     "bits": 23,
+     "text": "Absolute Location in meters"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aap"
+   ],
+   "names": [
+    "DEST_LOCO_ID"
+   ],
+   "src": "C",
+   "clause": "C.4.4",
+   "page": 39,
+   "parts": [
+    {
+     "field": "DEST_LOCO_ID",
+     "bits": 20,
+     "text": "1 to 999999 (Separate Look up table for EMU/DEMU"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aap"
+   ],
+   "names": [
+    "Allotted_UpLink_Freq"
+   ],
+   "src": "C",
+   "clause": "C.4.4",
+   "page": 39,
+   "parts": [
+    {
+     "field": "Allotted_UpLink_Freq",
+     "bits": 12,
+     "text": "Allotted Frequency Channel for UpLink (L-Kavach to S-Kavach frequency)\n0 FDMA Not Used\n1 to 2560 Base Frequency: 406 MHz (Configurable) Allotted Channel Frequencies at 25kHz space is Channel-1: 406 + 1*0.025 = 406.025 MHz Channel-2: 406 + 2*0.025 =406.050 MHz -- Channel-2560: 406 + 2560*0.025 = 470.000 MHz\n2561 to 4093 Reserved for future use\n4094 Other Radio Communication systems used like WiFi/LTE/4G/5G Networks\n4095 Not to be used"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aap"
+   ],
+   "names": [
+    "Allotted_DownLink_Freq"
+   ],
+   "src": "C",
+   "clause": "C.4.4",
+   "page": 39,
+   "parts": [
+    {
+     "field": "Allotted_DownLink_Freq",
+     "bits": 12,
+     "text": "Allotted Frequency Channel for DownLink (S-Kavach to L-Kavach frequency)\n0 FDMA Not Used\n1 to 2560 Base Frequency: 406 MHz Allotted Channel Frequencies at 25kHz space is Channel-1: 406 + 1*0.025 = 406.025 MHz Channel-2: 406 + 2*0.025 =406.050 MHz -- Channel-2560: 406 + 2560*0.025 = 470.000 MHz\n2561 to 4093 Reserved for future use\n4094 Other Radio Communication systems used like WiFi/LTE/4G/5G Networks\n4095 Not to be used"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aap"
+   ],
+   "names": [
+    "Allotted_TDMA_Timeslot"
+   ],
+   "src": "C",
+   "clause": "C.4.4",
+   "page": 40,
+   "parts": [
+    {
+     "field": "Allotted_TDMA_Timeslot",
+     "bits": 7,
+     "text": "0 Not nominated\n1 to 68 Exact Time slot shall be sent by stationary KAVACH excluding reserved slot in Frame"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aap"
+   ],
+   "names": [
+    "STN_RND_NUM_RS"
+   ],
+   "src": "C",
+   "clause": "C.4.4",
+   "page": 40,
+   "parts": [
+    {
+     "field": "STN_RND_NUM_RS",
+     "bits": 16,
+     "text": "On reception of Access Request Packet from Onboard KAVACH Unit, Stationary KAVACH unit generates its own Random Number (RS)."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aap"
+   ],
+   "names": [
+    "STN_TDMA"
+   ],
+   "src": "C",
+   "clause": "C.4.4",
+   "page": 40,
+   "parts": [
+    {
+     "field": "STN_TDMA",
+     "bits": 7,
+     "text": "0 to 68 Station TDMA slot time in p-markers to capture RSSI.\n100 to 125 Reserved for future use\n126 Other Radio Communication systems used like WiFi/LTE/4G/5G Networks\n127 Not to be used"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aap"
+   ],
+   "names": [
+    "MAC_CODE"
+   ],
+   "src": "C",
+   "clause": "C.4.4",
+   "page": 40,
+   "parts": [
+    {
+     "field": "MAC_CODE",
+     "bits": 32,
+     "text": "Calculated for PKT_TYPE to station TDMA"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aap"
+   ],
+   "names": [
+    "CRC"
+   ],
+   "src": "C",
+   "clause": "C.4.4",
+   "page": 40,
+   "parts": [
+    {
+     "field": "PKT_CRC",
+     "bits": 32,
+     "text": "Packet CRC"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aep"
+   ],
+   "names": [
+    "PKT_TYPE"
+   ],
+   "src": "C",
+   "clause": "C.4.5",
+   "page": 41,
+   "parts": [
+    {
+     "field": "PKT_TYPE",
+     "bits": 4,
+     "text": "1100 (12)\n0000- 0111: Radio packets for KAVACH V3.2\nRadio packets for KAVACH V4.0:\n1000: Reserved for future use\n1001: Station to Onboard Regular Packet\n1010: Onboard to Station Regular Packet\n1011: Access Authority Packet\n1100: Additional Emergency Packet\n1101: Onboard Access Request\n1110 to 1111: Reserved for future use"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aep"
+   ],
+   "names": [
+    "PKT_LENGTH"
+   ],
+   "src": "C",
+   "clause": "C.4.5",
+   "page": 41,
+   "parts": [
+    {
+     "field": "PKT_LENGTH",
+     "bits": 7,
+     "text": "Packet Length is in terms of bytes\n000 0000 - 1 byte\n000 0001 – 2 bytes\n…………\n111 1111 – 128 bytes"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aep"
+   ],
+   "names": [
+    "FRAME_NUM"
+   ],
+   "src": "C",
+   "clause": "C.4.5",
+   "page": 41,
+   "parts": [
+    {
+     "field": "FRAME_NUM",
+     "bits": 17,
+     "text": "1 to 86400 ((hr * 3600 + mm * 60 + ss)+ 1)\nExample: 00:00:00 - Frame No 1\n00:00:02 - Frame No. 3\n……\n23:59:58 - Frame No 86399"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aep"
+   ],
+   "names": [
+    "SOURCE_STN_ILC_IBS_ID"
+   ],
+   "src": "C",
+   "clause": "C.4.5",
+   "page": 41,
+   "parts": [
+    {
+     "field": "SOURCE_STN_ILC_IBS_ID",
+     "bits": 16,
+     "text": "Unique Code, Valid values from 1 to 65535 (Purchaser Railway to Decide) (It will be unique for one KMS)"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aep"
+   ],
+   "names": [
+    "SOURCE_STN_ILC_IBS_VERSION"
+   ],
+   "src": "C",
+   "clause": "C.4.5",
+   "page": 41,
+   "parts": [
+    {
+     "field": "SOURCE_STN_ILC_IBS_VERSION",
+     "bits": 3,
+     "text": "0: Not used\n1 to 7: Kavach Version\n1 : Kavach Specification 3.2\n2 : Kavach Specification 4.0"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aep"
+   ],
+   "names": [
+    "STN_ILC_IBS_LOC"
+   ],
+   "src": "C",
+   "clause": "C.4.5",
+   "page": 41,
+   "parts": [
+    {
+     "field": "STN_ILC_IBS_LOC",
+     "bits": 23,
+     "text": "Absolute Location in meters"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aep"
+   ],
+   "names": [
+    "GEN_SOS_CALL"
+   ],
+   "src": "C",
+   "clause": "C.4.5",
+   "page": 41,
+   "parts": [
+    {
+     "field": "GEN_SOS_CALL",
+     "bits": 1,
+     "text": "0 No Station Manual SoS\n1 General SoS Call generated by Stationary Unit Conditions: Manual operation of SOS buttons provided on SOIP."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "aep"
+   ],
+   "names": [
+    "CRC"
+   ],
+   "src": "C",
+   "clause": "C.4.5",
+   "page": 42,
+   "parts": [
+    {
+     "field": "PKT_CRC",
+     "bits": 32,
+     "text": "Packet CRC"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "PKT_TYPE"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 42,
+   "parts": [
+    {
+     "field": "PKT_TYPE",
+     "bits": 4,
+     "text": "1101 (13)\n0000: Undefined\n0000- 0111: Radio packets for KAVACH V3.2\nRadio packets for KAVACH V4.0:\n1000: Reserved for future use\n1001: Station to Onboard Regular Packet\n1010: Onboard to Station Regular Packet\n1011: Access Authority Packet\n1100: Additional Emergency Packet\n1101: Onboard Access Request\n1110 to 1111: Reserved for future use"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "PKT_LENGTH"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 42,
+   "parts": [
+    {
+     "field": "PKT_LENGTH",
+     "bits": 7,
+     "text": "Packet Length is in terms of bytes\n000 0000 - 1 byte\n000 0001 – 2 bytes\n…………\n111 1111 – 128 bytes"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "FRAME_NUM"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 42,
+   "parts": [
+    {
+     "field": "FRAME_NUM",
+     "bits": 17,
+     "text": "1 to 86400 ((hr * 3600 + mm * 60 + ss)+ 1)\nExample: 00:00:00 - Frame No 1\n00:00:02 - Frame No. 3\n……\n23:59:58 - Frame No 86399"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "SOURCE_LOCO_ID"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 42,
+   "parts": [
+    {
+     "field": "SOURCE_LOCO_ID",
+     "bits": 20,
+     "text": "1 to 999999"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "LOCO_VERSION"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 43,
+   "parts": [
+    {
+     "field": "SOURCE_LOCO_VERSION",
+     "bits": 3,
+     "text": "0: Not used\n1 to 7: Kavach Version\n1: Kavach Specification 3.2\n2: Kavach Specification 4.0"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "ABS_LOCO_LOC"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 43,
+   "parts": [
+    {
+     "field": "ABS_LOCO_LOC",
+     "bits": 23,
+     "text": "Absolute Location in meters"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "TRAIN_LENGTH"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 43,
+   "parts": [
+    {
+     "field": "TRAIN_LENGTH",
+     "bits": 11,
+     "text": "0: Unidentified/ Invalid\n1 to 2047: Train length in mtrs"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "TRAIN_SPEED"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 43,
+   "parts": [
+    {
+     "field": "TRAIN_SPEED",
+     "bits": 9,
+     "text": "0 to 400 Train Speed in kmph\n401 to 510 Reserved for future use\n511 Train Speed unidentified"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "MOVEMENT_DIR"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 43,
+   "parts": [
+    {
+     "field": "MOVEMENT_DIR",
+     "bits": 2,
+     "text": "00 Traffic Direction not established / unidentified\n01 Nominal (Normally Traffic Direction as UP)\n10 Reverse (Normally Traffic Direction as DOWN)\n11 Reserved for future use"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "EMERGENCY_STATUS"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 43,
+   "parts": [
+    {
+     "field": "EMERGENCY_STATUS",
+     "bits": 3,
+     "text": "000 No Emergency - Regular Packet\n001 Side Collision (Unusual Stoppage)\n010 SoS\n011 Roll Back Detected\n100 Head On Collision\n101 Rear End Collision\n110 Parting SoS\n111 Spare"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "LOCO_MODE"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 43,
+   "parts": [
+    {
+     "field": "LOCO_MODE",
+     "bits": 4,
+     "text": "0001 Stand_By\n0010 Staff_Responsible_Mode\n0011 Limited_Supervision\n0100 Full_Supervision\n0101 Override\n0110 On_Sight\n0111 Trip\n1000 Post_Trip\n1001 Reverse\n1010 Shunting\n1011 Non_Leading\n1100 System_Failure\n1101 Isolation"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "APPROACHING_STN_ID"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 44,
+   "parts": [
+    {
+     "field": "Approaching Station ID",
+     "bits": 16,
+     "text": "Approaching Station ID as received from Tag"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "LAST_RFID_TAG"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 44,
+   "parts": [
+    {
+     "field": "LAST_RFID_TAG",
+     "bits": 10,
+     "text": "Tag ID of Last RFID Tag Read – The combination of Approaching Station ID and LAST_RFID_TAG shall be used for detecting Head on Collision or Rear End Collision. For this purpose, LAST_Station_ID shall be also be used by the Onboard KAVACH as read from the Tag."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "TIN"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 44,
+   "parts": [
+    {
+     "field": "TIN",
+     "bits": 9,
+     "text": "TIN programmed in last RFID tag\n0 Ignore / Don‟t Care\n1 to 250 Track Identity Number as per Track Section Occupied\n251 Onboard shed TIN\n252-511 Reserved for future use"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "Longitude",
+    "lon_d",
+    "lon_m",
+    "lon_s"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 44,
+   "parts": [
+    {
+     "field": "Longitude",
+     "bits": 21,
+     "text": "-180 to +180\nSigned. Degrees: First nine bits. Minutes: six bits. Seconds: six bits."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "Latitude",
+    "lat_d",
+    "lat_m",
+    "lat_s"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 44,
+   "parts": [
+    {
+     "field": "Latitude",
+     "bits": 20,
+     "text": "-90 to +90\nSigned. Degrees: First eight bits. Minutes: six bits. Seconds: six bits."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "LOCO_RND_NUM_RL"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 44,
+   "parts": [
+    {
+     "field": "LOCO_RND_NUM_RL",
+     "bits": 16,
+     "text": "Onboard Random number for session request. Change of this value by Onboard KAVACH indicates that requesting a fresh session from onboard KAVACH."
+    }
+   ]
+  },
+  {
+   "packets": [
+    "arp",
+    "arprecv"
+   ],
+   "names": [
+    "CRC"
+   ],
+   "src": "C",
+   "clause": "C.4.6",
+   "page": 44,
+   "parts": [
+    {
+     "field": "PKT_CRC",
+     "bits": 32,
+     "text": "Packet CRC"
+    }
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "type"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 4,
+   "parts": [
+    {
+     "field": "Type of Tag (1001: Normal Tag)",
+     "bits": 4,
+     "text": "X3 - X0\nThis field denotes the type of Tag. The decimal value is 9"
+    }
+   ],
+   "tag_types": [
+    9
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "version"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 4,
+   "parts": [
+    {
+     "field": "Version",
+     "bits": 2,
+     "text": "X5-X4\n0: KAVACH Spec 3.2\n1: KAVACH Spec 4.0\n2,3: Reserved for future use"
+    }
+   ],
+   "tag_types": [
+    9
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "unique"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 4,
+   "parts": [
+    {
+     "field": "Unique ID of RFID Tag Set",
+     "bits": 10,
+     "text": "X15– X6\nUnique ID of the RFID Tag. Value ranges from 1 to 1023"
+    }
+   ],
+   "tag_types": [
+    9
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "abs_loc"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 4,
+   "parts": [
+    {
+     "field": "Absolute Loc in meters",
+     "bits": 23,
+     "text": "X38– X16\n(1111111 11111111 11111111 : Not Applicable)\nGeographical location of the RFID Tag in terms of meters as per Railway metrics or Location referred in the Signal Interlocking Plan of the respective stations.\nValue ranges from 0 to 83,88,607"
+    }
+   ],
+   "tag_types": [
+    9
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "tin_nom"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 4,
+   "parts": [
+    {
+     "field": "TIN in Nominal Direction",
+     "bits": 8,
+     "text": "X46 – X39\nTrack Identification number encountered while traversing in Nominal direction(Incremental direction of absolute location)\nValue ranges from 0 to 255\n0: TIN value to be used at KAVACH territory exit in valid direction"
+    }
+   ],
+   "tag_types": [
+    9
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "tin_rev"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 4,
+   "parts": [
+    {
+     "field": "TIN in Reverse Direction",
+     "bits": 8,
+     "text": "X54– X47\nTrack Identification number encountered while traversing in Reverse direction (Decremental direction of absolute location).\nValue ranges from 0 to 255\n0: TIN value to be used at KAVACH territory exit in valid direction"
+    }
+   ],
+   "tag_types": [
+    9
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "tin"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 4,
+   "parts": [
+    {
+     "field": "TIN in Nominal Direction",
+     "bits": 8,
+     "text": "X46 – X39\nTrack Identification number encountered while traversing in Nominal direction(Incremental direction of absolute location)\nValue ranges from 0 to 255\n0: TIN value to be used at KAVACH territory exit in valid direction"
+    },
+    {
+     "field": "TIN in Reverse Direction",
+     "bits": 8,
+     "text": "X54– X47\nTrack Identification number encountered while traversing in Reverse direction (Decremental direction of absolute location).\nValue ranges from 0 to 255\n0: TIN value to be used at KAVACH territory exit in valid direction"
+    }
+   ],
+   "tag_types": [
+    9
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "stn_nom"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 4,
+   "parts": [
+    {
+     "field": "Station ID in Nominal direction",
+     "bits": 16,
+     "text": "Y6-Y0 & X63- X55\nStation ID corresponding to Tag placement,\nNote: 0 to be programmed if Tag is not mapped to any station"
+    }
+   ],
+   "tag_types": [
+    9
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "stn_rev"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 4,
+   "parts": [
+    {
+     "field": "Station ID in Reverse direction",
+     "bits": 16,
+     "text": "Y22– Y7\nStation ID corresponding to Tag placement,\nNote: 0 to be programmed if Tag is not mapped to any station"
+    }
+   ],
+   "tag_types": [
+    9
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "station"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 4,
+   "parts": [
+    {
+     "field": "Station ID in Nominal direction",
+     "bits": 16,
+     "text": "Y6-Y0 & X63- X55\nStation ID corresponding to Tag placement,\nNote: 0 to be programmed if Tag is not mapped to any station"
+    },
+    {
+     "field": "Station ID in Reverse direction",
+     "bits": 16,
+     "text": "Y22– Y7\nStation ID corresponding to Tag placement,\nNote: 0 to be programmed if Tag is not mapped to any station"
+    }
+   ],
+   "tag_types": [
+    9
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "sect_nom"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 4,
+   "parts": [
+    {
+     "field": "Section type in Nominal direction",
+     "bits": 2,
+     "text": "Y24 – Y23\nIndicates whether the territory encountered by the Loco falls in Station vicinity or Block section in its direction of travel\n00-Station Section\n01-Absolute block\n10-Automatic section\n11-Virtual Block\n(01, 10 and 11 – to be used for collision detection)"
+    }
+   ],
+   "tag_types": [
+    9
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "sect_rev"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 5,
+   "parts": [
+    {
+     "field": "Section type in Reverse direction",
+     "bits": 2,
+     "text": "Y26 – Y25\nIndicates whether the territory encountered by the Loco falls in Station vicinity or Block section in its direction of travel\n00-Station Section\n01-Absolute block\n10-Automatic section\n11-Virtual Block\n(01, 10 and 11 – to be used for collision detection)"
+    }
+   ],
+   "tag_types": [
+    9
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "section"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 4,
+   "parts": [
+    {
+     "field": "Section type in Nominal direction",
+     "bits": 2,
+     "text": "Y24 – Y23\nIndicates whether the territory encountered by the Loco falls in Station vicinity or Block section in its direction of travel\n00-Station Section\n01-Absolute block\n10-Automatic section\n11-Virtual Block\n(01, 10 and 11 – to be used for collision detection)"
+    },
+    {
+     "field": "Section type in Reverse direction",
+     "bits": 2,
+     "text": "Y26 – Y25 (as above)"
+    }
+   ],
+   "tag_types": [
+    9
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "placement"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 5,
+   "parts": [
+    {
+     "field": "Tag placement",
+     "bits": 4,
+     "text": "Y30 – Y27\nDenotes the placement of the tag\n‘0000’ – In line section\n‘0001’ – At Signal foot in Nominal direction\n‘0010’ – At Signal foot in Reverse direction\n‘0011’ – At Turnout\n‘0100’ – At KAVACH territory exit in Nominal direction\n‘0101’ – At KAVACH territory exit in Reverse direction\n‘0110’ – At Signal foot in both directions\n“0111” – At KAVACH territory exit in both directions\n“1000” – At Dead Stop in Nominal Direction\n“1001” – At Dead Stop in Reverse Direction\n“1010-1111” Reserved"
+    }
+   ],
+   "tag_types": [
+    9
+   ],
+   "note": "Annexure D: “The Normal tag shall cater the requirement of the Signal foot Tag, Turn Out Tag, Exit Tag, Adjustment/Junction Tag as per the placement of the tag.”"
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "duplication"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 5,
+   "parts": [
+    {
+     "field": "Tag Duplication",
+     "bits": 1,
+     "text": "Y31\n0- Main Tag\n1- Duplicate Tag"
+    }
+   ],
+   "tag_types": [
+    9
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "comm_nom"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 5,
+   "parts": [
+    {
+     "field": "Communication in Nominal Direction",
+     "bits": 1,
+     "text": "Y32\n0- Required\n1-Not required"
+    }
+   ],
+   "tag_types": [
+    9
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "comm_rev"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 5,
+   "parts": [
+    {
+     "field": "Communication in Reverse Direction",
+     "bits": 1,
+     "text": "Y33\n0- Required\n1-Not required"
+    }
+   ],
+   "tag_types": [
+    9
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "comm"
+   ],
+   "src": "D",
+   "clause": "D 2. Normal Tag",
+   "page": 5,
+   "parts": [
+    {
+     "field": "Communication in Nominal Direction",
+     "bits": 1,
+     "text": "Y32\n0- Required\n1-Not required"
+    },
+    {
+     "field": "Communication in Reverse Direction",
+     "bits": 1,
+     "text": "Y33\n0- Required\n1-Not required"
+    }
+   ],
+   "tag_types": [
+    9
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "type"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 6,
+   "parts": [
+    {
+     "field": "Type of Tag (1010 : LC Tag)",
+     "bits": 4,
+     "text": "X3 - X0\nThis field denotes the type of Tag. The decimal value is 10"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "version"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 6,
+   "parts": [
+    {
+     "field": "Version",
+     "bits": 2,
+     "text": "X5-X4\n0-TCAS Spec 3.2\n1-TCAS (KAVACH) Spec 4.0\n2,3 – Reserved for future use"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "unique"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 6,
+   "parts": [
+    {
+     "field": "Unique ID of RFID Tag Set",
+     "bits": 10,
+     "text": "X15– X6\nUnique ID of the RFID Tag. Value ranges from 1 to 1023"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "abs_loc"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 6,
+   "parts": [
+    {
+     "field": "Absolute Loc in meters",
+     "bits": 23,
+     "text": "X38– X16\n(1111111 11111111 11111111 : Not Applicable)\nGeographical location of the RFID Tag in terms of meters as per Railway metrics or Location referred in the Signal Interlocking Plan of the respective stations.\nValue ranges from 0 to 83,88,607"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "tin_nom"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 6,
+   "parts": [
+    {
+     "field": "TIN in Nominal Direction",
+     "bits": 8,
+     "text": "X46 – X39\nTrack Identification number encountered while traversing in Nominal direction (Incremental direction of absolute location)\nValue ranges from 0 to 255\n0: TIN value to be used in Non-KAVACH territory or at KAVACH territory exit in valid direction"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "tin_rev"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 6,
+   "parts": [
+    {
+     "field": "TIN in Reverse Direction",
+     "bits": 8,
+     "text": "X54 – X47\nTrack Identification number encountered while traversing in Reverse direction (Decremental direction of absolute location)\nValue ranges from 0 to 255\n0: TIN value to be used in Non-KAVACH territory or at KAVACH territory exit in valid direction"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "tin"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 6,
+   "parts": [
+    {
+     "field": "TIN in Nominal Direction",
+     "bits": 8,
+     "text": "X46 – X39\nTrack Identification number encountered while traversing in Nominal direction (Incremental direction of absolute location)\nValue ranges from 0 to 255\n0: TIN value to be used in Non-KAVACH territory or at KAVACH territory exit in valid direction"
+    },
+    {
+     "field": "TIN in Reverse Direction",
+     "bits": 8,
+     "text": "X54 – X47\nTrack Identification number encountered while traversing in Reverse direction (Decremental direction of absolute location)\nValue ranges from 0 to 255\n0: TIN value to be used in Non-KAVACH territory or at KAVACH territory exit in valid direction"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "sect_nom"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 6,
+   "parts": [
+    {
+     "field": "Section type in Nominal direction",
+     "bits": 2,
+     "text": "X56 – X55\nIndicates whether the territory encountered by the Loco falls in Station vicinity or Block section in its direction of travel\n00-Station Section\n01-Absolute block\n10-Automatic section\n11-Virtual Block\n(01, 10 and 11 – to be used for collision detection)"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "sect_rev"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 6,
+   "parts": [
+    {
+     "field": "Section type in Reverse direction",
+     "bits": 2,
+     "text": "X58 – X57\nIndicates whether the territory encountered by the Loco falls in Station vicinity or Block section in its direction of travel\n00-Station Section\n01-Absolute block\n10-Automatic section\n11-Virtual Block\n(01, 10 and 11 – to be used for collision detection)"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "section"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 6,
+   "parts": [
+    {
+     "field": "Section type in Nominal direction",
+     "bits": 2,
+     "text": "X56 – X55\nIndicates whether the territory encountered by the Loco falls in Station vicinity or Block section in its direction of travel\n00-Station Section\n01-Absolute block\n10-Automatic section\n11-Virtual Block\n(01, 10 and 11 – to be used for collision detection)"
+    },
+    {
+     "field": "Section type in Reverse direction",
+     "bits": 2,
+     "text": "X58 – X57 (as above)"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "placement"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 7,
+   "parts": [
+    {
+     "field": "Tag placement",
+     "bits": 4,
+     "text": "X62 – X59\nDenotes the placement of the tag (G-tag can to be used when approaching an LC gate instead of N-Tag)\n‘0000’ – In line section\n‘0001’ – At Signal foot in Nominal direction\n‘0010’ – At Signal foot in Reverse direction\n‘0011’ – At Turnout\n‘0100’ – At KAVACH territory exit in Nominal direction\n‘0101’ – At KAVACH territory exit in Reverse direction\n‘0110’ – At Signal foot in both directions\n“0111” – At KAVACH territory exit in both directions\n“1000” – At Dead Stop in Nominal Direction\n“1001” – At Dead Stop in Reverse Direction\n“1010-1111” Reserved"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "lc_approach"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 7,
+   "parts": [
+    {
+     "field": "LC Gate Approach tag in direction of applicability",
+     "bits": 2,
+     "text": "Y0-X63\nDenotes whether the Tag is placed in KAVACH or Non KAVACH territory. If placed in Non KAVACH territory, parameters for nominal direction only to be used\n00: KAVACH\n01: NON KAVACH First\n10: NON KAVACH Second\n11: Spare"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "applicable_dir"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 7,
+   "parts": [
+    {
+     "field": "Applicable Direction",
+     "bits": 1,
+     "text": "Y1\nDenotes the applicable direction of the LC gate (0=Nominal, 1=Reverse)"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "gate_id"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 7,
+   "parts": [
+    {
+     "field": "Gate ID",
+     "bits": 10,
+     "text": "Y11-Y2\nUnique ID of the LC Gate as per Railway data. Value ranges from 1 to 1023"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "gate_alpha"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 7,
+   "parts": [
+    {
+     "field": "LC Gate ID (alpha)",
+     "bits": 3,
+     "text": "Y14-Y12\nUnique ID of the LC Gate as per Railway data. Value ranges from 1 to 1023\n000 : None,\n001: a,\n010: b,\n011: c,\n100: d,\n101: e,\n110: Out of range (display xx on DMI)\n111: Spare"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "gate_type"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 8,
+   "parts": [
+    {
+     "field": "Gate Type",
+     "bits": 1,
+     "text": "Y15\nDenotes the type of LC gate (0=manned,1=unmanned)"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "dist_to_gate"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 8,
+   "parts": [
+    {
+     "field": "Distance to Gate",
+     "bits": 10,
+     "text": "Y25-Y16\nDenotes the distance from this tag to the approaching LC gate in terms of meters"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "auto_whistle"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 8,
+   "parts": [
+    {
+     "field": "Auto whistling",
+     "bits": 1,
+     "text": "Y26\nDenotes whether Auto whistling is required (0=No, 1= Yes)"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "whistle_type"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 8,
+   "parts": [
+    {
+     "field": "Type of Auto whistling",
+     "bits": 1,
+     "text": "Y27\nDenotes type of Auto whistling required\n0= Distance based Auto-whistling\n1= Time based Auto Whistling"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "duplication"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 8,
+   "parts": [
+    {
+     "field": "Tag Duplication",
+     "bits": 1,
+     "text": "Y31\n0- Main Tag\n1- Duplicate Tag"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "comm_nom"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 8,
+   "parts": [
+    {
+     "field": "Communication in Nominal Direction",
+     "bits": 1,
+     "text": "Y32\n0- Required\n1-Not required"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "comm_rev"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 8,
+   "parts": [
+    {
+     "field": "Communication in Reverse Direction",
+     "bits": 1,
+     "text": "Y33\n0-Required\n1-Not required"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "comm"
+   ],
+   "src": "D",
+   "clause": "D 3. LC Tag",
+   "page": 8,
+   "parts": [
+    {
+     "field": "Communication in Nominal Direction",
+     "bits": 1,
+     "text": "Y32\n0- Required\n1-Not required"
+    },
+    {
+     "field": "Communication in Reverse Direction",
+     "bits": 1,
+     "text": "Y33\n0-Required\n1-Not required"
+    }
+   ],
+   "tag_types": [
+    10
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "type"
+   ],
+   "src": "D",
+   "clause": "D 4. Adjacent Line tag",
+   "page": 9,
+   "parts": [
+    {
+     "field": "Type of Tag (1011: Adjacent Line Tag )",
+     "bits": 4,
+     "text": "X3 – X0\nThis field denotes the type of Tag. The decimal value is 11"
+    }
+   ],
+   "tag_types": [
+    11
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "version"
+   ],
+   "src": "D",
+   "clause": "D 4. Adjacent Line tag",
+   "page": 9,
+   "parts": [
+    {
+     "field": "Version",
+     "bits": 2,
+     "text": "X5 - X4\n0: TCAS (KAVACH) Spec 3.2\n1: TCAS (KAVACH) Spec 4.0\n2,3: Reserved for future use"
+    }
+   ],
+   "tag_types": [
+    11
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "unique"
+   ],
+   "src": "D",
+   "clause": "D 4. Adjacent Line tag",
+   "page": 9,
+   "parts": [
+    {
+     "field": "Unique ID of RFID Tag Set",
+     "bits": 10,
+     "text": "X15 – X6\nUnique ID of the RFID Tag. Value ranges from 1 to 1023"
+    }
+   ],
+   "tag_types": [
+    11
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "abs_loc"
+   ],
+   "src": "D",
+   "clause": "D 4. Adjacent Line tag",
+   "page": 9,
+   "parts": [
+    {
+     "field": "Absolute Loc in meters",
+     "bits": 23,
+     "text": "X38 – X16\n(1111111 11111111 11111111 : Not Applicable)\nGeographical location of the RFID Tag in terms of meters as per Railway metrics or Location referred in the Signal Interlocking Plan of the respective stations.\nValue ranges from 0 to 83,88,608"
+    }
+   ],
+   "tag_types": [
+    11
+   ],
+   "note": "The adjacent line tag's table gives 83,88,608 where the other tags give 83,88,607."
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "tin_nom"
+   ],
+   "src": "D",
+   "clause": "D 4. Adjacent Line tag",
+   "page": 9,
+   "parts": [
+    {
+     "field": "TIN in Nominal Direction",
+     "bits": 8,
+     "text": "X46 – X39\nTrack Identification number encountered while traversing in Nominal direction(Incremental direction of absolute location)\nValue ranges from 0 to 255"
+    }
+   ],
+   "tag_types": [
+    11
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "tin_rev"
+   ],
+   "src": "D",
+   "clause": "D 4. Adjacent Line tag",
+   "page": 9,
+   "parts": [
+    {
+     "field": "TIN in Reverse Direction",
+     "bits": 8,
+     "text": "X54 – X47\nTrack Identification number encountered while traversing in Reverse direction (Decremental direction of absolute location)\nValue ranges from 0 to 255"
+    }
+   ],
+   "tag_types": [
+    11
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "tin"
+   ],
+   "src": "D",
+   "clause": "D 4. Adjacent Line tag",
+   "page": 9,
+   "parts": [
+    {
+     "field": "TIN in Nominal Direction",
+     "bits": 8,
+     "text": "X46 – X39\nTrack Identification number encountered while traversing in Nominal direction(Incremental direction of absolute location)\nValue ranges from 0 to 255"
+    },
+    {
+     "field": "TIN in Reverse Direction",
+     "bits": 8,
+     "text": "X54 – X47\nTrack Identification number encountered while traversing in Reverse direction (Decremental direction of absolute location)\nValue ranges from 0 to 255"
+    }
+   ],
+   "tag_types": [
+    11
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "adj0"
+   ],
+   "src": "D",
+   "clause": "D 4. Adjacent Line tag",
+   "page": 9,
+   "parts": [
+    {
+     "field": "Adjacent Line-1 TIN",
+     "bits": 8,
+     "text": "X62 – X55\nTIN number of adjacent lines Value range (1-255), 0=No adjacent Line TIN"
+    }
+   ],
+   "tag_types": [
+    11
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "adj1"
+   ],
+   "src": "D",
+   "clause": "D 4. Adjacent Line tag",
+   "page": 9,
+   "parts": [
+    {
+     "field": "Adjacent Line-2 TIN",
+     "bits": 8,
+     "text": "Y6-Y0 & X63\nTIN number of adjacent lines Value range (1-255), 0=No adjacent Line TIN"
+    }
+   ],
+   "tag_types": [
+    11
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "adj2"
+   ],
+   "src": "D",
+   "clause": "D 4. Adjacent Line tag",
+   "page": 9,
+   "parts": [
+    {
+     "field": "Adjacent Line-3 TIN",
+     "bits": 8,
+     "text": "Y14-Y7\nTIN number of adjacent lines Value range (1-255), 0=No adjacent Line TIN"
+    }
+   ],
+   "tag_types": [
+    11
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "adj3"
+   ],
+   "src": "D",
+   "clause": "D 4. Adjacent Line tag",
+   "page": 9,
+   "parts": [
+    {
+     "field": "Adjacent Line-4 TIN",
+     "bits": 8,
+     "text": "Y22-Y15\nTIN number of adjacent lines Value range (1-255), 0=No adjacent Line TIN"
+    }
+   ],
+   "tag_types": [
+    11
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "adj4"
+   ],
+   "src": "D",
+   "clause": "D 4. Adjacent Line tag",
+   "page": 9,
+   "parts": [
+    {
+     "field": "Adjacent Line-5 TIN",
+     "bits": 8,
+     "text": "Y30-Y23\nTIN number of adjacent lines Value range (1-255), 0=No adjacent Line TIN"
+    }
+   ],
+   "tag_types": [
+    11
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "adjacent_tin"
+   ],
+   "src": "D",
+   "clause": "D 4. Adjacent Line tag",
+   "page": 9,
+   "parts": [
+    {
+     "field": "Adjacent Line-1 to Adjacent Line-5 TIN",
+     "bits": 40,
+     "text": "X62 – X55, Y6-Y0 & X63, Y14-Y7, Y22-Y15, Y30-Y23 (8 bits each)\nTIN number of adjacent lines Value range (1-255), 0=No adjacent Line TIN"
+    }
+   ],
+   "tag_types": [
+    11
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "duplication"
+   ],
+   "src": "D",
+   "clause": "D 4. Adjacent Line tag",
+   "page": 9,
+   "parts": [
+    {
+     "field": "Tag Duplication",
+     "bits": 1,
+     "text": "Y31\n0- Main Tag\n1- Duplicate Tag"
+    }
+   ],
+   "tag_types": [
+    11
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "type"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 10,
+   "parts": [
+    {
+     "field": "Type of Tag (1100: Junction Tag V2.0)",
+     "bits": 4,
+     "text": "X3 - X0\nThis field denotes the type of Tag. The decimal value is 12"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "version"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 10,
+   "parts": [
+    {
+     "field": "Version",
+     "bits": 2,
+     "text": "X5-X4\n0: TCAS Spec 3.2\n1: TCAS Spec 4.0\n2,3: Reserved for future use"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "unique"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 10,
+   "parts": [
+    {
+     "field": "Unique ID of RFID Tag Set",
+     "bits": 10,
+     "text": "X15– X6\nUnique ID of the RFID Tag. Value ranges from 1 to 1023"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "abs_loc_1"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 10,
+   "parts": [
+    {
+     "field": "Absolute Location-1 (in meters)",
+     "bits": 23,
+     "text": "X38– X16\n(1111111 11111111 11111111 : Not Applicable)\nGeographical location of the RFID Tag in terms of meters as per Railway metrics or Location referred in the Signal Interlocking Plan of the respective stations.\nValue ranges from 0 to 83,88,607"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "tin_nom"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 10,
+   "parts": [
+    {
+     "field": "TIN -1",
+     "bits": 8,
+     "text": "X46 – X39\nTrack Identification number associated towards Absolute location -1 Value ranges from 0 to 255\n0: TIN value to be used at TCAS territory exit in valid direction"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "tin_rev"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 10,
+   "parts": [
+    {
+     "field": "TIN -2",
+     "bits": 8,
+     "text": "X54 – X47\nTrack Identification number associated towards Absolute location -2 Value ranges from 0 to 255\n0: TIN value to be used at TCAS territory exit in valid direction"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "tin"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 10,
+   "parts": [
+    {
+     "field": "TIN -1",
+     "bits": 8,
+     "text": "X46 – X39\nTrack Identification number associated towards Absolute location -1 Value ranges from 0 to 255\n0: TIN value to be used at TCAS territory exit in valid direction"
+    },
+    {
+     "field": "TIN -2",
+     "bits": 8,
+     "text": "X54 – X47\nTrack Identification number associated towards Absolute location -2 Value ranges from 0 to 255\n0: TIN value to be used at TCAS territory exit in valid direction"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "abs_loc_2"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 10,
+   "parts": [
+    {
+     "field": "Absolute Location-2 in meters",
+     "bits": 23,
+     "text": "Y13-Y0 & X63- X55\n(1111111 11111111 11111111 : Not Applicable)\nGeographical location of the RFID Tag in terms of meters as per Railway metrics or Location referred in the Signal Interlocking Plan of the respective stations.\nValue ranges from 0 to 83,88,607"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "dir_corr_1"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 10,
+   "parts": [
+    {
+     "field": "Direction Correction-1 (Absolute Location-1)",
+     "bits": 3,
+     "text": "Y16- Y14\nDirection Reset toward absolute location-1\n000 – Reset Direction unknown. Derive direction from next tags\n001 – Location Correction, Loco travel direction Nominal and Next tag is in Nominal direction\n010 – Location Correction, Loco travel direction Nominal and Next tag is in Reverse direction\n011 – Location Correction, Loco travel direction Reverse and Next tag is in Nominal direction\n100 – Location Correction, Loco travel direction Reverse and Next tag is in Reverse direction\n110 – 111: Reserved"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "dir_corr_2"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 11,
+   "parts": [
+    {
+     "field": "Direction Correction-2 (Absolute Location-2)",
+     "bits": 3,
+     "text": "Y19- Y17\nDirection Reset toward absolute location-2\n000 – Reset Direction unknown. Derive direction from next tags\n001 – Location Correction, Loco travel direction Nominal and Next tag is in Nominal direction\n010 – Location Correction, Loco travel direction Nominal and Next tag is in Reverse direction\n011 – Location Correction, Loco travel direction Reverse and Next tag is in Nominal direction\n100 – Location Correction, Loco travel direction Reverse and Next tag is in Reverse direction\n110 – 111: Reserved"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "loc_corr_type"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 11,
+   "parts": [
+    {
+     "field": "Location Correction Type",
+     "bits": 1,
+     "text": "Y20\n0 – Adjustment in Absolute Location 1 – Reset in Absolute Location"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "sect_nom"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 11,
+   "parts": [
+    {
+     "field": "Section type-1",
+     "bits": 2,
+     "text": "Y24 – Y23\nSection type toward absolute location-1\nIndicates whether the territory encountered by the Loco falls in Station vicinity or Block section in its direction of travel\n00-Station Section\n01-Absolute block\n10-Autoblock\n11-Virtual Block\n(01, 10 and 11 – to be used for collision detection)"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "sect_rev"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 11,
+   "parts": [
+    {
+     "field": "Section type -2",
+     "bits": 2,
+     "text": "Y26 – Y25\nSection type toward absolute location-2\nIndicates whether the territory encountered by the Loco falls in Station vicinity or Block section in its direction of travel\n00-Station Section\n01-Absolute block\n10-Autoblock\n11-Virtual Block\n(01, 10 and 11 – to be used for collision detection)"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "section"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 11,
+   "parts": [
+    {
+     "field": "Section type-1",
+     "bits": 2,
+     "text": "Y24 – Y23\nSection type toward absolute location-1\nIndicates whether the territory encountered by the Loco falls in Station vicinity or Block section in its direction of travel\n00-Station Section\n01-Absolute block\n10-Autoblock\n11-Virtual Block\n(01, 10 and 11 – to be used for collision detection)"
+    },
+    {
+     "field": "Section type -2",
+     "bits": 2,
+     "text": "Y26 – Y25\nSection type toward absolute location-2 (as above)"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "duplication"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 11,
+   "parts": [
+    {
+     "field": "Tag Type",
+     "bits": 1,
+     "text": "Y31\n0 – Main Tag 1– Duplicate tag"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "comm_nom"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 11,
+   "parts": [
+    {
+     "field": "Communication in Nominal direction",
+     "bits": 1,
+     "text": "Y32\n0 – Required 1– Not Required"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "comm_rev"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 11,
+   "parts": [
+    {
+     "field": "Communication in Reverse direction",
+     "bits": 1,
+     "text": "Y33\n0 – Required 1– Not Required"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "comm"
+   ],
+   "src": "D",
+   "clause": "D 5. Adjustment/Junction Tag",
+   "page": 11,
+   "parts": [
+    {
+     "field": "Communication in Nominal direction",
+     "bits": 1,
+     "text": "Y32\n0 – Required 1– Not Required"
+    },
+    {
+     "field": "Communication in Reverse direction",
+     "bits": 1,
+     "text": "Y33\n0 – Required 1– Not Required"
+    }
+   ],
+   "tag_types": [
+    12
+   ]
+  },
+  {
+   "packets": [
+    "rfid"
+   ],
+   "names": [
+    "CRC-30"
+   ],
+   "src": "D",
+   "clause": "D 2.–5., D 6. CRC-30/CDMA",
+   "page": 5,
+   "parts": [
+    {
+     "field": "CRC",
+     "bits": 30,
+     "text": "Y63-Y34\nCompute CRC (Cyclic Redundancy Checksum) to check the data integrity. 30 Bit CCITT CRC\nD 6. CRC-30/CDMA: Polynomial: x30+ x29+ x21 + x20 + x15 + x13 + x12 + x11 + x8 + x7 + x6 + x2 + x + 1; Width: 30 bits; Truncated Polynomial: 0x2030B9C7; Initial Remainder: 0x3FFFFFFF; Final Xor Value: 0x3FFFFFFF.\nSample Data: 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38, 0x39 CRC-30 Value: 0x04C34ABF"
+    }
+   ],
+   "note": "The Adjustment/Junction tag's table calls it “30 Bit CRC /CDMA”; the others “30 Bit CCITT CRC”. D 6 gives the algorithm."
+  }
+ ]
+}

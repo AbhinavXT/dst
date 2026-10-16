@@ -11,6 +11,118 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-301"></a>
+## Session 301 — field descriptions from Annexure C and D (the data)
+
+Abhinav gave RDSO's Annexure C (Multiple Access Scheme & Radio
+Communication Protocol, Amdt-10, 27.06.2024) and Annexure D (KAVACH RFID
+Tag Data Format, Amdt-7, 07.06.2024). He asked for each field's
+description to appear when hovering it in the Tag Builder, the Decode
+Workbench and the Live Loco Console. He chose:
+- **the annexure's own text, with its reference** (not a paraphrase);
+- **the three windows named**, one patch each after this one;
+- **nothing new for fields C and D don't cover** (DMI, IOA, CCSYS, NMS,
+  LOCO_INFO…);
+- **the data first.**
+
+This patch is the data. Nothing on screen changes yet.
+
+**What it holds.** `schema/fielddocs.json`, 193 descriptions:
+- **Annexure C**, every field of:
+  - C.4.2 Station → Onboard regular packet (SLRP): the header, and every
+    sub-packet (MA, SSP, gradient, LC gate, turnout, tag linking, track
+    condition, TSR);
+  - C.4.3 Onboard → Station regular packet (LSRP);
+  - C.4.4 Access Authority (AAP);
+  - C.4.5 Additional Emergency (AEP);
+  - C.4.6 Access Request (ARP).
+- **Annexure D**, every field of the Normal (D 2), LC (D 3), Adjacent Line
+  (D 4) and Adjustment/Junction (D 5) tags, and the CRC-30 (D 6).
+
+Each entry gives:
+- the annexure's field name and size;
+- its description and value meanings, word for word, typos included
+  ("Configuarble", "comensate");
+- the clause and page.
+
+Only the PDF's line-break hyphens are rejoined. Where the annexure itself
+is odd, a separate **DLConsole note** says so and is shown as ours:
+- LM_LC_Class prints 000 for both Spl and B1;
+- the adjacent tag's range says 83,88,608;
+- CUR_SIG_INFO's a15/a16 are printed after the aspect table.
+
+**How it is keyed.** By the names DLConsole shows, per capture token:
+- the schema field (`SOURCE_STN_ID`, whose description is
+  `SOURCE_STN_ILC_IBS_ID`'s);
+- a group (`tin`, `station`, `comm`);
+- a repeat row: `speed[3]` is described by LM_Static_Speed_Distance,
+  _Class and _Value together;
+- the sub-packet header row (`subpkt[…]`).
+
+A row's `[n]` and " (…)" are ignored. RFID entries carry their tag
+types, since placement, TINs and section types read differently on an LC
+or a junction tag.
+
+**How it is made.** `schema/build_fielddocs.py` holds the texts, each
+beside its clause and page, and writes the JSON. The new gate validator
+`schema/validate_fielddocs.py` fails if the JSON is not exactly the
+script's output, so it is never edited by hand. The JSON ships in
+`images.qrc` beside `kavach.xml`.
+
+`FieldDocs` (new `fielddocs.{h,cpp}`) loads it once, as read-only
+reference data like `kavachSchema()`:
+- `find(packet, name, tagType)`;
+- `tooltip()`: the annexure's name and size, its text, our note, then
+  "Annexure-C — …, C.4.2, page 20" and the document number and
+  amendment.
+
+**Files.**
+- New `schema/build_fielddocs.py`, `schema/fielddocs.json`,
+  `schema/validate_fielddocs.py`, `fielddocs.{h,cpp}`.
+- `dlcore.pri`, `images.qrc`.
+- `CLAUDE.md`: 15 validators.
+- New `tests/test_session301.cpp`, `tests/tests.pro`.
+
+**Tests.** `session301` (23 checks):
+- **Every entry** cites a clause, a page inside its annexure, and
+  non-empty parts.
+- **Every name** is one the schema really has for that packet (fields,
+  groups, repeats, SLRP's sub-packet structs), plus the decoder's own
+  rows (CRC, MAC_CODE, subpkt, Loco_Health, Latitude/Longitude).
+- **The reverse:** decoding 300 real frames each of SLRP, LSRP, ARP, AAP
+  and RFID from `replay/`, every field row has a description. The rows
+  the annexures don't define are listed and excluded: the capture line,
+  the message header, health bits B0–B23 (Annexure G), the reader's id
+  and its message CRC.
+- **The lookup rules:**
+  - index, indent and suffix ignored;
+  - the sub-packet header;
+  - DLConsole's name vs the annexure's;
+  - arprecv is an ARP;
+  - nothing for DMI or an unknown name;
+  - placement per tag type (the LC one mentions the G-tag);
+  - tin_nom on a junction tag is TIN -1;
+  - an unknown tag type gives the Normal tag's.
+- **The tooltip's content and reference;** a note marked as DLConsole's;
+  bad JSON refused.
+
+`validate_fielddocs.py` is in the gate's validators.
+
+**Gate:** Qt 6 and Qt 5.15 green, 337 suites / 8561 checks, 0 failed; 15
+validators; menu audit 184 ok; smoke.
+
+**Not tested / not done:**
+- **The windows:** they show nothing yet (the next three patches).
+- **Field coverage beyond replay:** LC, adjacent-line and junction tags,
+  AEP, and the SLRP LC-gate/TSR sub-packets have no real frames in
+  `replay/`. Their entries are checked against the schema's names, not
+  against decoded rows.
+- **The texts were read from the PDFs' extracted text** and checked
+  table by table against the page text. A reviewer reading them against
+  the signed PDFs is still worth doing.
+
+---
+
 <a id="session-300"></a>
 ## Session 300 — Firmware Flasher: the 2.6 updater's loco addresses
 

@@ -53,7 +53,7 @@ Nothing is committed as a patch unless **all** of these are green:
 ./verify.sh            # validators, unit suite, menu audit, headless smoke
 ```
 
-- 14 Python golden validators (`schema/validate_*.py`) against `replay/`
+- 15 Python golden validators (`schema/validate_*.py`) against `replay/`
   (`validate_rdir.py` against a synthetic fixture
   until a real `@rdir` capture exists; `@sos` and `@dllog` are real since
   patch 273).

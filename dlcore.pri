@@ -148,6 +148,7 @@ SOURCES += \
     $$PWD/commandpalette.cpp \
     $$PWD/archivesearchwindow.cpp \
     $$PWD/fieldcatalog.cpp \
+    $$PWD/fielddocs.cpp \
     $$PWD/fieldindex.cpp \
     $$PWD/fieldinspector.cpp \
     $$PWD/fieldplot.cpp \
@@ -320,6 +321,7 @@ HEADERS += \
     $$PWD/commandpalette.h \
     $$PWD/archivesearchwindow.h \
     $$PWD/fieldcatalog.h \
+    $$PWD/fielddocs.h \
     $$PWD/fieldindex.h \
     $$PWD/fieldinspector.h \
     $$PWD/fieldplot.h \

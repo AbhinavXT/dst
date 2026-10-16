@@ -2,6 +2,7 @@
     <qresource prefix="/">
         <file>myapp_icon.png</file>
         <file>schema/kavach.xml</file>
+        <file>schema/fielddocs.json</file>
         <file>schema/rejectrules.xml</file>
         <file>tabclose_light.png</file>
         <file>tabclose_dark.png</file>
