@@ -38,6 +38,7 @@ struct FieldDoc {
     QVector<int> tagTypes;        // RFID only: the tag types it describes; empty = any
     QVector<FieldDocPart> parts;  // one, or several for a repeat row ("speed[n]": distance, class, value)
     QString     note;             // DLConsole's remark, never the annexure's text
+    QString     html;             // session 303: the tooltip, built once at load
 };
 
 class FieldDocs

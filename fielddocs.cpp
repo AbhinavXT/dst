@@ -102,6 +102,7 @@ bool FieldDocs::loadFromJson(const QByteArray &json, QString *err)
             continue;
         }
         const int at = m_docs.size();
+        doc.html = tooltipFor(doc);   // the console refreshes every tick: build it once
         m_docs << doc;
         for (const QString &packet : doc.packets) {
             for (const QString &name : doc.names) {
@@ -154,6 +155,9 @@ QString FieldDocs::reference(const FieldDoc &doc) const
 
 QString FieldDocs::tooltipFor(const FieldDoc &doc) const
 {
+    if (!doc.html.isEmpty()) {
+        return doc.html;
+    }
     auto html = [](const QString &text) {
         return text.toHtmlEscaped().replace(QLatin1Char('\n'), QLatin1String("<br>"));
     };

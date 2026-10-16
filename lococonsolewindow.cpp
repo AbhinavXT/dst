@@ -1,4 +1,5 @@
 #include "lococonsolewindow.h"
+#include "fielddocs.h"
 #include "undolog.h"
 #include "fieldplot.h"
 #include "cabpanel.h"
@@ -154,6 +155,11 @@ void LocoConsoleWindow::addTypeTab(CapType t)
 {
     QTableWidget *tbl = new QTableWidget(0, 2, m_tabs);
     tbl->setHorizontalHeaderLabels({tr("Field"), tr("Value")});
+    // Session 303: the rows explain themselves (Annexure C / D).
+    if (QTableWidgetItem *header = tbl->horizontalHeaderItem(0)) {
+        header->setToolTip(tr("Hover a field for its description from RDSO Annexure C (radio packets) "
+                              "or Annexure D (RFID tags)"));
+    }
     tbl->verticalHeader()->setVisible(false);
     tbl->setEditTriggers(QAbstractItemView::NoEditTriggers);
     tbl->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -1084,7 +1090,11 @@ void LocoConsoleWindow::refreshTypeTables(const LocoState &st, qint64 nowMs)
             continue;
         }
 
-        QVector<FieldRow> rows = CaptureDecoder::describe(st.latest[t], nullptr, 0, nullptr, m_keys);
+        QHash<QString, qint64> rawValues;
+        QVector<FieldRow> rows = CaptureDecoder::describe(st.latest[t], nullptr, 0, &rawValues, m_keys);
+        // Session 303: the annexures' description of each field, on hover.
+        const QString token = st.latest[t].typeToken;
+        const int tagType = token == QLatin1String("rfid") ? int(rawValues.value(QStringLiteral("type"))) : 0;
         if (t == int(CapType::ArpRecv) && st.ownArpRecv > 0 && !m_following) {
             rows.prepend({ tr("rejected"),
                            tr("%1 received ARP(s) carrying this loco's own ID %2, last %3: not another loco, not shown here")
@@ -1121,8 +1131,15 @@ void LocoConsoleWindow::refreshTypeTables(const LocoState &st, qint64 nowMs)
         }
         tbl->setRowCount(rows.size());
         for (int r = 0; r < rows.size(); ++r) {
-            tbl->setItem(r, 0, new QTableWidgetItem(rows.at(r).field));
+            auto *name = new QTableWidgetItem(rows.at(r).field);
             QTableWidgetItem *v = new QTableWidgetItem(rows.at(r).value);
+            const QString doc = FieldDocs::isCaptureRow(rows.at(r).field)
+                ? QString() : FieldDocs::instance().tooltip(token, rows.at(r).field, tagType);
+            if (!doc.isEmpty()) {
+                name->setToolTip(doc);
+                v->setToolTip(doc);
+            }
+            tbl->setItem(r, 0, name);
             if (rows.at(r).field == QLatin1String("CRC")) {
                 if (rows.at(r).value == QLatin1String("FAIL")) { v->setForeground(failColor()); }
                 else if (rows.at(r).value == QLatin1String("PASS")) { v->setForeground(okColor()); }

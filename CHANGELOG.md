@@ -11,6 +11,54 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-303"></a>
+## Session 303 — the Live Loco Console shows the annexures' field descriptions
+
+The second window.
+
+**What the operator sees.** In the **Live Loco Console**, each packet
+tab's rows show Annexure C's or Annexure D's description of the field
+when hovered, on both cells, as in the Decode Workbench (session 302).
+- **Every tick:** the text stays while the tables refresh, live or when
+  following a moment.
+- **Covered:** SLRP (sub-packets included), LSRP, AAP, AEP, ARP and
+  received ARP from Annexure C; RFID tags from Annexure D, by the tag's
+  own type.
+- **No hover text:** the capture's own rows, the "rejected" and "⏱
+  frame" notes, and uncovered packets (DMI, IOA, CCSYS, NMS…).
+- **The Field header's tooltip** says the rows explain themselves.
+
+**How.** `refreshTypeTables()` asks `describe()` for the raw values (an
+RFID tag's type) and sets `FieldDocs::tooltip()` on both new cells. The
+console rebuilds its tables every tick, so `FieldDocs` now builds each
+description's HTML once at load (`FieldDoc::html`); a lookup is a hash
+hit and a shared string.
+
+**Not changed:** the big-number tiles and the cab view. They show values,
+not field rows. Their field menus could carry the descriptions later if
+wanted.
+
+**Files.**
+- `lococonsolewindow.cpp`, `fielddocs.{h,cpp}`.
+- New `tests/test_session303.cpp`, `tests/tests.pro`.
+
+**Tests.** `session303` (11 checks), real SLRP, LSRP and RFID lines fed
+through the console as the dispatcher feeds them:
+- SLRP `MA_W_R_T_SIG` with Annexure C's text and page, on both cells;
+- LSRP `L_DOUBTOVER`; `LOCO_VERSION` described as SOURCE_LOCO_VERSION;
+- an RFID tag's `unique` from Annexure D;
+- the capture rows have none;
+- the text survives the next frame and tick;
+- every SLRP field row is described.
+
+**Gate:** Qt 6 and Qt 5.15 green, 339 suites / 8588 checks, 0 failed;
+validators; menu audit 184 ok; smoke.
+
+**Not tested:** a real hover on screen (the text is checked on the
+cells; session 302's harness shows how it draws).
+
+---
+
 <a id="session-302"></a>
 ## Session 302 — the Decode Workbench shows the annexures' field descriptions
 
