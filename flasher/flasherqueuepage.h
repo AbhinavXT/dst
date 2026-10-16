@@ -34,6 +34,7 @@ class QTableView;
 class QTimer;
 class QVBoxLayout;
 class StatusLine;
+class VccListEdit;
 
 // -----------------------------------------------------------------------------
 //  The "Delivery route" diagram: This PC -> VCC slot 1 -> Input/Output/Analog.
@@ -70,12 +71,13 @@ public:
     void applyProfile(const Flasher::FlashProfile &profile);
 
     // ---- read by the window --------------------------------------------
-    QString vccIp() const;                     // the field as typed: one address, or a list (session 291)
+    QString vccIp() const;                     // the ticked VCCs as text: one address, or a list (session 291)
     Flasher::VccTargetList vccTargets() const;  // that text, parsed
     void    setVccIpText(const QString &text);  // Try again: only the VCCs not updated
     quint16 port() const;
     QString adapterDescription() const;
     FlasherQueueModel *model() const { return m_model; }
+    VccListEdit *vccList() const { return m_vccList; }
 
     Flasher::PreflightReport preflight() const;
 
@@ -133,8 +135,7 @@ private:
     // ---- widgets -------------------------------------------------------------
     FlasherQueueModel   *m_model = nullptr;
     QTableView          *m_table = nullptr;
-    QLineEdit           *m_ipEdit = nullptr;
-    QLabel              *m_targetsHint = nullptr;   // "4 VCCs, flashed at once: …"
+    VccListEdit         *m_vccList = nullptr;       // session 292: a row per VCC
     PortEdit            *m_portSpin = nullptr;
     QComboBox           *m_adapterCombo = nullptr;
     FlasherRouteDiagram *m_route = nullptr;

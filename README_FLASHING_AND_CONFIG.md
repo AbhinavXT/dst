@@ -59,11 +59,16 @@ repeat from step 5. **Every card needs its own power cycle.**
 Up to **8 VCCs** can get the same VCC image in one run, for example a
 batch of locos on one switch. Each VCC needs **its own IP address**.
 
-1. In **VCC IP address**, list the VCCs:
-   - separated by commas: `192.168.25.168, 192.168.25.169`
-   - or as a range of the last number: `192.168.25.168-175` (8 VCCs)
+1. Under **VCC IP address**, add a row per VCC:
+   - **+ Add VCC** adds the next address (`.169` after `.168`);
+   - **Add range…** adds several at once: `192.168.25.168-175` is 8 VCCs;
+   - **×** removes a row; **untick** a row to leave that VCC out of this
+     run.
 
-   The line under the field shows the VCCs it read.
+   A row in red has a problem: hover it to see why (not an address, or
+   listed twice). The line under the buttons says how many are ticked.
+   To keep the list, put it in the profile (⚙) as
+   `192.168.25.168, 192.168.25.169` or `192.168.25.168-175`.
 2. Select the **VCC** row. Several addresses work only for the VCC card;
    Input, Output and Analog images go through their own VCC, one chassis
    at a time.

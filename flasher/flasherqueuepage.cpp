@@ -2,6 +2,7 @@
 
 #include "flasherqueuemodel.h"
 #include "flasherstyle.h"
+#include "vcclistedit.h"
 #include "statusline.h"
 #include "uicolors.h"
 #include "uistyle.h"
@@ -255,7 +256,7 @@ FlasherQueuePage::FlasherQueuePage(QWidget *parent)
     connect(m_model, &FlasherQueueModel::queueChanged, this, &FlasherQueuePage::updateWatcher);
     connect(m_model, &FlasherQueueModel::queueChanged, this, &FlasherQueuePage::updateDetailStrip);
     connect(m_model, &FlasherQueueModel::fileDropped, this, &FlasherQueuePage::loadImageAndSelect);
-    connect(m_ipEdit, &QLineEdit::textChanged, this, [this]() {
+    connect(m_vccList, &VccListEdit::changed, this, [this]() {
         preselectAdapterForTarget();
         refreshPreflight();
         emit targetChanged();
@@ -291,40 +292,25 @@ QWidget *FlasherQueuePage::buildLeftColumn()
     m_sectionLabels.append(targetTitle);
     targetLayout->addWidget(targetTitle);
 
-    auto *ipRow = new QHBoxLayout();
-    auto *ipColumn = new QVBoxLayout();
-    ipColumn->addWidget(new QLabel(tr("VCC IP address"), targetCard));
-    m_ipEdit = new QLineEdit(targetCard);
-    m_ipEdit->setFont(UiStyle::monoFont());
-    m_ipEdit->setPlaceholderText(QStringLiteral("192.168.25.168"));
-    m_ipEdit->setMinimumHeight(34);
-    // Session 291: several VCCs, flashed at once, each its own transfer.
-    m_ipEdit->setToolTip(tr("One VCC, or up to %1 flashed at once:\n"
-                            "  192.168.25.168, 192.168.25.169\n"
-                            "  192.168.25.168-175   (the last number runs from 168 to 175)\n"
-                            "Each VCC gets its own transfer, resends and rate.")
-                             .arg(Flasher::kMaxParallelVccs));
-    ipColumn->addWidget(m_ipEdit);
-    ipRow->addLayout(ipColumn, 1);
+    // Session 292: a row per VCC (session 291's list, as rows). Several
+    // ticked VCCs are flashed at once, each its own transfer.
+    targetLayout->addWidget(new QLabel(tr("VCC IP address"), targetCard));
+    m_vccList = new VccListEdit(targetCard);
+    m_vccList->setObjectName(QStringLiteral("flasherVccList"));
+    targetLayout->addWidget(m_vccList);
 
-    auto *portColumn = new QVBoxLayout();
-    portColumn->addWidget(new QLabel(tr("Port"), targetCard));
+    // The port under the list: one for every VCC (a.b.c.d:port in a row
+    // overrides it, for the simulator).
+    auto *portRow = new QHBoxLayout();
+    portRow->addWidget(new QLabel(tr("Port"), targetCard));
     m_portSpin = new PortEdit(targetCard);
     m_portSpin->setValue(50001);
     m_portSpin->setFont(UiStyle::monoFont());
     m_portSpin->setMinimumHeight(34);
     m_portSpin->setFixedWidth(80);
-    portColumn->addWidget(m_portSpin);
-    ipRow->addLayout(portColumn);
-    targetLayout->addLayout(ipRow);
-
-    // What the list came to, when it is more than one VCC.
-    m_targetsHint = new QLabel(targetCard);
-    m_targetsHint->setObjectName(QStringLiteral("flasherTargetsHint"));
-    m_targetsHint->setWordWrap(true);
-    m_targetsHint->setStyleSheet(UiColor::mutedStyle());
-    m_targetsHint->hide();
-    targetLayout->addWidget(m_targetsHint);
+    portRow->addWidget(m_portSpin);
+    portRow->addStretch(1);
+    targetLayout->addLayout(portRow);
 
     auto *adapterHeader = new QHBoxLayout();
     adapterHeader->addWidget(new QLabel(tr("Send from adapter"), targetCard), 1);
@@ -630,9 +616,9 @@ void FlasherQueuePage::applyProfile(const Flasher::FlashProfile &profile)
     m_profile = profile;
     {
         // One preflight refresh at the end, not one per field.
-        const QSignalBlocker ipBlocker(m_ipEdit);
+        const QSignalBlocker ipBlocker(m_vccList);
         const QSignalBlocker portBlocker(m_portSpin);
-        m_ipEdit->setText(profile.vccIp);
+        m_vccList->setText(profile.vccIp);
         m_portSpin->setValue(profile.port);
     }
     preselectAdapterForTarget();
@@ -656,12 +642,12 @@ void FlasherQueuePage::applyProfile(const Flasher::FlashProfile &profile)
 
 QString FlasherQueuePage::vccIp() const
 {
-    return m_ipEdit->text().trimmed();
+    return m_vccList->text();
 }
 
 void FlasherQueuePage::setVccIpText(const QString &text)
 {
-    m_ipEdit->setText(text);   // textChanged refreshes the pre-flight and the bar
+    m_vccList->setText(text);   // changed() refreshes the pre-flight and the bar
 }
 
 Flasher::VccTargetList FlasherQueuePage::vccTargets() const
@@ -858,19 +844,9 @@ void FlasherQueuePage::refreshPreflight()
     }
     m_route->setIncludedCards(included);
 
-    // Session 291: what the target list came to.
+    // Session 291: how many VCCs the list came to (the list says which).
     const Flasher::VccTargetList targets = vccTargets();
     const int vccCount = targets.ok() ? targets.targets.size() : 0;
-    if (vccCount > 1) {
-        QStringList names;
-        for (const Flasher::VccTarget &target : targets.targets) {
-            names << target.text(port());
-        }
-        m_targetsHint->setText(tr("%1 VCCs, flashed at once: %2").arg(vccCount).arg(names.join(QStringLiteral(", "))));
-        m_targetsHint->show();
-    } else {
-        m_targetsHint->hide();
-    }
 
     // The action bar: button label, enabled state, first blocker inline.
     const int selectedRow = m_model->tickedRow();

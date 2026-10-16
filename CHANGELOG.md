@@ -11,6 +11,80 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-292"></a>
+## Session 292 — Firmware Flasher: the VCC list as rows
+
+Abhinav asked for a better UI for the VCC list than session 291's comma
+list in one field. He chose **rows with + Add**, and the list saved in
+the profile as before (no named lists).
+
+**What the operator sees.** The Target box's VCC IP field is now a list:
+- **A row per VCC:** a tick box, the address, and **×** to remove it.
+  - Unticking leaves a VCC out of this run and keeps it in the list.
+  - × on the last row clears it rather than removing it.
+- **+ Add VCC** adds the next address (`.169` after `.168`, its port
+  kept). An empty last row gets the focus instead of another row.
+- **Add range…** asks for `192.168.25.168-175` (pre-filled with the next
+  address and a dash) and adds a row each; blank rows give way to it.
+- **Both buttons turn off at 8.** A range that would pass 8 is refused,
+  saying how many it would make.
+- **A wrong row is drawn in the danger colour,** with the reason in its
+  tooltip: not an address; listed twice (both rows); a range typed into
+  one row ("One address per row: Add range… adds several").
+- **An unticked row** is muted.
+- **Under the buttons:** "3 of 4 VCCs ticked — flashed at once".
+- **The port** sits under the list, for every VCC.
+- **One row** is the single-VCC flasher as before.
+
+**How.** New `VccListEdit`. The rest of the flasher still reads session
+291's text form: `text()` is the ticked rows joined by ", ", and
+`setText()` takes the profile's list or range, opening a range into rows.
+A profile's typo keeps its row, marked, rather than being dropped.
+
+`FlasherQueuePage` uses it in place of the line edit, so pre-flight,
+entries, the button and Try again are unchanged. Session 291's hint line
+(the list read back) is gone: the rows are the list.
+
+The ⚙ profile dialog keeps its one-line field, which takes the list and
+range syntax. Ticks and edits on the queue page are not saved to the
+profile, as the IP field's edits never were.
+
+**Files.**
+- New `flasher/vcclistedit.{h,cpp}`; `flasher/flasher.pri`.
+- `flasher/flasherqueuepage.{h,cpp}`.
+- `README_FLASHING_AND_CONFIG.md`.
+- New `tests/test_session292.cpp`, `tests/tests.pro`.
+
+**Tests.** `session292` (25 checks):
+- **The widget:**
+  - one empty row to start, no summary;
+  - + Add VCC gives the next address;
+  - the rows read as the list;
+  - the summary counts;
+  - unticking leaves a VCC out;
+  - duplicate, bad address and range-in-a-row are marked, with reasons;
+  - × removes, and clears the last row;
+  - Add range adds rows, and refuses past 8 or a bad range;
+  - at 8, + Add VCC is off and adds nothing;
+  - `setText` opens ranges, keeps ports, keeps a typo marked.
+- **In the queue page:**
+  - a profile's range is four rows and four entries, "Flash 4 VCCs";
+  - unticking one makes three, and that VCC isn't in the batch;
+  - a duplicate keeps Flash off, saying why.
+
+`session291`, `flasher`, `flasherrun`, `flasherroute`, `session94`, `134`,
+`146`, `257` and `280` pass unchanged. Checked on screen with the
+screenshot harness (`SHOT_WINDOW=flashervccsq`), light and dark.
+
+**Gate:** Qt 6 and Qt 5.15 green, 329 suites / 8334 checks, 0 failed; menu
+audit 184 ok; smoke; validators.
+
+**Not tested:** typing into the rows and clicking ×, + Add VCC and Add
+range… on screen (the tests call them directly). The Add range prompt
+itself (a modal QInputDialog) was not opened.
+
+---
+
 <a id="session-291"></a>
 ## Session 291 — Firmware Flasher: several VCCs at once
 

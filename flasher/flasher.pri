@@ -23,7 +23,8 @@ SOURCES += \
     $$PWD/flashersummarypage.cpp \
     $$PWD/flasherhistorydialog.cpp \
     $$PWD/flasherprofiledialog.cpp \
-    $$PWD/flasherwindow.cpp
+    $$PWD/flasherwindow.cpp \
+    $$PWD/vcclistedit.cpp
 
 HEADERS += \
     $$PWD/flash_engine.h \
@@ -37,7 +38,8 @@ HEADERS += \
     $$PWD/flashersummarypage.h \
     $$PWD/flasherhistorydialog.h \
     $$PWD/flasherprofiledialog.h \
-    $$PWD/flasherwindow.h
+    $$PWD/flasherwindow.h \
+    $$PWD/vcclistedit.h
 
 DISTFILES += \
     $$PWD/board_sim.py
