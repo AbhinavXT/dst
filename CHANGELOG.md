@@ -11,6 +11,63 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-304"></a>
+## Session 304 — the Tag Builder shows Annexure D's field descriptions
+
+The third window, and the last of the feature Abhinav asked for (session
+301).
+
+**What the operator sees.** In the **Tag Builder**, Annexure D's
+description of a tag field shows on hover, for the tag's own type:
+- **The tag editor:** every field's label and editor. Change the type
+  and the texts change with it: an LC tag's placement mentions the
+  G-tag, a junction tag's `tin_nom` is "TIN -1", an adjacent-line tag's
+  `adj2` is "Adjacent Line-3 TIN".
+- **The route table's tag-field columns:** Type, Abs loc (m), TIN nom /
+  rev, Placement and CRC-30, each for its row's tag type.
+- **Set a field…:** each field in the list, and the field box itself,
+  for the first selected tag's type.
+- **Kept:** the hover text the window already had comes first. The
+  abs_loc editor's "8388607 = not applicable", a failing CRC's "Stored
+  …, the contents give …".
+- **No hover text:** columns that aren't tag fields (#, Tag, route.xml
+  loc, Δ, pages) keep what they had.
+
+**How.** `withTagDoc(field, type, existing)` in `tagbuilderwindow.cpp`
+puts `FieldDocs::tooltip("rfid", field, type)` after any tooltip the
+widget had (escaped: the old one is plain text, the description HTML).
+Used in `rebuildForm()` (each editor and its form label), in
+`fillTable()` (the five columns), and in the Set-a-field dialog.
+
+**Files.**
+- `tagbuilderwindow.cpp`.
+- New `tests/test_session304.cpp`, `tests/tests.pro`.
+
+**Tests.** `session304` (17 checks), the editor starting from a real tag
+(session 195's):
+- **Normal tag:** placement's editor and its label carry D 2 (page 5);
+  `stn_nom`; abs_loc keeps its note first.
+- **Switching type:**
+  - LC: placement with the G-tag, `gate_id`;
+  - adjacent line: `adj2`;
+  - junction: `tin_nom` as TIN -1, `dir_corr_2`.
+- **A route of a Normal, an LC and a broken tag:**
+  - Placement and Type per row;
+  - Abs loc and TIN;
+  - CRC-30 from D 6;
+  - the broken tag's stored/computed values kept first;
+  - # and pages without.
+
+The 20 other Tag Builder suites pass unchanged.
+
+**Gate:** Qt 6 and Qt 5.15 green, 340 suites / 8605 checks, 0 failed;
+validators; menu audit 184 ok; smoke.
+
+**Not tested:** the Set-a-field dialog (modal) was not opened; its
+tooltips are set by the same helper.
+
+---
+
 <a id="session-303"></a>
 ## Session 303 — the Live Loco Console shows the annexures' field descriptions
 

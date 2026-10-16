@@ -1,4 +1,5 @@
 #include "tagbuilderwindow.h"
+#include "fielddocs.h"
 #include "tagscenario.h"
 
 #include <algorithm>
@@ -62,6 +63,16 @@ namespace {
 const int kTypes[] = { 9, 10, 11, 12 };
 
 QString hex8(quint32 v) { return QStringLiteral("%1").arg(v, 8, 16, QLatin1Char('0')).toUpper(); }
+
+// Session 304: Annexure D's description of a tag field, after any tooltip
+// the widget already had (that one is plain text; the description is HTML).
+QString withTagDoc(const QString &field, int tagType, const QString &existing = QString())
+{
+    const QString doc = FieldDocs::instance().tooltip(QStringLiteral("rfid"), field, tagType);
+    if (doc.isEmpty()) return existing;
+    if (existing.isEmpty()) return doc;
+    return existing.toHtmlEscaped() + QStringLiteral("<br><br>") + doc;
+}
 
 QTableWidgetItem *cell(const QString &text)
 {
@@ -629,7 +640,12 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
         QDialog dlg(this);
         dlg.setWindowTitle(tr("Set a field on %1 tag%2").arg(rows.size()).arg(rows.size() == 1 ? "" : "s"));
         auto *field = new QComboBox(&dlg);
-        for (const RfidTag::Field &f : fields) field->addItem(QStringLiteral("%1 (%2 bit%3)").arg(f.name).arg(f.bits).arg(f.bits == 1 ? "" : "s"), f.name);
+        // Session 304: each field's Annexure D description, for the first selected tag's type.
+        const int firstType = RfidTag::summary(m_route.tags.at(rows.first()).bytes).type;
+        for (const RfidTag::Field &f : fields) {
+            field->addItem(QStringLiteral("%1 (%2 bit%3)").arg(f.name).arg(f.bits).arg(f.bits == 1 ? "" : "s"), f.name);
+            field->setItemData(field->count() - 1, withTagDoc(f.name, firstType), Qt::ToolTipRole);
+        }
         auto *coded = new QComboBox(&dlg);
         auto *number = new QSpinBox(&dlg);
         auto *form = new QFormLayout;
@@ -648,6 +664,7 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
         // field, a number otherwise; it starts at the first selected tag's value.
         auto showField = [&]() {
             const RfidTag::Field &f = fields.at(field->currentIndex());
+            field->setToolTip(withTagDoc(f.name, firstType));
             const qint64 now = RfidTag::values(m_route.tags.at(rows.first()).bytes).value(f.name);
             const bool isCoded = !f.enumName.isEmpty() && f.bits <= 4;
             coded->clear();
@@ -732,6 +749,9 @@ void TagBuilderWindow::rebuildForm()
         }
         w->setObjectName(f.name);
         m_form->addRow(QStringLiteral("%1 (%2 bit%3):").arg(f.name).arg(f.bits).arg(f.bits == 1 ? "" : "s"), w);
+        // Session 304: what Annexure D says the field is, on its label and its editor.
+        w->setToolTip(withTagDoc(f.name, type, w->toolTip()));
+        if (QWidget *label = m_form->labelForField(w)) label->setToolTip(withTagDoc(f.name, type));
         m_editors.insert(f.name, w);
     }
 }
@@ -877,19 +897,31 @@ void TagBuilderWindow::fillTable()
         if (m_route.tags.at(i).name != name->text() && !m_route.tags.at(i).name.isEmpty())
             name->setToolTip(tr("The file named it %1").arg(m_route.tags.at(i).name));
         m_table->setItem(i, 1, name);
-        m_table->setItem(i, 3, cell(QStringLiteral("%1 %2").arg(s.type).arg(RfidTag::typeName(s.type))));
-        m_table->setItem(i, 4, cell(s.absLoc == RfidCheck::kNotApplicable ? tr("N/A") : QString::number(s.absLoc)));
+        // Session 304: the columns that are tag fields carry Annexure D's
+        // description for this row's tag type.
+        QTableWidgetItem *typeCell = cell(QStringLiteral("%1 %2").arg(s.type).arg(RfidTag::typeName(s.type)));
+        typeCell->setToolTip(withTagDoc(QStringLiteral("type"), s.type));
+        m_table->setItem(i, 3, typeCell);
+        QTableWidgetItem *absCell = cell(s.absLoc == RfidCheck::kNotApplicable ? tr("N/A") : QString::number(s.absLoc));
+        absCell->setToolTip(withTagDoc(s.type == 12 ? QStringLiteral("abs_loc_1") : QStringLiteral("abs_loc"), s.type));
+        m_table->setItem(i, 4, absCell);
         const QString written = i < rows.size() && rows.at(i).absLoc != rows.at(i).ownLoc ? QString::number(rows.at(i).absLoc) : QString();
         QTableWidgetItem *wr = cell(written);
         if (i < rows.size() && !rows.at(i).adjustNote.isEmpty()) wr->setToolTip(rows.at(i).adjustNote);
         m_table->setItem(i, 5, wr);
         m_table->setItem(i, 6, cell(RfidCheck::deltaText(m_route, i)));
-        m_table->setItem(i, 7, cell(QStringLiteral("%1 / %2").arg(s.tinNom).arg(s.tinRev)));
-        m_table->setItem(i, 8, cell(s.type == 9 || s.type == 10 ? QString::number(s.placement) : QString()));
+        QTableWidgetItem *tinCell = cell(QStringLiteral("%1 / %2").arg(s.tinNom).arg(s.tinRev));
+        tinCell->setToolTip(withTagDoc(QStringLiteral("tin"), s.type));
+        m_table->setItem(i, 7, tinCell);
+        QTableWidgetItem *placeCell = cell(s.type == 9 || s.type == 10 ? QString::number(s.placement) : QString());
+        if (s.type == 9 || s.type == 10) placeCell->setToolTip(withTagDoc(QStringLiteral("placement"), s.type));
+        m_table->setItem(i, 8, placeCell);
         QTableWidgetItem *crc = cell(s.crcOk ? tr("pass") : tr("FAIL"));
         crc->setForeground(s.crcOk ? UiColor::ok() : UiColor::error());
-        if (!s.crcOk) crc->setToolTip(tr("Stored %1, the contents give %2: a loco would not process this tag")
-                                          .arg(hex8(s.crcStored), hex8(s.crcCalc)));
+        crc->setToolTip(withTagDoc(QStringLiteral("CRC-30"), s.type,
+                                   s.crcOk ? QString()
+                                           : tr("Stored %1, the contents give %2: a loco would not process this tag")
+                                                 .arg(hex8(s.crcStored), hex8(s.crcCalc))));
         m_table->setItem(i, 2, crc);
         m_table->setItem(i, 9, cell(RfidTag::pageX(b) + QStringLiteral("  ") + RfidTag::pageY(b)));
     }
