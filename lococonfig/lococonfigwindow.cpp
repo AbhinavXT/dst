@@ -8,6 +8,8 @@
 #include "lococonfighistorydialog.h"
 #include "lococonfigcomparedialog.h"
 #include "lococonfigmodel.h"
+#include "linfofielddialog.h"
+#include "programdir.h"
 #include "settings.h"
 #include "statusline.h"
 #include "udpsender.h"
@@ -49,7 +51,7 @@ namespace {
 
 const char kConfigsFileName[] = "loco_configs.json";
 const char kHistoryFileName[] = "loco_config_history.jsonl";
-const char kSchemaPath[]      = ":/schema/kavach.xml";
+const char kBuiltinSchema[]   = ":/schema/kavach.xml";
 const char kDefaultsPath[]    = ":/lococonfig/loco_defaults.json";
 
 // The confirmation box lists at most this many changed fields in its main
@@ -77,7 +79,7 @@ LocoConfigWindow::LocoConfigWindow(QWidget *parent, const QString &dataDirectory
 
     // ---- the layout, its presentation, the tool's defaults -------------------------
     QString error;
-    if (!m_layout.load(QLatin1String(kSchemaPath), &error)) {
+    if (!m_layout.load(schemaFile(), &error)) {
         m_loadError = tr("The LOCO_INFO layout could not be read from the schema:\n%1").arg(error);
     } else if (!LocoInfo::loadDefaults(QLatin1String(kDefaultsPath), m_layout, &m_defaults, &error,
                                        &m_defaultsSource)) {
@@ -244,6 +246,17 @@ QWidget *LocoConfigWindow::buildAppBar()
     menu->addAction(tr("Import configurations…"), this, &LocoConfigWindow::importConfigsDialog);
     menu->addSeparator();
     menu->addAction(tr("Reset all fields to defaults…"), this, &LocoConfigWindow::resetToDefaults);
+    menu->addSeparator();
+    // Session 307: LOCO_INFO's members themselves, in kavach.xml.
+    QMenu *fields = menu->addMenu(tr("Fields"));
+    fields->setObjectName(QStringLiteral("locoFieldsMenu"));
+    QAction *addFieldAction = fields->addAction(tr("Add a field…"), this, [this]() { addFieldDialog(); });
+    addFieldAction->setObjectName(QStringLiteral("locoAddField"));
+    QAction *removeFieldAction = fields->addAction(tr("Remove a field…"), this, [this]() { removeFieldDialog(); });
+    removeFieldAction->setObjectName(QStringLiteral("locoRemoveField"));
+    fields->setToolTipsVisible(true);
+    addFieldAction->setToolTip(tr("A new LOCO_INFO member, written into kavach.xml"));
+    removeFieldAction->setToolTip(tr("Take a LOCO_INFO member out of kavach.xml"));
     // Where "defaults" come from: the tool sync_linfo.py last read.
     if (!m_defaultsSource.isEmpty()) {
         menu->setToolTipsVisible(true);
@@ -360,8 +373,17 @@ QWidget *LocoConfigWindow::buildBody()
         // loco_unit_id, ...) is locked for this configuration.
         QAction *lock = menu.addAction(locked ? tr("Unlock field…") : tr("Lock field"));
         lock->setObjectName(QStringLiteral("locoLockField"));
+        // Session 307: the struct itself, at this row.
+        menu.addSeparator();
+        QAction *addAfter = menu.addAction(tr("Add a field after this one…"));
+        QAction *removeThis = menu.addAction(tr("Remove this field from LOCO_INFO…"));
+        removeThis->setEnabled(LinfoEdit::removeProblem(m_layout, key).isEmpty());
         QAction *chosen = menu.exec(m_table->viewport()->mapToGlobal(position));
-        if (chosen == lock && chosen != nullptr) {
+        if (chosen == addAfter && chosen != nullptr) {
+            addFieldDialog(key);
+        } else if (chosen == removeThis && chosen != nullptr) {
+            removeFieldDialog(key);
+        } else if (chosen == lock && chosen != nullptr) {
             setFieldLocked(key, !locked, true);
         } else if (chosen == revertDefault) {
             m_model->setValue(key, m_defaults.value(key));
@@ -1623,4 +1645,189 @@ void LocoConfigWindow::importConfigsDialog()
     }
     if (stored.isEmpty()) m_status->warn(tr("Nothing was imported"));
     else m_status->ok(tr("Imported %1").arg(stored.join(QStringLiteral(", "))));
+}
+
+// =============================================================================
+//  Session 307: add / remove a LOCO_INFO member (kavach.xml)
+// =============================================================================
+
+QString LocoConfigWindow::schemaFile()
+{
+    const QString external = Settings::schemaPath();
+    return external.isEmpty() ? QString::fromLatin1(kBuiltinSchema) : external;
+}
+
+namespace {
+
+// Writes `text` over `path`, a timestamped copy of the old file beside it
+// first. Returns the backup's path, or empty with *error.
+QString writeSchema(const QString &path, const QByteArray &text, QString *error)
+{
+    const QString backup = path + QStringLiteral(".bak-")
+                           + QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
+    QFile::remove(backup);
+    if (!QFile::copy(path, backup)) {
+        *error = QObject::tr("Could not back up %1 to %2; nothing was changed").arg(path, backup);
+        return QString();
+    }
+    QSaveFile out(path);
+    if (!out.open(QIODevice::WriteOnly) || out.write(text) != text.size() || !out.commit()) {
+        *error = QObject::tr("Could not write %1: %2").arg(path, out.errorString());
+        return QString();
+    }
+    return backup;
+}
+
+}  // namespace
+
+static bool editSchema(const QString &path, const std::function<LinfoEdit::Result(const QByteArray &, const LocoInfo::Layout &)> &edit,
+                       LinfoEdit::Result *result, QString *backup, QString *error)
+{
+    if (path.startsWith(QLatin1Char(':'))) {
+        *error = QObject::tr("The built-in kavach.xml cannot be changed: make an editable copy first");
+        return false;
+    }
+    QFile in(path);
+    if (!in.open(QIODevice::ReadOnly)) {
+        *error = QObject::tr("Cannot open %1: %2").arg(path, in.errorString());
+        return false;
+    }
+    const QByteArray text = in.readAll();
+    in.close();
+    // The layout as the file holds it NOW (it may have been edited by hand
+    // since this window read it).
+    LocoInfo::Layout current;
+    if (!current.loadXml(text, path, error)) {
+        return false;
+    }
+    *result = edit(text, current);
+    if (!result->ok) {
+        *error = result->error;
+        return false;
+    }
+    *backup = writeSchema(path, result->text, error);
+    return !backup->isEmpty();
+}
+
+bool LocoConfigWindow::addField(const LinfoEdit::NewField &field, QString *summary, QString *error)
+{
+    QString why, backup;
+    LinfoEdit::Result r;
+    const QString path = schemaFile();
+    const bool ok = editSchema(path, [&field](const QByteArray &text, const LocoInfo::Layout &layout) {
+        return LinfoEdit::addField(text, layout, field);
+    }, &r, &backup, &why);
+    if (!ok) {
+        if (error) *error = why;
+        return false;
+    }
+    const QString text = tr("Added %1 after %2 (kavach.xml line %3): LOCO_INFO %4 → %5 bytes. Backup: %6. "
+                            "Change the firmware and the loco_config tool the same way, then run sync_linfo.py.")
+                             .arg(field.name, field.afterKey).arg(r.line).arg(r.oldSize).arg(r.newSize)
+                             .arg(QFileInfo(backup).fileName());
+    if (summary) *summary = text;
+    emit schemaEdited(path, text);
+    return true;
+}
+
+bool LocoConfigWindow::removeField(const QString &key, QString *summary, QString *error)
+{
+    QString why, backup;
+    LinfoEdit::Result r;
+    const QString path = schemaFile();
+    const bool ok = editSchema(path, [&key](const QByteArray &text, const LocoInfo::Layout &layout) {
+        return LinfoEdit::removeField(text, layout, key);
+    }, &r, &backup, &why);
+    if (!ok) {
+        if (error) *error = why;
+        return false;
+    }
+    const QString text = tr("Removed %1 (kavach.xml line %2): LOCO_INFO %3 → %4 bytes. Backup: %5. "
+                            "Change the firmware and the loco_config tool the same way, then run sync_linfo.py.")
+                             .arg(key).arg(r.line).arg(r.oldSize).arg(r.newSize)
+                             .arg(QFileInfo(backup).fileName());
+    if (summary) *summary = text;
+    emit schemaEdited(path, text);
+    return true;
+}
+
+// The built-in schema is read-only: offer a copy the operator can edit, used
+// from then on (Schema ▸ Revert to built-in schema goes back). False = not now.
+static bool ensureEditableSchema(QWidget *parent)
+{
+    if (!LocoConfigWindow::schemaFile().startsWith(QLatin1Char(':'))) {
+        return true;
+    }
+    const auto answer = QMessageBox::question(
+        parent, QObject::tr("Make an editable kavach.xml"),
+        QObject::tr("LOCO_INFO's layout comes from the kavach.xml built into DLConsole, which cannot be "
+                    "changed.\n\nSave a copy of it, and use that copy from now on (for decoding too)? "
+                    "Schema ▸ Revert to built-in schema goes back."),
+        QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Yes);
+    if (answer != QMessageBox::Yes) {
+        return false;
+    }
+    const QString path = QFileDialog::getSaveFileName(parent, QObject::tr("Save an editable kavach.xml"),
+                                                      programDir() + QStringLiteral("/kavach.xml"),
+                                                      QObject::tr("Schema (*.xml)"));
+    if (path.isEmpty()) {
+        return false;
+    }
+    QFile in(QString::fromLatin1(kBuiltinSchema));
+    QSaveFile out(path);
+    if (!in.open(QIODevice::ReadOnly) || !out.open(QIODevice::WriteOnly)
+        || out.write(in.readAll()) < 0 || !out.commit()) {
+        QMessageBox::warning(parent, QObject::tr("Make an editable kavach.xml"),
+                             QObject::tr("Could not write %1: %2").arg(path, out.errorString()));
+        return false;
+    }
+    Settings::setSchemaPath(path);
+    return true;
+}
+
+void LocoConfigWindow::addFieldDialog(const QString &afterKey)
+{
+    if (!m_layout.isLoaded() || !ensureEditableSchema(this)) {
+        return;
+    }
+    QStringList groups;
+    for (const LocoInfo::Presentation::Group &group : m_presentation.groups) {
+        groups << group.title;
+    }
+    LinfoAddFieldDialog dialog(m_layout, groups, schemaFile(), afterKey, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    QString summary, error;
+    if (addField(dialog.field(), &summary, &error)) {
+        m_status->ok(summary);
+    } else {
+        m_status->fail(tr("Field not added: %1").arg(error));
+    }
+}
+
+void LocoConfigWindow::removeFieldDialog(const QString &key)
+{
+    if (!m_layout.isLoaded() || !ensureEditableSchema(this)) {
+        return;
+    }
+    if (m_saveTimer.isActive()) {
+        saveNow();
+    }
+    QHash<QString, QStringList> lockedIn;
+    for (const LocoInfo::LocoConfig &config : m_store->all()) {
+        for (const QString &locked : config.locked) {
+            lockedIn[locked] << config.name;
+        }
+    }
+    LinfoRemoveFieldDialog dialog(m_layout, schemaFile(), key, lockedIn, this);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+    QString summary, error;
+    if (removeField(dialog.key(), &summary, &error)) {
+        m_status->ok(summary);
+    } else {
+        m_status->fail(tr("Field not removed: %1").arg(error));
+    }
 }

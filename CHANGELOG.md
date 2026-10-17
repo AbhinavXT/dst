@@ -11,6 +11,149 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-307"></a>
+## Session 307 — Loco Configuration: add or remove a LOCO_INFO field from the window
+
+Abhinav asked for an easier way to add or delete a field in the Loco
+Configuration. He chose the in-app form: **Manage ▸ Fields ▸ Add / Remove**,
+written into the active external kavach.xml, refused for the built-in copy.
+
+**Before.** Adding a member meant writing a `<field>` line by hand at the
+right place in `<packet name="LINFO">` (ADDING_A_FIELD.md), then running
+`sync_linfo.py`. Deleting one meant finding and removing the line.
+
+**What the operator sees.**
+- **Manage ▸ Fields ▸ Add a field…**, and on a row's right-click **Add a
+  field after this one…** The dialog asks for:
+  - the name (a C member name);
+  - the C type: uint8_t, uint16_t, uint32_t, float or char[N];
+  - the field it comes after, which also decides its section (LOCO_INFO,
+    static_brake_params or national_values);
+  - the group (an existing one, or type a new one);
+  - a note, a default, and Show in hex.
+  - It shows the exact kavach.xml line, the file, and LOCO_INFO's size
+    before → after. Add stays disabled while the field is refused, and the
+    dialog says why: bad name, name already there, after loco_info_crc,
+    char N outside 2–255, or a default that doesn't fit the type.
+- **Manage ▸ Fields ▸ Remove a field…**, and **Remove this field from
+  LOCO_INFO…** on a row. It shows:
+  - the size change, and that every member after it moves up;
+  - that saved configurations drop its value;
+  - which configurations have it locked;
+  - that past sends can no longer be loaded back.
+  - `loco_info_crc` and `vcc_crc` are not offered.
+- **Both dialogs say plainly** that the firmware and the loco_config tool
+  must change the same way, then `sync_linfo.py` checks it.
+- **After either edit:**
+  - the old file is kept beside it, as `kavach.xml.bak-<date>-<time>`;
+  - the decoder reloads the schema, so `@linfo` follows;
+  - a notification gives the summary;
+  - the window closes, saving, and reopens on the new layout. Saved
+    configurations get a new field at its default, or lose a removed one.
+- **With the built-in schema in use,** the window first offers to save an
+  editable copy and use it from then on, for decoding too. Schema ▸ Revert
+  to built-in schema goes back.
+
+**Changed behaviour.** The Loco Configuration editor now reads **the same
+kavach.xml as the decoder**: the external schema when one is set, else the
+built-in copy. Before, it always read the built-in copy, so an external
+schema with a different LINFO decoded `@linfo` one way and edited it
+another.
+
+**How.**
+- **`lococonfig/linfoedit.{h,cpp}`** edits the file's text, not a parsed
+  and re-serialised copy:
+  - It finds LINFO's lines, keys them as `Layout` does (section notes
+    included), and inserts one line after the chosen field or deletes one.
+  - It copies the neighbour's indent, its column alignment, and the file's
+    CRLF/LF.
+  - It refuses a LINFO element written over several lines.
+  - The edited text is read back with the editor's own `Layout`. It must
+    load, the field must be at the place and size asked, and the body must
+    grow or shrink by exactly that size. Otherwise nothing is written.
+- **`Layout::loadXml()`:** the parser now also reads from bytes.
+- **New attribute `ui-default`:** a new field's default until
+  `sync_linfo.py` writes the tool's own value into `loco_defaults.json`,
+  which then wins (`loadDefaults`).
+- **`lococonfig/linfofielddialog.{h,cpp}`:** the two dialogs.
+- **`LocoConfigWindow`:**
+  - `schemaFile()`;
+  - `addField()` / `removeField()`, which back up, then write atomically
+    (QSaveFile);
+  - the dialogs, the Fields menu and the row's right-click entries;
+  - the `schemaEdited()` signal. MainWindow reloads the schema and reopens
+    the window on it.
+
+**Files.**
+- New: `lococonfig/linfoedit.{h,cpp}`, `lococonfig/linfofielddialog.{h,cpp}`.
+- Changed:
+  - `lococonfig/lococonfig.pri`;
+  - `lococonfig/lococonfigcore.{h,cpp}`, `lococonfig/lococonfigwindow.{h,cpp}`;
+  - `lococonfig/ADDING_A_FIELD.md`;
+  - `mainwindow_tools.cpp`;
+  - `tests/screenshot_main.cpp` (`SHOT_WINDOW=linfoadd`, `linforemove`).
+- Tests: new `tests/test_session307.cpp`, `tests/tests.pro`.
+
+**Tests.** `session307`, 49 checks, all on the repository's real
+`schema/kavach.xml` and `loco_defaults.json`:
+- **Add:**
+  - u16 after `loco_doubtover`: exactly one line added, after it, same
+    indent and attribute column, `&` escaped;
+  - read back: right after it, later members 2 bytes on, earlier ones
+    unmoved;
+  - `ui-default` 380 becomes its default; removing it again gives the
+    original file byte for byte.
+- **Sections:**
+  - after a `national_values` member → `national_values.<name>`;
+  - after `vcc_crc` → a LOCO_INFO member before the nested structs;
+  - after `brake_pressure_used` → top level.
+- **Types:** char[12] (12 bytes), float (`type="float" prec="4"`), hex u32
+  (`hexup="8"`).
+- **Refused:** a name starting with a digit, a duplicate, after
+  `loco_info_crc`, an unknown field, a u16 default of 70000, char[1]. The
+  same name inside `national_values` is allowed.
+- **Remove:** `loco_doubtover` alone goes and the body is 1 byte smaller;
+  `loco_info_crc`, `vcc_crc` and an unknown key are refused.
+- **File form:** a CRLF file stays CRLF; a field written over two lines is
+  refused.
+- **Window, with a temporary copy as the external schema:**
+  - the built-in schema is refused;
+  - `addField` writes the file and keeps a byte-identical backup, and
+    `schemaEdited` carries the sizes and the `sync_linfo.py` reminder;
+  - reopened: the row is there, the saved configuration has 380, the body
+    is 2 bytes longer;
+  - `vcc_crc` is refused; `removeField` gives back the original file; the
+    row and the saved value are gone.
+- **Dialogs:**
+  - Add is disabled with the reason until there is a name;
+  - it preselects the right-clicked field and its group;
+  - the preview shows sizes, file and firmware warning;
+  - char[N] enables N and disables hex; a uint8 default of 300 is
+    refused.
+  - The Remove dialog doesn't offer the two CRCs, and shows sizes, locks
+    and the warning.
+
+Both dialogs were rendered with the screenshot harness and looked at.
+
+**Gate:** Qt 6 and Qt 5.15 green, 343 suites / 8758 checks, 0 failed; 15 validators; menu audit 184 ok; smoke.
+
+**Not tested / not done:**
+- **The modal paths were not clicked through:** the editable-copy question,
+  its save dialog, `exec()` of the two dialogs, and MainWindow's reload and
+  reopen after `schemaEdited`. The suite calls `addField`/`removeField`
+  directly and reopens the window itself.
+- **`sync_linfo.py` was not run** against a field added this way. No C tool
+  with an extra member is at hand; the script reads `ui-group` and ignores
+  the other `ui-*` attributes.
+- **No ui-format (ipv4) or c-name** in the dialog. Those, and anything
+  unusual, are still written by hand.
+- **Not at the very start of LOCO_INFO:** a field can only be added
+  *after* another one, so nothing goes before `loco_ip_set_id`.
+- **The repository's `schema/kavach.xml` is not touched** unless the
+  external schema path points at it.
+
+---
+
 <a id="session-306"></a>
 ## Session 306 — the test cases' results, live (dock + DMI / Live Loco Console strip)
 

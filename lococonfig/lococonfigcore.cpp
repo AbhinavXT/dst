@@ -35,6 +35,22 @@ QString Field::typeText() const
 
 bool Layout::load(const QString &schemaPath, QString *error)
 {
+    QFile file(schemaPath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        m_fields.clear();
+        m_index.clear();
+        m_bodySize = 0;
+        m_loaded = false;
+        if (error != nullptr) {
+            *error = QStringLiteral("Cannot open %1: %2").arg(schemaPath, file.errorString());
+        }
+        return false;
+    }
+    return loadXml(file.readAll(), schemaPath, error);
+}
+
+bool Layout::loadXml(const QByteArray &xml, const QString &schemaPath, QString *error)
+{
     m_fields.clear();
     m_index.clear();
     m_bodySize = 0;
@@ -47,14 +63,10 @@ bool Layout::load(const QString &schemaPath, QString *error)
         return false;
     };
 
-    QFile file(schemaPath);
-    if (!file.open(QIODevice::ReadOnly)) {
-        return fail(QStringLiteral("Cannot open %1: %2").arg(schemaPath, file.errorString()));
-    }
     QDomDocument document;
     QString parseError;
     int errorLine = 0;
-    if (!document.setContent(&file, &parseError, &errorLine)) {
+    if (!document.setContent(xml, &parseError, &errorLine)) {
         return fail(QStringLiteral("%1 line %2: %3").arg(schemaPath).arg(errorLine).arg(parseError));
     }
 
@@ -106,6 +118,7 @@ bool Layout::load(const QString &schemaPath, QString *error)
         field.note = child.attribute(QStringLiteral("ui-note"));
         field.format = child.attribute(QStringLiteral("ui-format"));
         field.cName = child.attribute(QStringLiteral("c-name"), field.name);
+        field.defaultText = child.attribute(QStringLiteral("ui-default"));
         field.offset = offset;
 
         const QString type = child.attribute(QStringLiteral("type"));
@@ -619,6 +632,18 @@ bool loadDefaults(const QString &path, const Layout &layout, Values *out, QStrin
         return false;
     }
     *out = valuesFromJson(layout, document.object().value(QStringLiteral("values")).toObject());
+    // Session 307: a field the tool's file does not have yet starts at the
+    // schema's ui-default (a field just added from the editor).
+    for (const Field &field : layout.fields()) {
+        if (field.isCrc || field.defaultText.isEmpty() || out->contains(field.key)) {
+            continue;
+        }
+        QVariant value;
+        QString ignored;
+        if (parseValueText(field, field.defaultText, field.format, &value, &ignored)) {
+            out->insert(field.key, value);
+        }
+    }
     if (source != nullptr) {
         *source = document.object().value(QStringLiteral("source")).toString();
     }

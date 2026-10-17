@@ -44,6 +44,8 @@
 
 #include "lococonfigcore.h"
 
+#include "linfoedit.h"
+
 class LocoFieldFilter;
 class LocoFieldModel;
 class LocoConfigHistoryDialog;
@@ -101,6 +103,22 @@ public:
     // Session 158: the vcc_crc paragraph of the send confirmation (HTML).
     QString sendConfirmVccHtml() const;
 
+    // ---- session 307: add / remove a LOCO_INFO member --------------------------
+    // The kavach.xml the layout is read from: the external schema when one
+    // is set (Schema ▸ Use external schema file…), else the built-in copy.
+    // The same file the capture decoder reads, so @linfo and the editor
+    // always agree.
+    static QString schemaFile();
+    // Write the change into the external schema (a backup beside it first).
+    // Refused for the built-in copy. True on success; *summary says what
+    // changed, *error why not. The window must be reopened to show the new
+    // layout: schemaEdited() asks for that.
+    bool addField(const LinfoEdit::NewField &field, QString *summary, QString *error);
+    bool removeField(const QString &key, QString *summary, QString *error);
+    // The dialogs (the menu and the row's right-click).
+    void addFieldDialog(const QString &afterKey = QString());
+    void removeFieldDialog(const QString &key = QString());
+
     // ---- the live check: what the loco actually holds ------------------------
     // The VCC prints its LOCO_INFO (@linfo) periodically. Each one is
     // compared with what this configuration last sent (or, if never sent,
@@ -121,6 +139,9 @@ signals:
     // The first @linfo after a send, judged (session 81). Also recorded in
     // the send history. `detail` lists the differing fields.
     void verified(const QString &text, bool match, const QString &detail);
+    // Session 307: kavach.xml was changed from here. The owner reloads the
+    // decoder's schema and reopens this window on the new layout.
+    void schemaEdited(const QString &path, const QString &summary);
 
 protected:
     void closeEvent(QCloseEvent *event) override;

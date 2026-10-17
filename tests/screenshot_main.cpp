@@ -121,6 +121,7 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "testassertions.h"
 #include "testcaseboard.h"
 #include "testcasepanel.h"
+#include "linfofielddialog.h"
 
 int main(int argc, char **argv)
 {
@@ -713,6 +714,24 @@ int main(int argc, char **argv)
                     m->setData(m->index(m->rowForKey(QStringLiteral("loco_unit_id")), LocoFieldModel::ColumnValue),
                                QStringLiteral("30421"), Qt::EditRole);
                 win = w;
+            }
+            if (which == QLatin1String("linfoadd") || which == QLatin1String("linforemove")) {
+                // Session 307: Manage ▸ Fields, on the built-in LINFO.
+                static LocoInfo::Layout linfo;
+                linfo.load(QStringLiteral(":/schema/kavach.xml"), nullptr);
+                if (which == QLatin1String("linfoadd")) {
+                    auto *d = new LinfoAddFieldDialog(linfo, { QStringLiteral("Brake pressures") },
+                                                      QStringLiteral("C:/DLConsole/kavach.xml"),
+                                                      QStringLiteral("brake_pressure_used"), nullptr);
+                    d->nameEdit()->setText(QStringLiteral("max_brake_cylinder_pressure"));
+                    d->typeBox()->setCurrentIndex(1);
+                    d->noteEdit()->setText(QStringLiteral("kPa"));
+                    d->defaultEdit()->setText(QStringLiteral("380"));
+                    win = d;
+                } else {
+                    win = new LinfoRemoveFieldDialog(linfo, QStringLiteral("C:/DLConsole/kavach.xml"),
+                                                     QStringLiteral("loco_doubtover"), {}, nullptr);
+                }
             }
             if (which == QLatin1String("replay")) {
                 // Both locos of one real run (SHOT_CAP picks the run).

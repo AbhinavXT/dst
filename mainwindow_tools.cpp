@@ -38,6 +38,8 @@
 #include "sessionfile.h"
 #include "sessionwindow.h"
 #include "settings.h"
+#include <QFileInfo>
+#include <QTimer>
 #include "settingsdialog.h"
 #include "stickymenu.h"
 #include "schema/schemadecoder.h"
@@ -206,6 +208,21 @@ void MainWindow::onActionLocoConfig()
         connect(m_locoConfig, &LocoConfigWindow::verified, this,
                 [this](const QString &text, bool match, const QString &detail) {
             notify(match ? NoteLevel::Info : NoteLevel::Warning, text, detail);
+        });
+        // Session 307: a field added or removed in kavach.xml. The decoder
+        // reads the same file (@linfo must follow), and the window is
+        // rebuilt on the new layout: closed (saving) and opened again.
+        connect(m_locoConfig, &LocoConfigWindow::schemaEdited, this,
+                [this](const QString &path, const QString &summary) {
+            if (Settings::schemaPath() == path) onActionReloadSchema();
+            notify(NoteLevel::Info, tr("LOCO_INFO changed in %1").arg(QFileInfo(path).fileName()), summary);
+            QTimer::singleShot(0, this, [this]() {
+                if (m_locoConfig) {
+                    m_locoConfig->close();
+                    m_locoConfig = nullptr;
+                }
+                onActionLocoConfig();
+            });
         });
     }
     m_locoConfig->show();

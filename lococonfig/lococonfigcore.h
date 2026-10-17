@@ -32,8 +32,9 @@
 //    byte-for-byte with the loco_info.bin the loco_config tool itself writes.
 //
 //  ADDING A MEMBER
-//    One <field> line in kavach.xml, then lococonfig/sync_linfo.py against
-//    the tool: see lococonfig/ADDING_A_FIELD.md. Nothing in this file or the
+//    One <field> line in kavach.xml (Manage ▸ Fields ▸ Add a field… writes
+//    it, linfoedit.h), then lococonfig/sync_linfo.py against the tool: see
+//    lococonfig/ADDING_A_FIELD.md. Nothing in this file or the
 //    window names a field, except vcc_crc (shown in the send bar) and
 //    loco_info_crc (computed).
 // =============================================================================
@@ -83,15 +84,23 @@ struct Field {
     QString note;
     QString format;
     QString cName;
+    // ui-default (session 307): the value a field added from the editor
+    // starts at, until sync_linfo.py writes the tool's own into
+    // loco_defaults.json (which wins).
+    QString defaultText;
 
     QString typeText() const;   // "u8", "u16", "u32", "f32", "char[40]"
 };
 
 class Layout {
 public:
-    // Reads <packet name="LINFO"> from the schema file (normally the
-    // compiled-in ":/schema/kavach.xml").
+    // Reads <packet name="LINFO"> from the schema file: the external one
+    // when set, else the compiled-in ":/schema/kavach.xml" (session 307:
+    // LocoConfigWindow::schemaFile(), the decoder's file).
     bool load(const QString &schemaPath, QString *error);
+    // The same, from the file's bytes (session 307: an edit is checked
+    // before it is written). `sourceName` only names it in errors.
+    bool loadXml(const QByteArray &xml, const QString &sourceName, QString *error);
     bool isLoaded() const { return m_loaded; }
 
     const QVector<Field> &fields() const { return m_fields; }

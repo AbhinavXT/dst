@@ -13,14 +13,18 @@ SOURCES += \
     $$PWD/lococonfigmodel.cpp \
     $$PWD/lococonfighistorydialog.cpp \
     $$PWD/lococonfigcomparedialog.cpp \
-    $$PWD/lococonfigwindow.cpp
+    $$PWD/lococonfigwindow.cpp \
+    $$PWD/linfoedit.cpp \
+    $$PWD/linfofielddialog.cpp
 
 HEADERS += \
     $$PWD/lococonfigcore.h \
     $$PWD/lococonfigmodel.h \
     $$PWD/lococonfighistorydialog.h \
     $$PWD/lococonfigcomparedialog.h \
-    $$PWD/lococonfigwindow.h
+    $$PWD/lococonfigwindow.h \
+    $$PWD/linfoedit.h \
+    $$PWD/linfofielddialog.h
 
 RESOURCES += \
     $$PWD/lococonfig.qrc

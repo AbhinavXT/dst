@@ -5,6 +5,27 @@ and one command.** The capture decoder (`@linfo`) and the Loco
 Configuration editor both read that line; the command checks it against
 your C struct and takes the default value from your tool.
 
+## From the Loco Configuration window (session 307)
+
+**Manage ▸ Fields ▸ Add a field…** (or right-click a row ▸ *Add a field
+after this one…*) does step 2 for you. You give the name, the C type, the
+field it follows, the group, a note and a default. It shows the exact line
+and LOCO_INFO's new size, then writes the line into the kavach.xml DLConsole
+is using, keeping a backup beside it (`kavach.xml.bak-<date>-<time>`). The
+decoder reloads, and the window reopens on the new layout.
+
+**Manage ▸ Fields ▸ Remove a field…** (or *Remove this field from
+LOCO_INFO…*) takes a line out the same way. `loco_info_crc` and `vcc_crc`
+are not offered.
+
+The built-in kavach.xml cannot be changed. The first time, the window
+offers to save an editable copy and use it from then on (for decoding
+too; Schema ▸ Revert to built-in schema goes back).
+
+**It does not change the firmware or the tool.** Do step 1, then step 3 as
+below; `sync_linfo.py` checks that the C struct really has the member at
+that place.
+
 ## 1. The C side (as you do today)
 
 Add the member to `LOCO_INFO` in the firmware and in the loco_config tool,
@@ -42,6 +63,8 @@ Optional attributes, which only the editor reads:
 - `ui-format="ipv4"`: edit a `uint32_t` as a dotted address.
 - `hexup="8"`: show it in hex, in the decoder and the editor.
 - `c-name="…"`: only if the C member's name differs from `name=`.
+- `ui-default="…"`: the editor's default until `sync_linfo.py` writes the
+  tool's value into `loco_defaults.json`, which then wins.
 
 Inside `static_braking_config` or `national_values`, put the line under
 that section's `<note>`.
