@@ -43,6 +43,7 @@
 #include "settingsdialog.h"
 #include "stickymenu.h"
 #include "schema/schemadecoder.h"
+#include "schemaeditorwindow.h"
 #include "timelineribbon.h"
 
 #include <QAction>
@@ -194,6 +195,37 @@ void MainWindow::onActionFirmwareFlasher()
     m_flasher->show();
     m_flasher->raise();
     m_flasher->activateWindow();
+}
+
+void MainWindow::onActionSchemaEditor()
+{
+    if (!m_schemaEditor) {
+        // The file the decoder uses: the external schema when one is set.
+        const QString external = Settings::schemaPath();
+        m_schemaEditor = new SchemaEditorWindow(external.isEmpty() ? QStringLiteral(":/schema/kavach.xml") : external, this);
+        m_schemaEditor->setAttribute(Qt::WA_DeleteOnClose);
+        connect(m_schemaEditor, &SchemaEditorWindow::schemaSaved, this,
+                [this](const QString &path, const QString &summary) {
+            if (Settings::schemaPath() == path) onActionReloadSchema();
+            notify(NoteLevel::Info, tr("Schema saved: %1").arg(QFileInfo(path).fileName()), summary);
+            // Loco Configuration lays its form out from LINFO when it opens:
+            // rebuilt on the new file, as after its own field edits (session 307).
+            if (m_locoConfig) {
+                QTimer::singleShot(0, this, [this]() {
+                    if (!m_locoConfig) return;
+                    m_locoConfig->close();
+                    m_locoConfig = nullptr;
+                    onActionLocoConfig();
+                });
+            }
+        });
+        // An editable copy of the built-in schema, now the external schema.
+        connect(m_schemaEditor, &SchemaEditorWindow::schemaFileChanged, this,
+                [this](const QString &) { onActionReloadSchema(); });
+    }
+    m_schemaEditor->show();
+    m_schemaEditor->raise();
+    m_schemaEditor->activateWindow();
 }
 
 void MainWindow::onActionLocoConfig()

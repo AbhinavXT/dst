@@ -60,6 +60,7 @@ class TabPopoutWindow;
 class FieldSweepDialog;
 class FrameDiffWindow;
 class RoundTripWindow;
+class SchemaEditorWindow;
 class FilterBar;
 class FindBar;
 class PacketMakerDialog;
@@ -226,6 +227,7 @@ private slots:
     void onActionFrameDiff();        // Tools → Frame Diff… (with the selection, if two rows)
     void onActionFieldSweep();       // Tools → Field Sweep…
     void onActionRoundTrip();        // Tools → Round-trip Validator…
+    void onActionSchemaEditor();     // Tools → Schema → Schema Editor… (session 308)
     void onActionStreamSession();    // Tools → Stream session (.dlr)…
     void onActionPacketSequence();   // Tools → Packet Sequence…
     void onActionSessionKey();       // Tools → Session Key…
@@ -404,6 +406,7 @@ private:
     // value by what arrived after it, which only this window sees.
     QPointer<FieldSweepDialog>  m_fieldSweep;
     QPointer<RoundTripWindow>   m_roundTrip;
+    QPointer<SchemaEditorWindow> m_schemaEditor;
     QPointer<DecodeWorkbench>   m_bufferWorkbench;
     // One flasher at a time: two windows flashing the same chassis would
     // interleave their META/DATA on the wire. Reopening raises this one.

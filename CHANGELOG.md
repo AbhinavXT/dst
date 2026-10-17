@@ -11,6 +11,108 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-308"></a>
+## Session 308 — Schema Editor, phase 1: browse kavach.xml, change any attribute
+
+Abhinav asked for a good UI to add, delete or modify structs, fields, names
+and sizes in kavach.xml. Scope agreed: **everything in the file**, a clean
+and simple UI, edits written into the text (not a re-serialised DOM), staged
+and saved with a diff, delivered in phases. This is phase 1: every element
+browsed, and every attribute of an existing element changed, added or
+removed. Adding, deleting and moving elements (fields, pads, structs, maps,
+flags, cases) comes next.
+
+**What the operator sees.** **Tools ▸ Schema ▸ Schema Editor…**, three panes:
+- **Outline:** Packets (26), Structs (8), Enums (62), Flag tables, Event
+  tables, CRCs, each with its size (`22 B`, `195 bits`, `variable`) or count,
+  and a find box that keeps the ones holding a matching name, label or
+  condition (Enter selects the first match).
+- **Members:** the selected packet's or struct's elements in wire order, with
+  Kind, Bits and the bit **Offset** while it is fixed (`+n` inside a repeat
+  entry), and conditions, repeats, groups and sub-packet cases nested. An
+  enum shows its values, a flag table its bits, an event table its events.
+  The header says the size, bit order, match and CRC.
+- **Properties:** a form of the element's attributes, each with what it does:
+  a spin box for numbers, a check box for flags, a list for enum=, struct=,
+  table= and crc= (only names that exist), text for the rest. ✕ removes an
+  optional one; **＋ Add a property** offers the ones it could have. Above
+  it, the file's own comment; below it, the start tag as it now reads.
+- **Staged edits.** Each is checked first and refused with the reason
+  (status line) if the value does not suit, the reference names nothing, or
+  the decoder would not load the result (e.g. a condition on an undeclared
+  field). Undo / Redo / Discard all; a run of clicks on one spin box is one
+  step. **Review & save…** lists the changes, the packet/struct sizes that
+  change, and the line diff; Save keeps `kavach.xml.bak-<date>-<time>`,
+  writes atomically, and DLConsole reloads the decoder (and reopens Loco
+  Configuration if open). A file changed on disk since opening is not
+  overwritten; closing with unsaved edits asks.
+- **Renames** offer to update the references in the same packet or struct
+  (when=, test=, count=, `<row tmpl="{name}">`); renaming an enum, struct,
+  flag/event table or CRC definition updates every enum=/struct=/table=/crc=.
+  Uses in other packets are listed, not changed; a packet rename warns that
+  the program looks some up by name. Duplicate container names are refused.
+- **Built-in schema:** browsable, read-only, with **Make an editable copy…**
+  (the same copy-and-use as session 307).
+
+**How.**
+- `schema/schemadoc.{h,cpp}`: kavach.xml as text with each element's and
+  attribute's byte offsets. An edit replaces exactly those bytes, keeps the
+  next attribute's column in an aligned block, escapes & < > ", and keeps
+  CRLF. Plus a line diff for the review.
+- `schema/schemaedit.{h,cpp}`: attribute specs per element, fixed sizes and
+  offsets, rename planning, the staged `Session` (undo/redo/merge/save),
+  `writeWithBackup()` and `makeEditableCopy()` — Loco Configuration (307)
+  now uses these two instead of its own copies.
+- `Schema::Decoder::loadData(bytes)`: the editor checks staged text with the
+  decoder itself; `load(path)` now reads the file and calls it.
+- `schemaeditorwindow.{h,cpp}`; MainWindow action and wiring.
+
+**Files.** New: `schema/schemadoc.{h,cpp}`, `schema/schemaedit.{h,cpp}`,
+`schemaeditorwindow.{h,cpp}`, `tests/test_session308.cpp`. Changed:
+`dlcore.pri`, `schema/schemadecoder.{h,cpp}`, `mainwindow.h`,
+`mainwindow_menus.cpp`, `mainwindow_tools.cpp`,
+`lococonfig/lococonfigwindow.cpp`, `tests/tests.pro`,
+`tests/menuaudit_main.cpp`, `tests/screenshot_main.cpp`
+(`SHOT_WINDOW=schemaeditor`, `schemaeditorro`; `SHOT_PACKET`, `SHOT_FIELD`).
+
+**Tests.** `session308`, 105 checks, on the real kavach.xml and real frames:
+- the parser agrees with QDomDocument on every element, attribute and
+  decoded value, in order; loadData == load;
+- an edit changes one line, keeps columns (longer and shorter names), adds
+  and removes attributes byte-exactly, escapes and reads back, keeps CRLF;
+  the diff's hunks;
+- sizes and offsets (AAP 176 bits, MAC_CODE at 144; SLRP's sub-packets at 104);
+- rename plans: LOC_RESET's three when=, LSRP FRAME_NUM's five tests, an
+  enum's users, a CRC's five packets, the packet warning;
+- refusals (bits 0/abc, missing enum, bad and undeclared conditions,
+  signed=yes) stage nothing; a unit change shows in a real @aap decode;
+  step merging, undo/redo; LOC_RESET renamed alone is refused, with its
+  references a real @slrp decodes the same;
+- save: file = staged text, backup = old file; changed on disk refused;
+  built-in refused;
+- the window: outline, AAP's 13 rows with bits/offsets, spin-box edit,
+  size change 22 B → 177 bits, refusal, check box add/remove, enum list,
+  review lines, undo, save signal and summary, find, read-only.
+Rendered with the screenshot harness in light and dark, editable and
+read-only, and looked at.
+
+**Gate:** Qt 6 and Qt 5.15 green, 344 suites / 8863 checks, 0 failed; 15 validators; menu audit 185 ok; smoke.
+
+**Not tested / not done:**
+- **Modal paths not clicked through:** the rename question, Add a property's
+  input dialogs, Review & save's dialog, the close-with-changes question and
+  the editable-copy file dialog. The suite calls the same functions directly.
+- **MainWindow's reload after `schemaSaved`** is wired as in 307 but not
+  exercised by a test.
+- **Not yet:** adding, deleting or moving elements, new structs/packets/
+  enums, live decode preview — the next phases.
+- **Not changed by a rename:** DLConsole's C++ lookups by name, the Python
+  validators and engine.py, fielddocs.json. The dialog says so.
+- The repository's `schema/kavach.xml` is untouched unless the external
+  schema path points at it.
+
+---
+
 <a id="session-307"></a>
 ## Session 307 — Loco Configuration: add or remove a LOCO_INFO field from the window
 

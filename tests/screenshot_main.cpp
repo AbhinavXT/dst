@@ -122,6 +122,7 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "testcaseboard.h"
 #include "testcasepanel.h"
 #include "linfofielddialog.h"
+#include "schemaeditorwindow.h"
 
 int main(int argc, char **argv)
 {
@@ -713,6 +714,33 @@ int main(int argc, char **argv)
                 if (LocoFieldModel *m = w->fieldModel())
                     m->setData(m->index(m->rowForKey(QStringLiteral("loco_unit_id")), LocoFieldModel::ColumnValue),
                                QStringLiteral("30421"), Qt::EditRole);
+                win = w;
+            }
+            if (which == QLatin1String("schemaeditor") || which == QLatin1String("schemaeditorro")) {
+                // Session 308: Schema Editor. "schemaeditor" edits a temporary
+                // copy (one staged edit shown); "...ro" browses the built-in one.
+                static QString copy;
+                if (which == QLatin1String("schemaeditor")) {
+                    copy = QDir::temp().filePath(QStringLiteral("shot_kavach.xml"));
+                    QFile::remove(copy);
+                    QFile::copy(QStringLiteral(":/schema/kavach.xml"), copy);
+                    QFile::setPermissions(copy, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+                }
+                auto *w = new SchemaEditorWindow(which == QLatin1String("schemaeditor") ? copy
+                                                                                        : QStringLiteral(":/schema/kavach.xml"));
+                const QString pkt = qEnvironmentVariableIsEmpty("SHOT_PACKET") ? QStringLiteral("SLRP")
+                                                                                : qEnvironmentVariable("SHOT_PACKET");
+                if (!w->selectContainer(QStringLiteral("packet"), pkt)) w->selectContainer(QStringLiteral("struct"), pkt);
+                const SchemaDoc::Document &d = w->session().doc();
+                for (int i = 0; i < d.count(); ++i) {
+                    if (d.container(i) == w->selectedNode() && d.node(i).value(QStringLiteral("name"))
+                                                                   == qEnvironmentVariable("SHOT_FIELD", QStringLiteral("DIST_PKT_START"))) {
+                        if (which == QLatin1String("schemaeditor")) w->editAttribute(i, QStringLiteral("unit"), QStringLiteral("metre"));
+                        w->refreshNow();
+                        w->selectNode(i);
+                        break;
+                    }
+                }
                 win = w;
             }
             if (which == QLatin1String("linfoadd") || which == QLatin1String("linforemove")) {

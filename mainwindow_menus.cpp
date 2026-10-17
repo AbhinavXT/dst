@@ -646,6 +646,13 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     connect(actReloadSchema, &QAction::triggered,
             this,            &MainWindow::onActionReloadSchema);
 
+    // Session 308: every packet, struct, enum and table, edited as a form.
+    QAction *actSchemaEditor = schemaMenu->addAction(tr("Schema &Editor…"));
+    actSchemaEditor->setObjectName(QStringLiteral("actSchemaEditor"));
+    actSchemaEditor->setToolTip(tr("Browse kavach.xml and change its packets, structs, fields, enums and tables; "
+                                   "every edit is checked by the decoder, reviewed as a diff, and backed up"));
+    connect(actSchemaEditor, &QAction::triggered, this, &MainWindow::onActionSchemaEditor);
+
     QAction *actFieldIndex = schemaMenu->addAction(tr("&Field index…"));
     connect(actFieldIndex, &QAction::triggered,
             this, [this] { showFieldIndex(QString()); });

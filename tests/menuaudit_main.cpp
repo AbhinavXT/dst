@@ -673,6 +673,7 @@ int main(int argc, char **argv) {
     CHECK(schema && findAction(schema, "Use external schema"), "Schema > Use external schema file");
     CHECK(schema && findAction(schema, "Revert to built-in"), "Schema > Revert to built-in");
     CHECK(schema && findAction(schema, "Round-trip Validator"), "Schema > Round-trip Validator");
+    CHECK(schema && findAction(schema, "Schema Editor"), "Schema > Schema Editor (session 308)");
 
     CHECK(testcase && findAction(testcase, "Load test cases"), "Test cases > Load");
     CHECK(testcase && findAction(testcase, "Save observation report"), "Test cases > Save report");

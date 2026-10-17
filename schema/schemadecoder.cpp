@@ -5,6 +5,8 @@
 // =====================================================================
 #include "schemadecoder.h"
 
+#include <QBuffer>
+
 #include <QFile>
 #include <QRegularExpression>
 #include <QSet>
@@ -356,10 +358,23 @@ QVector<Decoder::PacketFields> Decoder::fieldsByCaptype() const
 
 bool Decoder::load(const QString &xmlPath, QString *err)
 {
+    QFile f(xmlPath);
+    if (!f.open(QIODevice::ReadOnly)) {
+        m_loaded = false; m_structs.clear(); m_enums.clear(); m_packets.clear();
+        m_eventtables.clear(); m_flagtables.clear();
+        if (err) *err = "cannot open " + xmlPath;
+        return false;
+    }
+    return loadData(f.readAll(), err);
+}
+
+bool Decoder::loadData(const QByteArray &xml, QString *err)
+{
     m_loaded = false; m_structs.clear(); m_enums.clear(); m_packets.clear();
     m_eventtables.clear(); m_flagtables.clear();
-    QFile f(xmlPath);
-    if (!f.open(QIODevice::ReadOnly)) { if (err) *err = "cannot open " + xmlPath; return false; }
+    QBuffer f;
+    f.setData(xml);
+    f.open(QIODevice::ReadOnly);
     QString perr; int line = 0, col = 0;
     if (!m_doc.setContent(&f, &perr, &line, &col)) {
         if (err) *err = QStringLiteral("XML error at %1:%2 - %3").arg(line).arg(col).arg(perr);

@@ -60,6 +60,9 @@ public:
     Decoder() = default;
 
     bool load(const QString &xmlPath, QString *err = nullptr);
+    // The same, from the file's bytes (session 308: the Schema Editor checks
+    // its staged text with the decoder itself before anything is written).
+    bool loadData(const QByteArray &xml, QString *err = nullptr);
     bool isLoaded() const { return m_loaded; }
 
     // Counts of what the last successful load() produced. Used by the

@@ -30,6 +30,9 @@ SOURCES += \
     $$PWD/sessionkeydialog.cpp \
     $$PWD/sessionkeystore.cpp \
     $$PWD/schema/schemadecoder.cpp \
+    $$PWD/schema/schemadoc.cpp \
+    $$PWD/schema/schemaedit.cpp \
+    $$PWD/schemaeditorwindow.cpp \
     $$PWD/colorrules.cpp \
     $$PWD/comparewindow.cpp \
     $$PWD/constants.cpp \
@@ -210,6 +213,9 @@ HEADERS += \
     $$PWD/sessionkeydialog.h \
     $$PWD/sessionkeystore.h \
     $$PWD/schema/schemadecoder.h \
+    $$PWD/schema/schemadoc.h \
+    $$PWD/schema/schemaedit.h \
+    $$PWD/schemaeditorwindow.h \
     $$PWD/IRS.h \
     $$PWD/Structures.h \
     $$PWD/colorrules.h \

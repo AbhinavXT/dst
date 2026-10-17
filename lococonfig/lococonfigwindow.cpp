@@ -1,4 +1,6 @@
 #include "lococonfigwindow.h"
+
+#include "schemaedit.h"
 #include "profileiodialogs.h"
 #include "undolog.h"
 
@@ -1657,29 +1659,6 @@ QString LocoConfigWindow::schemaFile()
     return external.isEmpty() ? QString::fromLatin1(kBuiltinSchema) : external;
 }
 
-namespace {
-
-// Writes `text` over `path`, a timestamped copy of the old file beside it
-// first. Returns the backup's path, or empty with *error.
-QString writeSchema(const QString &path, const QByteArray &text, QString *error)
-{
-    const QString backup = path + QStringLiteral(".bak-")
-                           + QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
-    QFile::remove(backup);
-    if (!QFile::copy(path, backup)) {
-        *error = QObject::tr("Could not back up %1 to %2; nothing was changed").arg(path, backup);
-        return QString();
-    }
-    QSaveFile out(path);
-    if (!out.open(QIODevice::WriteOnly) || out.write(text) != text.size() || !out.commit()) {
-        *error = QObject::tr("Could not write %1: %2").arg(path, out.errorString());
-        return QString();
-    }
-    return backup;
-}
-
-}  // namespace
-
 static bool editSchema(const QString &path, const std::function<LinfoEdit::Result(const QByteArray &, const LocoInfo::Layout &)> &edit,
                        LinfoEdit::Result *result, QString *backup, QString *error)
 {
@@ -1705,7 +1684,7 @@ static bool editSchema(const QString &path, const std::function<LinfoEdit::Resul
         *error = result->error;
         return false;
     }
-    *backup = writeSchema(path, result->text, error);
+    *backup = SchemaEdit::writeWithBackup(path, result->text, error);
     return !backup->isEmpty();
 }
 
@@ -1773,15 +1752,11 @@ static bool ensureEditableSchema(QWidget *parent)
     if (path.isEmpty()) {
         return false;
     }
-    QFile in(QString::fromLatin1(kBuiltinSchema));
-    QSaveFile out(path);
-    if (!in.open(QIODevice::ReadOnly) || !out.open(QIODevice::WriteOnly)
-        || out.write(in.readAll()) < 0 || !out.commit()) {
-        QMessageBox::warning(parent, QObject::tr("Make an editable kavach.xml"),
-                             QObject::tr("Could not write %1: %2").arg(path, out.errorString()));
+    QString error;
+    if (!SchemaEdit::makeEditableCopy(path, &error)) {
+        QMessageBox::warning(parent, QObject::tr("Make an editable kavach.xml"), error);
         return false;
     }
-    Settings::setSchemaPath(path);
     return true;
 }
 
