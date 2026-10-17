@@ -136,6 +136,7 @@ void MainWindow::onActionLocoConsole()
     auto *console = new LocoConsoleWindow(m_dispatcher, this, m_tabTags, m_sessionKeys);
     console->setAttribute(Qt::WA_DeleteOnClose);
     connect(console, &LocoConsoleWindow::jumpRequested, this, &MainWindow::jumpToEntry);
+    attachTestStrip(console);
     console->show();
     console->raise();
     console->activateWindow();

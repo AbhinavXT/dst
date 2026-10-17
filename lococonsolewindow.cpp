@@ -1487,6 +1487,18 @@ bool LocoConsoleWindow::saveSnapshot(const QString &path)
     return f.write(bytes) == bytes.size();
 }
 
+void LocoConsoleWindow::setTestStrip(QWidget *strip)
+{
+    if (!strip) return;
+    if (m_testStrip) { strip->deleteLater(); return; }
+    m_testStrip = strip;
+    QWidget *central = centralWidget();
+    if (strip->parentWidget() != central) strip->setParent(central);
+    if (auto *root = qobject_cast<QVBoxLayout *>(central ? central->layout() : nullptr)) root->addWidget(strip);
+    // A reparented widget is hidden; the strip decides for itself.
+    QMetaObject::invokeMethod(strip, "refresh");
+}
+
 void LocoConsoleWindow::closeEvent(QCloseEvent *event)
 {
     // These windows are WA_DeleteOnClose, so this is the last

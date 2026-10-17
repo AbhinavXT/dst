@@ -2,6 +2,9 @@
 
 Test cases live in `testcases.json` beside the binary, auto-loaded at start.
 **Tools → Test cases** reloads, resets a run, or saves the observation report.
+**Show results** opens the Test cases dock, where every case's state updates
+live, by section; double-click a row to jump to its evidence. The DMI window
+and the Live Loco Console carry a strip with the same counts.
 
 A case is a condition expressed in the console's query language. The engine
 watches live or recorded traffic and records what it saw. It reports

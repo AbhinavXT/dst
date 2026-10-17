@@ -36,6 +36,7 @@ bool TestAssertionEngine::load(const QString &path, QString *err)
 bool TestAssertionEngine::loadFromJson(const QByteArray &json, QString *err)
 {
     m_asserts.clear();
+    ++m_generation;
 
     QJsonParseError perr{};
     const QJsonDocument doc = QJsonDocument::fromJson(json, &perr);
@@ -236,6 +237,7 @@ void TestAssertionEngine::observe(const LogEntryPtr &entry)
                     part.evidence = entry->text.left(90);
                     changed = true;
                 }
+                if (changed) ++m_generation;
                 if (!changed || !a.steps[next].partsComplete()) {
                     // Start the clock on the first part that arrives, so a
                     // partially-satisfied step can still time out.
@@ -249,6 +251,8 @@ void TestAssertionEngine::observe(const LogEntryPtr &entry)
                     for (auto &st : a.steps) st.resetParts();
                     a.stepAt = 0;
                     a.stepMs = entry->epochMs;
+                    a.stepKey = entry->tabKey();
+                    ++m_generation;
                     a.stepEvidence.clear();
                     a.stepEvidence << QStringLiteral("%1: %2")
                                           .arg(a.steps[0].label, entry->text.left(90));
@@ -268,6 +272,8 @@ void TestAssertionEngine::observe(const LogEntryPtr &entry)
                 }
                 a.stepAt = next;
                 a.stepMs = entry->epochMs;
+                a.stepKey = entry->tabKey();
+                ++m_generation;
                 if (a.steps[next].isAllOf()) {
                     for (const auto &p : a.steps[next].parts) {
                         a.stepEvidence << QStringLiteral("%1 / %2: %3")
@@ -287,6 +293,7 @@ void TestAssertionEngine::observe(const LogEntryPtr &entry)
                     if (a.firstMs == 0) {
                         a.firstMs   = entry->epochMs;
                         a.firstText = a.stepEvidence.join(QStringLiteral("  |  "));
+                        a.firstKey  = entry->tabKey();
                     }
                     if (!a.coverField.isEmpty()) {
                         bool ok = false;
@@ -321,6 +328,7 @@ void TestAssertionEngine::observe(const LogEntryPtr &entry)
                     a.firstMs   = a.armedMs;
                     a.firstText = QStringLiteral("given: %1  →  then: %2")
                                       .arg(a.armedText, entry->text.left(120));
+                    a.firstKey  = a.armedKey;
                 }
                 if (!a.coverField.isEmpty()) {
                     bool ok = false;
@@ -329,6 +337,8 @@ void TestAssertionEngine::observe(const LogEntryPtr &entry)
                 }
                 a.armedMs = 0;
                 a.armedText.clear();
+                a.armedKey.clear();
+                ++m_generation;
                 if (!wasObserved && a.observed()) {
                     emit assertionObserved(a.id, a.title);
                 }
@@ -342,6 +352,8 @@ void TestAssertionEngine::observe(const LogEntryPtr &entry)
                 if (a.armedMs == 0) {
                     a.armedMs   = entry->epochMs;
                     a.armedText = entry->text.left(120);
+                    a.armedKey  = entry->tabKey();
+                    ++m_generation;
                 }
             }
             continue;
@@ -352,10 +364,12 @@ void TestAssertionEngine::observe(const LogEntryPtr &entry)
         const bool wasObserved = a.observed();
 
         ++a.hits;
+        ++m_generation;
         a.lastMs = entry->epochMs;
         if (a.firstMs == 0) {
             a.firstMs   = entry->epochMs;
             a.firstText = entry->text.left(200);
+            a.firstKey  = entry->tabKey();
         }
 
         // Coverage is collected only from frames that MATCHED. Counting a
@@ -383,10 +397,14 @@ void TestAssertionEngine::expireArmed(qint64 nowMs)
             if (nowMs - a.stepMs <= limit) continue;
 
             ++a.violated;
+            ++m_generation;
             if (a.worstMs == 0) {
                 a.worstMs = a.stepMs;
+                a.worstKey = a.stepKey;
                 a.violationText = a.stepEvidence.join(QStringLiteral("  |  "));
             }
+            a.lastViolMs  = a.stepMs;
+            a.lastViolKey = a.stepKey;
             // Name what was missing. With several required consequences,
             // "the step did not complete" is nearly useless — "the mode
             // changed and the indication appeared but the brake never did"
@@ -424,10 +442,14 @@ void TestAssertionEngine::expireArmed(qint64 nowMs)
         if (nowMs - a.armedMs <= a.withinMs) continue;
 
         ++a.violated;
+        ++m_generation;
         if (a.worstMs == 0) {
             a.worstMs = a.armedMs;
+            a.worstKey = a.armedKey;
             a.violationText = a.armedText;
         }
+        a.lastViolMs  = a.armedMs;
+        a.lastViolKey = a.armedKey;
         const QString detail =
             QStringLiteral("precondition at %1 was not followed by the "
                            "expected condition within %2 ms\n%3")
@@ -437,6 +459,7 @@ void TestAssertionEngine::expireArmed(qint64 nowMs)
                 .arg(a.armedText);
         a.armedMs = 0;
         a.armedText.clear();
+        a.armedKey.clear();
         emit assertionViolated(a.id, a.title, detail);
     }
 }
@@ -447,17 +470,33 @@ void TestAssertionEngine::resetObservations()
         a.hits = 0;
         a.firstMs = a.lastMs = 0;
         a.firstText.clear();
+        a.firstKey.clear();
         a.coverSeen.clear();
         a.armedMs = 0;
         a.armedText.clear();
+        a.armedKey.clear();
         a.satisfied = a.violated = 0;
         a.stepAt = -1;
         a.stepMs = 0;
+        a.stepKey.clear();
         a.stepEvidence.clear();
         for (auto &st : a.steps) st.resetParts();
         a.worstMs = a.slowestMs = 0;
         a.violationText.clear();
+        a.worstKey.clear();
+        a.lastViolMs = 0;
+        a.lastViolKey.clear();
     }
+    ++m_generation;
+}
+
+QString TestAssertionEngine::sectionOf(const QString &id)
+{
+    int n = 0;
+    while (n < id.size() && id.at(n).isDigit()) ++n;
+    if (n > 0) return id.left(n);
+    while (n < id.size() && id.at(n) != QLatin1Char('/') && id.at(n) != QLatin1Char('.')) ++n;
+    return id.left(n);
 }
 
 int TestAssertionEngine::observedCount() const

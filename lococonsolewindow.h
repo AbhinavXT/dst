@@ -60,6 +60,10 @@ public:
                                const class SessionKeyStore *keys = nullptr);
     ~LocoConsoleWindow() override;
 
+    // Session 306: the test cases' strip (TestCaseStrip) under the find bar.
+    void setTestStrip(QWidget *strip);
+    QWidget *testStrip() const { return m_testStrip; }
+
 protected:
     // Remember size/position for the next opening.
     void closeEvent(QCloseEvent *event) override;
@@ -264,6 +268,7 @@ public:
     void showCabMenu(const QPoint &pos);
     class TabTags *m_tags = nullptr;       // not owned (unless made here)
     const class SessionKeyStore *m_keys = nullptr;   // session 96: live keys for the SLRP MAC row; not owned
+    QWidget *m_testStrip = nullptr;
 };
 
 #endif // LOCOCONSOLEWINDOW_H

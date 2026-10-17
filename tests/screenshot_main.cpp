@@ -118,6 +118,9 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "theme.h"
 #include "uistyle.h"
 #include "settings.h"
+#include "testassertions.h"
+#include "testcaseboard.h"
+#include "testcasepanel.h"
 
 int main(int argc, char **argv)
 {
@@ -179,6 +182,40 @@ int main(int argc, char **argv)
                     if (i % 50 == 49) { disp.drainNow(); QCoreApplication::processEvents(); }
                 }
                 disp.drainNow();
+                // SHOT_TESTS=1 (session 306): the test cases' strip, after a
+                // run of the real 105200 capture, section 1.
+                if (qEnvironmentVariableIsSet("SHOT_TESTS")) {
+                    FieldCatalog::instance().load(QStringLiteral(DL_SRC_DIR "/fieldmap.json"));
+                    static TestAssertionEngine en;
+                    static TestCaseBoard board(&en);
+                    en.load(QStringLiteral(DL_SRC_DIR "/testcases.json"));
+                    QFile cap(QStringLiteral(DL_SRC_DIR "/replay/2026-10-08/loco_1_1_08102026_105200.cap"));
+                    if (cap.open(QIODevice::ReadOnly)) {
+                        while (!cap.atEnd()) {
+                            const QString l = QString::fromLatin1(cap.readLine().trimmed());
+                            if (!l.startsWith(QLatin1Char('@'))) continue;
+                            QDateTime t = QDateTime::fromString(l.section(QLatin1Char(' '), 1, 1), Qt::ISODate);
+                            t.setTimeSpec(Qt::UTC);
+                            auto e = LogEntryPtr::create();
+                            e->text = l;
+                            e->epochMs = t.toMSecsSinceEpoch();
+                            e->cachedTabKey = QStringLiteral("1_1");
+                            en.observe(e);
+                        }
+                    }
+                    board.setSection(QStringLiteral("1"));
+                    board.poll();
+                    if (auto *lc = qobject_cast<LocoConsoleWindow *>(win))
+                        lc->setTestStrip(new TestCaseStrip(&board, lc->centralWidget()));
+                    else if (auto *dw = qobject_cast<DmiWindow *>(win))
+                        dw->setTestStrip(new TestCaseStrip(&board, dw));
+                    if (qEnvironmentVariableIsSet("SHOT_PANEL")) {
+                        auto *panel = new TestCasePanel(&board);
+                        panel->resize(1100, 420);
+                        panel->table()->setCurrentCell(4, 0);
+                        win = panel;
+                    }
+                }
                 // SHOT_BIG=1: the Loco Console's Big numbers panel shown.
                 if (qEnvironmentVariableIsSet("SHOT_BIG"))
                     for (QPushButton *b : win->findChildren<QPushButton *>())

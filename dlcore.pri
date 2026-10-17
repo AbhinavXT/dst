@@ -183,6 +183,8 @@ SOURCES += \
     $$PWD/searchwindow.cpp \
     $$PWD/sessionreader.cpp \
     $$PWD/testassertions.cpp \
+    $$PWD/testcaseboard.cpp \
+    $$PWD/testcasepanel.cpp \
     $$PWD/stickymenu.cpp \
     $$PWD/sessionwindow.cpp \
     $$PWD/settingsdialog.cpp \
@@ -357,6 +359,8 @@ HEADERS += \
     $$PWD/sessionfile.h \
     $$PWD/sessionreader.h \
     $$PWD/testassertions.h \
+    $$PWD/testcaseboard.h \
+    $$PWD/testcasepanel.h \
     $$PWD/stickymenu.h \
     $$PWD/sessionwindow.h \
     $$PWD/settings.h \

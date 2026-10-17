@@ -11,6 +11,125 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-306"></a>
+## Session 306 — the test cases' results, live (dock + DMI / Live Loco Console strip)
+
+Abhinav asked for the Section 1 results to show live in the other windows,
+not only in the observation report. He chose:
+- **a Test cases dock** with every loaded case and its state;
+- **a two-line strip** under the DMI window and the Live Loco Console;
+- **all loaded cases, filtered by section** (All by default).
+
+The Tag Builder gets nothing: it edits tags offline and sees no traffic.
+
+**Before.** The engine already ran every loaded case on every entry of
+every source, live or replayed into the tabs. The operator saw results only
+as notifications ("Observed 1.29…", "1.30 not answered…") and, after the
+run, in the saved report.
+
+**What the operator sees.**
+- **Tools ▸ Test cases ▸ Show results** (also under View ▸ Panels): the
+  Test cases dock. It opens floating.
+  - **Section:** All, §1, §32, SEC. Above the table: "76 case(s): 1
+    OBSERVED · 3 NOT ANSWERED · 72 not observed".
+  - **One row per case:** Case | Clause | State | At | Source | Evidence.
+  - **State** uses the report's words: OBSERVED (ok colour), NOT ANSWERED
+    (error colour), not observed, and "query error" for a case that never
+    ran. Never Pass/Fail.
+  - **At:** when the case was first seen; for NOT ANSWERED, when the first
+    unanswered precondition was. **Source:** the tab that frame came from.
+  - **Double-click** a row with evidence and the log jumps to that frame.
+    The tooltip gives the condition, the counts, the slowest answer and
+    both evidence texts.
+- **DMI window (Tools ▸ Monitor ▸ Live ▸ DMI, and Show on DMI)** and **Live
+  Loco Console:** a strip at the bottom.
+  - **Line 1:** "SIF §1: 76 case(s): 1 OBSERVED · 3 NOT ANSWERED · 72 not
+    observed", in the error colour while there is a NOT ANSWERED.
+  - **Line 2:** "Last: 1.30 NOT ANSWERED at … (1_1)".
+  - **Results…** opens the dock.
+  - **One section for every view:** the strip counts the section the dock
+    has picked.
+  - **Hidden while no test cases are loaded,** so those windows look as
+    they did.
+
+**How.**
+- **Engine (`testassertions.*`):**
+  - It keeps the tab of each case's evidence: `firstKey`, `worstKey`,
+    `lastViolKey`/`lastViolMs`, and the step/arm tabs behind them.
+  - It keeps a `generation()` counter, moved by any state change.
+  - `sectionOf(id)`: "1.14/FS" → 1, "32.9.3" → 32, "SEC/KEY-EXPIRY" → SEC.
+  - Evaluation is unchanged.
+- **`TestCaseBoard`:**
+  - Owned by MainWindow and handed out.
+  - Polls the counter twice a second and emits `changed()` only when it
+    moved, so a burst of 2000 frames a second redraws twice, not 2000
+    times.
+  - Holds the section filter and the latest change. That change is dropped
+    once it is no longer true, for example after Reset run.
+- **`TestCasePanel`** (the dock) and **`TestCaseStrip`** read the board and
+  never the engine.
+- **`DmiWindow::setTestStrip` and `LocoConsoleWindow::setTestStrip`** add
+  the strip at the bottom. MainWindow attaches one to every DMI window and
+  console it opens.
+
+**Files.**
+- New: `testcaseboard.h/.cpp`, `testcasepanel.h/.cpp` (in `dlcore.pri`).
+- Changed:
+  - `testassertions.h/.cpp`, `dmipanel.h/.cpp`, `lococonsolewindow.h/.cpp`;
+  - `mainwindow.h`, `mainwindow.cpp`, `mainwindow_menus.cpp`,
+    `mainwindow_tools.cpp`;
+  - `tests/screenshot_main.cpp` (`SHOT_TESTS=1`, `SHOT_PANEL=1`).
+- Tests: new `tests/test_session306.cpp`, `tests/tests.pro`.
+
+**Tests.** `session306`, 44 checks, on the real 2026-10-08 captures (each
+entry carrying tab key 1_1):
+- **Engine:**
+  - 101300: 1.2's evidence is on tab 1_1.
+  - 105200: 1.30's unanswered precondition keeps its tab and time, first
+    and latest; 1.29 is OBSERVED on 1_1.
+  - The counter moves on load, run and reset. A reset clears the
+    evidence tabs.
+- **Board:**
+  - The sections are 1, 32, SEC; All holds 101 cases and §1 holds 76.
+  - Its counts agree with each case's own state.
+  - `changed()` fires once per run and stays quiet when nothing moved.
+  - The latest change is a §1 case, still in that state, with its tab.
+  - After a reset there is no event and nothing counts as seen.
+  - A misspelt case is a "query error", counted apart.
+- **Dock:**
+  - Picking §1 sets the board's section: 76 rows.
+  - The 1.30 row is NOT ANSWERED in the error colour, at the precondition,
+    from tab 1_1, with its evidence.
+  - The 1.29 row is OBSERVED with its evidence. 1.33 is not observed with
+    no time or source.
+  - Double-clicking 1.30 jumps to 1_1 at that moment; a row without
+    evidence doesn't jump.
+  - A refresh keeps the selected case.
+- **Strip:**
+  - Hidden with nothing loaded; its text is checked.
+  - Results… asks for the dock.
+  - It sits in the DMI window, which keeps only one strip, and under the
+    Live Loco Console's tabs.
+
+The dock and both strips were rendered with the screenshot harness and
+looked at, in dark and light.
+
+**Gate:** Qt 6 and Qt 5.15 green, 342 suites / 8709 checks, 0 failed; 15 validators; menu audit 184 ok; smoke.
+
+**Not tested / not done:**
+- **The Replay window's own DMI** (and the session window's) gets no strip:
+  the Replay window scrubs its own copy of a capture and doesn't feed the
+  engine. Its results would not be this run's.
+- **Real MainWindow wiring:** the menu audit walks Show results. Opening a
+  DMI window or a console from the menu with cases loaded was not clicked
+  through; `attachTestStrip` is covered only by the suite's direct calls.
+- **Live UDP:** the dock was not watched filling during a live run. It was
+  driven by replaying captures through the engine.
+- **The section choice is not remembered** between sessions (All on each
+  start).
+
+---
+
 <a id="session-305"></a>
 ## Session 305 — SIF Section 1 (Standby mode) as test cases
 

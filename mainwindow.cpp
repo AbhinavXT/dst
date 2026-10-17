@@ -100,6 +100,8 @@
 #include "speeddistance.h"
 #include "workspacesnapshot.h"
 #include "tabtags.h"
+#include "testcaseboard.h"
+#include "testcasepanel.h"
 #include "textzoom.h"
 #include "windowgeometry.h"
 #include "fieldsweepdialog.h"
@@ -400,6 +402,23 @@ MainWindow::MainWindow(QWidget *parent)
             this,     &MainWindow::onAssertionObserved);
     connect(&m_tests, &TestAssertionEngine::assertionViolated,
             this,     &MainWindow::onAssertionViolated);
+    // Session 306: the results, live, in a dock (hidden until asked for) and
+    // in the strips of the DMI windows and Live Loco Consoles opened here.
+    m_testBoard = new TestCaseBoard(&m_tests, this);
+    m_testPanel = new TestCasePanel(m_testBoard, this);
+    m_testDock  = new QDockWidget(tr("Test cases"), this);
+    m_testDock->setObjectName("TestCasesDock");
+    m_testDock->setWidget(m_testPanel);
+    m_testDock->setFeatures(QDockWidget::DockWidgetClosable
+                            | QDockWidget::DockWidgetMovable
+                            | QDockWidget::DockWidgetFloatable);
+    addDockWidget(Qt::BottomDockWidgetArea, m_testDock);
+    m_testDock->setFloating(true);
+    m_testDock->resize(900, 360);
+    m_testDock->hide();
+    connect(m_testBoard, &TestCaseBoard::openRequested, this, &MainWindow::showTestResults);
+    connect(m_testPanel, &TestCasePanel::jumpRequested, this, &MainWindow::jumpToEntry);
+
     // Auto-load testcases.json if it sits beside the binary, so a run does
     // not begin with a menu hunt. The built-in set is loaded on request only
     // (session 271: Tools > Test cases > Load built-in test cases).
@@ -1091,7 +1110,7 @@ void MainWindow::onLogRowContextMenu(const QPoint &pos)
         openEntryInPacketMaker(entry);
     } else if (actDmi && chosen == actDmi) {
         offerDmiMoment(key, idx);       // this row, even if another was pointed at since
-        DmiWindow::showFollowing(this, m_dispatcher);
+        attachTestStrip(DmiWindow::showFollowing(this, m_dispatcher));
     } else if (chosen == actClip) {
         DmiClipDialog dlg(model, key, entry->epochMs, dmiKeyOfText(entry->text), this);
         dlg.exec();
@@ -2478,6 +2497,26 @@ void MainWindow::onActionResetTestRun()
 {
     m_tests.resetObservations();
     notify(NoteLevel::Info, tr("Test run reset — observations cleared"));
+}
+
+void MainWindow::showTestResults()
+{
+    if (!m_testDock) return;
+    m_testDock->show();
+    m_testDock->raise();
+    m_testDock->activateWindow();
+}
+
+void MainWindow::attachTestStrip(DmiWindow *window)
+{
+    if (window && m_testBoard && !window->testStrip())
+        window->setTestStrip(new TestCaseStrip(m_testBoard, window));
+}
+
+void MainWindow::attachTestStrip(LocoConsoleWindow *window)
+{
+    if (window && m_testBoard && !window->testStrip())
+        window->setTestStrip(new TestCaseStrip(m_testBoard, window->centralWidget()));
 }
 
 void MainWindow::onAssertionObserved(const QString &id, const QString &title)

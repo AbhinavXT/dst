@@ -231,6 +231,11 @@ public:
     QStringList fieldNames(int panel = 0) const;              // for tests
     QString fieldValue(const QString &name, int panel = 0) const;
 
+    // Session 306: the test cases' strip (TestCaseStrip) under the panels.
+    // MainWindow hands one in; a window keeps the first it is given.
+    void setTestStrip(QWidget *strip);
+    QWidget *testStrip() const { return m_testStrip; }
+
 private:
     struct Panel {
         QWidget      *column = nullptr;
@@ -269,6 +274,7 @@ private:
     DmiMoment  m_moment;
     QHash<QString, QString> m_lastLine;     // source -> last @dmi line
     QHash<QString, qint64>  m_lastMs;
+    QWidget   *m_testStrip = nullptr;
 };
 
 #endif // DMIPANEL_H

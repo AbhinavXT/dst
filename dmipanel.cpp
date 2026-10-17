@@ -970,6 +970,17 @@ QString DmiWindow::panelStatus(int i) const
     return i >= 0 && i < m_panels.size() ? m_panels[i].status->text() : QString();
 }
 
+void DmiWindow::setTestStrip(QWidget *strip)
+{
+    if (!strip) return;
+    if (m_testStrip) { strip->deleteLater(); return; }
+    m_testStrip = strip;
+    if (strip->parentWidget() != this) strip->setParent(this);
+    if (auto *root = qobject_cast<QVBoxLayout *>(layout())) root->addWidget(strip);
+    // A reparented widget is hidden; the strip decides for itself.
+    QMetaObject::invokeMethod(strip, "refresh");
+}
+
 DmiWindow *DmiWindow::openLive(QWidget *owner, MessageDispatcher *dispatcher)
 {
     auto *w = new DmiWindow(dispatcher, owner);

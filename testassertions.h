@@ -125,6 +125,7 @@ struct TestAssertion {
     // was reached. -1 means nothing matched yet.
     int    stepAt    = -1;
     qint64 stepMs    = 0;
+    QString stepKey;       // tab of the frame that reached stepAt (session 306)
     QStringList stepEvidence;
 
     QString queryText;     // Simple: the condition
@@ -155,16 +156,21 @@ struct TestAssertion {
     // seen with no consequent yet; 0 means not armed.
     qint64  armedMs   = 0;
     QString armedText;
+    QString armedKey;        // tab of the precondition frame (session 306)
     int     satisfied = 0;   // precondition followed by the consequent
     int     violated  = 0;   // precondition whose window expired
     qint64  worstMs   = 0;   // when the first violation happened
     QString violationText;   // the precondition frame that went unanswered
+    QString worstKey;        // its tab, so the results table can jump there
+    qint64  lastViolMs = 0;  // the latest unanswered precondition, and its tab
+    QString lastViolKey;
     qint64  slowestMs = 0;   // longest observed gap, for tuning the window
 
     int          hits = 0;
     qint64       firstMs = 0;
     qint64       lastMs = 0;
     QString      firstText;      // the frame that first satisfied it
+    QString      firstKey;       // its tab (session 306: jump to it)
     QSet<qint64> coverSeen;
 
     bool observed() const
@@ -225,6 +231,16 @@ public:
     const QVector<TestAssertion> &assertions() const { return m_asserts; }
     int observedCount() const;
 
+    // Session 306: bumped whenever any case's state changes (a step reached,
+    // a hit, an expiry, a reset, a load), so a view can poll it cheaply and
+    // redraw only when something moved.
+    quint64 generation() const { return m_generation; }
+
+    // The SIF section a case id belongs to: "1.14/FS" -> "1", "32.9.3" ->
+    // "32". An id with no leading number gives its first word:
+    // "SEC/KEY-EXPIRY" -> "SEC".
+    static QString sectionOf(const QString &id);
+
     // Report of what was and was not seen, keyed by operation id.
     QString buildReportHtml(const QString &title, qint64 nowMs) const;
     QString buildReportCsv() const;
@@ -243,6 +259,7 @@ signals:
 
 private:
     QVector<TestAssertion> m_asserts;
+    quint64 m_generation = 0;
 };
 
 #endif // TESTASSERTIONS_H

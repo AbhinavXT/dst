@@ -287,7 +287,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
         panelsMenu->clear();
         for (QDockWidget *d : { m_sourceDock, m_rawDock, m_fieldDock,
                                 m_bookmarkDock, m_failDock, m_pinDock,
-                                m_watchDock }) {
+                                m_watchDock, m_testDock }) {
             if (d) panelsMenu->addAction(d->toggleViewAction());
         }
         panelsMenu->addSeparator();
@@ -498,7 +498,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     actDmi->setToolTip(tr("The Loco Pilot's Operation-cum-Indication Panel, drawn from @dmi as "
                           "RDSO Annexure-B (Amdt-3) specifies it"));
     connect(actDmi, &QAction::triggered, this, [this]() {
-        DmiWindow::openLive(this, m_dispatcher);   // session 278: live, not following
+        attachTestStrip(DmiWindow::openLive(this, m_dispatcher));   // session 278: live, not following
     });
 
     QAction *actRunReport = reportsMenu->addAction(tr("&Run summary report…"));
@@ -627,6 +627,12 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     QAction *actBuiltinTests = testMenu->addAction(tr("Load &built-in test cases"));
     actBuiltinTests->setToolTip(tr("The SIF test cases built into DLConsole (testcases.json)"));
     connect(actBuiltinTests, &QAction::triggered, this, &MainWindow::loadBuiltinTestCases);
+    // Session 306: the results, live, while the run goes on.
+    QAction *actTestResults = testMenu->addAction(tr("Show &results"));
+    actTestResults->setObjectName(QStringLiteral("actTestResults"));
+    actTestResults->setToolTip(tr("Every loaded case: OBSERVED, NOT ANSWERED or not observed, when, and "
+                                  "the frame; double-click to show it in the log"));
+    connect(actTestResults, &QAction::triggered, this, &MainWindow::showTestResults);
     QAction *actTestReport = testMenu->addAction(tr("&Save observation report…"));
     connect(actTestReport, &QAction::triggered,
             this,          &MainWindow::onActionSaveTestReport);

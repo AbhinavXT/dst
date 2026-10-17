@@ -475,6 +475,15 @@ private:
     // Watches live traffic for the conditions a test case asserts. Fed
     // from the same batched signal as everything else.
     TestAssertionEngine m_tests;
+    // Session 306: the cases' results, live — the Test cases dock and the
+    // strips under the DMI window and the Live Loco Console read this.
+    class TestCaseBoard *m_testBoard = nullptr;
+    class TestCasePanel *m_testPanel = nullptr;
+    QDockWidget         *m_testDock  = nullptr;
+    void showTestResults();
+    // A TestCaseStrip under `window` (a DmiWindow or a LocoConsoleWindow).
+    void attachTestStrip(class DmiWindow *window);
+    void attachTestStrip(class LocoConsoleWindow *window);
 
     class NotificationBar *m_notify = nullptr;
     void notify(NoteLevel level, const QString &text,
