@@ -174,11 +174,34 @@ Anything the schema decodes is available:
 | `field:CAB_INPUT_FAULT=1` | an expanded health bit, by name |
 | `field:B22=1` | the same bit, by SIF number |
 | `field:Loco_Health~RADIO1` | substring of the rendered value |
+| `field:dmi_alarm~"Standstill Protection, Brake Applied"` | a quoted phrase: one flag of a flag set, commas and all |
 | `"PACKET REJECTED"` | plain text still works |
 | `A OR B`, `NOT A`, `(A OR B) C` | boolean composition |
 
 Right-click any decoded row → **Why this colour?**, or open the Decoded
 fields panel, to see the exact field names a packet offers.
+
+## Flag sets — DMI messages
+
+A DMI frame's `alarm_code` (71 flags) and `context_values` (14) are flag
+sets: the value is every flag that is set, joined by `; `, e.g.
+`Standstill Protection, Brake Applied; Select Staff Responsible / Shunt mode`.
+Match one flag by its schema name, **in quotes** (it has spaces, commas and
+slashes):
+
+```
+field:dmi_alarm~"Select Train Config, Press Config Button"
+field:dmi_context~"Train Type Selected"
+```
+
+Use the schema's spelling (`kavach.xml`, flagtables `dmiAlarm`, `dmiCtx`),
+not the SIF's, and put the SIF wording in the case title. Before session
+305 a quoted phrase after `~` kept its quotes and silently matched nothing.
+
+`dmi_alarm`, `dmi_loco_mode`, `dmi_brake_type`… are scoped to the DMI:
+`alarm_code` and `brake_type` also exist in DLLOG, and `loco_mode` names
+LSRP's. `arp_loco_mode` is the mode in the loco's own ARP (not `arprecv`),
+which is sent outside station radio contact, where LSRP is not.
 
 ## Things worth knowing
 

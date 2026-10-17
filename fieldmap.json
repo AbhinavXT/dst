@@ -474,6 +474,185 @@
       }
     },
     {
+      "name": "arp_loco_mode",
+      "field": "LOCO_MODE",
+      "packet": "arp",
+      "desc": "Operating mode in the Access Request Packet: sent outside station radio contact too, where LSRP is not (Standby, SIF section 1)",
+      "values": {
+        "?": 0,
+        "stand_by": 1,
+        "staff_responsible": 2,
+        "limited_supervision": 3,
+        "full_supervision": 4,
+        "override": 5,
+        "on_sight": 6,
+        "trip": 7,
+        "post_trip": 8,
+        "reverse": 9,
+        "shunting": 10,
+        "non_leading": 11,
+        "system_failure": 12,
+        "isolation": 13
+      }
+    },
+    {
+      "name": "arp_train_speed",
+      "field": "TRAIN_SPEED",
+      "packet": "arp",
+      "desc": "Speed in the Access Request Packet, km/h"
+    },
+    {
+      "name": "dmi_loco_mode",
+      "field": "loco_mode",
+      "packet": "dmi",
+      "desc": "Mode the DMI shows",
+      "values": {
+        "?": 0,
+        "stand_by": 1,
+        "staff_responsible": 2,
+        "limited_supervision": 3,
+        "full_supervision": 4,
+        "override": 5,
+        "on_sight": 6,
+        "trip": 7,
+        "post_trip": 8,
+        "reverse": 9,
+        "shunting": 10,
+        "non_leading": 11,
+        "system_failure": 12,
+        "isolation": 13
+      }
+    },
+    {
+      "name": "dmi_train_speed",
+      "field": "train_speed",
+      "packet": "dmi",
+      "desc": "Train speed the DMI shows, km/h"
+    },
+    {
+      "name": "dmi_speed_limit_permissible",
+      "field": "speed_limit_permissible",
+      "packet": "dmi",
+      "desc": "Permitted speed the DMI shows, km/h"
+    },
+    {
+      "name": "dmi_active_cab",
+      "field": "active_cab",
+      "packet": "dmi",
+      "desc": "Cab the DMI reports active",
+      "values": {
+        "none": 0,
+        "cab1": 1,
+        "cab2": 2
+      }
+    },
+    {
+      "name": "dmi_brake_type",
+      "field": "brake_type",
+      "packet": "dmi",
+      "desc": "Brake the DMI reports applied",
+      "values": {
+        "no_over_speed_no_brakes": 0,
+        "over_speed_no_brakes": 1,
+        "normal_brake": 2,
+        "full_service_brake": 3,
+        "emergency_brake": 4,
+        "light_engine_brake": 5
+      }
+    },
+    {
+      "name": "dmi_alarm",
+      "field": "alarm_code",
+      "packet": "dmi",
+      "desc": "DMI messages, a set of flags (dmiAlarm); match one with ~\"its name\""
+    },
+    {
+      "name": "dmi_context",
+      "field": "context_values",
+      "packet": "dmi",
+      "desc": "DMI context messages, a set of flags (dmiCtx); match one with ~\"its name\""
+    },
+    {
+      "name": "dmi1_leading_non_leading_nc",
+      "field": "7 dmi1_leading_non_leading_nc",
+      "packet": "dip1",
+      "desc": "Cab 1 leading/non-leading input, NC contact (normal running reads 0)",
+      "values": {
+        "leading": 0,
+        "non_leading": 1
+      }
+    },
+    {
+      "name": "dmi1_leading_non_leading_no",
+      "field": "8 dmi1_leading_non_leading_no",
+      "packet": "dip1",
+      "desc": "Cab 1 leading/non-leading input, NO contact (normal running reads 1)",
+      "values": {
+        "leading": 1,
+        "non_leading": 0
+      }
+    },
+    {
+      "name": "dmi2_leading_non_leading_nc",
+      "field": "15 dmi2_leading_non_leading_nc",
+      "packet": "dip1",
+      "desc": "Cab 2 leading/non-leading input, NC contact (normal running reads 0)",
+      "values": {
+        "leading": 0,
+        "non_leading": 1
+      }
+    },
+    {
+      "name": "dmi2_leading_non_leading_no",
+      "field": "16 dmi2_leading_non_leading_no",
+      "packet": "dip1",
+      "desc": "Cab 2 leading/non-leading input, NO contact (normal running reads 1)",
+      "values": {
+        "leading": 1,
+        "non_leading": 0
+      }
+    },
+    {
+      "name": "kavach_isolation_fb_no",
+      "field": "1 kavach_isolation_fb_no",
+      "packet": "dip2",
+      "desc": "Kavach isolation switch feedback, NO contact",
+      "values": {
+        "normal": 0,
+        "isolated": 1
+      }
+    },
+    {
+      "name": "kavach_isolation_fb_nc",
+      "field": "2 kavach_isolation_fb_nc",
+      "packet": "dip2",
+      "desc": "Kavach isolation switch feedback, NC contact",
+      "values": {
+        "normal": 1,
+        "isolated": 0
+      }
+    },
+    {
+      "name": "sifa_isolation_cock_fb_no",
+      "field": "9 sifa_isolation_cock_fb_no",
+      "packet": "dip2",
+      "desc": "SIFA isolation cock (the SIF's EM cock) feedback, NO contact",
+      "values": {
+        "open": 0,
+        "closed": 1
+      }
+    },
+    {
+      "name": "sifa_isolation_cock_fb_nc",
+      "field": "10 sifa_isolation_cock_fb_nc",
+      "packet": "dip2",
+      "desc": "SIFA isolation cock (the SIF's EM cock) feedback, NC contact",
+      "values": {
+        "open": 1,
+        "closed": 0
+      }
+    },
+    {
       "name": "key_days_remaining",
       "field": "key_days_remaining",
       "packet": "",

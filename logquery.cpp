@@ -613,8 +613,12 @@ LogQuery::NodePtr LogQuery::makeTerm(const QString &raw, int pos)
         static const QRegularExpression setRe(
             QStringLiteral("^([^=!<>~]+?)\\s*(==|!=|=)\\s*(.*)$"));
         const QRegularExpressionMatch sm = setRe.match(spec);
-        if (sm.hasMatch() && (sm.captured(3).contains(QLatin1Char(','))
-                              || sm.captured(3).contains(QLatin1String("..")))) {
+        // A quoted value is one value: DMI alarm flags carry commas
+        // ("Standstill Protection, Brake Applied", session 305).
+        const bool quotedRhs = sm.hasMatch() && sm.captured(3).startsWith(QLatin1Char('"'));
+        if (sm.hasMatch() && !quotedRhs
+            && (sm.captured(3).contains(QLatin1Char(','))
+                || sm.captured(3).contains(QLatin1String("..")))) {
             const QString lhs = QStringLiteral("field:") + sm.captured(1).trimmed();
             const QString rhs = sm.captured(3);
             const bool    neg = sm.captured(2) == QLatin1String("!=");
@@ -688,7 +692,14 @@ LogQuery::NodePtr LogQuery::makeTerm(const QString &raw, int pos)
             node->existsOnly = true;
         } else {
             node->fieldName = spec.left(opAt).trimmed();
-            const QString rhs = spec.mid(opAt + opLen).trimmed();
+            QString rhs = spec.mid(opAt + opLen).trimmed();
+            // field:NAME~"a phrase, with commas" (session 305). The quotes
+            // were kept in the value, so a flag name with a space could
+            // never match, and nothing said so.
+            if (rhs.size() >= 2 && rhs.startsWith(QLatin1Char('"'))
+                && rhs.endsWith(QLatin1Char('"'))) {
+                rhs = rhs.mid(1, rhs.size() - 2);
+            }
 
             // Symbolic value, e.g. loco_mode=staff_responsible. Resolved
             // here so a mistyped symbol is a PARSE error the author sees,

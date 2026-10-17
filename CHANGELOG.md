@@ -11,6 +11,173 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-305"></a>
+## Session 305 — SIF Section 1 (Standby mode) as test cases
+
+Abhinav asked for SIF 0533 v4.22 Section 1 (clauses 1.1–1.33) to be
+verified by the test-case engine. Phase 1 uses the engine as it is. Engine
+changes are proposed below but not built, apart from one bug fix he
+approved. He confirmed the scope and:
+- **The EM cock is the SIFA isolation cock:** open (OK) NO=0 NC=1, closed
+  NO=1 NC=0.
+- **FS+OV, OS+OV and PT+OV** are FS, OS and PT with LSRP's SIG_OV=1.
+- **Fix the flag-matching bug in this patch** (below).
+- **Kavach isolated** = isolation NO=1 NC=0; **non-leading active** =
+  leading/non-leading NC=1 NO=0, both flipped from normal running.
+- **The mode may come from LSRP, ARP or the DMI.**
+
+**The bug: a DMI message could not be matched by its name.**
+`field:alarm_code~"Standstill Protection, Brake Applied"` parsed, then
+never matched. The quotes stayed part of the searched text, and nothing
+said so. Only one-word fragments (`~Standstill`) worked, and those are
+not safe ("Progress" is in two flags). Now a quoted value after `~`, `=`
+or `!=` is unquoted, and is one value: its commas no longer split it into
+a list. An unquoted list (`=a,b`) is still a list.
+
+**Why the mode needs ARP and the DMI.** LSRP is only sent inside station
+radio contact. In the real Standby periods of 2026-10-08 it is absent,
+and only ARP and the DMI carry the mode. `loco_mode` stays LSRP's. The
+cases read `loco_mode`, `arp_loco_mode` or `dmi_loco_mode`. ARP has no
+SIG_OV, so the FS/OS/PT cases and their +OV twins read LSRP only.
+
+**What the operator sees.** Tools ▸ Test cases lists 76 more cases (26
+entries, expanded), ids as the SIF numbers them: `1.14/FS+OV`,
+`1.21/CAB2`, … Titles use the SIF wording. Steps match the schema's flag
+names (`Select Staff Responsible / Shunt mode` for the SIF's "Select Staff
+Responsible or Shunt Mode"). Reports stay OBSERVED / NOT ANSWERED / not
+observed.
+
+**fieldmap.json, new names, each scoped to its packet:**
+- **ARP:** `arp_loco_mode`, `arp_train_speed`. `arprecv` (another loco's
+  ARP) is excluded.
+- **DMI:**
+  - `dmi_loco_mode`, `dmi_train_speed`, `dmi_speed_limit_permissible`;
+  - `dmi_active_cab` (none / cab1 / cab2);
+  - `dmi_brake_type` (normal_brake … light_engine_brake);
+  - `dmi_alarm`, `dmi_context` (the flag sets).
+- **DIP1:** `dmi1/2_leading_non_leading_nc/_no` (leading / non_leading).
+- **DIP2:** `kavach_isolation_fb_no/_nc` (normal / isolated);
+  `sifa_isolation_cock_fb_no/_nc` (open / closed).
+
+A misspelt value (`closd`, `normal_brak`, `cab3`) is refused when the case
+loads, naming the known values.
+
+**Coverage.** "Real frame" = a line in `replay/` the suite runs the case on.
+
+| Clause | Case id(s) | Level | Evidence | Real frame |
+|---|---|---|---|---|
+| 1.1 | 1.1 | auto | DIP1 cab1/2_active; LSRP/ARP and DMI mode | none yet (cab-off spliced) |
+| 1.2 | 1.2 | auto | DMI mode, active_cab, train_speed; ARP speed; DMI alarm, brake_type | 2026-10-08/loco_1_1_08102026_101300.cap:3148 (→3170) |
+| 1.3 | — | manual | absence of a brake test | — |
+| 1.4 | 1.4, 1.4/STEPS | auto (STEPS: buzzer, NSB manual) | DMI alarm flags, active_cab | 101300.cap:2222, 2575, 2680, 2701 (STEPS: none yet) |
+| 1.5 | 1.5 | auto | DMI alarm; mode | none yet |
+| 1.6 | 1.6 | auto | DMI mode, active_cab, train_speed, speed_limit_permissible | 101300.cap:2680 → 2701 |
+| 1.7 | 1.7 | auto | DMI alarm, context; mode | 101300.cap:2680, 3006, 3027 |
+| 1.8 | 1.8 | partial (SR/SH refusal manual) | DMI alarm; mode | none yet |
+| 1.9 | 1.9 | partial (no brake test, counter manual) | DMI; DIP2 kavach_isolation_fb_*; mode | none yet |
+| 1.10 | 1.10 | auto | mode; DIP2; DMI alarm | none yet |
+| 1.11 | — | manual | SR not selectable (absence) | — |
+| 1.12 | 1.12 | auto | DMI alarm, mode | none yet (101300 shows the prompt then SR, not SH) |
+| 1.13 | 1.13 | auto | mode; DMI alarm | none yet |
+| 1.14 | 1.14/{SR,LS,FS,FS+OV,OS,OS+OV,PT,PT+OV,RV,SH} | auto | mode + speed (LSRP SIG_OV for FS/OS/PT); DIP1; LSRP/ARP and DMI SB | none yet (SR spliced) |
+| 1.15 | 1.15/… (10) | partial (same cab not tied) | as 1.14 + DIP1 cab on | none yet (SR spliced) |
+| 1.16 | 1.16/… (10) | auto | mode + speed; DIP2 sifa_isolation_cock_fb_*; DIP1 | none yet (SR spliced) |
+| 1.17 | 1.17/SR | partial (cab order manual) | mode; DIP2 | none yet (spliced) |
+| 1.18 | 1.18/{SR,LS,FS,FS+OV,OS,OS+OV,RV,SH} | auto | mode + speed; DIP2; DMI brake_type; speed | none yet |
+| 1.19 | 1.19/… (10) | auto | mode; DIP2 closed then open | none yet (SR spliced) |
+| 1.20 | 1.20 | auto | DMI; context; alarm | 101300.cap:2201, 3006, 3027 |
+| 1.21 | 1.21/CAB1, /CAB2 | partial (no brake test manual) | DMI mode + active_cab; DIP1 | none yet |
+| 1.22 | 1.22/CAB1, /CAB2 | partial (no brake test manual) | as 1.21 | none yet |
+| 1.23 | 1.23/CAB1, /CAB2 | auto | as 1.21 + DMI alarm | none yet |
+| 1.24 | — | manual | configuration refused (absence) | — |
+| 1.25 | 1.25 | auto (button press not in any packet) | mode | none yet |
+| 1.26 | 1.26 | auto | DMI mode, active_cab; DIP1 dmi2_leading_non_leading_* | none yet |
+| 1.27 | 1.27 | auto | mode; DMI alarm | none yet |
+| 1.28 | 1.28 | auto | mode + speed; DIP1 cab1/2_forward | none yet |
+| 1.29 | 1.29 | auto (the fault itself: operator's) | mode; DMI alarm | 2026-10-08/loco_1_1_08102026_105200.cap:32 → 94 |
+| 1.30 | 1.30 | auto | mode; DMI alarm | 105200.cap:168 → 208 → 572 |
+| 1.31 | — | manual | inactive DMI takes no input | — |
+| 1.32 | 1.32 | auto | as 1.7 | 101300.cap:2680, 3006, 3027 |
+| 1.33 | 1.33 | auto | DIP1; DMI mode + alarm | none yet |
+
+"Spliced" means real ARP/DMI frames plus a real DIP frame with the
+documented pins changed, because no capture has that input state. It
+proves the case is wired right, not that a loco behaves so.
+
+**What the real captures show.**
+- **101300:** 1.2, 1.4, 1.6, 1.7, 1.20 and 1.32 are OBSERVED.
+- **1.4/STEPS is NOT ANSWERED.** The brake test (10:15:22–10:15:26)
+  shows none of the "Brake Test - …" step messages in the DMI log. The
+  DMI is logged about once a second, so they may have been shown and
+  missed. Worth checking on the rig.
+- **105200:**
+  - **1.29 is OBSERVED.** The trigger was a self-test fault, not a
+    Loco_Health bit.
+  - **1.30 is answered once,** with two findings. Both fall in gaps of the
+    DMI log (none from 10:52:40 to 10:56:34; none after 11:08:45), not in
+    the loco's behaviour.
+  - **1.4 has two findings.** One is real (System Failure right after the
+    self test, 10:52:36); one is the log stopping.
+  - **1.20 has one finding:** configured at 11:00:48, and the DMI (logged
+    every second) showed no SR / Shunt prompt before SR at 11:00:50.
+
+**Not tested / open:**
+- **No real capture for 21 of the 29 automated clauses.** Each needs, on
+  the rig, a recorded run of:
+  - both cabs off in each mode, at standstill, and on again (1.1, 1.14,
+    1.15, 1.33);
+  - EM cock closed and opened in each mode (1.16–1.19);
+  - a failed brake test (1.5, 1.8);
+  - isolation on/off (1.9, 1.10);
+  - SB → SH → SB, cab off/on with each cab (1.12, 1.13, 1.21–1.25);
+  - the NL input in cab 2 (1.26, 1.27);
+  - Reverse with the reverser forward (1.28).
+- **The isolation and non-leading polarities** are Abhinav's word, not
+  yet seen flipped on a real frame.
+- **The isolation counter (1.9)** is in no packet DLConsole decodes.
+- **The Python and C++ decoders disagree on LOCO_MODE in some arprecv
+  frames** (105200.cap:9 reads 15 in `schema/engine.py`, 2 in the app).
+  Not investigated. The cases never read arprecv.
+
+**Phase 2: proposed, not built.**
+1. **An absence step** ("X must not happen within N s"), for 1.3, 1.8 (SR/SH
+   refused), 1.9 / 1.21 / 1.22 (no brake test), 1.11, 1.24.
+2. **"No frame" kept apart from "not seen".** A deadline that passes with no
+   frame at all from the step's packet is reported as a gap in the log,
+   not as a finding. 1.30's and one of 1.4's findings above are this.
+3. **Memory across steps:** "the same cab as step 2" (1.15, 1.21/1.22),
+   "the previous mode", and field-to-field comparison.
+4. **A step-0 restart rule** that does not reset a sequence whenever its
+   first state is seen again. Today long chains that alternate between
+   packets can lose a frame; the cases are written short to avoid it.
+
+**Files.**
+- `logquery.cpp` (the quoting fix).
+- `fieldmap.json`, `testcases.json`, `TESTCASES.md` (flag sets).
+- New `tests/test_session305.cpp`, `tests/tests.pro`.
+
+**Tests.** `session305` (60 checks), on real lines from
+`replay/2026-10-08` and `replay/loco_81_1_14102026_110915.cap`:
+- **Flag matching:** a quoted flag name, with a comma and with a slash;
+  an unset flag doesn't match; `=` with quotes is one value; unquoted
+  words and lists as before; a dmiCtx flag.
+- **Scope:** `alarm_code` matches DMI and DLLOG, `dmi_alarm` only the DMI;
+  `arp_loco_mode` not arprecv.
+- **Every new name on a real frame;** the flipped pins (isolation, EM cock,
+  cab 2 non-leading) read as named.
+- **Misspelt values refused,** and a case with one kept and flagged.
+- **The cases:** 76 load and parse; every clause but 1.3, 1.11, 1.24 and
+  1.31 has one; every id is a catalog clause; every DMI message named is a
+  schema flag, spelt as the schema spells it.
+- **The real-capture results above.** The no-real-frame cases stay quiet
+  on all five captures (no false finding).
+- **Spliced:** 1.1, 1.14/SR, 1.15/SR, 1.16/SR, 1.17/SR and 1.19/SR are
+  observed. SR still reported 12 s after cab-off gives 1.14/SR a finding.
+
+**Gate:** Qt 6 and Qt 5.15 green, 341 suites / 8665 checks, 0 failed; 15 validators; menu audit 184 ok; smoke.
+
+---
+
 <a id="session-304"></a>
 ## Session 304 — the Tag Builder shows Annexure D's field descriptions
 

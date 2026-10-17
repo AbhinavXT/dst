@@ -253,5 +253,1068 @@
     "id": "SEC/KEY-PRESENT",
     "title": "Loco reports its authentication key sets",
     "query": "field:auth_keys~key set"
+  },
+  {
+    "id": "1.1",
+    "title": "SB mode entry at power on, healthy, no cab active; SB indicated on DMI (FRS 4.1, 4.2)",
+    "sequence": [
+      {
+        "label": "no cab active",
+        "match": "field:cab1_active=inactive field:cab2_active=inactive"
+      },
+      {
+        "label": "Stand_By, reported and shown",
+        "within_ms": 10000,
+        "all_of": [
+          {
+            "label": "Stand_By reported over radio (LSRP/ARP)",
+            "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by"
+          },
+          {
+            "label": "SB mode indication on DMI",
+            "match": "field:dmi_loco_mode=stand_by"
+          }
+        ]
+      }
+    ],
+    "note": "'Powered on' and 'healthy' are the operator's setup, not checked here."
+  },
+  {
+    "id": "1.2",
+    "title": "Standstill protection: in SB with a cab active, a movement brings the brakes and \u201cStandstill Protection, Brake Applied\u201d (FRS 4.5)",
+    "sequence": [
+      {
+        "label": "SB, cab active, at standstill (DMI)",
+        "match": "field:dmi_loco_mode=stand_by field:dmi_active_cab!=none field:dmi_train_speed=0"
+      },
+      {
+        "label": "train moves in SB",
+        "match": "(field:dmi_loco_mode=stand_by field:dmi_train_speed>0) OR (field:arp_loco_mode=stand_by field:arp_train_speed>0)"
+      },
+      {
+        "label": "loco reacts",
+        "within_ms": 5000,
+        "all_of": [
+          {
+            "label": "DMI \u201cStandstill Protection, Brake Applied\u201d",
+            "match": "field:dmi_alarm~\"Standstill Protection, Brake Applied\""
+          },
+          {
+            "label": "brakes applied (DMI brake_type NSB or stronger)",
+            "match": "field:dmi_brake_type>=normal_brake"
+          }
+        ]
+      }
+    ],
+    "note": "'Not allow train movement' is read from the evidence: the speed falls to 0 after the brake (not a step)."
+  },
+  {
+    "id": "1.4",
+    "title": "With a cab active: \u201cSystem Self-Test in progress\u201d, \u201cSystem Self-Test Success\u201d, \u201cBrakes Testing Success\u201d, \u201cSelect Train Config, Press CONFIG Button\u201d, in order (FRS 19.2, 4.3(a))",
+    "sequence": [
+      {
+        "label": "DMI \u201cSystem Self Test In Progress\u201d, cab active",
+        "match": "field:dmi_alarm~\"System Self Test In Progress\" field:dmi_active_cab!=none"
+      },
+      {
+        "label": "DMI \u201cSystem Self Test Success\u201d",
+        "match": "field:dmi_alarm~\"System Self Test Success\"",
+        "within_ms": 60000
+      },
+      {
+        "label": "DMI \u201cBrakes Testing Success\u201d",
+        "match": "field:dmi_alarm~\"Brakes Testing Success\"",
+        "within_ms": 60000
+      },
+      {
+        "label": "DMI \u201cSelect Train Config, Press Config Button\u201d",
+        "match": "field:dmi_alarm~\"Select Train Config, Press Config Button\"",
+        "within_ms": 30000
+      }
+    ],
+    "note": "Expected 6 (\u201cSelect Staff Responsible or Shunt Mode\u201d after configuration) is 1.7. The brake test's own steps are 1.4/STEPS. The buzzer and 'all vital equipment normal' are manual."
+  },
+  {
+    "id": "1.4/STEPS",
+    "title": "Brake test context messages: Waiting for MR, Waiting for BP, FSB Applied, EB Applied, LEB, Waiting for Traction Command, then \u201cBrakes Testing Success\u201d (FRS 19.2)",
+    "sequence": [
+      {
+        "label": "DMI \u201cSystem Self Test Success\u201d",
+        "match": "field:dmi_alarm~\"System Self Test Success\""
+      },
+      {
+        "label": "brake test steps shown",
+        "all_of": [
+          {
+            "label": "Brake Test - Waiting for MR",
+            "match": "field:dmi_alarm~\"Brake Test - Waiting for MR\""
+          },
+          {
+            "label": "Brake Test - Waiting for BP",
+            "match": "field:dmi_alarm~\"Brake Test - Waiting for BP\""
+          },
+          {
+            "label": "Brake Test - FSB Applied (BP)",
+            "match": "field:dmi_alarm~\"Brake Test - FSB Applied (BP)\""
+          },
+          {
+            "label": "Brake Test - EB Applied (BP)",
+            "match": "field:dmi_alarm~\"Brake Test - EB Applied (BP)\""
+          },
+          {
+            "label": "Brake Test - LEB Applied (BC)",
+            "match": "field:dmi_alarm~\"Brake Test - LEB Applied (BC)\""
+          },
+          {
+            "label": "Waiting for Traction Command",
+            "match": "field:dmi_alarm~\"Waiting for Traction Command\""
+          }
+        ]
+      },
+      {
+        "label": "DMI \u201cBrakes Testing Success\u201d",
+        "match": "field:dmi_alarm~\"Brakes Testing Success\"",
+        "within_ms": 30000
+      }
+    ],
+    "note": "\u201cNSB Applied\u201d is 'where applicable' in the SIF, so it is not required here; the buzzer is manual. The DMI is logged about once a second, so a message shown for less than that can be missed; the steps therefore have no deadline, and a brake test that ends without them leaves the case NOT ANSWERED rather than raising a finding."
+  },
+  {
+    "id": "1.5",
+    "title": "Brake test fails (EB valve opened): stays in SB, \u201cBrake Test Fail\u201d and \u201cBrake Testing Fail, Press ACK for Retesting\u201d, brakes re-tested after ACK",
+    "sequence": [
+      {
+        "label": "DMI \u201cBrakes Testing Fail\u201d (SIF: Brake Test Fail (NSB, FSB, EB))",
+        "match": "field:dmi_alarm~\"Brakes Testing Fail\""
+      },
+      {
+        "label": "SB and the retest prompt",
+        "within_ms": 10000,
+        "all_of": [
+          {
+            "label": "DMI \u201cBrakes Test Fail, Press Ack for Retesting\u201d",
+            "match": "field:dmi_alarm~\"Brakes Test Fail, Press Ack for Retesting\""
+          },
+          {
+            "label": "still Stand_By",
+            "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by OR field:dmi_loco_mode=stand_by"
+          }
+        ]
+      },
+      {
+        "label": "brakes re-tested after ACK",
+        "match": "field:dmi_alarm~\"Brake Test - \" OR field:dmi_alarm~\"Brakes Testing Success\""
+      }
+    ],
+    "note": "The schema has no flag named \u201cBrake Test Fail (NSB, FSB, EB)\u201d; \u201cBrakes Testing Fail\u201d is the nearest. Opening the EB valve and pressing ACK are not in any packet, so the retest has no deadline."
+  },
+  {
+    "id": "1.6",
+    "title": "After a successful brake test with a cab active, the DMI shows train speed 0 and permitted speed 0 (FRS 4.7)",
+    "sequence": [
+      {
+        "label": "DMI \u201cBrakes Testing Success\u201d",
+        "match": "field:dmi_alarm~\"Brakes Testing Success\""
+      },
+      {
+        "label": "SB, cab active, speeds shown as 0",
+        "match": "field:dmi_loco_mode=stand_by field:dmi_active_cab!=none field:dmi_train_speed=0 field:dmi_speed_limit_permissible=0",
+        "within_ms": 5000
+      }
+    ]
+  },
+  {
+    "id": "{cid}",
+    "title": "{title}",
+    "sequence": [
+      {
+        "label": "DMI \u201cBrakes Testing Success\u201d",
+        "match": "field:dmi_alarm~\"Brakes Testing Success\""
+      },
+      {
+        "label": "train configuration selected",
+        "match": "field:dmi_context~\"Train Type Selected\""
+      },
+      {
+        "label": "SB, then the mode prompt",
+        "within_ms": 10000,
+        "all_of": [
+          {
+            "label": "still Stand_By",
+            "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by OR field:dmi_loco_mode=stand_by"
+          },
+          {
+            "label": "DMI \u201cSelect Staff Responsible / Shunt mode\u201d",
+            "match": "field:dmi_alarm~\"Select Staff Responsible / Shunt mode\""
+          }
+        ]
+      }
+    ],
+    "expand": [
+      {
+        "cid": "1.7",
+        "title": "After brake test success and configuration, mode stays SB and \u201cSelect Staff Responsible or Shunt Mode\u201d is shown (FRS 4.8 (a))"
+      },
+      {
+        "cid": "1.32",
+        "title": "In SB, after changing the train configuration: still SB, and after the successful brake test SR / Shunt is prompted"
+      }
+    ],
+    "note": "The configuration is read from the DMI context \u201cTrain Type Selected\u201d. A changed formation cannot be told from a first one."
+  },
+  {
+    "id": "1.8",
+    "title": "Brake test failed: Onboard stays in SB (FRS 4.8)",
+    "sequence": [
+      {
+        "label": "DMI \u201cBrakes Test Fail, Press Ack for Retesting\u201d",
+        "match": "field:dmi_alarm~\"Brakes Test Fail, Press Ack for Retesting\""
+      },
+      {
+        "label": "still Stand_By",
+        "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by OR field:dmi_loco_mode=stand_by",
+        "within_ms": 5000
+      }
+    ],
+    "note": "PARTIAL: that SR and Shunt cannot be selected (SR / Shunt + CNFM) is an absence, which the engine cannot check; manual."
+  },
+  {
+    "id": "1.9",
+    "title": "KAVACH isolated in SB with a cab active at standstill: transits to IS (FRS 4.3 (c), 4.8 (d))",
+    "sequence": [
+      {
+        "label": "SB, cab active, at standstill (DMI)",
+        "match": "field:dmi_loco_mode=stand_by field:dmi_active_cab!=none field:dmi_train_speed=0"
+      },
+      {
+        "label": "isolation switch operated (DIP2)",
+        "match": "field:kavach_isolation_fb_no=isolated field:kavach_isolation_fb_nc=isolated"
+      },
+      {
+        "label": "Isolation mode",
+        "match": "field:loco_mode=isolation OR field:arp_loco_mode=isolation OR field:dmi_loco_mode=isolation",
+        "within_ms": 10000
+      }
+    ],
+    "note": "PARTIAL: 'no brake test' is an absence (manual). The isolation counter is in no packet DLConsole decodes (manual)."
+  },
+  {
+    "id": "1.10",
+    "title": "Isolation switch normal with a cab active: SB, brake test performed, configuration enabled only after a successful brake test (FRS 4.3 (c), 4.8 (d), 20.1 (b))",
+    "sequence": [
+      {
+        "label": "Isolation mode",
+        "match": "field:loco_mode=isolation OR field:arp_loco_mode=isolation OR field:dmi_loco_mode=isolation"
+      },
+      {
+        "label": "isolation switch normal (DIP2)",
+        "match": "field:kavach_isolation_fb_no=normal field:kavach_isolation_fb_nc=normal"
+      },
+      {
+        "label": "Stand_By",
+        "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by OR field:dmi_loco_mode=stand_by",
+        "within_ms": 10000
+      },
+      {
+        "label": "brake test performed: \u201cBrakes Testing Success\u201d",
+        "match": "field:dmi_alarm~\"Brakes Testing Success\"",
+        "within_ms": 120000
+      },
+      {
+        "label": "then \u201cSelect Train Config, Press Config Button\u201d",
+        "match": "field:dmi_alarm~\"Select Train Config, Press Config Button\"",
+        "within_ms": 30000
+      }
+    ]
+  },
+  {
+    "id": "1.12",
+    "title": "SB to SH when Shunt is selected after configuration (Power on)",
+    "sequence": [
+      {
+        "label": "SB, DMI \u201cSelect Staff Responsible / Shunt mode\u201d",
+        "match": "field:dmi_alarm~\"Select Staff Responsible / Shunt mode\" field:dmi_loco_mode=stand_by"
+      },
+      {
+        "label": "Shunting",
+        "match": "field:loco_mode=shunting OR field:arp_loco_mode=shunting OR field:dmi_loco_mode=shunting"
+      }
+    ],
+    "note": "The Shunt selection on the DMI is not in any packet; the step is the mode change."
+  },
+  {
+    "id": "{cid}",
+    "title": "{title}",
+    "sequence": [
+      {
+        "label": "in {prev_name}",
+        "match": "field:loco_mode={prev} OR field:arp_loco_mode={prev} OR field:dmi_loco_mode={prev}"
+      },
+      {
+        "label": "Stand_By",
+        "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by OR field:dmi_loco_mode=stand_by"
+      },
+      {
+        "label": "DMI \u201cSelect Train Config, Press Config Button\u201d",
+        "match": "field:dmi_alarm~\"Select Train Config, Press Config Button\"",
+        "within_ms": 120000
+      }
+    ],
+    "expand": [
+      {
+        "cid": "1.13",
+        "prev": "shunting",
+        "prev_name": "Shunting",
+        "title": "Entering SB from Shunt mode (Shunt + CNFM): train configuration entry prompted (FRS 20.1 (b))"
+      },
+      {
+        "cid": "1.27",
+        "prev": "non_leading",
+        "prev_name": "Non Leading",
+        "title": "Entering SB from Non Leading mode: train configuration entry prompted (FRS 4.3 (c), 20.1 (b))"
+      },
+      {
+        "cid": "1.30",
+        "prev": "system_failure",
+        "prev_name": "System Failure",
+        "title": "Entering SB from System Failure mode: train configuration entry prompted (FRS 4.3 (c), 4.8 (e), 20.1 (b))"
+      }
+    ],
+    "note": "The brake tests the SIF lists as input are not a step: the DMI is logged about once a second and \u201cBrakes Testing Success\u201d shows for about that long."
+  },
+  {
+    "id": "1.14/{code}",
+    "title": "From {mode_name} at standstill, no cab active: SB, radio transmission still active (FRS 4.3 (b), 4.6)",
+    "sequence": [
+      {
+        "label": "in {mode_name}, at standstill",
+        "match": "{still}"
+      },
+      {
+        "label": "no cab active",
+        "match": "field:cab1_active=inactive field:cab2_active=inactive"
+      },
+      {
+        "label": "Stand_By",
+        "within_ms": 10000,
+        "all_of": [
+          {
+            "label": "Stand_By reported over radio (FRS 4.6: radio still transmitting)",
+            "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by"
+          },
+          {
+            "label": "SB on DMI",
+            "match": "field:dmi_loco_mode=stand_by"
+          }
+        ]
+      }
+    ],
+    "expand": [
+      {
+        "code": "SR",
+        "mode_name": "Staff Responsible",
+        "still": "(field:loco_mode=staff_responsible field:train_speed=0) OR (field:arp_loco_mode=staff_responsible field:arp_train_speed=0) OR (field:dmi_loco_mode=staff_responsible field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=staff_responsible field:train_speed>0) OR (field:arp_loco_mode=staff_responsible field:arp_train_speed>0) OR (field:dmi_loco_mode=staff_responsible field:dmi_train_speed>0)",
+        "back": "field:loco_mode=staff_responsible OR field:arp_loco_mode=staff_responsible OR field:dmi_loco_mode=staff_responsible"
+      },
+      {
+        "code": "LS",
+        "mode_name": "Limited Supervision",
+        "still": "(field:loco_mode=limited_supervision field:train_speed=0) OR (field:arp_loco_mode=limited_supervision field:arp_train_speed=0) OR (field:dmi_loco_mode=limited_supervision field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=limited_supervision field:train_speed>0) OR (field:arp_loco_mode=limited_supervision field:arp_train_speed>0) OR (field:dmi_loco_mode=limited_supervision field:dmi_train_speed>0)",
+        "back": "field:loco_mode=limited_supervision OR field:arp_loco_mode=limited_supervision OR field:dmi_loco_mode=limited_supervision"
+      },
+      {
+        "code": "FS",
+        "mode_name": "Full Supervision",
+        "still": "field:loco_mode=full_supervision field:sig_ov=clear field:train_speed=0",
+        "moving": "field:loco_mode=full_supervision field:sig_ov=clear field:train_speed>0",
+        "back": "field:loco_mode=full_supervision field:sig_ov=clear"
+      },
+      {
+        "code": "FS+OV",
+        "mode_name": "Full Supervision with override (SIG_OV=1)",
+        "still": "field:loco_mode=full_supervision field:sig_ov=set field:train_speed=0",
+        "moving": "field:loco_mode=full_supervision field:sig_ov=set field:train_speed>0",
+        "back": "field:loco_mode=full_supervision field:sig_ov=set"
+      },
+      {
+        "code": "OS",
+        "mode_name": "On Sight",
+        "still": "field:loco_mode=on_sight field:sig_ov=clear field:train_speed=0",
+        "moving": "field:loco_mode=on_sight field:sig_ov=clear field:train_speed>0",
+        "back": "field:loco_mode=on_sight field:sig_ov=clear"
+      },
+      {
+        "code": "OS+OV",
+        "mode_name": "On Sight with override (SIG_OV=1)",
+        "still": "field:loco_mode=on_sight field:sig_ov=set field:train_speed=0",
+        "moving": "field:loco_mode=on_sight field:sig_ov=set field:train_speed>0",
+        "back": "field:loco_mode=on_sight field:sig_ov=set"
+      },
+      {
+        "code": "PT",
+        "mode_name": "Post Trip",
+        "still": "field:loco_mode=post_trip field:sig_ov=clear field:train_speed=0",
+        "moving": "field:loco_mode=post_trip field:sig_ov=clear field:train_speed>0",
+        "back": "field:loco_mode=post_trip field:sig_ov=clear"
+      },
+      {
+        "code": "PT+OV",
+        "mode_name": "Post Trip with override (SIG_OV=1)",
+        "still": "field:loco_mode=post_trip field:sig_ov=set field:train_speed=0",
+        "moving": "field:loco_mode=post_trip field:sig_ov=set field:train_speed>0",
+        "back": "field:loco_mode=post_trip field:sig_ov=set"
+      },
+      {
+        "code": "RV",
+        "mode_name": "Reverse",
+        "still": "(field:loco_mode=reverse field:train_speed=0) OR (field:arp_loco_mode=reverse field:arp_train_speed=0) OR (field:dmi_loco_mode=reverse field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=reverse field:train_speed>0) OR (field:arp_loco_mode=reverse field:arp_train_speed>0) OR (field:dmi_loco_mode=reverse field:dmi_train_speed>0)",
+        "back": "field:loco_mode=reverse OR field:arp_loco_mode=reverse OR field:dmi_loco_mode=reverse"
+      },
+      {
+        "code": "SH",
+        "mode_name": "Shunting",
+        "still": "(field:loco_mode=shunting field:train_speed=0) OR (field:arp_loco_mode=shunting field:arp_train_speed=0) OR (field:dmi_loco_mode=shunting field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=shunting field:train_speed>0) OR (field:arp_loco_mode=shunting field:arp_train_speed>0) OR (field:dmi_loco_mode=shunting field:dmi_train_speed>0)",
+        "back": "field:loco_mode=shunting OR field:arp_loco_mode=shunting OR field:dmi_loco_mode=shunting"
+      }
+    ],
+    "note": "FS, OS and PT are told from FS+OV, OS+OV and PT+OV only by LSRP's SIG_OV (ARP and the DMI do not carry it), so those six variants read LSRP; the others read LSRP, ARP or the DMI."
+  },
+  {
+    "id": "1.15/{code}",
+    "title": "From {mode_name}: SB when the cab goes inactive, back to {mode_name} when the cab is made active again at standstill (FRS 4.3 (b))",
+    "sequence": [
+      {
+        "label": "in {mode_name}, at standstill",
+        "match": "{still}"
+      },
+      {
+        "label": "no cab active",
+        "match": "field:cab1_active=inactive field:cab2_active=inactive"
+      },
+      {
+        "label": "Stand_By",
+        "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by OR field:dmi_loco_mode=stand_by",
+        "within_ms": 10000
+      },
+      {
+        "label": "a cab made active",
+        "match": "field:cab1_active=active OR field:cab2_active=active"
+      },
+      {
+        "label": "back to {mode_name}",
+        "match": "{back}",
+        "within_ms": 10000
+      }
+    ],
+    "expand": [
+      {
+        "code": "SR",
+        "mode_name": "Staff Responsible",
+        "still": "(field:loco_mode=staff_responsible field:train_speed=0) OR (field:arp_loco_mode=staff_responsible field:arp_train_speed=0) OR (field:dmi_loco_mode=staff_responsible field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=staff_responsible field:train_speed>0) OR (field:arp_loco_mode=staff_responsible field:arp_train_speed>0) OR (field:dmi_loco_mode=staff_responsible field:dmi_train_speed>0)",
+        "back": "field:loco_mode=staff_responsible OR field:arp_loco_mode=staff_responsible OR field:dmi_loco_mode=staff_responsible"
+      },
+      {
+        "code": "LS",
+        "mode_name": "Limited Supervision",
+        "still": "(field:loco_mode=limited_supervision field:train_speed=0) OR (field:arp_loco_mode=limited_supervision field:arp_train_speed=0) OR (field:dmi_loco_mode=limited_supervision field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=limited_supervision field:train_speed>0) OR (field:arp_loco_mode=limited_supervision field:arp_train_speed>0) OR (field:dmi_loco_mode=limited_supervision field:dmi_train_speed>0)",
+        "back": "field:loco_mode=limited_supervision OR field:arp_loco_mode=limited_supervision OR field:dmi_loco_mode=limited_supervision"
+      },
+      {
+        "code": "FS",
+        "mode_name": "Full Supervision",
+        "still": "field:loco_mode=full_supervision field:sig_ov=clear field:train_speed=0",
+        "moving": "field:loco_mode=full_supervision field:sig_ov=clear field:train_speed>0",
+        "back": "field:loco_mode=full_supervision field:sig_ov=clear"
+      },
+      {
+        "code": "FS+OV",
+        "mode_name": "Full Supervision with override (SIG_OV=1)",
+        "still": "field:loco_mode=full_supervision field:sig_ov=set field:train_speed=0",
+        "moving": "field:loco_mode=full_supervision field:sig_ov=set field:train_speed>0",
+        "back": "field:loco_mode=full_supervision field:sig_ov=set"
+      },
+      {
+        "code": "OS",
+        "mode_name": "On Sight",
+        "still": "field:loco_mode=on_sight field:sig_ov=clear field:train_speed=0",
+        "moving": "field:loco_mode=on_sight field:sig_ov=clear field:train_speed>0",
+        "back": "field:loco_mode=on_sight field:sig_ov=clear"
+      },
+      {
+        "code": "OS+OV",
+        "mode_name": "On Sight with override (SIG_OV=1)",
+        "still": "field:loco_mode=on_sight field:sig_ov=set field:train_speed=0",
+        "moving": "field:loco_mode=on_sight field:sig_ov=set field:train_speed>0",
+        "back": "field:loco_mode=on_sight field:sig_ov=set"
+      },
+      {
+        "code": "PT",
+        "mode_name": "Post Trip",
+        "still": "field:loco_mode=post_trip field:sig_ov=clear field:train_speed=0",
+        "moving": "field:loco_mode=post_trip field:sig_ov=clear field:train_speed>0",
+        "back": "field:loco_mode=post_trip field:sig_ov=clear"
+      },
+      {
+        "code": "PT+OV",
+        "mode_name": "Post Trip with override (SIG_OV=1)",
+        "still": "field:loco_mode=post_trip field:sig_ov=set field:train_speed=0",
+        "moving": "field:loco_mode=post_trip field:sig_ov=set field:train_speed>0",
+        "back": "field:loco_mode=post_trip field:sig_ov=set"
+      },
+      {
+        "code": "RV",
+        "mode_name": "Reverse",
+        "still": "(field:loco_mode=reverse field:train_speed=0) OR (field:arp_loco_mode=reverse field:arp_train_speed=0) OR (field:dmi_loco_mode=reverse field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=reverse field:train_speed>0) OR (field:arp_loco_mode=reverse field:arp_train_speed>0) OR (field:dmi_loco_mode=reverse field:dmi_train_speed>0)",
+        "back": "field:loco_mode=reverse OR field:arp_loco_mode=reverse OR field:dmi_loco_mode=reverse"
+      },
+      {
+        "code": "SH",
+        "mode_name": "Shunting",
+        "still": "(field:loco_mode=shunting field:train_speed=0) OR (field:arp_loco_mode=shunting field:arp_train_speed=0) OR (field:dmi_loco_mode=shunting field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=shunting field:train_speed>0) OR (field:arp_loco_mode=shunting field:arp_train_speed>0) OR (field:dmi_loco_mode=shunting field:dmi_train_speed>0)",
+        "back": "field:loco_mode=shunting OR field:arp_loco_mode=shunting OR field:dmi_loco_mode=shunting"
+      }
+    ],
+    "note": "PARTIAL: the engine does not tie the cab made active to the one switched off; the DIP1 evidence lines show which cab it was. FS, OS and PT are told from FS+OV, OS+OV and PT+OV only by LSRP's SIG_OV (ARP and the DMI do not carry it), so those six variants read LSRP; the others read LSRP, ARP or the DMI."
+  },
+  {
+    "id": "1.16/{code}",
+    "title": "From {mode_name} at standstill, EM cock closed with cab 1 active: SB (FRS 4.3(b))",
+    "sequence": [
+      {
+        "label": "in {mode_name}, at standstill",
+        "match": "{still}"
+      },
+      {
+        "label": "EM cock closed (SIFA isolation cock NO=1, NC=0)",
+        "match": "field:sifa_isolation_cock_fb_no=closed field:sifa_isolation_cock_fb_nc=closed"
+      },
+      {
+        "label": "SB with cab 1 active",
+        "within_ms": 10000,
+        "all_of": [
+          {
+            "label": "Stand_By",
+            "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by OR field:dmi_loco_mode=stand_by"
+          },
+          {
+            "label": "cab 1 active, cab 2 inactive (DIP1)",
+            "match": "field:cab1_active=active field:cab2_active=inactive"
+          }
+        ]
+      }
+    ],
+    "expand": [
+      {
+        "code": "SR",
+        "mode_name": "Staff Responsible",
+        "still": "(field:loco_mode=staff_responsible field:train_speed=0) OR (field:arp_loco_mode=staff_responsible field:arp_train_speed=0) OR (field:dmi_loco_mode=staff_responsible field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=staff_responsible field:train_speed>0) OR (field:arp_loco_mode=staff_responsible field:arp_train_speed>0) OR (field:dmi_loco_mode=staff_responsible field:dmi_train_speed>0)",
+        "back": "field:loco_mode=staff_responsible OR field:arp_loco_mode=staff_responsible OR field:dmi_loco_mode=staff_responsible"
+      },
+      {
+        "code": "LS",
+        "mode_name": "Limited Supervision",
+        "still": "(field:loco_mode=limited_supervision field:train_speed=0) OR (field:arp_loco_mode=limited_supervision field:arp_train_speed=0) OR (field:dmi_loco_mode=limited_supervision field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=limited_supervision field:train_speed>0) OR (field:arp_loco_mode=limited_supervision field:arp_train_speed>0) OR (field:dmi_loco_mode=limited_supervision field:dmi_train_speed>0)",
+        "back": "field:loco_mode=limited_supervision OR field:arp_loco_mode=limited_supervision OR field:dmi_loco_mode=limited_supervision"
+      },
+      {
+        "code": "FS",
+        "mode_name": "Full Supervision",
+        "still": "field:loco_mode=full_supervision field:sig_ov=clear field:train_speed=0",
+        "moving": "field:loco_mode=full_supervision field:sig_ov=clear field:train_speed>0",
+        "back": "field:loco_mode=full_supervision field:sig_ov=clear"
+      },
+      {
+        "code": "FS+OV",
+        "mode_name": "Full Supervision with override (SIG_OV=1)",
+        "still": "field:loco_mode=full_supervision field:sig_ov=set field:train_speed=0",
+        "moving": "field:loco_mode=full_supervision field:sig_ov=set field:train_speed>0",
+        "back": "field:loco_mode=full_supervision field:sig_ov=set"
+      },
+      {
+        "code": "OS",
+        "mode_name": "On Sight",
+        "still": "field:loco_mode=on_sight field:sig_ov=clear field:train_speed=0",
+        "moving": "field:loco_mode=on_sight field:sig_ov=clear field:train_speed>0",
+        "back": "field:loco_mode=on_sight field:sig_ov=clear"
+      },
+      {
+        "code": "OS+OV",
+        "mode_name": "On Sight with override (SIG_OV=1)",
+        "still": "field:loco_mode=on_sight field:sig_ov=set field:train_speed=0",
+        "moving": "field:loco_mode=on_sight field:sig_ov=set field:train_speed>0",
+        "back": "field:loco_mode=on_sight field:sig_ov=set"
+      },
+      {
+        "code": "PT",
+        "mode_name": "Post Trip",
+        "still": "field:loco_mode=post_trip field:sig_ov=clear field:train_speed=0",
+        "moving": "field:loco_mode=post_trip field:sig_ov=clear field:train_speed>0",
+        "back": "field:loco_mode=post_trip field:sig_ov=clear"
+      },
+      {
+        "code": "PT+OV",
+        "mode_name": "Post Trip with override (SIG_OV=1)",
+        "still": "field:loco_mode=post_trip field:sig_ov=set field:train_speed=0",
+        "moving": "field:loco_mode=post_trip field:sig_ov=set field:train_speed>0",
+        "back": "field:loco_mode=post_trip field:sig_ov=set"
+      },
+      {
+        "code": "RV",
+        "mode_name": "Reverse",
+        "still": "(field:loco_mode=reverse field:train_speed=0) OR (field:arp_loco_mode=reverse field:arp_train_speed=0) OR (field:dmi_loco_mode=reverse field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=reverse field:train_speed>0) OR (field:arp_loco_mode=reverse field:arp_train_speed>0) OR (field:dmi_loco_mode=reverse field:dmi_train_speed>0)",
+        "back": "field:loco_mode=reverse OR field:arp_loco_mode=reverse OR field:dmi_loco_mode=reverse"
+      },
+      {
+        "code": "SH",
+        "mode_name": "Shunting",
+        "still": "(field:loco_mode=shunting field:train_speed=0) OR (field:arp_loco_mode=shunting field:arp_train_speed=0) OR (field:dmi_loco_mode=shunting field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=shunting field:train_speed>0) OR (field:arp_loco_mode=shunting field:arp_train_speed>0) OR (field:dmi_loco_mode=shunting field:dmi_train_speed>0)",
+        "back": "field:loco_mode=shunting OR field:arp_loco_mode=shunting OR field:dmi_loco_mode=shunting"
+      }
+    ],
+    "note": "The EM cock is the SIFA isolation cock (DIP2 pins 9/10): open NO=0 NC=1, closed NO=1 NC=0. FS, OS and PT are told from FS+OV, OS+OV and PT+OV only by LSRP's SIG_OV (ARP and the DMI do not carry it), so those six variants read LSRP; the others read LSRP, ARP or the DMI."
+  },
+  {
+    "id": "1.17/SR",
+    "title": "From Staff Responsible at standstill, EM cock closed, both cabs made active one by one: SB (FRS 4.3(b))",
+    "sequence": [
+      {
+        "label": "in Staff Responsible, at standstill",
+        "match": "(field:loco_mode=staff_responsible field:train_speed=0) OR (field:arp_loco_mode=staff_responsible field:arp_train_speed=0) OR (field:dmi_loco_mode=staff_responsible field:dmi_train_speed=0)"
+      },
+      {
+        "label": "EM cock closed (SIFA isolation cock NO=1, NC=0)",
+        "match": "field:sifa_isolation_cock_fb_no=closed field:sifa_isolation_cock_fb_nc=closed"
+      },
+      {
+        "label": "Stand_By",
+        "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by OR field:dmi_loco_mode=stand_by",
+        "within_ms": 10000
+      }
+    ],
+    "note": "PARTIAL: making CAB1 and CAB2 active one by one is the operator's sequence; the case checks the SB transition after the cock closes."
+  },
+  {
+    "id": "1.18/{code}",
+    "title": "From {mode_name} while moving, EM cock closed: SB after braking to speed 0 (FRS 4.3(b))",
+    "sequence": [
+      {
+        "label": "in {mode_name}, moving",
+        "match": "{moving}"
+      },
+      {
+        "label": "EM cock closed (SIFA isolation cock NO=1, NC=0)",
+        "match": "field:sifa_isolation_cock_fb_no=closed field:sifa_isolation_cock_fb_nc=closed"
+      },
+      {
+        "label": "braked to a stop",
+        "all_of": [
+          {
+            "label": "brakes applied (DMI brake_type NSB or stronger)",
+            "match": "field:dmi_brake_type>=normal_brake"
+          },
+          {
+            "label": "speed 0",
+            "match": "field:dmi_train_speed=0 OR field:arp_train_speed=0 OR field:train_speed=0"
+          }
+        ]
+      },
+      {
+        "label": "Stand_By",
+        "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by OR field:dmi_loco_mode=stand_by",
+        "within_ms": 10000
+      }
+    ],
+    "expand": [
+      {
+        "code": "SR",
+        "mode_name": "Staff Responsible",
+        "still": "(field:loco_mode=staff_responsible field:train_speed=0) OR (field:arp_loco_mode=staff_responsible field:arp_train_speed=0) OR (field:dmi_loco_mode=staff_responsible field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=staff_responsible field:train_speed>0) OR (field:arp_loco_mode=staff_responsible field:arp_train_speed>0) OR (field:dmi_loco_mode=staff_responsible field:dmi_train_speed>0)",
+        "back": "field:loco_mode=staff_responsible OR field:arp_loco_mode=staff_responsible OR field:dmi_loco_mode=staff_responsible"
+      },
+      {
+        "code": "LS",
+        "mode_name": "Limited Supervision",
+        "still": "(field:loco_mode=limited_supervision field:train_speed=0) OR (field:arp_loco_mode=limited_supervision field:arp_train_speed=0) OR (field:dmi_loco_mode=limited_supervision field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=limited_supervision field:train_speed>0) OR (field:arp_loco_mode=limited_supervision field:arp_train_speed>0) OR (field:dmi_loco_mode=limited_supervision field:dmi_train_speed>0)",
+        "back": "field:loco_mode=limited_supervision OR field:arp_loco_mode=limited_supervision OR field:dmi_loco_mode=limited_supervision"
+      },
+      {
+        "code": "FS",
+        "mode_name": "Full Supervision",
+        "still": "field:loco_mode=full_supervision field:sig_ov=clear field:train_speed=0",
+        "moving": "field:loco_mode=full_supervision field:sig_ov=clear field:train_speed>0",
+        "back": "field:loco_mode=full_supervision field:sig_ov=clear"
+      },
+      {
+        "code": "FS+OV",
+        "mode_name": "Full Supervision with override (SIG_OV=1)",
+        "still": "field:loco_mode=full_supervision field:sig_ov=set field:train_speed=0",
+        "moving": "field:loco_mode=full_supervision field:sig_ov=set field:train_speed>0",
+        "back": "field:loco_mode=full_supervision field:sig_ov=set"
+      },
+      {
+        "code": "OS",
+        "mode_name": "On Sight",
+        "still": "field:loco_mode=on_sight field:sig_ov=clear field:train_speed=0",
+        "moving": "field:loco_mode=on_sight field:sig_ov=clear field:train_speed>0",
+        "back": "field:loco_mode=on_sight field:sig_ov=clear"
+      },
+      {
+        "code": "OS+OV",
+        "mode_name": "On Sight with override (SIG_OV=1)",
+        "still": "field:loco_mode=on_sight field:sig_ov=set field:train_speed=0",
+        "moving": "field:loco_mode=on_sight field:sig_ov=set field:train_speed>0",
+        "back": "field:loco_mode=on_sight field:sig_ov=set"
+      },
+      {
+        "code": "RV",
+        "mode_name": "Reverse",
+        "still": "(field:loco_mode=reverse field:train_speed=0) OR (field:arp_loco_mode=reverse field:arp_train_speed=0) OR (field:dmi_loco_mode=reverse field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=reverse field:train_speed>0) OR (field:arp_loco_mode=reverse field:arp_train_speed>0) OR (field:dmi_loco_mode=reverse field:dmi_train_speed>0)",
+        "back": "field:loco_mode=reverse OR field:arp_loco_mode=reverse OR field:dmi_loco_mode=reverse"
+      },
+      {
+        "code": "SH",
+        "mode_name": "Shunting",
+        "still": "(field:loco_mode=shunting field:train_speed=0) OR (field:arp_loco_mode=shunting field:arp_train_speed=0) OR (field:dmi_loco_mode=shunting field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=shunting field:train_speed>0) OR (field:arp_loco_mode=shunting field:arp_train_speed>0) OR (field:dmi_loco_mode=shunting field:dmi_train_speed>0)",
+        "back": "field:loco_mode=shunting OR field:arp_loco_mode=shunting OR field:dmi_loco_mode=shunting"
+      }
+    ],
+    "note": "The stop has no deadline (it depends on the speed). FS, OS and PT are told from FS+OV, OS+OV and PT+OV only by LSRP's SIG_OV (ARP and the DMI do not carry it), so those six variants read LSRP; the others read LSRP, ARP or the DMI."
+  },
+  {
+    "id": "1.19/{code}",
+    "title": "From {mode_name} at standstill: SB when the EM cock is closed, back to {mode_name} when it is opened (FRS 4.3 (b))",
+    "sequence": [
+      {
+        "label": "in {mode_name}, at standstill",
+        "match": "{still}"
+      },
+      {
+        "label": "EM cock closed (SIFA isolation cock NO=1, NC=0)",
+        "match": "field:sifa_isolation_cock_fb_no=closed field:sifa_isolation_cock_fb_nc=closed"
+      },
+      {
+        "label": "Stand_By",
+        "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by OR field:dmi_loco_mode=stand_by",
+        "within_ms": 10000
+      },
+      {
+        "label": "EM cock opened (NO=0, NC=1)",
+        "match": "field:sifa_isolation_cock_fb_no=open field:sifa_isolation_cock_fb_nc=open"
+      },
+      {
+        "label": "back to {mode_name}",
+        "match": "{back}",
+        "within_ms": 10000
+      }
+    ],
+    "expand": [
+      {
+        "code": "SR",
+        "mode_name": "Staff Responsible",
+        "still": "(field:loco_mode=staff_responsible field:train_speed=0) OR (field:arp_loco_mode=staff_responsible field:arp_train_speed=0) OR (field:dmi_loco_mode=staff_responsible field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=staff_responsible field:train_speed>0) OR (field:arp_loco_mode=staff_responsible field:arp_train_speed>0) OR (field:dmi_loco_mode=staff_responsible field:dmi_train_speed>0)",
+        "back": "field:loco_mode=staff_responsible OR field:arp_loco_mode=staff_responsible OR field:dmi_loco_mode=staff_responsible"
+      },
+      {
+        "code": "LS",
+        "mode_name": "Limited Supervision",
+        "still": "(field:loco_mode=limited_supervision field:train_speed=0) OR (field:arp_loco_mode=limited_supervision field:arp_train_speed=0) OR (field:dmi_loco_mode=limited_supervision field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=limited_supervision field:train_speed>0) OR (field:arp_loco_mode=limited_supervision field:arp_train_speed>0) OR (field:dmi_loco_mode=limited_supervision field:dmi_train_speed>0)",
+        "back": "field:loco_mode=limited_supervision OR field:arp_loco_mode=limited_supervision OR field:dmi_loco_mode=limited_supervision"
+      },
+      {
+        "code": "FS",
+        "mode_name": "Full Supervision",
+        "still": "field:loco_mode=full_supervision field:sig_ov=clear field:train_speed=0",
+        "moving": "field:loco_mode=full_supervision field:sig_ov=clear field:train_speed>0",
+        "back": "field:loco_mode=full_supervision field:sig_ov=clear"
+      },
+      {
+        "code": "FS+OV",
+        "mode_name": "Full Supervision with override (SIG_OV=1)",
+        "still": "field:loco_mode=full_supervision field:sig_ov=set field:train_speed=0",
+        "moving": "field:loco_mode=full_supervision field:sig_ov=set field:train_speed>0",
+        "back": "field:loco_mode=full_supervision field:sig_ov=set"
+      },
+      {
+        "code": "OS",
+        "mode_name": "On Sight",
+        "still": "field:loco_mode=on_sight field:sig_ov=clear field:train_speed=0",
+        "moving": "field:loco_mode=on_sight field:sig_ov=clear field:train_speed>0",
+        "back": "field:loco_mode=on_sight field:sig_ov=clear"
+      },
+      {
+        "code": "OS+OV",
+        "mode_name": "On Sight with override (SIG_OV=1)",
+        "still": "field:loco_mode=on_sight field:sig_ov=set field:train_speed=0",
+        "moving": "field:loco_mode=on_sight field:sig_ov=set field:train_speed>0",
+        "back": "field:loco_mode=on_sight field:sig_ov=set"
+      },
+      {
+        "code": "PT",
+        "mode_name": "Post Trip",
+        "still": "field:loco_mode=post_trip field:sig_ov=clear field:train_speed=0",
+        "moving": "field:loco_mode=post_trip field:sig_ov=clear field:train_speed>0",
+        "back": "field:loco_mode=post_trip field:sig_ov=clear"
+      },
+      {
+        "code": "PT+OV",
+        "mode_name": "Post Trip with override (SIG_OV=1)",
+        "still": "field:loco_mode=post_trip field:sig_ov=set field:train_speed=0",
+        "moving": "field:loco_mode=post_trip field:sig_ov=set field:train_speed>0",
+        "back": "field:loco_mode=post_trip field:sig_ov=set"
+      },
+      {
+        "code": "RV",
+        "mode_name": "Reverse",
+        "still": "(field:loco_mode=reverse field:train_speed=0) OR (field:arp_loco_mode=reverse field:arp_train_speed=0) OR (field:dmi_loco_mode=reverse field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=reverse field:train_speed>0) OR (field:arp_loco_mode=reverse field:arp_train_speed>0) OR (field:dmi_loco_mode=reverse field:dmi_train_speed>0)",
+        "back": "field:loco_mode=reverse OR field:arp_loco_mode=reverse OR field:dmi_loco_mode=reverse"
+      },
+      {
+        "code": "SH",
+        "mode_name": "Shunting",
+        "still": "(field:loco_mode=shunting field:train_speed=0) OR (field:arp_loco_mode=shunting field:arp_train_speed=0) OR (field:dmi_loco_mode=shunting field:dmi_train_speed=0)",
+        "moving": "(field:loco_mode=shunting field:train_speed>0) OR (field:arp_loco_mode=shunting field:arp_train_speed>0) OR (field:dmi_loco_mode=shunting field:dmi_train_speed>0)",
+        "back": "field:loco_mode=shunting OR field:arp_loco_mode=shunting OR field:dmi_loco_mode=shunting"
+      }
+    ],
+    "note": "FS, OS and PT are told from FS+OV, OS+OV and PT+OV only by LSRP's SIG_OV (ARP and the DMI do not carry it), so those six variants read LSRP; the others read LSRP, ARP or the DMI."
+  },
+  {
+    "id": "1.20",
+    "title": "In SB with a cab active at standstill, train configuration changed: stays SB and SR / Shunt is prompted (FRS 22.1)",
+    "sequence": [
+      {
+        "label": "SB, cab active, at standstill (DMI)",
+        "match": "field:dmi_loco_mode=stand_by field:dmi_active_cab!=none field:dmi_train_speed=0"
+      },
+      {
+        "label": "train configuration selected",
+        "match": "field:dmi_context~\"Train Type Selected\""
+      },
+      {
+        "label": "SB, then the mode prompt",
+        "within_ms": 10000,
+        "all_of": [
+          {
+            "label": "still Stand_By",
+            "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by OR field:dmi_loco_mode=stand_by"
+          },
+          {
+            "label": "DMI \u201cSelect Staff Responsible / Shunt mode\u201d",
+            "match": "field:dmi_alarm~\"Select Staff Responsible / Shunt mode\""
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "{cid}/CAB{n}",
+    "title": "{title}",
+    "sequence": [
+      {
+        "label": "in Shunting at standstill, cab {n} active (DMI)",
+        "match": "field:dmi_loco_mode=shunting field:dmi_active_cab=cab{n} field:dmi_train_speed=0"
+      },
+      {
+        "label": "no cab active",
+        "match": "field:cab1_active=inactive field:cab2_active=inactive"
+      },
+      {
+        "label": "Stand_By",
+        "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by OR field:dmi_loco_mode=stand_by",
+        "within_ms": 10000
+      },
+      {
+        "label": "cab {m} made active",
+        "match": "field:cab{m}_active=active"
+      },
+      {
+        "label": "back to Shunting",
+        "match": "field:loco_mode=shunting OR field:arp_loco_mode=shunting OR field:dmi_loco_mode=shunting",
+        "within_ms": 10000
+      }
+    ],
+    "expand": [
+      {
+        "cid": "1.21",
+        "n": "1",
+        "m": "1",
+        "title": "SB to Shunting automatically, same cab (CAB1), formation unchanged, at standstill"
+      },
+      {
+        "cid": "1.21",
+        "n": "2",
+        "m": "2",
+        "title": "SB to Shunting automatically, same cab (CAB2), formation unchanged, at standstill"
+      },
+      {
+        "cid": "1.22",
+        "n": "1",
+        "m": "2",
+        "title": "SB to Shunting automatically, other cab (CAB1 off, CAB2 on), formation unchanged"
+      },
+      {
+        "cid": "1.22",
+        "n": "2",
+        "m": "1",
+        "title": "SB to Shunting automatically, other cab (CAB2 off, CAB1 on), formation unchanged"
+      }
+    ],
+    "note": "PARTIAL: 'brake test should not be carried out' is an absence (manual). The unchanged formation is the operator's setup."
+  },
+  {
+    "id": "1.23/CAB{n}",
+    "title": "SB to Shunting automatically, same cab (CAB{n}), formation changed and configured: brake test carried out",
+    "sequence": [
+      {
+        "label": "in Shunting at standstill, cab {n} active (DMI)",
+        "match": "field:dmi_loco_mode=shunting field:dmi_active_cab=cab{n} field:dmi_train_speed=0"
+      },
+      {
+        "label": "no cab active",
+        "match": "field:cab1_active=inactive field:cab2_active=inactive"
+      },
+      {
+        "label": "Stand_By",
+        "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by OR field:dmi_loco_mode=stand_by",
+        "within_ms": 10000
+      },
+      {
+        "label": "cab {n} made active",
+        "match": "field:cab{n}_active=active"
+      },
+      {
+        "label": "brake test, then Shunting",
+        "all_of": [
+          {
+            "label": "brake test carried out",
+            "match": "field:dmi_alarm~\"Brakes Testing Success\" OR field:dmi_alarm~\"Brakes Testing Fail\""
+          },
+          {
+            "label": "Shunting",
+            "match": "field:loco_mode=shunting OR field:arp_loco_mode=shunting OR field:dmi_loco_mode=shunting"
+          }
+        ]
+      }
+    ],
+    "expand": [
+      {
+        "n": "1"
+      },
+      {
+        "n": "2"
+      }
+    ],
+    "note": "The new configuration is the operator's action; the step after the cab is the brake test and the mode, in either order, with no deadline."
+  },
+  {
+    "id": "1.25",
+    "title": "Shunt to SB when SHUNT and CNFM are pressed",
+    "sequence": [
+      {
+        "label": "in Shunting",
+        "match": "field:loco_mode=shunting OR field:arp_loco_mode=shunting OR field:dmi_loco_mode=shunting"
+      },
+      {
+        "label": "Stand_By",
+        "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by OR field:dmi_loco_mode=stand_by"
+      }
+    ],
+    "note": "The SHUNT + CNFM presses are not in any packet; the step is the mode change."
+  },
+  {
+    "id": "1.26",
+    "title": "SB to Non Leading when the Non Leading input is active in active cab 2 at standstill (FRS 4.8 (c))",
+    "sequence": [
+      {
+        "label": "SB at standstill, cab 2 active (DMI)",
+        "match": "field:dmi_loco_mode=stand_by field:dmi_active_cab=cab2 field:dmi_train_speed=0"
+      },
+      {
+        "label": "cab 2 Non Leading input active (DIP1 NC=1, NO=0)",
+        "match": "field:dmi2_leading_non_leading_nc=non_leading field:dmi2_leading_non_leading_no=non_leading"
+      },
+      {
+        "label": "Non Leading mode",
+        "match": "field:loco_mode=non_leading OR field:arp_loco_mode=non_leading OR field:dmi_loco_mode=non_leading",
+        "within_ms": 10000
+      }
+    ]
+  },
+  {
+    "id": "1.28",
+    "title": "Reverse to SB when the reverser is moved forward at standstill (FRS 4.3 (c))",
+    "sequence": [
+      {
+        "label": "in Reverse, at standstill",
+        "match": "(field:loco_mode=reverse field:train_speed=0) OR (field:arp_loco_mode=reverse field:arp_train_speed=0) OR (field:dmi_loco_mode=reverse field:dmi_train_speed=0)"
+      },
+      {
+        "label": "reverser forward",
+        "match": "field:cab1_forward=active OR field:cab2_forward=active"
+      },
+      {
+        "label": "Stand_By",
+        "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by OR field:dmi_loco_mode=stand_by",
+        "within_ms": 10000
+      }
+    ]
+  },
+  {
+    "id": "1.29",
+    "title": "SB to System Failure when a critical fault occurs (FRS 4.3 (c), 4.8 (e), 20.1 (b))",
+    "sequence": [
+      {
+        "label": "in Stand_By",
+        "match": "field:loco_mode=stand_by OR field:arp_loco_mode=stand_by OR field:dmi_loco_mode=stand_by"
+      },
+      {
+        "label": "System Failure",
+        "all_of": [
+          {
+            "label": "System Failure mode",
+            "match": "field:loco_mode=system_failure OR field:arp_loco_mode=system_failure OR field:dmi_loco_mode=system_failure"
+          },
+          {
+            "label": "DMI \u201cSystem Fault, Isolate or Restart KAVACH\u201d",
+            "match": "field:dmi_alarm~\"System Fault, Isolate or Restart KAVACH\""
+          }
+        ]
+      }
+    ],
+    "note": "The fault itself is the operator's (a vital card removed). Its trace, when LSRP is sent, is in Loco_Health: rfid_reader1/2_link_fail, radio1/2_link_fail, cab_input_fault; and in NMSFLT."
+  },
+  {
+    "id": "1.33",
+    "title": "No cab active in SB: DMI shows \u201cStand By mode- CAB input is not Active\u201d",
+    "sequence": [
+      {
+        "label": "no cab active",
+        "match": "field:cab1_active=inactive field:cab2_active=inactive"
+      },
+      {
+        "label": "SB, DMI \u201cStand By mode - CAB input not Active\u201d",
+        "match": "field:dmi_loco_mode=stand_by field:dmi_alarm~\"Stand By mode - CAB input not Active\"",
+        "within_ms": 10000
+      }
+    ]
   }
 ]
