@@ -70,6 +70,7 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "incidentreportwindow.h"
 #include "incidentreportdialog.h"
 #include "flasherwindow.h"
+#include "flasherprofiledialog.h"
 #include "fielddocs.h"
 #include <QToolTip>
 #include "flasherboarddialog.h"
@@ -675,6 +676,8 @@ int main(int argc, char **argv)
                     // Session 313: a stamped and signed image (fw_sign.py).
                     profile.defaultImages.insert(Flasher::CardInput, QStringLiteral(
                         DL_SRC_DIR "/tests/fixtures/fw_trailer/KAVACH_Input_Card_signed_1.2.9.appimage"));
+                    // Session 314: checked on this PC against the boards' keys.
+                    profile.publicKeysPath = QStringLiteral(DL_SRC_DIR "/tests/fixtures/fw_trailer/fw_pubkeys_two.h");
                 }
                 // Session 300: flasherloco, loco 1's four VCCs with 2.6 on.
                 if (which == QLatin1String("flasherloco")) {
@@ -714,6 +717,14 @@ int main(int argc, char **argv)
                         QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
                 }
                 win = w;
+                // Session 314: flasherprofile, the profile dialog (signed images section).
+                if (which == QLatin1String("flasherprofile")) {
+                    profile.publicKeysPath = QStringLiteral(DL_SRC_DIR "/tests/fixtures/fw_trailer/fw_pubkeys_two.h");
+                    profile.requireSignature = true;
+                    auto *d = new FlasherProfileDialog(profile, Flasher::Mode::Engineer, store.names(), false, nullptr);
+                    d->resize(720, 1100);
+                    win = d;
+                }
             }
             if (which == QLatin1String("lococonfig")) {
                 auto *w = new LocoConfigWindow(nullptr, flashDir.path());

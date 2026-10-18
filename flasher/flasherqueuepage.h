@@ -136,6 +136,7 @@ private:
     // ---- state -------------------------------------------------------------
     Flasher::Mode        m_mode = Flasher::Mode::Engineer;
     Flasher::FlashProfile m_profile;          // for SHA pins
+    Flasher::PublicKeys   m_publicKeys;       // session 314: the profile's fw_pubkeys.h
     QHash<int, QString>  m_engineProblem;     // card type -> FlashEngine::validate() refusal
     QSet<QString>        m_pendingRehash;     // paths changed on disk, waiting for the debounce
 

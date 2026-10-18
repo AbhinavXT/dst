@@ -26,7 +26,9 @@ SOURCES += \
     $$PWD/flasherprofiledialog.cpp \
     $$PWD/flasherwindow.cpp \
     $$PWD/vcclistedit.cpp \
-    $$PWD/flasherboarddialog.cpp
+    $$PWD/flasherboarddialog.cpp \
+    $$PWD/third_party/monocypher/monocypher.c \
+    $$PWD/third_party/monocypher/monocypher-ed25519.c
 
 HEADERS += \
     $$PWD/flash_engine.h \
@@ -42,10 +44,15 @@ HEADERS += \
     $$PWD/flasherprofiledialog.h \
     $$PWD/flasherwindow.h \
     $$PWD/vcclistedit.h \
-    $$PWD/flasherboarddialog.h
+    $$PWD/flasherboarddialog.h \
+    $$PWD/third_party/monocypher/monocypher.h \
+    $$PWD/third_party/monocypher/monocypher-ed25519.h
 
 DISTFILES += \
     $$PWD/board_sim.py
+
+# Session 314: Monocypher 4.0.2, unmodified, from the updater repo
+# (source/third_party/monocypher): the same Ed25519 check the boards run.
 
 # The engine uses Winsock and timeBeginPeriod() on Windows.
 win32: LIBS += -lws2_32 -lwinmm

@@ -11,6 +11,84 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-314"></a>
+## Session 314 — Firmware Flasher: signatures checked on the PC (updater 2.7)
+
+After session 313 Abhinav asked for both follow-ups:
+1. check an image's signature on the PC before sending it;
+2. stop an unsigned image for boards that require signatures.
+
+The PC never holds a private key: signing stays with `fw_sign.py` on the
+release machine.
+
+**Where the keys come from.** The profile names the boards' own
+`fw_pubkeys.h`, the header that `fw_sign.py header` writes into the
+updater (`source/inc/fw_pubkeys.h`). A key's place in that file is its key
+id, so the PC and the boards cannot disagree about which key is which.
+
+**The check is the board's.** The board runs `FW_Sig_Verify()`: Ed25519
+(Monocypher 4.0.2) over the SHA-256 of everything before the signature
+block. DLConsole now compiles the same Monocypher files, unmodified, from
+the updater repo (`flasher/third_party/monocypher/`, BSD-2 / CC0).
+
+**What the operator sees.**
+- **Edit profile ▸ Signed images (updater 2.7):** a key-header path with
+  Browse…, and **Boards require signed images (FW_REQUIRE_SIGNATURE = 1)**.
+  A file that is not a key header, or whose key count doesn't match its
+  bytes, is refused at Save.
+- **Pre-flight with the 2.6 updater** (Classic shows no signature lines):
+
+  | Image | Pre-flight line | Flash |
+  |---|---|---|
+  | Signature matches | "Input card: signature matches key 1 (checked on this PC)" | allowed |
+  | Wrong signature, or the image changed after signing | "the signature does not match key N — the board would refuse it" | blocked |
+  | Key id not in the header (including the updater's shipped empty header, as the board would) | "signed with key N, but the profile's fw_pubkeys.h has M key(s) — …" | blocked |
+  | Unknown block version or algorithm | its own line | blocked |
+  | Signed, no header in the profile | "signed, key N — not checked on this PC" | allowed |
+  | Signed, header set but unreadable | warning naming the problem | allowed |
+  | Unsigned, require on | "the image is not signed — boards that require signatures would refuse it; sign it with fw_sign.py" | blocked |
+  | Unsigned, require off | no signature line | allowed |
+
+**Files.**
+- `flasher/flashercore.{h,cpp}`: `PublicKeys`, `readPublicKeys`,
+  `SignatureCheck`, `checkImageSignature`; the trailer keeps the block and
+  the body's SHA-256; the profile's `public_keys_h` and
+  `require_signature`; the pre-flight lines.
+- `flasher/flasherprofiledialog.{h,cpp}`,
+  `flasher/flasherqueuepage.{h,cpp}`.
+- `flasher/flasher.pri`; new `flasher/third_party/monocypher/` (4 files +
+  licence).
+- `tests/screenshot_main.cpp`: `flasher26` with keys, new
+  `flasherprofile`.
+
+**Tests.** New `session314` (22 checks). The four key headers in
+`tests/fixtures/fw_trailer/` were written by the updater's own
+`fw_sign.py header` (CRLF, as it writes them) from two throw-away keys:
+two keys, the same two swapped, one key, and the updater's shipped empty
+file. `fw_sign.py verify` agrees with the check: OK with the first, NOT
+match with the swapped one. The suite covers:
+- reading the headers, a non-header file and a missing file;
+- valid, mismatch, unknown key, no keys, not checked, unsigned;
+- one changed bit in the application;
+- block version 2;
+- every pre-flight case above, and Classic;
+- the profile's JSON, including an older profile.
+
+**Gate:** Qt 6 and Qt 5.15 green, 349 suites / 9132 checks, 0 failed; 15
+validators; menu audit; smoke. No compiler warnings from Monocypher. On
+screen: `SHOT_WINDOW=flasher26` (light and dark) and `flasherprofile`
+(light only: the dark pass timed out in the screenshot harness).
+
+**Not tested:**
+- **Monocypher on MSVC** until CI runs.
+- **A real board** (none runs 2.7 yet).
+- **A key header with keys from the real release key** (none exists yet).
+- **Whether boards really require signatures.** The flasher can't ask: INFO
+  doesn't report it, the updater's roadmap item "report signature policy
+  in INFO". So the profile switch must match how the boards were built.
+
+---
+
 <a id="session-313"></a>
 ## Session 313 — Firmware Flasher: signed images (updater 2.7)
 

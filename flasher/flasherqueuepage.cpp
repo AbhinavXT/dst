@@ -640,6 +640,7 @@ void FlasherQueuePage::setUpdater(kflash::Updater updater)
 void FlasherQueuePage::applyProfile(const Flasher::FlashProfile &profile)
 {
     m_profile = profile;
+    m_publicKeys = Flasher::readPublicKeys(profile.publicKeysPath);   // session 314
     {
         // One preflight refresh at the end, not one per field.
         const QSignalBlocker ipBlocker(m_vccList);
@@ -748,6 +749,8 @@ Flasher::PreflightReport FlasherQueuePage::preflight() const
     }
     input.updaterWaitSeconds = m_profile.updaterWaitSeconds;
     input.updater = m_profile.updater;
+    input.publicKeys = m_publicKeys;
+    input.requireSignature = m_profile.requireSignature;
 
     for (const FlasherQueueRow &row : m_model->rows()) {
         Flasher::PreflightRow preflightRow;

@@ -1,4 +1,5 @@
 #include "flashercore.h"
+#include "third_party/monocypher/monocypher-ed25519.h"
 #include <QSet>
 
 #include <QCryptographicHash>
@@ -197,6 +198,8 @@ ImageTrailer readImageTrailer(const QByteArray &bytes)
     if (body >= kSignatureBytes && le32At(body - kSignatureBytes) == kSignatureMagic) {
         trailer.signatureKeyId = uchar(bytes.at(body - kSignatureBytes + 6));
         body -= kSignatureBytes;
+        trailer.signatureBlock = bytes.mid(body);
+        trailer.signedBodySha256 = QCryptographicHash::hash(bytes.left(body), QCryptographicHash::Sha256);
     }
     if (body < kTrailerBytes) {
         return trailer;
@@ -227,6 +230,69 @@ ImageTrailer readImageTrailer(const QByteArray &bytes)
     trailer.buildTime = le32(12);
     trailer.imageLength = le32(16);
     return trailer;
+}
+
+PublicKeys readPublicKeys(const QString &path)
+{
+    PublicKeys result;
+    result.path = path;
+    if (path.isEmpty()) {
+        return result;
+    }
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) {
+        result.error = QStringLiteral("cannot read %1").arg(QFileInfo(path).fileName());
+        return result;
+    }
+    QString text = QString::fromLatin1(file.readAll());
+    // Comments name the .pem files ("key 0: other.pub.pem") and may hold anything.
+    text.remove(QRegularExpression(QStringLiteral("/\\*.*?\\*/"), QRegularExpression::DotMatchesEverythingOption));
+    text.remove(QRegularExpression(QStringLiteral("//[^\\n]*")));
+    const QRegularExpressionMatch count = QRegularExpression(QStringLiteral("#define\\s+FW_PUBKEY_COUNT\\s+(\\d+)")).match(text);
+    if (!count.hasMatch()) {
+        result.error = QStringLiteral("%1 has no FW_PUBKEY_COUNT (not a fw_pubkeys.h)").arg(QFileInfo(path).fileName());
+        return result;
+    }
+    QByteArray bytes;
+    const int table = text.indexOf(QLatin1String("kFwPubKeys"));
+    if (table >= 0) {
+        QRegularExpressionMatchIterator hex = QRegularExpression(QStringLiteral("0[xX]([0-9A-Fa-f]{2})\\b")).globalMatch(text, table);
+        while (hex.hasNext()) {
+            bytes.append(char(hex.next().captured(1).toInt(nullptr, 16)));
+        }
+    }
+    const int expected = count.captured(1).toInt();
+    if (bytes.size() != expected * 32) {
+        result.error = QStringLiteral("%1 says %2 key(s) but holds %3 bytes").arg(QFileInfo(path).fileName())
+                           .arg(expected).arg(bytes.size());
+        return result;
+    }
+    for (int at = 0; at < bytes.size(); at += 32) {
+        result.keys.append(bytes.mid(at, 32));
+    }
+    return result;
+}
+
+SignatureCheck checkImageSignature(const ImageTrailer &trailer, const PublicKeys &keys)
+{
+    if (trailer.signatureKeyId < 0) {
+        return SignatureCheck::NotSigned;
+    }
+    if (keys.path.isEmpty() || !keys.error.isEmpty()) {
+        return SignatureCheck::NotChecked;
+    }
+    const auto *block = reinterpret_cast<const uint8_t *>(trailer.signatureBlock.constData());
+    if (block[4] != 1 || block[5] != 1) {      // sig_version 1, alg 1 = Ed25519
+        return SignatureCheck::Unsupported;
+    }
+    if (trailer.signatureKeyId >= keys.keys.size()) {
+        return SignatureCheck::UnknownKey;
+    }
+    const QByteArray &key = keys.keys.at(trailer.signatureKeyId);
+    return crypto_ed25519_check(block + 8, reinterpret_cast<const uint8_t *>(key.constData()),
+                                reinterpret_cast<const uint8_t *>(trailer.signedBodySha256.constData()), 32) == 0
+               ? SignatureCheck::Valid
+               : SignatureCheck::Mismatch;
 }
 
 ImageInfo loadImage(const QString &path)
@@ -385,6 +451,8 @@ QJsonObject FlashProfile::toJson() const
     object[QStringLiteral("updater_wait_s")] = updaterWaitSeconds;
     object[QStringLiteral("updater")] = updater == kflash::Updater::V26 ? QStringLiteral("2.6")
                                                                        : QStringLiteral("classic");
+    object[QStringLiteral("public_keys_h")] = publicKeysPath;
+    object[QStringLiteral("require_signature")] = requireSignature;
     return object;
 }
 
@@ -436,6 +504,8 @@ FlashProfile FlashProfile::fromJson(const QJsonObject &object)
     if (object.value(QStringLiteral("updater")).toString() == QLatin1String("2.6")) {
         profile.updater = kflash::Updater::V26;
     }
+    profile.publicKeysPath = object.value(QStringLiteral("public_keys_h")).toString();
+    profile.requireSignature = object.value(QStringLiteral("require_signature")).toBool(false);
     return profile;
 }
 
@@ -1145,6 +1215,8 @@ PreflightReport evaluatePreflight(const PreflightInput &input)
     QStringList trailerProblems;   // session 298
     QStringList trailerNotes;
     QStringList unstamped;
+    QStringList signatureNotes;      // session 314
+    QStringList signatureWarnings;
     int loadedCount = 0;
 
     for (const PreflightRow &row : input.rows) {
@@ -1184,8 +1256,7 @@ PreflightReport evaluatePreflight(const PreflightInput &input)
                                                     ? cardName(row.trailer.cardType)
                                                     : QStringLiteral("card type %1").arg(row.trailer.cardType)));
             } else if (row.trailer.state == ImageTrailer::State::Valid) {
-                trailerNotes.append(QStringLiteral("Image trailer: %1 · %2").arg(row.trailer.text(),
-                                                                                 row.trailer.signatureText()));
+                trailerNotes.append(QStringLiteral("Image trailer: %1").arg(row.trailer.text()));
             } else if (row.trailer.state == ImageTrailer::State::Damaged) {
                 trailerProblems.append(QStringLiteral("%1: the image trailer is damaged (%2) — the board would "
                                                       "refuse it; re-stamp it with fw_stamp.py")
@@ -1193,6 +1264,48 @@ PreflightReport evaluatePreflight(const PreflightInput &input)
             } else {
                 unstamped.append(QStringLiteral("%1: no image trailer (unstamped) — its card is checked by "
                                                 "its name only").arg(cardName(row.cardType)));
+            }
+            // Session 314: the signature, as the 2.7 board's check_image_signature() would see it.
+            const QString card = cardName(row.cardType);
+            const int keyId = row.trailer.signatureKeyId;
+            switch (row.loaded ? checkImageSignature(row.trailer, input.publicKeys) : SignatureCheck::NotChecked) {
+            case SignatureCheck::NotSigned:
+                if (input.requireSignature) {
+                    trailerProblems.append(QStringLiteral("%1: the image is not signed — boards that require "
+                                                          "signatures would refuse it; sign it with fw_sign.py")
+                                               .arg(card));
+                }
+                break;
+            case SignatureCheck::NotChecked:
+                if (!row.loaded) {
+                    break;
+                }
+                if (input.publicKeys.path.isEmpty()) {
+                    signatureNotes.append(QStringLiteral("%1: signed, key %2 — not checked on this PC (no "
+                                                         "fw_pubkeys.h in the profile)").arg(card).arg(keyId));
+                } else {
+                    signatureWarnings.append(QStringLiteral("%1: signed, key %2 — not checked on this PC: %3")
+                                                 .arg(card).arg(keyId).arg(input.publicKeys.error));
+                }
+                break;
+            case SignatureCheck::Valid:
+                signatureNotes.append(QStringLiteral("%1: signature matches key %2 (checked on this PC)")
+                                          .arg(card).arg(keyId));
+                break;
+            case SignatureCheck::UnknownKey:
+                trailerProblems.append(QStringLiteral("%1: signed with key %2, but the profile's fw_pubkeys.h "
+                                                      "has %3 key(s) — the board would refuse it")
+                                           .arg(card).arg(keyId).arg(input.publicKeys.keys.size()));
+                break;
+            case SignatureCheck::Mismatch:
+                trailerProblems.append(QStringLiteral("%1: the signature does not match key %2 — the board "
+                                                      "would refuse it").arg(card).arg(keyId));
+                break;
+            case SignatureCheck::Unsupported:
+                trailerProblems.append(QStringLiteral("%1: the signature block's version or algorithm is not "
+                                                      "one the updater knows — the board would refuse it")
+                                           .arg(card));
+                break;
             }
         }
         if (row.nameCheck.kind != NameCheck::Matches && !trailerSpeaks) {
@@ -1231,6 +1344,12 @@ PreflightReport evaluatePreflight(const PreflightInput &input)
         add(PreflightItem::State::Ok, text, false);
     }
     for (const QString &text : unstamped) {
+        add(PreflightItem::State::Warning, text, false);
+    }
+    for (const QString &text : signatureNotes) {
+        add(PreflightItem::State::Ok, text, false);
+    }
+    for (const QString &text : signatureWarnings) {
         add(PreflightItem::State::Warning, text, false);
     }
 

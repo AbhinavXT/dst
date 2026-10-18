@@ -18,3 +18,23 @@ key (not kept) and key id 1 (session 313):
 
 `fw_sign.py show` reports: signed, key 1, version 1, alg 1 (Ed25519),
 body 5024 bytes (+72 signature), trailer present.
+
+`fw_pubkeys_two.h`, `fw_pubkeys_swapped.h`, `fw_pubkeys_one.h`: written by
+`fw_sign.py header` (CRLF, as it writes them) from two throw-away public
+keys (session 314): "other" and the "test" key that signed the image above.
+`two` is other, test (key 1 matches: `fw_sign.py verify --header` says OK),
+`swapped` is test, other (key 1 does not match), `one` is other only (key 1
+unknown). `fw_pubkeys_none.h` is the updater 2.7.0 repo's shipped header,
+with no keys.
+
+Key headers (session 314), written by `fw_sign.py header` (CRLF, as the
+tool writes them) from that throw-away key (`test`, the one that signed the
+image above) and a second throw-away key (`other`). Public keys only:
+
+- `fw_pubkeys_two.h`: other, test (key 1 matches the signed image);
+- `fw_pubkeys_swapped.h`: test, other (key 1 does not match);
+- `fw_pubkeys_one.h`: other (key 1 is unknown);
+- `fw_pubkeys_none.h`: the updater's own shipped file (2.7.0), no keys.
+
+`fw_sign.py verify --header fw_pubkeys_two.h` says "Signature OK (key 1)",
+and with `fw_pubkeys_swapped.h` "Signature does NOT match (key 1)".

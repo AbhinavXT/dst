@@ -149,6 +149,34 @@ FlasherProfileDialog::FlasherProfileDialog(const Flasher::FlashProfile &profile,
                               "is later rebuilt in place, the queue flags it before anything is sent."));
     formLayout->addWidget(m_pinBySha);
 
+    // ---- signed images (session 314, updater 2.7) ------------------------------
+    auto *signTitle = new QLabel(tr("Signed images (updater 2.7)"), form);
+    FlasherStyle::makeSectionLabel(signTitle);
+    formLayout->addWidget(signTitle);
+    auto *keysRow = new QHBoxLayout();
+    m_publicKeys = new QLineEdit(QDir::toNativeSeparators(profile.publicKeysPath), form);
+    m_publicKeys->setFont(UiStyle::monoFont());
+    m_publicKeys->setPlaceholderText(tr("The boards' fw_pubkeys.h — none: signatures are not checked here"));
+    m_publicKeys->setMinimumHeight(34);
+    m_publicKeys->setClearButtonEnabled(true);
+    m_publicKeys->setToolTip(tr("The updater's source/inc/fw_pubkeys.h, as the boards are built with it.\n"
+                                "Pre-flight checks each signed image against these public keys."));
+    keysRow->addWidget(m_publicKeys, 1);
+    auto *keysBrowse = new QPushButton(tr("Browse…"), form);
+    connect(keysBrowse, &QPushButton::clicked, this, [this]() {
+        const QString chosen = QFileDialog::getOpenFileName(this, tr("The boards' public keys"), QString(),
+                                                            tr("Key header (fw_pubkeys.h *.h);;All files (*)"));
+        if (!chosen.isEmpty()) {
+            m_publicKeys->setText(QDir::toNativeSeparators(chosen));
+        }
+    });
+    keysRow->addWidget(keysBrowse);
+    formLayout->addLayout(keysRow);
+    m_requireSignature = new QCheckBox(tr("Boards require signed images (FW_REQUIRE_SIGNATURE = 1)"), form);
+    m_requireSignature->setChecked(profile.requireSignature);
+    m_requireSignature->setToolTip(tr("Such boards refuse an unsigned image, so pre-flight does not send one."));
+    formLayout->addWidget(m_requireSignature);
+
     // ---- transfer tuning -------------------------------------------------------
     m_tuningBox = new QGroupBox(tr("Transfer tuning"), form);
     auto *tuningLayout = new QVBoxLayout(m_tuningBox);
@@ -351,6 +379,14 @@ bool FlasherProfileDialog::validate(QString *problem) const
         *problem = tr("Poll timeout max is below its min.");
         return false;
     }
+    const QString keysPath = QDir::fromNativeSeparators(m_publicKeys->text().trimmed());
+    if (!keysPath.isEmpty()) {
+        const Flasher::PublicKeys keys = Flasher::readPublicKeys(keysPath);
+        if (!keys.error.isEmpty()) {
+            *problem = tr("Public keys: %1.").arg(keys.error);
+            return false;
+        }
+    }
     return true;
 }
 
@@ -365,6 +401,8 @@ void FlasherProfileDialog::onSave()
     m_result.vccIp = m_ip->text().trimmed();
     m_result.port = static_cast<quint16>(m_port->value());
     m_result.updaterWaitSeconds = m_updaterWait->value();
+    m_result.publicKeysPath = QDir::fromNativeSeparators(m_publicKeys->text().trimmed());
+    m_result.requireSignature = m_requireSignature->isChecked();
     m_result.defaultImages.clear();
     for (auto entry = m_imagePaths.constBegin(); entry != m_imagePaths.constEnd(); ++entry) {
         const QString path = QDir::fromNativeSeparators(entry.value()->text().trimmed());

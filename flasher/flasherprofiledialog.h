@@ -63,6 +63,8 @@ private:
     QSpinBox    *m_updaterWait = nullptr;
     QHash<int, QLineEdit *> m_imagePaths;
     QCheckBox   *m_pinBySha = nullptr;
+    QLineEdit   *m_publicKeys = nullptr;        // session 314
+    QCheckBox   *m_requireSignature = nullptr;
     QGroupBox   *m_tuningBox = nullptr;
     QRadioButton *m_adaptive = nullptr;
     QRadioButton *m_fixed = nullptr;

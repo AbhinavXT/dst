@@ -132,6 +132,8 @@ struct ImageTrailer {
     quint32 buildTime = 0;           // UNIX seconds
     quint32 imageLength = 0;
     int     signatureKeyId = -1;     // session 313: -1 = no signature block
+    QByteArray signatureBlock;       // session 314: the 72 bytes, when signed
+    QByteArray signedBodySha256;     // SHA-256 of the bytes before the block
 
     // "Input card · 1.2.9 · built 2026-10-16 17:41 UTC"
     QString text() const;
@@ -141,6 +143,20 @@ struct ImageTrailer {
 
 // fw_stamp.py's parse_trailer(), and the board's check_image_trailer().
 ImageTrailer readImageTrailer(const QByteArray &bytes);
+
+// Session 314: the signature checked on the PC, with the public keys the
+// boards are built with: the updater's source/inc/fw_pubkeys.h, written by
+// "fw_sign.py header". A key's place in that file is its key id. The check
+// is the board's FW_Sig_Verify(), with the same Monocypher.
+struct PublicKeys {
+    QString path;                    // empty: the profile names no file
+    QString error;                   // non-empty: the file could not be used
+    QVector<QByteArray> keys;        // 32 bytes each
+};
+PublicKeys readPublicKeys(const QString &path);
+
+enum class SignatureCheck { NotSigned, NotChecked, Valid, UnknownKey, Mismatch, Unsupported };
+SignatureCheck checkImageSignature(const ImageTrailer &trailer, const PublicKeys &keys);
 
 // -----------------------------------------------------------------------------
 //  An image on disk, read and hashed
@@ -279,6 +295,11 @@ struct FlashProfile {
     // flasher as it was; 2.6 adds HOLD / BOOT / REJECTED (flash_engine.h).
     // A profile saved before session 296 has no key and stays Classic.
     kflash::Updater updater = kflash::Updater::Classic;
+
+    // Session 314: the boards' fw_pubkeys.h, and whether they are built with
+    // FW_REQUIRE_SIGNATURE = 1 (then an unsigned image would be refused).
+    QString publicKeysPath;
+    bool    requireSignature = false;
 
     QJsonObject toJson() const;
     static FlashProfile fromJson(const QJsonObject &object);
@@ -586,6 +607,9 @@ struct PreflightInput {
     QStringList offSubnetTargets;
     // Session 298: with 2.6, the image trailer is checked (Classic: as before).
     kflash::Updater updater = kflash::Updater::Classic;
+    // Session 314: with 2.6, signatures are checked against these keys.
+    PublicKeys publicKeys;
+    bool       requireSignature = false;
 };
 
 struct PreflightItem {
