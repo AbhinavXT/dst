@@ -88,7 +88,9 @@ public:
 
     // ---- structure (session 308, phase 2) ---------------------------------
     // Where a new element goes, relative to an anchor element.
-    enum class Place { Before, After, FirstChild, LastChild };
+    // BeforeBlock: before the anchor and the comment lines right above it
+    // (phase 4: a new <enums> section goes above the first packet's comment).
+    enum class Place { Before, After, FirstChild, LastChild, BeforeBlock };
 
     // The whole lines an element owns: from the start of its first line to
     // just past the line break of its last, with a comment on the same line
@@ -117,6 +119,24 @@ public:
                             int *at, QString *why) const;
     // The text without the element's lines (its children go with it).
     QByteArray withoutNode(int node, QString *why) const;
+    // ---- phase 4 ---------------------------------------------------------
+    // The start of the whole-line comments right above `node` when they are
+    // its own, else -1. They are not its own when the element is followed
+    // straight away by a sibling: then they head that run of fields (a
+    // section label), and stay. A blank line, an end tag, another comment
+    // or the end of the file after it: they are its own.
+    int ownCommentStart(int node) const;
+    // withoutNode(), with its own comment (*tookComment says whether there was one).
+    QByteArray withoutMember(int node, QString *why, bool *tookComment = nullptr) const;
+    // The element's lines taken out and put at `anchor`/`place`, re-indented
+    // for where they land (a field into or out of a condition). `anchor` is
+    // an element of THIS document, not inside `node`. *at receives the
+    // element's '<' in the new text.
+    QByteArray withRelocated(int node, int anchor, Place place, int *at, QString *why) const;
+    // A one-line empty element (an enum value, a flag, an event) rewritten as
+    // `line`, its attributes in `columnsFrom`'s columns (an element, or -1
+    // for its own). Its index stays the same.
+    QByteArray withReplacedElement(int node, const QString &line, int columnsFrom, QString *why) const;
     // The element's lines swapped with its previous (delta -1) or next (+1)
     // sibling element's. *at receives its new start offset.
     QByteArray withMoved(int node, int delta, int *at, QString *why) const;

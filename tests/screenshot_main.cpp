@@ -123,6 +123,7 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "testcasepanel.h"
 #include "linfofielddialog.h"
 #include "schemaeditorwindow.h"
+#include "schemapastedialog.h"
 #include "schemaelementdialog.h"
 #include "schemacontainerdialog.h"
 
@@ -725,6 +726,36 @@ int main(int argc, char **argv)
                 auto *d = new SchemaContainerDialog(session, QStringLiteral("struct"), nullptr);
                 d->nameEdit()->setText(QStringLiteral("WeatherProfile"));
                 d->casePacketBox()->setCurrentIndex(1);
+                win = d;
+            }
+            if (which == QLatin1String("schemagrid") || which == QLatin1String("schemaflags")) {
+                // Session 311: an enum's values (a row pending in the blank
+                // row), or a flag table, in the members grid.
+                static QString copy;
+                copy = QDir::temp().filePath(QStringLiteral("shot_grid_kavach.xml"));
+                QFile::remove(copy);
+                QFile::copy(QStringLiteral(":/schema/kavach.xml"), copy);
+                QFile::setPermissions(copy, QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+                auto *w = new SchemaEditorWindow(copy);
+                if (which == QLatin1String("schemagrid")) {
+                    w->selectContainer(QStringLiteral("enum"), QStringLiteral("speed6"));
+                    w->typeNewRow(QStringLiteral("value"), QStringLiteral("64"));
+                } else {
+                    w->selectContainer(QStringLiteral("flagtable"), QStringLiteral("locoHealthG1"));
+                }
+                w->refreshNow();
+                win = w;
+            }
+            if (which == QLatin1String("schemapaste")) {
+                // Session 311: Paste…, into pktDir, from two spreadsheet columns.
+                static SchemaEdit::Session session;
+                session.open(QStringLiteral(":/schema/kavach.xml"), nullptr);
+                int table = -1;
+                for (int i : session.doc().all(QStringLiteral("enum"))) {
+                    if (session.doc().node(i).value(QStringLiteral("name")) == QLatin1String("pktDir")) table = i;
+                }
+                auto *d = new SchemaPasteDialog(session, table, nullptr);
+                d->textEdit()->setPlainText(QStringLiteral("0\t%v (Unidentified)\n1\t%v (Forward)\n4\t%v (Test)\n5..9\treserved\n4\tagain\n"));
                 win = d;
             }
             if (which == QLatin1String("schemaadd")) {

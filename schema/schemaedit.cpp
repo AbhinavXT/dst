@@ -590,6 +590,10 @@ QString Session::check(const QByteArray &text, SchemaDoc::Document *parsed) cons
     for (const QString &c : clashes(*parsed)) {
         if (!had.contains(c)) return QObject::tr("It would make %1. Not made.").arg(c);
     }
+    const QStringList hadEntries = entryProblems(m_doc);
+    for (const QString &e : entryProblems(*parsed)) {
+        if (!hadEntries.contains(e)) return QObject::tr("It would leave %1. Not made.").arg(e);
+    }
     return QString();
 }
 
@@ -795,6 +799,7 @@ int parentFor(const SchemaDoc::Document &doc, int anchor, SchemaDoc::Document::P
 {
     if (anchor < 0 || anchor >= doc.count()) return -1;
     return place == SchemaDoc::Document::Place::Before || place == SchemaDoc::Document::Place::After
+                   || place == SchemaDoc::Document::Place::BeforeBlock
                ? doc.node(anchor).parent : anchor;
 }
 
@@ -1035,8 +1040,10 @@ bool Session::remove(int node, QString *why)
         return false;
     }
     QString err;
-    // A container goes with the comment that describes it.
-    const QByteArray t = isContainer(m_doc, node) ? m_doc.withoutBlock(node, &err) : m_doc.withoutNode(node, &err);
+    // A container goes with the comment that describes it; a member with
+    // the comment above it when that comment is its own (phase 4).
+    bool comment = false;
+    const QByteArray t = isContainer(m_doc, node) ? m_doc.withoutBlock(node, &err) : m_doc.withoutMember(node, &err, &comment);
     if (t.isEmpty()) {
         if (why) *why = err;
         return false;
@@ -1046,8 +1053,10 @@ bool Session::remove(int node, QString *why)
         for (int i = node + 1; i < m_doc.count() && m_doc.node(i).start < m_doc.node(node).end; ++i) ++k;
         return k;
     }();
-    QString what = QObject::tr("%1 deleted").arg(label(m_doc, node));
+    QString what = QObject::tr("%1 deleted").arg(isTable(m_doc.node(m_doc.node(node).parent).tag) ? entryLabel(m_doc, node)
+                                                                                                : label(m_doc, node));
     if (kids > 0) what += QObject::tr(" (with the %n element(s) inside it)", nullptr, kids);
+    if (comment) what += QObject::tr(", and the comment above it");
     return stage(t, what, why);
 }
 
@@ -1194,16 +1203,47 @@ bool Session::previewContainer(const NewContainer &nc, QByteArray *text, int *no
     } else {
         anchor = m_doc.child(m_doc.root(), parentTag);
         place = Place::LastChild;
-        if (anchor < 0) return fail(QObject::tr("kavach.xml has no <%1> section; add one by hand").arg(parentTag));
     }
-    if (anchor < 0) return fail(QObject::tr("Nowhere to put it"));
     const bool empty = nc.tag == QLatin1String("crc");
     QString block = startTagOf(nc.tag, nc.name, nc.attrs, empty);
     if (!empty) block = QStringLiteral("\n") + block + QStringLiteral("\n</%1>").arg(nc.tag);
+    bool newSection = false;
+    if (anchor < 0 && parentTag != QLatin1String("schema")) {
+        // Phase 4: no <enums> (<crcs>, ...) yet: the section is made, in the
+        // file's order (enums, crcs, eventtables, flagtables, then the
+        // packets), after the section before it, else above the first packet.
+        newSection = true;
+        static const QStringList order = { QStringLiteral("enums"), QStringLiteral("crcs"), QStringLiteral("eventtables"),
+                                           QStringLiteral("flagtables") };
+        for (int k = int(order.indexOf(parentTag)) - 1; k >= 0 && anchor < 0; --k) {
+            anchor = m_doc.child(m_doc.root(), order.at(k));
+        }
+        QString inner = startTagOf(nc.tag, nc.name, nc.attrs, empty);
+        if (!empty) inner += QStringLiteral("\n</%1>").arg(nc.tag);
+        inner.replace(QLatin1Char('\n'), QStringLiteral("\n  "));
+        block = QStringLiteral("<%1>\n  %2\n</%1>").arg(parentTag, inner);
+        if (anchor >= 0) {
+            place = Place::After;
+            block = QStringLiteral("\n") + block;
+        } else {
+            anchor = m_doc.node(m_doc.root()).children.isEmpty() ? -1 : m_doc.node(m_doc.root()).children.first();
+            place = Place::BeforeBlock;
+            block += QStringLiteral("\n");
+        }
+    }
+    if (anchor < 0) return fail(QObject::tr("Nowhere to put it"));
     int at = -1;
     QString err;
-    QByteArray t = m_doc.withInserted(anchor, place, block, empty && place == Place::After ? anchor : -1, &at, &err);
+    QByteArray t = m_doc.withInserted(anchor, place, block, empty && place == Place::After && !newSection ? anchor : -1, &at, &err);
     if (t.isEmpty()) return fail(err);
+    if (newSection) {
+        // *at is the section's '<': the new element is its first child.
+        SchemaDoc::Document probe;
+        probe.parse(t);
+        const int sec = probe.nodeAt(at);
+        if (sec < 0 || probe.node(sec).children.isEmpty()) return fail(QObject::tr("Could not make the <%1> section").arg(parentTag));
+        at = probe.node(probe.node(sec).children.first()).start;
+    }
     SchemaDoc::Document next;
     next.parse(t);
     if (nc.tag == QLatin1String("struct") && !nc.casePacket.isEmpty()) {
@@ -1244,6 +1284,13 @@ bool Session::addContainer(const NewContainer &nc, int *node, QString *why)
     int added = -1;
     if (!previewContainer(nc, &t, &added, why)) return false;
     QString what = QObject::tr("+ %1 %2").arg(title(nc.tag).toLower(), nc.name);
+    const QString section = nc.tag == QLatin1String("enum") ? QStringLiteral("enums")
+                          : nc.tag == QLatin1String("flagtable") ? QStringLiteral("flagtables")
+                          : nc.tag == QLatin1String("eventtable") ? QStringLiteral("eventtables")
+                          : nc.tag == QLatin1String("crc") ? QStringLiteral("crcs") : QString();
+    if (!section.isEmpty() && m_doc.child(m_doc.root(), section) < 0) {
+        what += QObject::tr(" (in a new <%1> section)").arg(section);
+    }
     if (!nc.casePacket.isEmpty()) what += QObject::tr(" (sub-packet type %1 of %2)").arg(nc.caseType).arg(nc.casePacket);
     if (!stage(t, what, why)) return false;
     if (node) *node = added;
@@ -1267,6 +1314,838 @@ bool Session::registerCase(const QString &structName, const QString &packet, int
                                                           : SchemaDoc::Document::Place::After;
     const int anchor = m_doc.node(sub).children.isEmpty() ? sub : m_doc.node(sub).children.last();
     return insert(anchor, place, e, node, why);
+}
+
+// -----------------------------------------------------------------------------
+//  Enum values, flags and events (phase 4)
+// -----------------------------------------------------------------------------
+
+namespace {
+
+const QString kValue = QStringLiteral("value");
+
+// A whole number as the file writes it (decimal); 0x… is read too.
+bool readNumber(const QString &text, qint64 *v)
+{
+    const QString t = text.trimmed();
+    bool ok = false;
+    qint64 n = 0;
+    if (t.startsWith(QLatin1String("0x"), Qt::CaseInsensitive) || t.startsWith(QLatin1String("-0x"), Qt::CaseInsensitive)) {
+        const bool neg = t.startsWith(QLatin1Char('-'));
+        n = t.mid(neg ? 3 : 2).toLongLong(&ok, 16);
+        if (neg) n = -n;
+    } else {
+        n = t.toLongLong(&ok, 10);
+    }
+    if (ok && v) *v = n;
+    return ok;
+}
+
+bool otherwiseWord(const QString &text)
+{
+    static const QStringList words = { QStringLiteral("otherwise"), QStringLiteral("default"), QStringLiteral("*"),
+                                       QStringLiteral("others"), QStringLiteral("other"), QStringLiteral("else") };
+    return words.contains(text.trimmed().toLower());
+}
+
+bool truthy(const QString &text)
+{
+    static const QStringList words = { QStringLiteral("true"), QStringLiteral("yes"), QStringLiteral("1"), QStringLiteral("signed"),
+                                       QStringLiteral("s"), QStringLiteral("y"), QStringLiteral("✓") };
+    return words.contains(text.trimmed().toLower());
+}
+
+QString attrOf(const QString &column) { return column == kValue ? QStringLiteral("v") : column; }
+
+QString entryTagOf(const QString &tableTag)
+{
+    if (tableTag == QLatin1String("enum")) return QStringLiteral("map");
+    if (tableTag == QLatin1String("flagtable")) return QStringLiteral("flag");
+    if (tableTag == QLatin1String("eventtable")) return QStringLiteral("event");
+    return QString();
+}
+
+// The element a row of cells makes, or false with *why (what is missing).
+bool buildEntry(const SchemaDoc::Document &doc, int table, const QHash<QString, QString> &cells, NewElement *out, QString *why)
+{
+    auto fail = [why](const QString &w) {
+        if (why) *why = w;
+        return false;
+    };
+    auto cell = [&cells](const char *c) { return cells.value(QString::fromLatin1(c)).trimmed(); };
+    const QString tag = doc.node(table).tag;
+    NewElement e;
+    e.tag = entryTagOf(tag);
+    if (e.tag.isEmpty()) return fail(QObject::tr("Not an enum, flag table or event table"));
+    const QVector<AttrSpec> specs = specsFor(e.tag, tag);
+    auto add = [&](const QString &attr, const QString &value) -> bool {
+        if (const AttrSpec *sp = specFor(specs, attr)) {
+            const QString p = valueProblem(doc, *sp, value);
+            if (!p.isEmpty()) return fail(p);
+        }
+        e.attrs.push_back(qMakePair(attr, value));
+        return true;
+    };
+    if (tag == QLatin1String("enum")) {
+        const QString value = cell("value"), from = cell("from"), to = cell("to");
+        if (otherwiseWord(value)) {
+            if (!add(QStringLiteral("default"), QStringLiteral("true"))) return false;
+        } else if (!from.isEmpty() || !to.isEmpty()) {
+            qint64 lo = 0, hi = 0;
+            if (!readNumber(from.isEmpty() ? to : from, &lo) || !readNumber(to.isEmpty() ? from : to, &hi)) {
+                return fail(QObject::tr("From and To are whole numbers"));
+            }
+            if (lo > hi) return fail(QObject::tr("From (%1) is after To (%2)").arg(lo).arg(hi));
+            if (!add(QStringLiteral("from"), QString::number(lo)) || !add(QStringLiteral("to"), QString::number(hi))) return false;
+        } else {
+            qint64 v = 0;
+            const QString given = value.isEmpty() ? nextValue(doc, table) : value;
+            if (!readNumber(given, &v)) return fail(QObject::tr("Value is a whole number, or \"otherwise\""));
+            if (!add(QStringLiteral("v"), QString::number(v))) return false;
+        }
+        const QString label = cell("label"), formula = cell("formula"), unit = cell("unit");
+        if (label.isEmpty() && formula.isEmpty()) return fail(QObject::tr("Type its label"));
+        if (!label.isEmpty() && !add(QStringLiteral("label"), label)) return false;
+        if (!formula.isEmpty() && !add(QStringLiteral("formula"), formula)) return false;
+        if (!unit.isEmpty() && !add(QStringLiteral("unit"), unit)) return false;
+    } else if (tag == QLatin1String("flagtable")) {
+        const QString name = cells.value(QStringLiteral("name"));   // a flag's name keeps its inner spaces
+        if (name.trimmed().isEmpty()) return fail(QObject::tr("Type the flag's name"));
+        if (!add(QStringLiteral("name"), name.trimmed())) return false;
+    } else {
+        qint64 id = 0;
+        const QString given = cell("id").isEmpty() ? nextValue(doc, table) : cell("id");
+        if (!readNumber(given, &id)) return fail(QObject::tr("Id is a whole number"));
+        const QString name = cell("name");
+        if (name.isEmpty()) return fail(QObject::tr("Type the event's name"));
+        if (!add(QStringLiteral("id"), QString::number(id))) return false;
+        if (!add(QStringLiteral("bytes"), cell("bytes").isEmpty() ? QStringLiteral("1") : cell("bytes"))) return false;
+        if (!add(QStringLiteral("name"), name)) return false;
+        if (truthy(cell("signed")) && !add(QStringLiteral("signed"), QStringLiteral("true"))) return false;
+    }
+    if (out) *out = e;
+    return true;
+}
+
+// Where a new entry goes: last, but an enum's values stay above a final
+// "otherwise" (the file's habit; the decoder reads it wherever it is).
+void entryPlace(const SchemaDoc::Document &doc, int table, const NewElement &e, int *anchor, SchemaDoc::Document::Place *place)
+{
+    using Place = SchemaDoc::Document::Place;
+    const QVector<int> &kids = doc.node(table).children;
+    if (kids.isEmpty()) {
+        *anchor = table;
+        *place = Place::LastChild;
+        return;
+    }
+    bool isDefault = false;
+    for (const auto &a : e.attrs) isDefault = isDefault || a.first == QLatin1String("default");
+    const bool lastIsDefault = doc.node(kids.last()).value(QStringLiteral("default")) == QLatin1String("true");
+    *anchor = kids.last();
+    *place = lastIsDefault && !isDefault ? Place::Before : Place::After;
+}
+
+// "3 Spare", "1–50 v*5 km/h", "otherwise rsvd(%v)", "flag X", "event 4 X".
+QString newEntryText(const NewElement &e)
+{
+    QHash<QString, QString> a;
+    for (const auto &p : e.attrs) a.insert(p.first, p.second);
+    if (e.tag == QLatin1String("map")) {
+        const QString v = a.contains(QStringLiteral("default")) ? QObject::tr("otherwise")
+                        : a.contains(QStringLiteral("from")) ? QStringLiteral("%1–%2").arg(a.value(QStringLiteral("from")), a.value(QStringLiteral("to")))
+                                                             : a.value(QStringLiteral("v"));
+        return QStringLiteral("%1 %2").arg(v, a.value(QStringLiteral("label"), a.value(QStringLiteral("formula")))).trimmed();
+    }
+    if (e.tag == QLatin1String("flag")) return QObject::tr("flag %1").arg(a.value(QStringLiteral("name")));
+    return QObject::tr("event %1 %2").arg(a.value(QStringLiteral("id")), a.value(QStringLiteral("name")));
+}
+
+}  // namespace
+
+bool isTable(const QString &tag)
+{
+    return tag == QLatin1String("enum") || tag == QLatin1String("flagtable") || tag == QLatin1String("eventtable");
+}
+
+QStringList entryColumns(const QString &tableTag)
+{
+    if (tableTag == QLatin1String("enum")) {
+        return { kValue, QStringLiteral("from"), QStringLiteral("to"), QStringLiteral("label"), QStringLiteral("formula"), QStringLiteral("unit") };
+    }
+    if (tableTag == QLatin1String("flagtable")) return { QStringLiteral("bit"), QStringLiteral("name") };
+    if (tableTag == QLatin1String("eventtable")) {
+        return { QStringLiteral("id"), QStringLiteral("name"), QStringLiteral("bytes"), QStringLiteral("signed") };
+    }
+    return {};
+}
+
+QString entryHeader(const QString &column)
+{
+    static const QHash<QString, const char *> headers = {
+        { QStringLiteral("value"), "Value" }, { QStringLiteral("from"), "From" },   { QStringLiteral("to"), "To" },
+        { QStringLiteral("label"), "Label" }, { QStringLiteral("formula"), "Formula" }, { QStringLiteral("unit"), "Unit" },
+        { QStringLiteral("bit"), "Bit" },     { QStringLiteral("name"), "Name" },   { QStringLiteral("id"), "Id" },
+        { QStringLiteral("bytes"), "Bytes" }, { QStringLiteral("signed"), "Signed" },
+    };
+    const auto it = headers.constFind(column);
+    return it == headers.constEnd() ? column : QObject::tr(it.value());
+}
+
+bool entryEditable(const QString &column) { return column != QLatin1String("bit"); }
+
+QString entryText(const SchemaDoc::Document &doc, int entry, const QString &column)
+{
+    const SchemaDoc::Node &n = doc.node(entry);
+    if (column == kValue) {
+        return n.value(QStringLiteral("default")) == QLatin1String("true") ? QObject::tr("otherwise") : n.value(QStringLiteral("v"));
+    }
+    if (column == QLatin1String("bit")) return n.parent < 0 ? QString() : QString::number(doc.node(n.parent).children.indexOf(entry));
+    if (column == QLatin1String("signed")) return n.value(QStringLiteral("signed")) == QLatin1String("true") ? QStringLiteral("true") : QString();
+    return n.value(column);
+}
+
+QString nextValue(const SchemaDoc::Document &doc, int table)
+{
+    const SchemaDoc::Node &t = doc.node(table);
+    if (t.tag == QLatin1String("flagtable")) return QString();
+    const bool events = t.tag == QLatin1String("eventtable");
+    bool any = false;
+    qint64 top = 0;
+    for (int c : t.children) {
+        const SchemaDoc::Node &m = doc.node(c);
+        for (const char *a : { "v", "to", "id" }) {
+            qint64 v = 0;
+            if (m.has(QString::fromLatin1(a)) && readNumber(m.value(QString::fromLatin1(a)), &v)) {
+                top = any ? std::max(top, v) : v;
+                any = true;
+            }
+        }
+    }
+    return QString::number(any ? top + 1 : (events ? 1 : 0));
+}
+
+QString entryLabel(const SchemaDoc::Document &doc, int entry)
+{
+    const SchemaDoc::Node &n = doc.node(entry);
+    const QString table = n.parent >= 0 ? doc.node(n.parent).value(QStringLiteral("name")) : QString();
+    QString self;
+    if (n.tag == QLatin1String("map")) {
+        self = n.value(QStringLiteral("default")) == QLatin1String("true") ? QObject::tr("otherwise")
+             : n.has(QStringLiteral("from")) ? QStringLiteral("%1–%2").arg(n.value(QStringLiteral("from")), n.value(QStringLiteral("to")))
+                                             : n.value(QStringLiteral("v"));
+    } else if (n.tag == QLatin1String("flag")) {
+        self = QObject::tr("bit %1").arg(entryText(doc, entry, QStringLiteral("bit")));
+    } else if (n.tag == QLatin1String("event")) {
+        self = QObject::tr("id %1").arg(n.value(QStringLiteral("id")));
+    } else {
+        return label(doc, entry);
+    }
+    return QStringLiteral("%1 › %2").arg(table, self);
+}
+
+QStringList entryProblems(const SchemaDoc::Document &doc)
+{
+    QStringList out;
+    for (int e : doc.all(QStringLiteral("enum"))) {
+        if (!isContainer(doc, e)) continue;
+        const QString name = doc.node(e).value(QStringLiteral("name"));
+        QVector<QPair<qint64, qint64>> covered;
+        auto isCovered = [&covered](qint64 v) {
+            for (const auto &r : covered) {
+                if (v >= r.first && v <= r.second) return true;
+            }
+            return false;
+        };
+        int defaults = 0;
+        for (int m : doc.node(e).children) {
+            const SchemaDoc::Node &n = doc.node(m);
+            if (n.tag != QLatin1String("map")) continue;
+            if (n.value(QStringLiteral("default")) == QLatin1String("true")) {
+                if (++defaults == 2) out << QObject::tr("enum %1: two \"otherwise\" values (only the first shows)").arg(name);
+                continue;
+            }
+            qint64 v = 0, lo = 0, hi = 0;
+            if (n.has(QStringLiteral("v"))) {
+                if (!readNumber(n.value(QStringLiteral("v")), &v)) continue;   // valueProblem's to say
+                if (isCovered(v)) out << QObject::tr("enum %1: value %2 named twice (only the first shows)").arg(name).arg(v);
+                covered.push_back(qMakePair(v, v));
+            } else if (n.has(QStringLiteral("from")) || n.has(QStringLiteral("to"))) {
+                if (!n.has(QStringLiteral("from")) || !n.has(QStringLiteral("to"))) {
+                    out << QObject::tr("enum %1: a range with no %2").arg(name, n.has(QStringLiteral("from")) ? QStringLiteral("To") : QStringLiteral("From"));
+                    continue;
+                }
+                if (!readNumber(n.value(QStringLiteral("from")), &lo) || !readNumber(n.value(QStringLiteral("to")), &hi)) continue;
+                if (lo > hi) {
+                    out << QObject::tr("enum %1: range %2–%3 runs backwards").arg(name).arg(lo).arg(hi);
+                    continue;
+                }
+                bool all = hi - lo <= 65536;
+                for (qint64 k = lo; all && k <= hi; ++k) all = isCovered(k);
+                if (all) out << QObject::tr("enum %1: range %2–%3 never shows (named above)").arg(name).arg(lo).arg(hi);
+                covered.push_back(qMakePair(lo, hi));
+            } else {
+                out << QObject::tr("enum %1: a value with no number, range or \"otherwise\"").arg(name);
+            }
+        }
+    }
+    for (int t : doc.all(QStringLiteral("eventtable"))) {
+        QSet<QString> ids;
+        for (int c : doc.node(t).children) {
+            const QString id = doc.node(c).value(QStringLiteral("id"));
+            if (ids.contains(id)) {
+                out << QObject::tr("event table %1: id %2 twice (the later one replaces the first)").arg(doc.node(t).value(QStringLiteral("name")), id);
+            }
+            ids.insert(id);
+        }
+    }
+    for (int t : doc.all(QStringLiteral("flagtable"))) {
+        const QVector<int> &kids = doc.node(t).children;
+        for (int k = 0; k < kids.size(); ++k) {
+            if (doc.node(kids.at(k)).value(QStringLiteral("name")).trimmed().isEmpty()) {
+                out << QObject::tr("flag table %1: bit %2 has no name").arg(doc.node(t).value(QStringLiteral("name"))).arg(k);
+            }
+        }
+    }
+    return out;
+}
+
+QStringList flagReaders(const SchemaDoc::Document &doc, const QString &table, int *fewest)
+{
+    QStringList out;
+    int least = -1;
+    for (int f : doc.all(QStringLiteral("flags"))) {
+        const SchemaDoc::Node &n = doc.node(f);
+        if (n.value(QStringLiteral("table")) != table) continue;
+        const int bits = n.value(QStringLiteral("bits")).toInt();
+        const int c = doc.container(f);
+        out << QObject::tr("%1 %2 (%3 bits)").arg(c >= 0 ? doc.node(c).value(QStringLiteral("name")) : QString(),
+                                                  n.value(QStringLiteral("name"))).arg(bits);
+        least = least < 0 ? bits : std::min(least, bits);
+    }
+    if (fewest) *fewest = least;
+    return out;
+}
+
+QVector<TableRow> parseRows(const SchemaDoc::Document &doc, int table, const QString &text, bool replace,
+                            QStringList *problems)
+{
+    QVector<TableRow> out;
+    QStringList bad;
+    const QString tag = doc.node(table).tag;
+    const QVector<int> kids = replace ? QVector<int>() : doc.node(table).children;
+    // What is there now, by key: enum "v 3" / "r 1 50" / "otherwise"; event "3"; flag its name.
+    QHash<QString, int> existing;
+    for (int c : kids) {
+        const SchemaDoc::Node &n = doc.node(c);
+        QString key;
+        if (tag == QLatin1String("enum")) {
+            key = n.value(QStringLiteral("default")) == QLatin1String("true") ? QStringLiteral("otherwise")
+                : n.has(QStringLiteral("from")) ? QStringLiteral("r %1 %2").arg(n.value(QStringLiteral("from")), n.value(QStringLiteral("to")))
+                                                : QStringLiteral("v %1").arg(n.value(QStringLiteral("v")));
+        } else if (tag == QLatin1String("eventtable")) {
+            key = n.value(QStringLiteral("id"));
+        } else {
+            key = n.value(QStringLiteral("name"));
+        }
+        if (!existing.contains(key)) existing.insert(key, c);
+    }
+    qint64 counter = 0;
+    if (tag != QLatin1String("flagtable")) readNumber(replace ? QString::number(tag == QLatin1String("eventtable") ? 1 : 0) : nextValue(doc, table), &counter);
+    int bit = int(kids.size());
+    QHash<QString, int> seen;   // key -> line
+    const QString num = QStringLiteral("(-?(?:0[xX][0-9a-fA-F]+|\\d+))");
+    const QRegularExpression rangeRe(QStringLiteral("^\\s*%1\\s*(?:\\.\\.|–|—|-|to)\\s*%1(?:\\s*[:=,]\\s*|\\s+|$)(.*)$").arg(num),
+                                     QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression valueRe(QStringLiteral("^\\s*%1(?:\\s*[:=,.)\\]-]\\s*|\\s+|$)(.*)$").arg(num));
+    const QRegularExpression otherRe(QStringLiteral("^\\s*(otherwise|default|others?|else|\\*)(?:\\s*[:=,-]\\s*|\\s+|$)(.*)$"),
+                                     QRegularExpression::CaseInsensitiveOption);
+    const QStringList lines = text.split(QLatin1Char('\n'));
+    for (int ln = 0; ln < lines.size(); ++ln) {
+        QString line = lines.at(ln);
+        line.remove(QLatin1Char('\r'));
+        if (line.trimmed().isEmpty()) continue;
+        TableRow r;
+        r.line = ln + 1;
+        qint64 nextCounter = counter;   // taken only once the row is (a repeat does not move it)
+        // Tabs (a spreadsheet's columns) read as spaces once split.
+        const QStringList cols = line.contains(QLatin1Char('\t')) ? line.split(QLatin1Char('\t')) : QStringList();
+        QString key;
+        if (tag == QLatin1String("enum")) {
+            const QString flat = cols.isEmpty() ? line : cols.join(QLatin1Char(' '));
+            QRegularExpressionMatch m;
+            QString labelText;
+            if ((m = otherRe.match(flat)).hasMatch()) {
+                r.cells.insert(kValue, QStringLiteral("otherwise"));
+                labelText = m.captured(2);
+                key = QStringLiteral("otherwise");
+            } else if ((m = rangeRe.match(flat)).hasMatch()) {
+                qint64 lo = 0, hi = 0;
+                readNumber(m.captured(1), &lo);
+                readNumber(m.captured(2), &hi);
+                r.cells.insert(QStringLiteral("from"), QString::number(lo));
+                r.cells.insert(QStringLiteral("to"), QString::number(hi));
+                labelText = m.captured(3);
+                key = QStringLiteral("r %1 %2").arg(lo).arg(hi);
+                nextCounter = hi + 1;
+            } else if ((m = valueRe.match(flat)).hasMatch()) {
+                qint64 v = 0;
+                readNumber(m.captured(1), &v);
+                r.cells.insert(kValue, QString::number(v));
+                labelText = m.captured(2);
+                key = QStringLiteral("v %1").arg(v);
+                nextCounter = v + 1;
+            } else {
+                // No value: the one after the line before.
+                r.cells.insert(kValue, QString::number(counter));
+                labelText = flat;
+                key = QStringLiteral("v %1").arg(counter);
+                nextCounter = counter + 1;
+            }
+            labelText = labelText.trimmed();
+            if (labelText.isEmpty()) {
+                bad << QObject::tr("line %1: no label").arg(r.line);
+                continue;
+            }
+            r.cells.insert(QStringLiteral("label"), labelText);
+        } else if (tag == QLatin1String("flagtable")) {
+            QString name = line.trimmed();
+            qint64 said = -1;
+            if (cols.size() >= 2 && readNumber(cols.first(), &said)) {
+                name = cols.mid(1).join(QLatin1Char(' ')).trimmed();
+            }
+            if (name.isEmpty()) {
+                bad << QObject::tr("line %1: no name").arg(r.line);
+                continue;
+            }
+            r.cells.insert(QStringLiteral("name"), name);
+            key = name;
+            if (!existing.contains(key) && !seen.contains(key)) {
+                r.cells.insert(QStringLiteral("bit"), QString::number(bit));
+                if (said >= 0 && said != bit) {
+                    bad << QObject::tr("line %1: the text says bit %2; it would be bit %3").arg(r.line).arg(said).arg(bit);
+                }
+                ++bit;
+            }
+        } else {
+            QStringList tok = cols.isEmpty() ? line.simplified().split(QLatin1Char(' ')) : cols;
+            for (QString &t : tok) t = t.trimmed();
+            qint64 id = 0;
+            if (!tok.isEmpty() && readNumber(tok.first(), &id)) {
+                tok.removeFirst();
+            } else {
+                id = counter;
+            }
+            nextCounter = id + 1;
+            if (!cols.isEmpty()) {
+                // id, name, bytes, signed: in their columns.
+                if (tok.size() > 2) r.cells.insert(QStringLiteral("signed"), truthy(tok.at(2)) ? QStringLiteral("true") : QString());
+                if (tok.size() > 1 && !tok.at(1).isEmpty()) r.cells.insert(QStringLiteral("bytes"), tok.at(1));
+                if (!tok.isEmpty()) tok = QStringList{ tok.first() };
+            } else {
+                if (tok.size() > 1 && truthy(tok.last()) && tok.last() != QLatin1String("1")) {
+                    r.cells.insert(QStringLiteral("signed"), QStringLiteral("true"));
+                    tok.removeLast();
+                }
+                qint64 b = 0;
+                if (tok.size() > 1 && readNumber(tok.last(), &b) && b >= 1 && b <= 8) {
+                    r.cells.insert(QStringLiteral("bytes"), QString::number(b));
+                    tok.removeLast();
+                }
+            }
+            const QString name = tok.join(QLatin1Char(' ')).trimmed();
+            if (name.isEmpty()) {
+                bad << QObject::tr("line %1: no name").arg(r.line);
+                continue;
+            }
+            r.cells.insert(QStringLiteral("id"), QString::number(id));
+            r.cells.insert(QStringLiteral("name"), name);
+            key = QString::number(id);
+        }
+        if (seen.contains(key)) {
+            const QString what = tag == QLatin1String("eventtable") ? QObject::tr("id %1").arg(key)
+                               : key.startsWith(QLatin1String("v ")) ? QObject::tr("value %1").arg(key.mid(2))
+                               : key.startsWith(QLatin1String("r ")) ? QObject::tr("range %1").arg(key.mid(2).replace(QLatin1Char(' '), QStringLiteral("–")))
+                                                                     : key;
+            bad << QObject::tr("line %1: %2 again (line %3 is kept)").arg(r.line).arg(what).arg(seen.value(key));
+            continue;
+        }
+        seen.insert(key, r.line);
+        counter = nextCounter;
+        if (existing.contains(key)) {
+            r.existing = existing.value(key);
+            QStringList diffs;
+            for (auto it = r.cells.constBegin(); it != r.cells.constEnd(); ++it) {
+                if (it.key() == kValue || it.key() == QLatin1String("from") || it.key() == QLatin1String("to")
+                    || it.key() == QLatin1String("id") || it.key() == QLatin1String("bit")) {
+                    continue;
+                }
+                const QString now = entryText(doc, r.existing, it.key());
+                if (now != it.value() && !(it.key() == QLatin1String("bytes") && now.isEmpty() && it.value() == QLatin1String("1"))) {
+                    diffs << QObject::tr("%1 %2 → %3").arg(entryHeader(it.key()).toLower(), now.isEmpty() ? QStringLiteral("\"\"") : now, it.value());
+                }
+            }
+            if (tag == QLatin1String("flagtable")) {
+                r.skip = true;
+                r.note = QObject::tr("already there (bit %1)").arg(entryText(doc, r.existing, QStringLiteral("bit")));
+            } else if (diffs.isEmpty()) {
+                r.skip = true;
+                r.note = QObject::tr("the same as now");
+            } else {
+                r.note = diffs.join(QStringLiteral("; "));
+            }
+        } else {
+            r.note = tag == QLatin1String("flagtable") ? QObject::tr("new, bit %1").arg(r.cells.value(QStringLiteral("bit"))) : QObject::tr("new");
+        }
+        out.push_back(r);
+    }
+    if (problems) *problems = bad;
+    return out;
+}
+
+// ---- the session's entry edits ------------------------------------------------
+
+bool Session::setAttributes(int node, const QVector<QPair<QString, QString>> &values, const QString &what, QString *why)
+{
+    if (node <= 0 || node >= m_doc.count()) return false;
+    const SchemaDoc::Node &n = m_doc.node(node);
+    const QVector<AttrSpec> specs = specsFor(n.tag, n.parent >= 0 ? m_doc.node(n.parent).tag : QString());
+    SchemaDoc::Document work = m_doc;
+    for (const auto &v : values) {
+        if (!v.second.isEmpty()) {
+            if (const AttrSpec *sp = specFor(specs, v.first)) {
+                const QString p = valueProblem(m_doc, *sp, v.second);
+                if (!p.isEmpty()) {
+                    if (why) *why = p;
+                    return false;
+                }
+            }
+        }
+        const QByteArray t = v.second.isEmpty() ? work.withoutAttribute(node, v.first) : work.withAttribute(node, v.first, v.second);
+        work.parse(t);   // attribute edits keep every element's index
+    }
+    return stage(work.text(), what, why);
+}
+
+bool Session::setEntryCell(int entry, const QString &column, const QString &text, QString *why)
+{
+    auto fail = [why](const QString &w) {
+        if (why) *why = w;
+        return false;
+    };
+    if (entry <= 0 || entry >= m_doc.count()) return false;
+    const SchemaDoc::Node &n = m_doc.node(entry);
+    const QString table = n.parent >= 0 ? m_doc.node(n.parent).tag : QString();
+    if (!isTable(table) || !entryColumns(table).contains(column) || !entryEditable(column)) {
+        return fail(QObject::tr("That cell is not typed into"));
+    }
+    const QString v = text.trimmed();
+    const QString before = entryText(m_doc, entry, column);
+    if (v == before) return fail(QObject::tr("No change"));
+    QVector<QPair<QString, QString>> changes;
+    bool reshape = false;   // an enum value becoming a range, "otherwise", ... : the tag is rewritten
+    if (table == QLatin1String("enum")) {
+        const bool isDefault = n.value(QStringLiteral("default")) == QLatin1String("true");
+        const bool isRange = n.has(QStringLiteral("from"));
+        if (column == kValue) {
+            if (otherwiseWord(v)) {
+                if (isDefault) return fail(QObject::tr("No change"));
+                changes = { { QStringLiteral("default"), QStringLiteral("true") } };
+                reshape = true;
+            } else if (v.isEmpty()) {
+                if (isDefault || isRange) return fail(QObject::tr("No change"));
+                return fail(QObject::tr("A value needs a number, a range (From and To) or \"otherwise\""));
+            } else {
+                qint64 num = 0;
+                if (!readNumber(v, &num)) return fail(QObject::tr("Value is a whole number, or \"otherwise\""));
+                changes = { { QStringLiteral("v"), QString::number(num) } };
+                reshape = isDefault || isRange;
+            }
+        } else if (column == QLatin1String("from") || column == QLatin1String("to")) {
+            if (v.isEmpty()) {
+                if (isRange) return fail(QObject::tr("A range needs From and To; type a Value to make it one value"));
+                return fail(QObject::tr("No change"));
+            }
+            qint64 num = 0;
+            if (!readNumber(v, &num)) return fail(QObject::tr("%1 is a whole number").arg(entryHeader(column)));
+            qint64 lo = num, hi = num;
+            if (isRange) {
+                readNumber(n.value(QStringLiteral("from")), &lo);
+                readNumber(n.value(QStringLiteral("to")), &hi);
+            } else if (n.has(QStringLiteral("v"))) {
+                readNumber(n.value(QStringLiteral("v")), &lo);
+                hi = lo;
+            }
+            if (column == QLatin1String("from")) lo = num;
+            else hi = num;
+            if (!isRange && column == QLatin1String("from") && hi < lo) hi = lo;
+            if (!isRange && column == QLatin1String("to") && lo > hi) lo = hi;
+            if (lo > hi) return fail(QObject::tr("From (%1) is after To (%2)").arg(lo).arg(hi));
+            changes = { { QStringLiteral("from"), QString::number(lo) }, { QStringLiteral("to"), QString::number(hi) } };
+            reshape = !isRange;
+        } else {
+            changes = { { column, v } };
+        }
+    } else if (table == QLatin1String("flagtable")) {
+        if (v.isEmpty()) return fail(QObject::tr("A flag needs a name"));
+        changes = { { QStringLiteral("name"), v } };
+    } else {
+        if (column == QLatin1String("name") && v.isEmpty()) return fail(QObject::tr("An event needs a name"));
+        if ((column == QLatin1String("id") || column == QLatin1String("bytes")) && v.isEmpty()) {
+            return fail(QObject::tr("An event needs its %1").arg(entryHeader(column).toLower()));
+        }
+        if (column == QLatin1String("signed")) changes = { { column, truthy(v) ? QStringLiteral("true") : QString() } };
+        else changes = { { column, v } };
+    }
+    const QString what = QObject::tr("%1: %2 %3 → %4").arg(entryLabel(m_doc, entry), entryHeader(column).toLower(),
+                                                           before.isEmpty() ? QStringLiteral("\"\"") : before,
+                                                           v.isEmpty() ? QStringLiteral("\"\"") : v);
+    if (!reshape) return setAttributes(entry, changes, what, why);
+    // The tag rewritten in the file's order: v | from to | default, then the rest as it was.
+    QHash<QString, QString> now;
+    for (const SchemaDoc::Attr &a : n.attrs) now.insert(a.name, a.value);
+    for (const char *a : { "v", "from", "to", "default" }) now.remove(QString::fromLatin1(a));
+    NewElement e;
+    e.tag = n.tag;
+    for (const auto &c : changes) e.attrs.push_back(c);
+    for (const SchemaDoc::Attr &a : n.attrs) {
+        if (now.contains(a.name)) e.attrs.push_back(qMakePair(a.name, a.value));
+    }
+    for (const auto &a : e.attrs) {
+        if (const AttrSpec *sp = specFor(specsFor(e.tag, table), a.first)) {
+            const QString p = valueProblem(m_doc, *sp, a.second);
+            if (!p.isEmpty()) return fail(p);
+        }
+    }
+    // Lined up with a sibling of the same shape (another range, ...), else as it was.
+    const QString shape = changes.first().first;
+    int columns = entry;
+    for (int c : m_doc.node(n.parent).children) {
+        if (c != entry && m_doc.node(c).has(shape)) {
+            columns = c;
+            break;
+        }
+    }
+    QString err;
+    const QByteArray t = m_doc.withReplacedElement(entry, elementLine(e), columns, &err);
+    if (t.isEmpty()) return fail(err);
+    return stage(t, what, why);
+}
+
+bool Session::previewEntry(int table, const QHash<QString, QString> &cells, NewElement *element, QString *why) const
+{
+    if (table <= 0 || table >= m_doc.count() || !isTable(m_doc.node(table).tag)) {
+        if (why) *why = QObject::tr("Select an enum, flag table or event table");
+        return false;
+    }
+    NewElement e;
+    if (!buildEntry(m_doc, table, cells, &e, why)) return false;
+    int anchor = -1;
+    SchemaDoc::Document::Place place;
+    entryPlace(m_doc, table, e, &anchor, &place);
+    if (!previewInsert(anchor, place, e, nullptr, nullptr, why)) return false;
+    if (element) *element = e;
+    return true;
+}
+
+bool Session::addEntry(int table, const QHash<QString, QString> &cells, int *node, QString *why)
+{
+    if (readOnly()) {
+        if (why) *why = QObject::tr("The built-in kavach.xml cannot be changed: make an editable copy first");
+        return false;
+    }
+    NewElement e;
+    if (!previewEntry(table, cells, &e, why)) return false;
+    int anchor = -1;
+    SchemaDoc::Document::Place place;
+    entryPlace(m_doc, table, e, &anchor, &place);
+    QByteArray t;
+    int added = -1;
+    if (!previewInsert(anchor, place, e, &t, &added, why)) return false;
+    const QString what = QObject::tr("%1: + %2").arg(m_doc.node(table).value(QStringLiteral("name")), newEntryText(e));
+    if (!stage(t, what, why)) return false;
+    if (node) *node = added;
+    return true;
+}
+
+bool Session::applyRows(int table, const QVector<TableRow> &rows, bool replace, QString *why)
+{
+    auto fail = [why](const QString &w) {
+        if (why) *why = w;
+        return false;
+    };
+    if (readOnly()) return fail(QObject::tr("The built-in kavach.xml cannot be changed: make an editable copy first"));
+    if (table <= 0 || table >= m_doc.count() || !isTable(m_doc.node(table).tag)) {
+        return fail(QObject::tr("Select an enum, flag table or event table"));
+    }
+    SchemaDoc::Document work = m_doc;   // the table's index never changes: what changes is after it
+    QString err;
+    int removed = 0, added = 0, changed = 0;
+    if (replace) {
+        while (!work.node(table).children.isEmpty()) {
+            const QByteArray t = work.withoutNode(work.node(table).children.last(), &err);
+            if (t.isEmpty()) return fail(err);
+            work.parse(t);
+            ++removed;
+        }
+    } else {
+        // Changes first: they keep every index.
+        for (const TableRow &r : rows) {
+            if (r.skip || r.existing < 0) continue;
+            for (auto it = r.cells.constBegin(); it != r.cells.constEnd(); ++it) {
+                const QString &c = it.key();
+                if (c == kValue || c == QLatin1String("from") || c == QLatin1String("to") || c == QLatin1String("id")
+                    || c == QLatin1String("bit") || entryText(work, r.existing, c) == it.value()) {
+                    continue;
+                }
+                const QString attr = attrOf(c);
+                const QString v = c == QLatin1String("signed") ? (truthy(it.value()) ? QStringLiteral("true") : QString()) : it.value();
+                work.parse(v.isEmpty() ? work.withoutAttribute(r.existing, attr) : work.withAttribute(r.existing, attr, v));
+            }
+            ++changed;
+        }
+    }
+    for (const TableRow &r : rows) {
+        if (r.skip || (!replace && r.existing >= 0)) continue;
+        NewElement e;
+        QString w;
+        if (!buildEntry(work, table, r.cells, &e, &w)) return fail(QObject::tr("line %1: %2").arg(r.line).arg(w));
+        int anchor = -1, at = -1;
+        SchemaDoc::Document::Place place;
+        entryPlace(work, table, e, &anchor, &place);
+        const int columns = anchor == table ? -1 : anchor;
+        const QByteArray t = work.withInserted(anchor, place, elementLine(e), columns, &at, &err);
+        if (t.isEmpty()) return fail(err);
+        work.parse(t);
+        ++added;
+    }
+    if (added == 0 && changed == 0 && removed == 0) return fail(QObject::tr("Nothing to add or change"));
+    QStringList parts;
+    if (added) parts << QObject::tr("%n new", nullptr, added);
+    if (changed) parts << QObject::tr("%n changed", nullptr, changed);
+    QString what = replace ? QObject::tr("%1: replaced by %n pasted row(s)", nullptr, added).arg(m_doc.node(table).value(QStringLiteral("name")))
+                           : QObject::tr("%1: pasted (%2)").arg(m_doc.node(table).value(QStringLiteral("name")), parts.join(QStringLiteral(", ")));
+    return stage(work.text(), what, why);
+}
+
+// -----------------------------------------------------------------------------
+//  Moving between levels (phase 4)
+// -----------------------------------------------------------------------------
+
+namespace {
+
+bool isBox(const QString &tag)
+{
+    return tag == QLatin1String("when") || tag == QLatin1String("repeat") || tag == QLatin1String("group");
+}
+
+QString boxText(const SchemaDoc::Document &doc, int box)
+{
+    const SchemaDoc::Node &b = doc.node(box);
+    if (b.tag == QLatin1String("when")) return QObject::tr("when %1").arg(b.value(QStringLiteral("test")));
+    return QStringLiteral("%1 %2").arg(title(b.tag).toLower(), b.value(QStringLiteral("name")));
+}
+
+}  // namespace
+
+bool movableInto(const QString &tag, const QString &parentTag)
+{
+    static const QSet<QString> members = { QStringLiteral("field"), QStringLiteral("pad"), QStringLiteral("note"),
+                                           QStringLiteral("flags"), QStringLiteral("row"), QStringLiteral("when"),
+                                           QStringLiteral("repeat"), QStringLiteral("group"), QStringLiteral("align"),
+                                           QStringLiteral("eventstream") };
+    if (!members.contains(tag)) return false;
+    if (parentTag == QLatin1String("packet") || parentTag == QLatin1String("struct") || parentTag == QLatin1String("when")) return true;
+    if (parentTag == QLatin1String("repeat") || parentTag == QLatin1String("group")) {
+        return tag == QLatin1String("field") || tag == QLatin1String("pad");
+    }
+    return false;
+}
+
+bool planMoveIn(const SchemaDoc::Document &doc, int node, int *anchor, SchemaDoc::Document::Place *place, QString *why)
+{
+    using Place = SchemaDoc::Document::Place;
+    auto fail = [why](const QString &w) {
+        if (why) *why = w;
+        return false;
+    };
+    const QString p = memberProblem(doc, node);
+    if (!p.isEmpty()) return fail(p);
+    if (isContainer(doc, node)) return fail(QObject::tr("A packet, struct or table is moved in the outline"));
+    const SchemaDoc::Node &n = doc.node(node);
+    const QVector<int> &sib = doc.node(n.parent).children;
+    const int k = sib.indexOf(node);
+    QString reason = QObject::tr("There is no condition, repeat or group right above or below it to move into");
+    const QVector<QPair<int, Place>> tries = { qMakePair(k - 1, Place::LastChild), qMakePair(k + 1, Place::FirstChild) };
+    for (const auto &t : tries) {
+        if (t.first < 0 || t.first >= sib.size()) continue;
+        const QString boxTag = doc.node(sib.at(t.first)).tag;
+        if (!isBox(boxTag)) continue;
+        if (!movableInto(n.tag, boxTag)) {
+            reason = QObject::tr("A %1 reads only fields and pads: a %2 does not go inside it").arg(title(boxTag).toLower(), title(n.tag).toLower());
+            continue;
+        }
+        if (anchor) *anchor = sib.at(t.first);
+        if (place) *place = t.second;
+        return true;
+    }
+    return fail(reason);
+}
+
+bool planMoveOut(const SchemaDoc::Document &doc, int node, int *anchor, SchemaDoc::Document::Place *place, QString *why)
+{
+    using Place = SchemaDoc::Document::Place;
+    auto fail = [why](const QString &w) {
+        if (why) *why = w;
+        return false;
+    };
+    const QString p = memberProblem(doc, node);
+    if (!p.isEmpty()) return fail(p);
+    const SchemaDoc::Node &n = doc.node(node);
+    const int parent = n.parent;
+    if (parent < 0 || !isBox(doc.node(parent).tag)) return fail(QObject::tr("It is not inside a condition, repeat or group"));
+    const int outer = doc.node(parent).parent;
+    if (outer < 0 || !movableInto(n.tag, doc.node(outer).tag)) {
+        return fail(QObject::tr("A %1 does not go inside the %2 around it").arg(title(n.tag).toLower(), title(doc.node(outer).tag).toLower()));
+    }
+    // The first one out goes above it (its comment too), any other below it.
+    const bool first = doc.node(parent).children.indexOf(node) == 0 && doc.node(parent).children.size() > 1;
+    if (anchor) *anchor = parent;
+    if (place) *place = first ? Place::BeforeBlock : Place::After;
+    return true;
+}
+
+bool Session::moveIn(int node, int *moved, QString *why)
+{
+    int anchor = -1;
+    SchemaDoc::Document::Place place;
+    if (!planMoveIn(m_doc, node, &anchor, &place, why)) return false;
+    int at = -1;
+    QString err;
+    const QByteArray t = m_doc.withRelocated(node, anchor, place, &at, &err);
+    if (t.isEmpty()) {
+        if (why) *why = err;
+        return false;
+    }
+    if (!stage(t, QObject::tr("%1 moved into %2").arg(label(m_doc, node), boxText(m_doc, anchor)), why)) return false;
+    if (moved) *moved = m_doc.nodeAt(at);
+    return true;
+}
+
+bool Session::moveOut(int node, int *moved, QString *why)
+{
+    int anchor = -1;
+    SchemaDoc::Document::Place place;
+    if (!planMoveOut(m_doc, node, &anchor, &place, why)) return false;
+    int at = -1;
+    QString err;
+    const QByteArray t = m_doc.withRelocated(node, anchor, place, &at, &err);
+    if (t.isEmpty()) {
+        if (why) *why = err;
+        return false;
+    }
+    if (!stage(t, QObject::tr("%1 moved out of %2").arg(label(m_doc, node), boxText(m_doc, anchor)), why)) return false;
+    if (moved) *moved = m_doc.nodeAt(at);
+    return true;
 }
 
 bool Session::save(QString *backup, QString *error)

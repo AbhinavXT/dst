@@ -76,6 +76,21 @@ public:
     bool deleteContainer(bool ask = true);
     bool registerStruct(const QString &packet, int type);
     void useAsSubpacket();                           // the dialog for registerStruct
+    // Phase 4: enum values, flags and events in the members grid.
+    // A cell of an entry's row typed into (column: SchemaEdit::entryColumns()).
+    bool editEntry(int entry, const QString &column, const QString &text);
+    // A cell of the blank last row: kept pending until the row is enough
+    // (an enum value needs a label, ...), then staged as a new entry.
+    bool typeNewRow(const QString &column, const QString &text);
+    QHash<QString, QString> pendingRow() const { return m_pending; }
+    // Pasted text, parsed and staged as one step (the Paste dialog's OK).
+    bool pasteRows(const QString &text, bool replace);
+    void pasteDialog();
+    // The blank row, its first cell to type in opened.
+    void startNewRow();
+    // A member into the condition / repeat / group above (or below) it, or out of it.
+    bool moveInSelected();
+    bool moveOutSelected();
     bool undo();
     bool redo();
 
@@ -103,6 +118,10 @@ public:
     QToolButton *containerDownButton() const { return m_cDownButton; }
     QAction     *containerDeleteButton() const { return m_cDeleteButton; }
     QToolButton *subpacketButton() const { return m_subpacketButton; }
+    QToolButton *rowButton() const { return m_rowButton; }
+    QToolButton *pasteButton() const { return m_pasteButton; }
+    QToolButton *inButton() const { return m_inButton; }
+    QToolButton *outButton() const { return m_outButton; }
     // The form's editor for one attribute of the selected element, or null.
     QWidget *editorFor(const QString &attr) const { return m_editors.value(attr); }
 
@@ -129,6 +148,11 @@ private:
     void fillMembers();
     void fillForm();
     void addMemberItems(QTreeWidgetItem *parent, int node, int offset);
+    QStringList fillTable();   // the grid of an enum, flag or event table; its info line
+    void memberEdited(QTreeWidgetItem *item, int column);
+    // After an edit to a flag table: a flag past the bits a <flags> reads,
+    // or flags that moved to another bit.
+    void flagNotes(int table, const QString &done);
     void applyFind();
     void updateActions();
     void showResult(bool ok, const QString &why);
@@ -167,6 +191,14 @@ private:
     QToolButton *m_downButton = nullptr;
     QToolButton *m_deleteButton = nullptr;
     QToolButton *m_subpacketButton = nullptr;
+    QToolButton *m_rowButton = nullptr;
+    QToolButton *m_pasteButton = nullptr;
+    QToolButton *m_inButton = nullptr;
+    QToolButton *m_outButton = nullptr;
+    QHash<QString, QString> m_pending;   // the blank row's cells typed so far
+    int                     m_pendingTable = -1;
+    QStringList             m_columns;   // the grid's columns while a table is shown
+    bool                    m_editingTable = false;
     QToolButton *m_newButton = nullptr;
     QAction     *m_cDuplicateButton = nullptr;
     QToolButton *m_cUpButton = nullptr;

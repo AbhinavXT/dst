@@ -32,6 +32,7 @@
 #include "schemadoc.h"
 
 #include <QByteArray>
+#include <QHash>
 #include <QString>
 #include <QStringList>
 #include <QPair>
@@ -109,6 +110,15 @@ struct NewElement {
     QVector<QPair<QString, QString>> attrs;
 };
 
+// One row of a table to add or change (phase 4: Paste).
+struct TableRow {
+    QHash<QString, QString> cells;    // column (entryColumns()) -> text
+    int                     existing = -1;   // the entry it changes, or -1: a new one
+    int                     line = 0;        // in the pasted text, 1-based
+    QString                 note;            // shown in the preview: "new", "label A → B", ...
+    bool                    skip = false;    // nothing to do (same as now, or a repeat)
+};
+
 struct NewContainer {
     QString                          tag;     // packet, struct, enum, flagtable, eventtable, crc
     QString                          name;
@@ -162,6 +172,25 @@ public:
     bool addContainer(const NewContainer &container, int *node, QString *why);
     // A <case type= struct=> in the packet's <subpackets>.
     bool registerCase(const QString &structName, const QString &packet, int type, int *node, QString *why);
+
+    // Phase 4: enum values, flags and events, as the grid edits them.
+    // Several attributes of one element in one step; an empty value removes
+    // the attribute.
+    bool setAttributes(int node, const QVector<QPair<QString, QString>> &values, const QString &what, QString *why);
+    // `text` typed into `column` (entryColumns()) of an entry's row.
+    bool setEntryCell(int entry, const QString &column, const QString &text, QString *why);
+    // A new row of `table` from the cells typed so far (column -> text).
+    // previewEntry() is addEntry() without staging: a row the grid keeps
+    // pending while it is not yet enough (*why says what is missing).
+    bool previewEntry(int table, const QHash<QString, QString> &cells, NewElement *element, QString *why) const;
+    bool addEntry(int table, const QHash<QString, QString> &cells, int *node, QString *why);
+    // Pasted rows (parseRows()), one step. `replace`: the table's entries
+    // are replaced by them.
+    bool applyRows(int table, const QVector<TableRow> &rows, bool replace, QString *why);
+    // A member into the condition, repeat or group above (else below) it,
+    // or out of the one it is in. *moved receives it.
+    bool moveIn(int node, int *moved, QString *why);
+    bool moveOut(int node, int *moved, QString *why);
 
     QStringList diff(int context = 2) const { return SchemaDoc::lineDiff(m_original, m_doc.text(), context); }
 
@@ -224,6 +253,52 @@ QStringList clashes(const SchemaDoc::Document &doc);
 // Uses of names that nothing defines: count= with no such field, enum=,
 // struct=, table= and crc= with no such definition. One line each.
 QStringList dangling(const SchemaDoc::Document &doc);
+
+// ---- enum values, flags and events (phase 4) ---------------------------------
+
+// enum, flagtable or eventtable: a container the grid edits.
+bool isTable(const QString &tag);
+// The grid's columns for a table: enum "value", "from", "to", "label",
+// "formula", "unit"; flagtable "bit", "name"; eventtable "id", "name",
+// "bytes", "signed".
+QStringList entryColumns(const QString &tableTag);
+QString entryHeader(const QString &column);
+// Bit is the flag's place in the table: it cannot be typed.
+bool entryEditable(const QString &column);
+// What the grid shows in `column` for an entry: an enum's "otherwise" row
+// in "value", a flag's bit, "true" for a signed event.
+QString entryText(const SchemaDoc::Document &doc, int entry, const QString &column);
+// The value a new row starts from: one past the highest enum value (or
+// range end) or event id; empty for a flag table.
+QString nextValue(const SchemaDoc::Document &doc, int table);
+// An entry for undo and the status line: "dmiTrainType › 3", "dmiAlarm › bit 4".
+QString entryLabel(const SchemaDoc::Document &doc, int entry);
+// Entries the decoder would never show or would read wrongly: an enum value
+// named twice (the first wins), a range named wholly above, a range that
+// runs backwards or has no end, two "otherwise", an event id twice (the
+// later one replaces the first), a flag with no name. check() refuses new ones.
+QStringList entryProblems(const SchemaDoc::Document &doc);
+// The <flags> that read a flag table, "DLLOG alarm_code (71 bits)", and
+// the fewest bits any of them reads (-1: none reads it).
+QStringList flagReaders(const SchemaDoc::Document &doc, const QString &table, int *fewest = nullptr);
+// Text pasted into a table (a SIF annexure, two Excel columns), as rows:
+//   enum:   "3  Spare", "3<TAB>Spare", "1..50 label", "otherwise  rsvd(%v)";
+//           a line with no value takes the one after the line before;
+//   flags:  one name per line, or "bit<TAB>name";
+//   events: "id name [bytes] [signed]", or tab-separated in that order.
+// A value already in the table changes that entry; `replace` makes every
+// row new. *problems: lines not understood, and repeats.
+QVector<TableRow> parseRows(const SchemaDoc::Document &doc, int table, const QString &text, bool replace,
+                            QStringList *problems);
+
+// ---- moving between levels (phase 4) -------------------------------------------
+
+// Can `tag` sit inside `parentTag` once moved there? A repeat or group
+// reads only fields and pads; a condition, packet or struct reads any member.
+bool movableInto(const QString &tag, const QString &parentTag);
+// Where moveIn() / moveOut() would put it, or false with *why.
+bool planMoveIn(const SchemaDoc::Document &doc, int node, int *anchor, SchemaDoc::Document::Place *place, QString *why);
+bool planMoveOut(const SchemaDoc::Document &doc, int node, int *anchor, SchemaDoc::Document::Place *place, QString *why);
 
 // Why the decoder would not load `text`, or empty.
 QString loadProblem(const QByteArray &text);

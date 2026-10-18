@@ -3,6 +3,7 @@
 #include "programdir.h"
 #include "schemacontainerdialog.h"
 #include "schemaelementdialog.h"
+#include "schemapastedialog.h"
 #include "statusline.h"
 #include "uicolors.h"
 #include "windowgeometry.h"
@@ -24,11 +25,14 @@
 #include <QLineEdit>
 #include <QMenu>
 #include <QMessageBox>
+#include <QRegularExpression>
+#include <QPlainTextEdit>
 #include <QPushButton>
 #include <QScrollArea>
 #include <QShortcut>
 #include <QSpinBox>
 #include <QSplitter>
+#include <QStyledItemDelegate>
 #include <QTextEdit>
 #include <QTimer>
 #include <QToolButton>
@@ -45,6 +49,38 @@ namespace {
 
 const char kAttrProperty[] = "schemaAttr";
 constexpr int kNodeRole = Qt::UserRole;
+constexpr int kRealRole = Qt::UserRole + 1;   // a grid cell's text, without a placeholder
+constexpr int kNewRow = -2;                    // kNodeRole of the grid's blank last row
+
+// The members grid of an enum, flag or event table (phase 4): an editor for
+// the cells that can be typed into, opened on the cell's real text (the
+// blank row shows a placeholder that is not its value).
+class EntryDelegate : public QStyledItemDelegate
+{
+public:
+    EntryDelegate(const QStringList *columns, const bool *active, QObject *parent)
+        : QStyledItemDelegate(parent), m_columns(columns), m_active(active) {}
+
+    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &option, const QModelIndex &index) const override
+    {
+        if (!*m_active || index.column() >= m_columns->size()) return nullptr;
+        const QString c = m_columns->at(index.column());
+        if (!SchemaEdit::entryEditable(c) || c == QLatin1String("signed")) return nullptr;
+        return QStyledItemDelegate::createEditor(parent, option, index);
+    }
+    void setEditorData(QWidget *editor, const QModelIndex &index) const override
+    {
+        if (auto *line = qobject_cast<QLineEdit *>(editor)) {
+            line->setText(index.data(kRealRole).toString());
+            return;
+        }
+        QStyledItemDelegate::setEditorData(editor, index);
+    }
+
+private:
+    const QStringList *m_columns;
+    const bool        *m_active;
+};
 
 QString sizeText(int bits)
 {
@@ -280,7 +316,12 @@ void SchemaEditorWindow::buildUi()
     m_duplicateButton = tool(tr("Duplicate"), tr("A copy right after it, named …_2 (Ctrl+D)"));
     m_upButton = tool(tr("▲ Up"), tr("Swap with the element before it (Alt+Up)"));
     m_downButton = tool(tr("▼ Down"), tr("Swap with the element after it (Alt+Down)"));
+    m_inButton = tool(tr("⇥ In"), tr("Into the condition, repeat or group right above it, else below it (Alt+Right)"));
+    m_outButton = tool(tr("⇤ Out"), tr("Out of the condition, repeat or group it is in (Alt+Left)"));
     m_deleteButton = tool(tr("Delete"), tr("Remove it, and what is inside it (Delete). Undo brings it back."));
+    // Phase 4: an enum's values, a flag table's flags, an event table's events.
+    m_rowButton = tool(tr("＋ Row"), tr("Type a new one into the last row (Insert)"));
+    m_pasteButton = tool(tr("Paste…"), tr("Rows copied from a SIF annexure or a spreadsheet, added in one step"));
     tools->addStretch(1);
     m_subpacketButton = tool(tr("Use as a sub-packet…"), tr("Decode this struct as a sub-packet type of a packet"));
     connect(m_subpacketButton, &QToolButton::clicked, this, &SchemaEditorWindow::useAsSubpacket);
@@ -291,6 +332,10 @@ void SchemaEditorWindow::buildUi()
     connect(m_upButton, &QToolButton::clicked, this, [this]() { moveSelected(-1); });
     connect(m_downButton, &QToolButton::clicked, this, [this]() { moveSelected(+1); });
     connect(m_deleteButton, &QToolButton::clicked, this, [this]() { deleteSelected(); });
+    connect(m_inButton, &QToolButton::clicked, this, [this]() { moveInSelected(); });
+    connect(m_outButton, &QToolButton::clicked, this, [this]() { moveOutSelected(); });
+    connect(m_rowButton, &QToolButton::clicked, this, &SchemaEditorWindow::startNewRow);
+    connect(m_pasteButton, &QToolButton::clicked, this, &SchemaEditorWindow::pasteDialog);
     auto key = [this](const QKeySequence &seq, const std::function<void()> &fn) {
         auto *sc = new QShortcut(seq, m_members);
         sc->setContext(Qt::WidgetShortcut);
@@ -301,6 +346,12 @@ void SchemaEditorWindow::buildUi()
     key(QKeySequence(QStringLiteral("Ctrl+D")), [this]() { duplicateSelected(); });
     key(QKeySequence(QStringLiteral("Alt+Up")), [this]() { moveSelected(-1); });
     key(QKeySequence(QStringLiteral("Alt+Down")), [this]() { moveSelected(+1); });
+    key(QKeySequence(QStringLiteral("Alt+Right")), [this]() { moveInSelected(); });
+    key(QKeySequence(QStringLiteral("Alt+Left")), [this]() { moveOutSelected(); });
+    m_members->setItemDelegate(new EntryDelegate(&m_columns, &m_editingTable, m_members));
+    m_members->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed
+                               | QAbstractItemView::AnyKeyPressed);
+    connect(m_members, &QTreeWidget::itemChanged, this, &SchemaEditorWindow::memberEdited);
     m_members->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_members, &QTreeWidget::customContextMenuRequested, this, &SchemaEditorWindow::memberMenu);
     connect(m_members, &QTreeWidget::currentItemChanged, this, [this](QTreeWidgetItem *item) {
@@ -554,6 +605,8 @@ void SchemaEditorWindow::fillMembers()
     const SchemaDoc::Document &doc = m_session.doc();
     const QSignalBlocker block(m_members);
     m_members->clear();
+    m_columns.clear();
+    m_editingTable = false;
     if (m_container < 0) {
         m_membersTitle->clear();
         m_membersInfo->clear();
@@ -591,44 +644,8 @@ void SchemaEditorWindow::fillMembers()
         m_members->setHeaderLabels({ tr("Name"), tr("Kind"), tr("Bits"), tr("Offset"), tr("Details") });
         m_members->setColumnCount(5);
         addMemberItems(nullptr, m_container, 0);
-    } else if (tag == QLatin1String("enum")) {
-        m_members->setColumnCount(3);
-        m_members->setHeaderLabels({ tr("Value"), tr("Label"), tr("Formula / unit") });
-        for (int i : c.children) {
-            const SchemaDoc::Node &m = doc.node(i);
-            QString v = m.value(QStringLiteral("v"));
-            if (m.has(QStringLiteral("from"))) v = QStringLiteral("%1 – %2").arg(m.value(QStringLiteral("from")), m.value(QStringLiteral("to")));
-            if (m.value(QStringLiteral("default")) == QLatin1String("true")) v = tr("otherwise");
-            QStringList f;
-            if (m.has(QStringLiteral("formula"))) f << m.value(QStringLiteral("formula"));
-            if (m.has(QStringLiteral("unit"))) f << m.value(QStringLiteral("unit"));
-            auto *item = new QTreeWidgetItem(m_members, { v, m.value(QStringLiteral("label")), f.join(QLatin1Char(' ')) });
-            item->setData(0, kNodeRole, i);
-        }
-        int users = 0;
-        for (int f : doc.all(QStringLiteral("field"))) {
-            if (doc.node(f).value(QStringLiteral("enum")) == c.value(QStringLiteral("name"))) ++users;
-        }
-        info << tr("Used by %n field(s)", nullptr, users);
-    } else if (tag == QLatin1String("flagtable")) {
-        m_members->setColumnCount(2);
-        m_members->setHeaderLabels({ tr("Bit"), tr("Name") });
-        int bit = 0;
-        for (int i : c.children) {
-            auto *item = new QTreeWidgetItem(m_members, { QString::number(bit++), doc.node(i).value(QStringLiteral("name")) });
-            item->setData(0, kNodeRole, i);
-        }
-        info << tr("Bit 0 is the table's first flag");
-    } else if (tag == QLatin1String("eventtable")) {
-        m_members->setColumnCount(4);
-        m_members->setHeaderLabels({ tr("Id"), tr("Name"), tr("Bytes"), tr("Signed") });
-        for (int i : c.children) {
-            const SchemaDoc::Node &m = doc.node(i);
-            auto *item = new QTreeWidgetItem(m_members, { m.value(QStringLiteral("id")), m.value(QStringLiteral("name")),
-                                                          m.value(QStringLiteral("bytes")),
-                                                          m.value(QStringLiteral("signed")) == QLatin1String("true") ? tr("yes") : QString() });
-            item->setData(0, kNodeRole, i);
-        }
+    } else if (SchemaEdit::isTable(tag)) {
+        info << fillTable();
     } else {
         m_members->setColumnCount(1);
         m_members->setHeaderLabels({ tr("Name") });
@@ -645,6 +662,223 @@ void SchemaEditorWindow::fillMembers()
             break;
         }
     }
+}
+
+QStringList SchemaEditorWindow::fillTable()
+{
+    const SchemaDoc::Document &doc = m_session.doc();
+    const SchemaDoc::Node &c = doc.node(m_container);
+    m_columns = SchemaEdit::entryColumns(c.tag);
+    m_editingTable = !m_session.readOnly();
+    if (m_pendingTable != m_container) {
+        m_pending.clear();
+        m_pendingTable = m_container;
+    }
+    QStringList headers;
+    for (const QString &col : m_columns) headers << SchemaEdit::entryHeader(col);
+    m_members->setColumnCount(int(m_columns.size()));
+    m_members->setHeaderLabels(headers);
+    const int signedCol = int(m_columns.indexOf(QStringLiteral("signed")));
+    const int bitCol = int(m_columns.indexOf(QStringLiteral("bit")));
+    const Qt::ItemFlags editable = m_editingTable ? Qt::ItemIsEditable | Qt::ItemIsUserCheckable : Qt::ItemFlags();
+    static const QRegularExpression bitName(QStringLiteral("^B(\\d+)\\s"));
+    QFont italic = m_members->font();
+    italic.setItalic(true);
+    for (int i : c.children) {
+        auto *item = new QTreeWidgetItem(m_members);
+        for (int k = 0; k < m_columns.size(); ++k) {
+            const QString t = SchemaEdit::entryText(doc, i, m_columns.at(k));
+            item->setData(k, kRealRole, t);
+            if (k == signedCol) item->setCheckState(k, t == QLatin1String("true") ? Qt::Checked : Qt::Unchecked);
+            else item->setText(k, t);
+        }
+        item->setData(0, kNodeRole, i);
+        item->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled | editable);
+        item->setToolTip(0, doc.node(i).comment.left(400));
+        if (doc.node(i).value(QStringLiteral("default")) == QLatin1String("true")) item->setFont(0, italic);
+        if (bitCol >= 0) {
+            item->setForeground(bitCol, UiColor::muted());
+            // "B3  NAME" at bit 5: the name was written for another bit.
+            const QRegularExpressionMatch m = bitName.match(doc.node(i).value(QStringLiteral("name")));
+            if (m.hasMatch() && m.captured(1) != item->text(bitCol)) {
+                item->setForeground(bitCol, UiColor::warning());
+                item->setToolTip(bitCol, tr("Its name says bit %1").arg(m.captured(1)));
+            }
+        }
+    }
+    // The blank last row: typing into it adds one.
+    if (m_editingTable) {
+        auto *blank = new QTreeWidgetItem(m_members);
+        blank->setData(0, kNodeRole, kNewRow);
+        blank->setFlags(Qt::ItemIsSelectable | Qt::ItemIsEnabled | editable);
+        const QString next = SchemaEdit::nextValue(doc, m_container);
+        for (int k = 0; k < m_columns.size(); ++k) {
+            const QString col = m_columns.at(k);
+            const QString typed = m_pending.value(col);
+            blank->setData(k, kRealRole, typed);
+            if (k == signedCol) {
+                blank->setCheckState(k, typed == QLatin1String("true") ? Qt::Checked : Qt::Unchecked);
+                continue;
+            }
+            if (!typed.isEmpty()) {
+                blank->setText(k, typed);
+                continue;
+            }
+            QString hint;
+            if (col == QLatin1String("value") || col == QLatin1String("id")) hint = next;
+            else if (col == QLatin1String("bit")) hint = QString::number(c.children.size());
+            else if (col == QLatin1String("label") || col == QLatin1String("name")) hint = tr("type to add…");
+            blank->setText(k, hint);
+            blank->setFont(k, italic);
+            blank->setForeground(k, UiColor::muted());
+        }
+        blank->setToolTip(0, tr("Type into this row to add one; it is staged once it has what it needs"));
+    }
+    QStringList info;
+    const QString name = c.value(QStringLiteral("name"));
+    if (c.tag == QLatin1String("enum")) {
+        int users = 0;
+        for (int f : doc.all(QStringLiteral("field"))) {
+            if (doc.node(f).value(QStringLiteral("enum")) == name) ++users;
+        }
+        info << tr("Used by %n field(s)", nullptr, users);
+        info << tr("The first value that matches is shown; \"otherwise\" in Value names every other value");
+    } else if (c.tag == QLatin1String("flagtable")) {
+        const QStringList readers = SchemaEdit::flagReaders(doc, name);
+        info << tr("Bit 0 is the table's first flag");
+        info << (readers.isEmpty() ? tr("No <flags> reads it") : tr("Read by %1").arg(readers.join(QStringLiteral(", "))));
+        info << tr("Test cases and filters match flags by name: a renamed flag stops matching them");
+    } else {
+        info << tr("Each id's size, sign and name; the order does not matter");
+    }
+    return info;
+}
+
+void SchemaEditorWindow::memberEdited(QTreeWidgetItem *item, int column)
+{
+    if (!m_editingTable || !item || column < 0 || column >= m_columns.size()) return;
+    const int node = item->data(0, kNodeRole).toInt();
+    const QString col = m_columns.at(column);
+    const QString text = col == QLatin1String("signed") ? (item->checkState(column) == Qt::Checked ? QStringLiteral("true") : QString())
+                                                         : item->text(column);
+    if (text == item->data(column, kRealRole).toString()) return;
+    // Queued: the edit refills this tree, and the delegate is still committing.
+    QTimer::singleShot(0, this, [this, node, col, text]() {
+        if (node == kNewRow) typeNewRow(col, text);
+        else editEntry(node, col, text);
+    });
+}
+
+bool SchemaEditorWindow::editEntry(int entry, const QString &column, const QString &text)
+{
+    QString why;
+    const bool ok = m_session.setEntryCell(entry, column, text, &why);
+    showResult(ok, why);
+    if (!ok) scheduleRefresh();   // the cell shows what the file has again
+    return ok;
+}
+
+bool SchemaEditorWindow::typeNewRow(const QString &column, const QString &text)
+{
+    if (m_container <= 0 || !SchemaEdit::isTable(m_session.doc().node(m_container).tag) || m_session.readOnly()) return false;
+    if (m_pendingTable != m_container) {
+        m_pending.clear();
+        m_pendingTable = m_container;
+    }
+    if (text.trimmed().isEmpty()) m_pending.remove(column);
+    else m_pending.insert(column, text);
+    QString why;
+    int node = -1;
+    const int table = m_container;
+    if (!m_session.addEntry(table, m_pending, &node, &why)) {
+        // Not yet enough ("Type its label"), or refused: the row stays as typed.
+        if (!m_pending.isEmpty()) m_status->warn(tr("New row: %1").arg(why));
+        scheduleRefresh();
+        return false;
+    }
+    m_pending.clear();
+    reselect(node, {});
+    showResult(true, QString());
+    flagNotes(table, m_session.undoText());
+    return true;
+}
+
+void SchemaEditorWindow::startNewRow()
+{
+    if (!m_editingTable) return;
+    for (int i = 0; i < m_members->topLevelItemCount(); ++i) {
+        QTreeWidgetItem *item = m_members->topLevelItem(i);
+        if (item->data(0, kNodeRole).toInt() != kNewRow) continue;
+        int col = int(m_columns.indexOf(QStringLiteral("label")));
+        if (col < 0) col = int(m_columns.indexOf(QStringLiteral("name")));
+        m_members->setCurrentItem(item, std::max(0, col));
+        m_members->scrollToItem(item);
+        m_members->setFocus();
+        m_members->editItem(item, std::max(0, col));
+        return;
+    }
+}
+
+bool SchemaEditorWindow::pasteRows(const QString &text, bool replace)
+{
+    if (m_container <= 0 || !SchemaEdit::isTable(m_session.doc().node(m_container).tag)) return false;
+    QStringList problems;
+    const QVector<SchemaEdit::TableRow> rows = SchemaEdit::parseRows(m_session.doc(), m_container, text, replace, &problems);
+    const int table = m_container;
+    const QVector<int> path = m_session.doc().pathOf(table);
+    QString why;
+    const bool ok = m_session.applyRows(table, rows, replace, &why);
+    if (ok) reselect(-1, path);
+    showResult(ok, why);
+    if (ok && !problems.isEmpty()) {
+        m_status->warn(tr("Staged: %1. %n line(s) not used: %2", nullptr, int(problems.size()))
+                           .arg(m_session.undoText(), problems.mid(0, 3).join(QStringLiteral("; "))));
+    }
+    if (ok) flagNotes(table, m_session.undoText());
+    return ok;
+}
+
+void SchemaEditorWindow::pasteDialog()
+{
+    if (m_session.readOnly() || m_container <= 0 || !SchemaEdit::isTable(m_session.doc().node(m_container).tag)) return;
+    SchemaPasteDialog dlg(m_session, m_container, this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    pasteRows(dlg.textEdit()->toPlainText(), dlg.replace());
+}
+
+void SchemaEditorWindow::flagNotes(int table, const QString &done)
+{
+    const SchemaDoc::Document &doc = m_session.doc();
+    if (table <= 0 || table >= doc.count() || doc.node(table).tag != QLatin1String("flagtable")) return;
+    int fewest = -1;
+    const QStringList readers = SchemaEdit::flagReaders(doc, doc.node(table).value(QStringLiteral("name")), &fewest);
+    const int flags = int(doc.node(table).children.size());
+    if (fewest >= 0 && flags > fewest) {
+        m_status->warn(tr("Staged: %1. The table has %2 flags, but %3 reads %4 bits: bit %4 on is never shown.")
+                           .arg(done).arg(flags).arg(readers.first().section(QLatin1Char(' '), 0, 1)).arg(fewest));
+    }
+}
+
+bool SchemaEditorWindow::moveInSelected()
+{
+    if (m_selected <= 0 || m_session.readOnly()) return false;
+    QString why;
+    int node = -1;
+    const bool ok = m_session.moveIn(m_selected, &node, &why);
+    if (ok) reselect(node, {});
+    showResult(ok, why);
+    return ok;
+}
+
+bool SchemaEditorWindow::moveOutSelected()
+{
+    if (m_selected <= 0 || m_session.readOnly()) return false;
+    QString why;
+    int node = -1;
+    const bool ok = m_session.moveOut(m_selected, &node, &why);
+    if (ok) reselect(node, {});
+    showResult(ok, why);
+    return ok;
 }
 
 QWidget *SchemaEditorWindow::makeEditor(int node, const AttrSpec &spec, bool present, const QString &value)
@@ -961,6 +1195,20 @@ void SchemaEditorWindow::updateActions()
         m_cDeleteButton->setEnabled(!ro && box);
         m_cUpButton->setEnabled(!ro && hasKind(-1));
         m_cDownButton->setEnabled(!ro && hasKind(+1));
+        // Phase 4: a table's rows are typed or pasted; a member moves between levels.
+        const bool table = box && SchemaEdit::isTable(doc.node(m_container).tag);
+        m_addButton->setVisible(!table);
+        m_rowButton->setVisible(table);
+        m_pasteButton->setVisible(table);
+        m_rowButton->setEnabled(!ro);
+        m_pasteButton->setEnabled(!ro);
+        m_inButton->setVisible(body);
+        m_outButton->setVisible(body);
+        QString inWhy, outWhy;
+        m_inButton->setEnabled(!ro && memberOnly && SchemaEdit::planMoveIn(doc, m_selected, nullptr, nullptr, &inWhy));
+        m_outButton->setEnabled(!ro && memberOnly && SchemaEdit::planMoveOut(doc, m_selected, nullptr, nullptr, &outWhy));
+        m_inButton->setToolTip(m_inButton->isEnabled() || inWhy.isEmpty() ? tr("Into the condition, repeat or group right above it, else below it (Alt+Right)") : inWhy);
+        m_outButton->setToolTip(m_outButton->isEnabled() || outWhy.isEmpty() ? tr("Out of the condition, repeat or group it is in (Alt+Left)") : outWhy);
         m_subpacketButton->setVisible(box && doc.node(m_container).tag == QLatin1String("struct"));
         m_subpacketButton->setEnabled(!ro);
     }
@@ -1098,6 +1346,9 @@ bool SchemaEditorWindow::deleteSelected()
     if (m_selected < 0 || m_session.readOnly()) return false;
     if (SchemaEdit::isContainer(doc, m_selected)) return deleteContainer();
     const QVector<int> path = doc.pathOf(m_selected);
+    const int parent = doc.node(m_selected).parent;
+    const bool shiftsFlags = doc.node(parent).tag == QLatin1String("flagtable")
+                             && doc.node(parent).children.indexOf(m_selected) + 1 < doc.node(parent).children.size();
     QString why;
     const bool ok = m_session.remove(m_selected, &why);
     if (ok) {
@@ -1108,6 +1359,9 @@ bool SchemaEditorWindow::deleteSelected()
         reselect(sel, {});
     }
     showResult(ok, why);
+    if (ok && shiftsFlags) {
+        m_status->warn(tr("Staged: %1. Every flag after it now names the bit below the one it named.").arg(m_session.undoText()));
+    }
     return ok;
 }
 
@@ -1117,9 +1371,11 @@ bool SchemaEditorWindow::moveSelected(int delta)
     if (SchemaEdit::isContainer(m_session.doc(), m_selected)) return moveContainer(delta);
     QString why;
     int node = -1;
+    const bool flag = m_session.doc().node(m_selected).tag == QLatin1String("flag");
     const bool ok = m_session.move(m_selected, delta, &node, &why);
     if (ok) reselect(node, {});
     showResult(ok, why);
+    if (ok && flag) m_status->warn(tr("Staged: %1. It and its neighbour swapped bits.").arg(m_session.undoText()));
     return ok;
 }
 
@@ -1140,10 +1396,11 @@ void SchemaEditorWindow::addElement()
     if (m_session.readOnly() || m_selected < 0) return;
     const SchemaDoc::Document &doc = m_session.doc();
     const QString ct = doc.node(doc.container(m_selected)).tag;
-    if (ct != QLatin1String("packet") && ct != QLatin1String("struct")) {
-        m_status->warn(tr("Enum values, flags and events are added in the next phase; Duplicate works on them now"));
+    if (SchemaEdit::isTable(ct)) {
+        startNewRow();
         return;
     }
+    if (ct != QLatin1String("packet") && ct != QLatin1String("struct")) return;
     SchemaElementDialog dlg(m_session, m_selected, this);
     if (dlg.exec() != QDialog::Accepted) return;
     insertElement(dlg.anchor(), dlg.place(), dlg.element());
@@ -1284,7 +1541,9 @@ void SchemaEditorWindow::memberMenu(const QPoint &pos)
         if (node != m_selected) selectNode(node);
     }
     QMenu menu(this);
-    for (QToolButton *b : { m_addButton, m_duplicateButton, m_upButton, m_downButton, m_deleteButton }) {
+    for (QToolButton *b : { m_addButton, m_rowButton, m_pasteButton, m_duplicateButton, m_upButton, m_downButton, m_inButton,
+                            m_outButton, m_deleteButton }) {
+        if (b->isHidden()) continue;
         QAction *a = menu.addAction(b->text(), b, &QToolButton::click);
         a->setEnabled(b->isEnabled());
         a->setToolTip(b->toolTip());

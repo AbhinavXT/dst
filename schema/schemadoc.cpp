@@ -418,14 +418,16 @@ QByteArray Document::withInserted(int anchor, Place place, const QString &line, 
     const Node &a = m_nodes.at(anchor);
     int pos = -1;
     QByteArray indent;
-    if (place == Place::Before || place == Place::After) {
+    if (place == Place::Before || place == Place::After || place == Place::BeforeBlock) {
         if (a.parent < 0) {
             if (why) *why = QStringLiteral("Nothing goes beside the root element");
             return QByteArray();
         }
         int from = 0, to = 0;
-        if (!lineSpan(anchor, &from, &to, why)) return QByteArray();
-        pos = place == Place::Before ? from : to;
+        if (place == Place::BeforeBlock ? !blockSpan(anchor, &from, &to, why) : !lineSpan(anchor, &from, &to, why)) {
+            return QByteArray();
+        }
+        pos = place == Place::After ? to : from;
         indent = indentOf(anchor);
     } else if (place == Place::LastChild && !a.children.isEmpty()) {
         return withInserted(a.children.last(), Place::After, line, columnsFrom, at, why);
@@ -561,6 +563,88 @@ QByteArray Document::withoutNode(int node, QString *why) const
     int from = 0, to = 0;
     if (!lineSpan(node, &from, &to, why)) return QByteArray();
     return m_text.left(from) + m_text.mid(to);
+}
+
+int Document::ownCommentStart(int node) const
+{
+    int f = 0, t = 0, bf = 0, bt = 0;
+    if (!lineSpan(node, &f, &t) || !blockSpan(node, &bf, &bt) || bf == f) return -1;
+    // What follows it: its own comment only when no sibling comes straight after.
+    if (t >= m_text.size()) return bf;
+    int nl = m_text.indexOf('\n', t);
+    if (nl < 0) nl = m_text.size();
+    const QByteArray next = m_text.mid(t, nl - t).trimmed();
+    if (next.isEmpty() || next.startsWith("</") || next.startsWith("<!--")) return bf;
+    return -1;
+}
+
+QByteArray Document::withoutMember(int node, QString *why, bool *tookComment) const
+{
+    if (tookComment) *tookComment = false;
+    if (node <= 0) {
+        if (why) *why = QStringLiteral("The root element stays");
+        return QByteArray();
+    }
+    int from = 0, to = 0;
+    if (!lineSpan(node, &from, &to, why)) return QByteArray();
+    const int c = ownCommentStart(node);
+    if (c >= 0) {
+        from = c;
+        if (tookComment) *tookComment = true;
+    }
+    return m_text.left(from) + m_text.mid(to);
+}
+
+QByteArray Document::withRelocated(int node, int anchor, Place place, int *at, QString *why) const
+{
+    if (node <= 0 || anchor < 0 || anchor >= m_nodes.size()) return QByteArray();
+    for (int k = anchor; k >= 0; k = m_nodes.at(k).parent) {
+        if (k == node) {
+            if (why) *why = QStringLiteral("It cannot go inside itself");
+            return QByteArray();
+        }
+    }
+    int f = 0, t = 0;
+    if (!lineSpan(node, &f, &t, why)) return QByteArray();
+    // Its lines without its own indent: withInserted() puts them under the new one.
+    const QByteArray indent = indentOf(node);
+    QStringList lines;
+    for (QByteArray l : m_text.mid(f, t - f).split('\n')) {
+        if (l.endsWith('\r')) l.chop(1);
+        if (l.startsWith(indent)) l = l.mid(indent.size());
+        else while (!l.isEmpty() && (l.at(0) == ' ' || l.at(0) == '\t')) l.remove(0, 1);
+        lines << QString::fromUtf8(l);
+    }
+    while (!lines.isEmpty() && lines.last().isEmpty()) lines.removeLast();
+    Document rest;
+    QString err;
+    if (!rest.parse(m_text.left(f) + m_text.mid(t), &err)) {
+        if (why) *why = err;
+        return QByteArray();
+    }
+    int anchorStart = m_nodes.at(anchor).start;
+    if (anchorStart >= t) anchorStart -= t - f;
+    const int a2 = rest.nodeAt(anchorStart);
+    if (a2 < 0) {
+        if (why) *why = QStringLiteral("Lost the place it was to go");
+        return QByteArray();
+    }
+    return rest.withInserted(a2, place, lines.join(QLatin1Char('\n')), -1, at, why);
+}
+
+QByteArray Document::withReplacedElement(int node, const QString &line, int columnsFrom, QString *why) const
+{
+    const Node &n = m_nodes.at(node);
+    if (!n.selfClosing || m_text.mid(n.start, n.end - n.start).contains('\n')) {
+        if (why) *why = QStringLiteral("line %1: <%2> is not one empty tag on one line; edit the file by hand").arg(n.line).arg(n.tag);
+        return QByteArray();
+    }
+    const QByteArray indent = indentOf(node);
+    const bool atLineStart = n.start - indent.size() == 0 || m_text.at(n.start - indent.size() - 1) == '\n';
+    QHash<QString, int> cols;
+    if (atLineStart) cols = attrColumns(m_text, m_nodes.at(columnsFrom >= 0 && columnsFrom < m_nodes.size() ? columnsFrom : node));
+    const QString text = aligned(QString::fromUtf8(indent), line, cols).mid(indent.size());
+    return m_text.left(n.start) + text.toUtf8() + m_text.mid(n.end);
 }
 
 QByteArray Document::withMoved(int node, int delta, int *at, QString *why) const

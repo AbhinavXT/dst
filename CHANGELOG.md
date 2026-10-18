@@ -11,6 +11,180 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-311"></a>
+## Session 311 — Schema Editor, phase 4: enum values, flags and events in a grid; paste; move between levels
+
+Phase 4 of the editor Abhinav asked for (session 308). Scope agreed: enum
+values, flags and events typed into an **editable grid** (not a dialog per
+entry), plus four extras: **paste a table**, **a field's own comment goes
+when it is deleted**, **move between levels**, **a missing top-level section
+is made**.
+
+**What the operator sees.**
+- **An enum, flag table or event table selected:** the members pane is a
+  grid.
+  - **Enum:** Value | From | To | Label | Formula | Unit.
+  - **Flag table:** Bit | Name. Bit is the flag's place in the table and
+    cannot be typed.
+  - **Event table:** Id | Name | Bytes | Signed (a check box).
+  - A cell is edited in place (double-click, F2 or just type) and staged
+    like any other edit, with an undo text such as
+    `locoMode › 1: label … → …`.
+  - **Value → range:** typing From or To on a value makes it a range,
+    rewritten in the file's order (`<map from="3" to="5" label=…/>`).
+    Typing a Value makes it one value again. Typing `otherwise` makes it
+    the catch-all.
+- **The blank last row adds one.** It offers the next value (one past the
+  highest value or range end) or event id, in muted italics. What is typed
+  is kept until the row has what it needs. For an enum, a label alone is
+  enough: it takes the offered value. Until then the status line says what
+  is missing ("New row: Type its label"). A new enum value goes above a
+  final "otherwise". **＋ Row** (Insert) opens the row; Add is hidden on
+  tables.
+- **Paste…** (two spreadsheet columns, or lines from a SIF annexure):
+  - **Enum:** `3  Spare`, `3<Tab>Spare`, `1..50 label`,
+    `otherwise rsvd(%v)`. A line with no number takes the one after the
+    line before.
+  - **Flags:** one name per line, or `bit<Tab>name`. A stated bit that
+    would not be its bit is listed.
+  - **Events:** `id name [bytes] [signed]`, or tab-separated in that order.
+  - A preview shows each row and what it does: new, `label A → B`, or the
+    same as now (greyed). Lines not understood and repeats are listed. OK
+    reads "add 2, change 1".
+  - **Replace the whole table** makes every row new.
+  - Everything is staged as one step.
+- **Flags say what they do to bits:**
+  - A flag deleted mid-table: "Every flag after it now names the bit below
+    the one it named".
+  - A flag moved: "swapped bits".
+  - A flag past the bits any `<flags>` reads: "dmiAlarm has 72 flags, but
+    DLLOG alarm_code reads 71 bits".
+  - A `B3  NAME` flag sitting at another bit shows its Bit cell in the
+    warning colour.
+  - The header says who reads the table, and that test cases and filters
+    match flags by name.
+- **⇥ In / ⇤ Out** (Alt+→ / Alt+←) on a packet's or struct's member:
+  - **In** puts it into the condition, repeat or group right above it (as
+    the last member), else the one right below it (as the first).
+  - **Out** takes it out of the one it is in: above it if it was first,
+    below it otherwise.
+  - Its lines are re-indented for where they land.
+  - A repeat or group reads only fields and pads (the decoder skips
+    anything else), so nothing else goes in. Each button's tooltip says why
+    it is disabled.
+- **Delete takes a member's own comment.** The whole-line comment right
+  above a member goes with it, but only when the comment is its own: a
+  blank line, an end tag or another comment follows the member. When
+  another field follows straight away, the comment is a section label
+  ("LC_GATE_DISP_INFO (body bytes 0-9)", 21 such in kavach.xml) and stays.
+  The undo text says ", and the comment above it".
+- **A missing section is made.** New ▸ Enum (or flag table, event table,
+  CRC definition) in a schema without `<enums>` (…) makes the section in
+  the file's order (enums, crcs, eventtables, flagtables, then the
+  packets): after the section before it, else above the first packet and
+  its comment. The undo text says "(in a new <eventtables> section)".
+
+**Checks** (refused with the reason, nothing staged), from the decoder's own
+reading of the tables:
+- An enum value named twice. The first map that matches wins, so the
+  second never shows.
+- A range named wholly above it, a range that runs backwards or has no end,
+  two "otherwise".
+- An event id twice. The table is a hash, so the later id replaces the
+  first.
+- A flag with no name.
+- `entryProblems()`, like `clashes()`, refuses only new ones. The shipped
+  file has none.
+
+**How.**
+- `SchemaDoc`:
+  - `Place::BeforeBlock`;
+  - `ownCommentStart` and `withoutMember`;
+  - `withRelocated` (lines out, re-indented, back in);
+  - `withReplacedElement` (an entry's tag rewritten in a sibling's
+    columns).
+- `SchemaEdit`:
+  - `isTable`, `entryColumns` / `entryHeader` / `entryEditable` /
+    `entryText`, `nextValue`, `entryLabel`, `entryProblems`,
+    `flagReaders`, `parseRows`;
+  - `movableInto`, `planMoveIn` / `planMoveOut`;
+  - `Session::setAttributes` / `setEntryCell` / `previewEntry` /
+    `addEntry` / `applyRows` / `moveIn` / `moveOut`;
+  - `remove()` takes the own comment; `previewContainer()` makes a missing
+    section.
+- The window: an item delegate that edits only typeable cells, with the
+  blank row's placeholder never becoming its value. The pending row, ＋ Row,
+  Paste…, ⇥ In / ⇤ Out, and the flag notes.
+- New `schemapastedialog.{h,cpp}`.
+
+**Files.**
+- New: `schemapastedialog.{h,cpp}`, `tests/test_session311.cpp`.
+- Changed:
+  - `schema/schemadoc.{h,cpp}`, `schema/schemaedit.{h,cpp}`;
+  - `schemaeditorwindow.{h,cpp}`;
+  - `dlcore.pri`, `tests/tests.pro`;
+  - `tests/screenshot_main.cpp` (`SHOT_WINDOW=schemagrid`, `schemaflags`,
+    `schemapaste`).
+
+**Tests.** `session311`, 94 checks, on the real kavach.xml and real frames:
+- **Comments:** src_threats' comment is its own and goes, and undo gives
+  the file back. lc.auto_whistle's heads a run and stays.
+- **Moves:**
+  - LSRP MAC_CODE goes into the even-frame condition. On the 11 real
+    @lsrp frames it then shows on the even frame numbers only, the same
+    value as before. Out again gives the file back, byte for byte.
+  - DOP1's `a` goes out of the pin repeat. A real @dop1 frame reads it
+    once, from bit 0. In again gives the file back.
+  - Refusals: a note into a repeat, a when into a group, a note with
+    nothing to go into.
+- **The grid:**
+  - The LOCO_MODE of a real @arp frame relabelled: the frame reads the new
+    label.
+  - pktDir 3 → range 3–5 → 3 → otherwise. From after To, and a value
+    named twice, are refused.
+  - New rows: the label is asked for. A label alone takes value 4, after 3,
+    in the file's columns. A new value goes above "otherwise".
+  - A flag at bit 6. An event with id next and 1 byte; its id retyped to
+    one in use is refused.
+  - RADIO_1_HEALTH renamed: a real @nmshlth frame reports the new name.
+- **Paste:**
+  - same / changed / new / numbered on / range / otherwise; a repeat and a
+    line with no label listed.
+  - One step "pktDir: pasted (4 new, 1 changed)". The decoder reads 7 as
+    reserved, 12 as rsvd(12).
+  - Replace. Flags with a disagreeing stated bit. Events with bytes and
+    signed.
+- **Sections:** no `<eventtables>`: made after `</crcs>` at the sections'
+  indent, and the decoder loads it. No `<enums>`: made first.
+- **The window:**
+  - In / Out on MAC_CODE.
+  - pktDir's grid: six columns and the blank row offering 4. Value 7 kept
+    pending, then its label staged. A cell edited through the tree's own
+    commit. A refused value. A paste.
+  - dmiAlarm's 72nd flag warns. Deleting a flag says the bits shift.
+  - The paste dialog's preview and OK text.
+  - Read-only: no blank row, no editable cell.
+
+Rendered with the screenshot harness (grid with a pending row, light; flag
+table and paste dialog, dark) and looked at.
+
+**Gate:** Qt 6 and Qt 5.15 green, 347 suites / 9098 checks, 0 failed; 15 validators; menu audit 185 ok; smoke.
+
+**Not tested / not done:**
+- **Not clicked through by hand:**
+  - typing into cells with the keyboard (the suite sets a cell's text, which
+    goes through the same commit), F2, and the editor closing;
+  - the Paste dialog's `exec()` from the window;
+  - the right-click menu's new entries.
+- **Moving between levels goes one level at a time.** A member's own
+  comment stays where it was when it moves (it goes only on delete).
+- **Renaming a flag or event** changes no test case, filter, fieldmap.json
+  or fielddocs.json that names it. The header says so for flags.
+- **Paste into an enum** treats `3 - 5 label` as a range: a label starting
+  with a number after a dash reads as a range end.
+
+---
+
 <a id="session-310"></a>
 ## Session 310 — Schema Editor, phase 3: whole packets, structs, enums and tables
 
