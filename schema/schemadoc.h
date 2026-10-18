@@ -44,6 +44,7 @@ struct Node {
     int           start = 0;      // the '<'
     int           tagEnd = 0;     // one past the start tag's '>'
     int           end = 0;        // one past the end tag (== tagEnd if self-closing)
+    int           closeStart = 0; // the end tag's '<' (== tagEnd if self-closing)
     bool          selfClosing = false;
     int           line = 0;       // 1-based line of the '<'
     int           parent = -1;
@@ -84,6 +85,42 @@ public:
 
     // The source text of a node's start tag, for display.
     QString startTag(int node) const;
+
+    // ---- structure (session 308, phase 2) ---------------------------------
+    // Where a new element goes, relative to an anchor element.
+    enum class Place { Before, After, FirstChild, LastChild };
+
+    // The whole lines an element owns: from the start of its first line to
+    // just past the line break of its last, with a comment on the same line
+    // after it. False (*why) when another element shares one of those lines,
+    // which a line edit would cut through.
+    bool lineSpan(int node, int *from, int *to, QString *why = nullptr) const;
+    // The whitespace before an element on its line.
+    QByteArray indentOf(int node) const;
+    // "\r\n" when the file's lines end that way, else "\n".
+    QByteArray lineEnd() const;
+
+    // The text with `line` (one element, no indent, no line break) added as
+    // a line of its own. *at receives the byte offset of its '<' in the new
+    // text. `columnsFrom` (an element, or -1) lines its attributes up with
+    // that element's: the first under its first, the rest under the same name.
+    QByteArray withInserted(int anchor, Place place, const QString &line, int columnsFrom,
+                            int *at, QString *why) const;
+    // The text without the element's lines (its children go with it).
+    QByteArray withoutNode(int node, QString *why) const;
+    // The element's lines swapped with its previous (delta -1) or next (+1)
+    // sibling element's. *at receives its new start offset.
+    QByteArray withMoved(int node, int delta, int *at, QString *why) const;
+    // The element's lines again, right after it. *at receives the copy's start.
+    QByteArray withDuplicated(int node, int *at, QString *why) const;
+
+    // The element whose '<' is at `offset`, or -1.
+    int nodeAt(int offset) const;
+    // Child positions from the root: a selection that survives an edit
+    // elsewhere. resolve() clamps to what still exists (the last sibling,
+    // else the parent).
+    QVector<int> pathOf(int node) const;
+    int resolve(const QVector<int> &path) const;
 
 private:
     QByteArray    m_text;

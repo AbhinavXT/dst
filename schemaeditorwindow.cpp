@@ -1,6 +1,7 @@
 #include "schemaeditorwindow.h"
 
 #include "programdir.h"
+#include "schemaelementdialog.h"
 #include "statusline.h"
 #include "uicolors.h"
 #include "windowgeometry.h"
@@ -24,6 +25,7 @@
 #include <QMessageBox>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QShortcut>
 #include <QSpinBox>
 #include <QSplitter>
 #include <QTextEdit>
@@ -225,13 +227,49 @@ void SchemaEditorWindow::buildUi()
     m_members->setAlternatingRowColors(true);
     midLay->addWidget(m_membersTitle);
     midLay->addWidget(m_membersInfo);
+    // Phase 2: the structure commands, on the selected member.
+    auto *tools = new QHBoxLayout;
+    tools->setContentsMargins(0, 2, 0, 2);
+    auto tool = [&](const QString &text, const QString &tip) {
+        auto *b = new QToolButton(mid);
+        b->setText(text);
+        b->setToolTip(tip);
+        b->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        tools->addWidget(b);
+        return b;
+    };
+    m_addButton = tool(tr("＋ Add…"), tr("A field, pad or note, beside or inside the selection (Insert)"));
+    m_duplicateButton = tool(tr("Duplicate"), tr("A copy right after it, named …_2 (Ctrl+D)"));
+    m_upButton = tool(tr("▲ Up"), tr("Swap with the element before it (Alt+Up)"));
+    m_downButton = tool(tr("▼ Down"), tr("Swap with the element after it (Alt+Down)"));
+    m_deleteButton = tool(tr("Delete"), tr("Remove it, and what is inside it (Delete). Undo brings it back."));
+    tools->addStretch(1);
+    midLay->addLayout(tools);
     midLay->addWidget(m_members, 1);
+    connect(m_addButton, &QToolButton::clicked, this, &SchemaEditorWindow::addElement);
+    connect(m_duplicateButton, &QToolButton::clicked, this, [this]() { duplicateSelected(); });
+    connect(m_upButton, &QToolButton::clicked, this, [this]() { moveSelected(-1); });
+    connect(m_downButton, &QToolButton::clicked, this, [this]() { moveSelected(+1); });
+    connect(m_deleteButton, &QToolButton::clicked, this, [this]() { deleteSelected(); });
+    auto key = [this](const QKeySequence &seq, const std::function<void()> &fn) {
+        auto *sc = new QShortcut(seq, m_members);
+        sc->setContext(Qt::WidgetShortcut);
+        connect(sc, &QShortcut::activated, this, fn);
+    };
+    key(QKeySequence::Delete, [this]() { deleteSelected(); });
+    key(QKeySequence(Qt::Key_Insert), [this]() { addElement(); });
+    key(QKeySequence(QStringLiteral("Ctrl+D")), [this]() { duplicateSelected(); });
+    key(QKeySequence(QStringLiteral("Alt+Up")), [this]() { moveSelected(-1); });
+    key(QKeySequence(QStringLiteral("Alt+Down")), [this]() { moveSelected(+1); });
+    m_members->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_members, &QTreeWidget::customContextMenuRequested, this, &SchemaEditorWindow::memberMenu);
     connect(m_members, &QTreeWidget::currentItemChanged, this, [this](QTreeWidgetItem *item) {
         if (!item || m_refreshQueued) return;
         const int node = item->data(0, kNodeRole).toInt();
         if (node > 0 && node != m_selected) {
             m_selected = node;
             fillForm();
+            updateActions();
         }
     });
 
@@ -843,6 +881,23 @@ void SchemaEditorWindow::updateActions()
     m_redoButton->setEnabled(m_session.canRedo());
     m_redoButton->setToolTip(m_session.canRedo() ? tr("Redo: %1").arg(m_session.redoText()) : QString());
     m_discardButton->setEnabled(m_session.dirty());
+    {
+        const SchemaDoc::Document &doc = m_session.doc();
+        const bool member = m_selected > 0 && SchemaEdit::memberProblem(doc, m_selected).isEmpty();
+        int pos = -1, siblings = 0;
+        if (member) {
+            const QVector<int> &kids = doc.node(doc.node(m_selected).parent).children;
+            pos = kids.indexOf(m_selected);
+            siblings = kids.size();
+        }
+        const int c = m_selected > 0 ? doc.container(m_selected) : -1;
+        const bool body = c > 0 && (doc.node(c).tag == QLatin1String("packet") || doc.node(c).tag == QLatin1String("struct"));
+        m_addButton->setEnabled(!ro && body);
+        m_duplicateButton->setEnabled(!ro && member);
+        m_deleteButton->setEnabled(!ro && member);
+        m_upButton->setEnabled(!ro && member && pos > 0);
+        m_downButton->setEnabled(!ro && member && pos >= 0 && pos + 1 < siblings);
+    }
     m_saveButton->setEnabled(m_session.dirty() && !ro);
     m_changesLabel->setText(m_session.dirty() ? tr("%n change(s) not saved", nullptr, m_session.changeCount())
                                               : tr("No unsaved changes"));
@@ -881,6 +936,7 @@ void SchemaEditorWindow::selectNode(int node)
         if (node == c) m_members->setCurrentItem(nullptr);
     }
     fillForm();
+    updateActions();
 }
 
 bool SchemaEditorWindow::selectContainer(const QString &tag, const QString &name)
@@ -920,18 +976,123 @@ bool SchemaEditorWindow::rename(int node, const QString &newName, bool withRefer
 
 bool SchemaEditorWindow::undo()
 {
+    const QVector<int> path = m_session.doc().pathOf(m_selected);
+    const QString what = m_session.undoText();
     if (!m_session.undo()) return false;
-    m_status->say(tr("Undone"));
+    reselect(-1, path);
+    m_status->say(tr("Undone: %1").arg(what));
     scheduleRefresh();
     return true;
 }
 
 bool SchemaEditorWindow::redo()
 {
+    const QVector<int> path = m_session.doc().pathOf(m_selected);
     if (!m_session.redo()) return false;
+    reselect(-1, path);
     m_status->say(tr("Redone: %1").arg(m_session.undoText()));
     scheduleRefresh();
     return true;
+}
+
+void SchemaEditorWindow::reselect(int node, const QVector<int> &oldPath)
+{
+    const SchemaDoc::Document &doc = m_session.doc();
+    int sel = node >= 0 ? node : doc.resolve(oldPath);
+    int c = doc.container(sel);
+    if (sel <= 0 || c < 0 || (doc.node(c).parent != 0 && doc.node(doc.node(c).parent).parent != 0)) {
+        const QVector<int> packets = doc.all(QStringLiteral("packet"));
+        sel = packets.isEmpty() ? -1 : packets.first();
+        c = sel;
+    }
+    // A section (<enums>, <crcs>, ...) with nothing chosen in it: its first entry.
+    static const QStringList sections = { QStringLiteral("enums"), QStringLiteral("crcs"), QStringLiteral("flagtables"),
+                                          QStringLiteral("eventtables") };
+    if (sel > 0 && sections.contains(doc.node(sel).tag)) {
+        sel = doc.node(sel).children.isEmpty() ? -1 : doc.node(sel).children.first();
+        c = sel;
+    }
+    m_selected = sel;
+    m_container = c;
+}
+
+bool SchemaEditorWindow::insertElement(int anchor, SchemaDoc::Document::Place place, const SchemaEdit::NewElement &element)
+{
+    QString why;
+    int node = -1;
+    const bool ok = m_session.insert(anchor, place, element, &node, &why);
+    if (ok) reselect(node, {});
+    showResult(ok, why);
+    return ok;
+}
+
+bool SchemaEditorWindow::deleteSelected()
+{
+    const SchemaDoc::Document &doc = m_session.doc();
+    if (m_selected < 0 || m_session.readOnly()) return false;
+    const QVector<int> path = doc.pathOf(m_selected);
+    QString why;
+    const bool ok = m_session.remove(m_selected, &why);
+    if (ok) {
+        // The element now at its place (the next one), else the one before, else its parent.
+        const SchemaDoc::Document &now = m_session.doc();
+        int sel = now.resolve(path);
+        if (now.pathOf(sel).size() < path.size() || now.container(sel) < 0) sel = now.resolve(path.mid(0, path.size() - 1));
+        reselect(sel, {});
+    }
+    showResult(ok, why);
+    return ok;
+}
+
+bool SchemaEditorWindow::moveSelected(int delta)
+{
+    if (m_selected < 0 || m_session.readOnly()) return false;
+    QString why;
+    int node = -1;
+    const bool ok = m_session.move(m_selected, delta, &node, &why);
+    if (ok) reselect(node, {});
+    showResult(ok, why);
+    return ok;
+}
+
+bool SchemaEditorWindow::duplicateSelected()
+{
+    if (m_selected < 0 || m_session.readOnly()) return false;
+    QString why;
+    int node = -1;
+    const bool ok = m_session.duplicate(m_selected, &node, &why);
+    if (ok) reselect(node, {});
+    showResult(ok, why);
+    return ok;
+}
+
+void SchemaEditorWindow::addElement()
+{
+    if (m_session.readOnly() || m_selected < 0) return;
+    const SchemaDoc::Document &doc = m_session.doc();
+    const QString ct = doc.node(doc.container(m_selected)).tag;
+    if (ct != QLatin1String("packet") && ct != QLatin1String("struct")) {
+        m_status->warn(tr("Enum values, flags and events are added in the next phase; Duplicate works on them now"));
+        return;
+    }
+    SchemaElementDialog dlg(m_session, m_selected, this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    insertElement(dlg.anchor(), dlg.place(), dlg.element());
+}
+
+void SchemaEditorWindow::memberMenu(const QPoint &pos)
+{
+    if (QTreeWidgetItem *item = m_members->itemAt(pos)) {
+        const int node = item->data(0, kNodeRole).toInt();
+        if (node != m_selected) selectNode(node);
+    }
+    QMenu menu(this);
+    for (QToolButton *b : { m_addButton, m_duplicateButton, m_upButton, m_downButton, m_deleteButton }) {
+        QAction *a = menu.addAction(b->text(), b, &QToolButton::click);
+        a->setEnabled(b->isEnabled());
+        a->setToolTip(b->toolTip());
+    }
+    menu.exec(m_members->viewport()->mapToGlobal(pos));
 }
 
 void SchemaEditorWindow::askRename(int node, const QString &newName)

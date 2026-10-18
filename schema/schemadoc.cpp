@@ -170,6 +170,7 @@ bool Document::parse(const QByteArray &text, QString *error)
                                                         : QStringLiteral("<%1>").arg(m_nodes.at(stack.last()).tag)));
             }
             m_nodes[stack.last()].end = close + 1;
+            m_nodes[stack.last()].closeStart = i;
             stack.removeLast();
             pendingComment.clear();
             i = close + 1;
@@ -218,6 +219,7 @@ bool Document::parse(const QByteArray &text, QString *error)
         }
         node.tagEnd = j;
         node.end = j;
+        node.closeStart = j;
         node.comment = pendingComment;
         pendingComment.clear();
         node.parent = stack.isEmpty() ? -1 : stack.last();
@@ -321,6 +323,212 @@ QString Document::startTag(int node) const
 {
     const Node &nd = m_nodes.at(node);
     return QString::fromUtf8(m_text.mid(nd.start, nd.tagEnd - nd.start));
+}
+
+
+// -----------------------------------------------------------------------------
+//  Structure
+// -----------------------------------------------------------------------------
+
+QByteArray Document::lineEnd() const
+{
+    const int nl = m_text.indexOf('\n');
+    return nl > 0 && m_text.at(nl - 1) == '\r' ? QByteArrayLiteral("\r\n") : QByteArrayLiteral("\n");
+}
+
+QByteArray Document::indentOf(int node) const
+{
+    const int s = m_nodes.at(node).start;
+    int b = s;
+    while (b > 0 && (m_text.at(b - 1) == ' ' || m_text.at(b - 1) == '\t')) --b;
+    return m_text.mid(b, s - b);
+}
+
+bool Document::lineSpan(int node, int *from, int *to, QString *why) const
+{
+    const Node &n = m_nodes.at(node);
+    int b = n.start;
+    while (b > 0 && (m_text.at(b - 1) == ' ' || m_text.at(b - 1) == '\t')) --b;
+    if (b > 0 && m_text.at(b - 1) != '\n') {
+        if (why) *why = QStringLiteral("line %1: <%2> shares its line with something before it; edit the file by hand").arg(n.line).arg(n.tag);
+        return false;
+    }
+    int e = n.end;
+    while (e < m_text.size() && (m_text.at(e) == ' ' || m_text.at(e) == '\t')) ++e;
+    if (m_text.mid(e, 4) == "<!--") {   // a comment on the same line goes with it
+        const int c = m_text.indexOf("-->", e);
+        const int nl = m_text.indexOf('\n', e);
+        if (c >= 0 && (nl < 0 || c < nl)) {
+            e = c + 3;
+            while (e < m_text.size() && (m_text.at(e) == ' ' || m_text.at(e) == '\t')) ++e;
+        }
+    }
+    if (e < m_text.size() && m_text.at(e) == '\r') ++e;
+    if (e < m_text.size() && m_text.at(e) != '\n') {
+        if (why) *why = QStringLiteral("line %1: <%2> shares its line with something after it; edit the file by hand").arg(n.line).arg(n.tag);
+        return false;
+    }
+    if (e < m_text.size()) ++e;
+    *from = b;
+    *to = e;
+    return true;
+}
+
+namespace {
+
+// Column (from the line start) of each attribute of a one-line start tag,
+// by name, and of the first one under "".
+QHash<QString, int> attrColumns(const QByteArray &text, const Node &n)
+{
+    QHash<QString, int> cols;
+    int ls = n.start;
+    while (ls > 0 && text.at(ls - 1) != '\n') --ls;
+    if (text.mid(n.start, n.tagEnd - n.start).contains('\n')) return cols;
+    for (int k = 0; k < n.attrs.size(); ++k) {
+        const int c = QString::fromUtf8(text.mid(ls, n.attrs.at(k).start - ls)).size();
+        if (k == 0) cols.insert(QString(), c);
+        cols.insert(n.attrs.at(k).name, c);
+    }
+    return cols;
+}
+
+// `line` (an element) with its attributes moved to the columns given.
+QString aligned(const QString &indent, const QString &line, const QHash<QString, int> &cols)
+{
+    if (cols.isEmpty()) return indent + line;
+    Document probe;
+    if (!probe.parse(line.toUtf8()) || probe.count() != 1) return indent + line;
+    const Node &n = probe.node(0);
+    QString out = indent + QLatin1Char('<') + n.tag;
+    for (int k = 0; k < n.attrs.size(); ++k) {
+        const Attr &a = n.attrs.at(k);
+        const int want = k == 0 ? cols.value(QString(), -1) : cols.value(a.name, -1);
+        const int pad = want > out.size() ? want - out.size() : 1;
+        out += QString(pad, QLatin1Char(' ')) + QString::fromUtf8(probe.text().mid(a.start, a.valueEnd + 1 - a.start));
+    }
+    out += QString::fromUtf8(probe.text().mid(n.attrs.isEmpty() ? n.tag.size() + 1 : n.attrs.last().valueEnd + 1));
+    return out;
+}
+
+}  // namespace
+
+QByteArray Document::withInserted(int anchor, Place place, const QString &line, int columnsFrom,
+                                  int *at, QString *why) const
+{
+    const Node &a = m_nodes.at(anchor);
+    int pos = -1;
+    QByteArray indent;
+    if (place == Place::Before || place == Place::After) {
+        if (a.parent < 0) {
+            if (why) *why = QStringLiteral("Nothing goes beside the root element");
+            return QByteArray();
+        }
+        int from = 0, to = 0;
+        if (!lineSpan(anchor, &from, &to, why)) return QByteArray();
+        pos = place == Place::Before ? from : to;
+        indent = indentOf(anchor);
+    } else if (place == Place::LastChild && !a.children.isEmpty()) {
+        return withInserted(a.children.last(), Place::After, line, columnsFrom, at, why);
+    } else if (place == Place::FirstChild && !a.children.isEmpty()) {
+        return withInserted(a.children.first(), Place::Before, line, columnsFrom, at, why);
+    } else {
+        // An element with no children yet: between its start and end tags.
+        if (a.selfClosing) {
+            if (why) *why = QStringLiteral("<%1> is written as one empty tag; give it an end tag by hand first").arg(a.tag);
+            return QByteArray();
+        }
+        int ls = a.closeStart;
+        while (ls > 0 && (m_text.at(ls - 1) == ' ' || m_text.at(ls - 1) == '\t')) --ls;
+        if (ls == 0 || m_text.at(ls - 1) != '\n') {
+            if (why) *why = QStringLiteral("</%1> is not on a line of its own; edit the file by hand").arg(a.tag);
+            return QByteArray();
+        }
+        pos = ls;
+        indent = indentOf(anchor) + "  ";
+    }
+    QHash<QString, int> cols;
+    if (columnsFrom >= 0 && columnsFrom < m_nodes.size()) cols = attrColumns(m_text, m_nodes.at(columnsFrom));
+    const QByteArray text = aligned(QString::fromUtf8(indent), line, cols).toUtf8() + lineEnd();
+    if (pos > m_text.size()) pos = m_text.size();
+    QByteArray out = m_text.left(pos);
+    if (pos == m_text.size() && !out.isEmpty() && !out.endsWith('\n')) out += lineEnd();
+    if (at) *at = out.size() + indent.size();
+    return out + text + m_text.mid(pos);
+}
+
+QByteArray Document::withoutNode(int node, QString *why) const
+{
+    if (node <= 0) {
+        if (why) *why = QStringLiteral("The root element stays");
+        return QByteArray();
+    }
+    int from = 0, to = 0;
+    if (!lineSpan(node, &from, &to, why)) return QByteArray();
+    return m_text.left(from) + m_text.mid(to);
+}
+
+QByteArray Document::withMoved(int node, int delta, int *at, QString *why) const
+{
+    const Node &n = m_nodes.at(node);
+    if (n.parent < 0) return QByteArray();
+    const QVector<int> &sib = m_nodes.at(n.parent).children;
+    const int k = sib.indexOf(node);
+    const int other = k + delta;
+    if (other < 0 || other >= sib.size()) {
+        if (why) *why = delta < 0 ? QStringLiteral("It is already first") : QStringLiteral("It is already last");
+        return QByteArray();
+    }
+    const int first = delta < 0 ? sib.at(other) : node;
+    const int second = delta < 0 ? node : sib.at(other);
+    int f1 = 0, t1 = 0, f2 = 0, t2 = 0;
+    if (!lineSpan(first, &f1, &t1, why) || !lineSpan(second, &f2, &t2, why)) return QByteArray();
+    // first's lines, whatever lies between (comments, blank lines), second's lines.
+    const QByteArray a = m_text.mid(f1, t1 - f1), mid = m_text.mid(t1, f2 - t1), b = m_text.mid(f2, t2 - f2);
+    QByteArray out = m_text.left(f1) + b + mid + a + m_text.mid(t2);
+    // The moved element's start in the new text.
+    const int self0 = delta < 0 ? f2 : f1;            // its lines' start, before
+    const int selfLineStart = delta < 0 ? f1 : f1 + b.size() + mid.size();
+    if (at) *at = selfLineStart + (n.start - self0);
+    return out;
+}
+
+QByteArray Document::withDuplicated(int node, int *at, QString *why) const
+{
+    int from = 0, to = 0;
+    if (!lineSpan(node, &from, &to, why)) return QByteArray();
+    QByteArray copy = m_text.mid(from, to - from);
+    if (!copy.endsWith('\n')) copy = lineEnd() + copy;
+    if (at) *at = to + (m_nodes.at(node).start - from) + (m_text.mid(from, to - from).endsWith('\n') ? 0 : lineEnd().size());
+    return m_text.left(to) + copy + m_text.mid(to);
+}
+
+int Document::nodeAt(int offset) const
+{
+    for (int i = 0; i < m_nodes.size(); ++i) {
+        if (m_nodes.at(i).start == offset) return i;
+    }
+    return -1;
+}
+
+QVector<int> Document::pathOf(int node) const
+{
+    QVector<int> path;
+    for (int k = node; k > 0 && k < m_nodes.size(); k = m_nodes.at(k).parent) {
+        path.prepend(m_nodes.at(m_nodes.at(k).parent).children.indexOf(k));
+    }
+    return path;
+}
+
+int Document::resolve(const QVector<int> &path) const
+{
+    if (m_nodes.isEmpty()) return -1;
+    int at = 0;
+    for (int p : path) {
+        const QVector<int> &kids = m_nodes.at(at).children;
+        if (kids.isEmpty()) return at;
+        at = kids.at(qBound(0, p, int(kids.size()) - 1));
+    }
+    return at;
 }
 
 // -----------------------------------------------------------------------------

@@ -570,25 +570,40 @@ QStringList Session::changes() const
 QString Session::undoText() const { return m_done.isEmpty() ? QString() : m_done.last().what; }
 QString Session::redoText() const { return m_undone.isEmpty() ? QString() : m_undone.last().what; }
 
+QString Session::check(const QByteArray &text, SchemaDoc::Document *parsed) const
+{
+    QString err;
+    if (!parsed->parse(text, &err)) return QObject::tr("The edit would break the XML (%1); not made").arg(err);
+    err = loadProblem(text);
+    if (!err.isEmpty()) return QObject::tr("The decoder would refuse the schema: %1. Not made.").arg(err);
+    // The decoder checks conditions, not these: a count, enum, struct, table
+    // or CRC naming nothing would decode silently wrong.
+    const QStringList before = dangling(m_doc);
+    QStringList fresh;
+    for (const QString &d : dangling(*parsed)) {
+        if (!before.contains(d)) fresh << d;
+    }
+    if (!fresh.isEmpty()) {
+        return QObject::tr("It would leave %1 naming nothing. Not made.").arg(fresh.mid(0, 3).join(QStringLiteral("; ")));
+    }
+    return QString();
+}
+
 bool Session::stage(const QByteArray &text, const QString &what, QString *why, const QString &key)
 {
     if (readOnly()) {
         if (why) *why = QObject::tr("The built-in kavach.xml cannot be changed: make an editable copy first");
         return false;
     }
+    if (text.isEmpty()) return false;   // the caller's edit failed, *why already says why
     if (text == m_doc.text()) {
         if (why) *why = QObject::tr("No change");
         return false;
     }
     SchemaDoc::Document next;
-    QString err;
-    if (!next.parse(text, &err)) {
-        if (why) *why = QObject::tr("The edit would break the XML (%1); not made").arg(err);
-        return false;
-    }
-    err = loadProblem(text);
+    const QString err = check(text, &next);
     if (!err.isEmpty()) {
-        if (why) *why = QObject::tr("The decoder would refuse the schema: %1. Not made.").arg(err);
+        if (why) *why = err;
         return false;
     }
     const bool merge = !key.isEmpty() && !m_done.isEmpty() && m_done.last().key == key && m_undone.isEmpty();
@@ -612,7 +627,10 @@ bool Session::undo()
 {
     if (m_done.isEmpty()) return false;
     const Step s = m_done.takeLast();
-    m_undone.push_back({ m_doc.text(), s.what });
+    Step back;
+    back.text = m_doc.text();
+    back.what = s.what;
+    m_undone.push_back(back);
     m_doc.parse(s.text);
     return true;
 }
@@ -621,7 +639,10 @@ bool Session::redo()
 {
     if (m_undone.isEmpty()) return false;
     const Step s = m_undone.takeLast();
-    m_done.push_back({ m_doc.text(), s.what });
+    Step again;
+    again.text = m_doc.text();
+    again.what = s.what;
+    m_done.push_back(again);
     m_doc.parse(s.text);
     return true;
 }
@@ -736,6 +757,266 @@ bool Session::rename(int node, const QString &newName, bool withReferences, QStr
     QString what = QObject::tr("%1 renamed %2").arg(label(m_doc, node), newName);
     if (refs.size() > 1) what += QObject::tr(" (and %n reference(s))", nullptr, int(refs.size()) - 1);
     return stage(work.text(), what, why);
+}
+
+// -----------------------------------------------------------------------------
+//  Structure
+// -----------------------------------------------------------------------------
+
+QString elementLine(const NewElement &element)
+{
+    QString out = QLatin1Char('<') + element.tag;
+    for (const auto &a : element.attrs) {
+        out += QStringLiteral(" %1=\"%2\"").arg(a.first, SchemaDoc::escape(a.second, '"'));
+    }
+    return out + QStringLiteral("/>");
+}
+
+bool allowedIn(const QString &tag, const QString &parentTag)
+{
+    static const QSet<QString> body = { QStringLiteral("packet"), QStringLiteral("struct"), QStringLiteral("when"),
+                                        QStringLiteral("repeat"), QStringLiteral("group") };
+    if (tag == QLatin1String("field") || tag == QLatin1String("pad")) return body.contains(parentTag);
+    if (tag == QLatin1String("note")) {
+        return parentTag == QLatin1String("packet") || parentTag == QLatin1String("struct") || parentTag == QLatin1String("when");
+    }
+    return false;
+}
+
+int parentFor(const SchemaDoc::Document &doc, int anchor, SchemaDoc::Document::Place place)
+{
+    if (anchor < 0 || anchor >= doc.count()) return -1;
+    return place == SchemaDoc::Document::Place::Before || place == SchemaDoc::Document::Place::After
+               ? doc.node(anchor).parent : anchor;
+}
+
+QString memberProblem(const SchemaDoc::Document &doc, int node)
+{
+    if (node <= 0 || node >= doc.count()) return QObject::tr("Select an element");
+    const int c = doc.container(node);
+    if (c < 0 || c == node) {
+        return QObject::tr("Whole %1s are added and removed in the next phase of the editor")
+            .arg(title(doc.node(node).tag).toLower());
+    }
+    return QString();
+}
+
+QStringList dangling(const SchemaDoc::Document &doc)
+{
+    QSet<QString> declared;   // what conditions and counts may name
+    QHash<QString, QSet<QString>> defs;   // tag -> names
+    for (int i = 0; i < doc.count(); ++i) {
+        const SchemaDoc::Node &n = doc.node(i);
+        const int c = doc.container(i);
+        const QString ct = c >= 0 ? doc.node(c).tag : QString();
+        if ((ct == QLatin1String("packet") || ct == QLatin1String("struct")) && c != i) {
+            if (n.has(QStringLiteral("name"))) declared.insert(n.value(QStringLiteral("name")));
+            if (n.has(QStringLiteral("id"))) declared.insert(n.value(QStringLiteral("id")));
+        }
+        if (n.parent >= 0 && c == i) {
+            const QString key = n.tag == QLatin1String("crc") ? QStringLiteral("crcdef") : n.tag;
+            defs[key].insert(n.value(QStringLiteral("name")));
+        }
+    }
+    QStringList out;
+    for (int i = 0; i < doc.count(); ++i) {
+        const SchemaDoc::Node &n = doc.node(i);
+        auto bad = [&](const QString &attr, const QString &what) {
+            out << QObject::tr("%1 %2=\"%3\" (no such %4)").arg(
+                       doc.container(i) >= 0 ? doc.node(doc.container(i)).value(QStringLiteral("name")) + QStringLiteral(": <") + n.tag + QLatin1Char('>')
+                                            : QLatin1Char('<') + n.tag + QLatin1Char('>'),
+                       attr, n.value(attr), what);
+        };
+        if (n.tag == QLatin1String("repeat") && n.has(QStringLiteral("count"))) {
+            bool num = false;
+            n.value(QStringLiteral("count")).toLongLong(&num);
+            if (!num && !declared.contains(n.value(QStringLiteral("count")))) bad(QStringLiteral("count"), QObject::tr("field"));
+        }
+        if (n.tag == QLatin1String("field") && n.has(QStringLiteral("enum")) && !defs.value(QStringLiteral("enum")).contains(n.value(QStringLiteral("enum")))) {
+            bad(QStringLiteral("enum"), QObject::tr("enum"));
+        }
+        if (n.tag == QLatin1String("case") && !defs.value(QStringLiteral("struct")).contains(n.value(QStringLiteral("struct")))) {
+            bad(QStringLiteral("struct"), QObject::tr("struct"));
+        }
+        if (n.tag == QLatin1String("flags") && !defs.value(QStringLiteral("flagtable")).contains(n.value(QStringLiteral("table")))) {
+            bad(QStringLiteral("table"), QObject::tr("flag table"));
+        }
+        if (n.tag == QLatin1String("eventstream") && !defs.value(QStringLiteral("eventtable")).contains(n.value(QStringLiteral("table")))) {
+            bad(QStringLiteral("table"), QObject::tr("event table"));
+        }
+        if (n.tag == QLatin1String("packet") && n.has(QStringLiteral("crc")) && !defs.value(QStringLiteral("crcdef")).contains(n.value(QStringLiteral("crc")))) {
+            bad(QStringLiteral("crc"), QObject::tr("CRC definition"));
+        }
+    }
+    return out;
+}
+
+bool Session::previewInsert(int anchor, SchemaDoc::Document::Place place, const NewElement &element,
+                            QByteArray *text, int *node, QString *why) const
+{
+    using Place = SchemaDoc::Document::Place;
+    const int parent = parentFor(m_doc, anchor, place);
+    if (parent < 0) {
+        if (why) *why = QObject::tr("Choose where it goes");
+        return false;
+    }
+    const QString parentTag = m_doc.node(parent).tag;
+    if (!allowedIn(element.tag, parentTag)) {
+        if (why) *why = QObject::tr("A %1 does not go inside a %2").arg(title(element.tag).toLower(), title(parentTag).toLower());
+        return false;
+    }
+    const QVector<AttrSpec> specs = specsFor(element.tag, parentTag);
+    for (const auto &a : element.attrs) {
+        if (const AttrSpec *sp = specFor(specs, a.first)) {
+            const QString p = valueProblem(m_doc, *sp, a.second);
+            if (!p.isEmpty()) {
+                if (why) *why = p;
+                return false;
+            }
+        }
+    }
+    if (element.tag != QLatin1String("pad")) {
+        bool named = false;
+        for (const auto &a : element.attrs) named = named || (a.first == QLatin1String("name") && !a.second.trimmed().isEmpty());
+        if (element.tag == QLatin1String("note")) {
+            for (const auto &a : element.attrs) named = named || (a.first == QLatin1String("text") && !a.second.trimmed().isEmpty());
+        }
+        if (!named) {
+            if (why) *why = element.tag == QLatin1String("note") ? QObject::tr("Give the note a text") : QObject::tr("Give it a name");
+            return false;
+        }
+    }
+    // Line it up with its neighbour: the anchor, or the nearest child.
+    int columns = -1;
+    if (place == Place::Before || place == Place::After) columns = anchor;
+    else if (!m_doc.node(anchor).children.isEmpty()) {
+        columns = place == Place::FirstChild ? m_doc.node(anchor).children.first() : m_doc.node(anchor).children.last();
+    }
+    int at = -1;
+    QString err;
+    const QByteArray t = m_doc.withInserted(anchor, place, elementLine(element), columns, &at, &err);
+    if (t.isEmpty()) {
+        if (why) *why = err;
+        return false;
+    }
+    SchemaDoc::Document next;
+    err = check(t, &next);
+    if (!err.isEmpty()) {
+        if (why) *why = err;
+        return false;
+    }
+    const int added = next.nodeAt(at);
+    for (const AttrSpec &sp : specsFor(element.tag, parentTag)) {
+        if (added >= 0 && isRequired(next, added, sp.name) && !next.node(added).has(sp.name)) {
+            if (why) *why = QObject::tr("It needs %1").arg(sp.label);
+            return false;
+        }
+    }
+    if (text) *text = t;
+    if (node) *node = added;
+    return true;
+}
+
+bool Session::insert(int anchor, SchemaDoc::Document::Place place, const NewElement &element, int *node, QString *why)
+{
+    if (readOnly()) {
+        if (why) *why = QObject::tr("The built-in kavach.xml cannot be changed: make an editable copy first");
+        return false;
+    }
+    QByteArray t;
+    int added = -1;
+    if (!previewInsert(anchor, place, element, &t, &added, why)) return false;
+    const int parent = parentFor(m_doc, anchor, place);
+    QString name;
+    for (const auto &a : element.attrs) {
+        if (a.first == QLatin1String("name") || (name.isEmpty() && a.first == QLatin1String("text"))) name = a.second;
+    }
+    if (element.tag == QLatin1String("pad")) {
+        for (const auto &a : element.attrs) if (a.first == QLatin1String("bits")) name = QObject::tr("%1 bits").arg(a.second);
+    }
+    const QString what = QObject::tr("%1: + %2 %3").arg(label(m_doc, parent), title(element.tag).toLower(), name);
+    if (!stage(t, what, why)) return false;
+    if (node) *node = added;
+    return true;
+}
+
+bool Session::remove(int node, QString *why)
+{
+    const QString p = memberProblem(m_doc, node);
+    if (!p.isEmpty()) {
+        if (why) *why = p;
+        return false;
+    }
+    QString err;
+    const QByteArray t = m_doc.withoutNode(node, &err);
+    if (t.isEmpty()) {
+        if (why) *why = err;
+        return false;
+    }
+    const int kids = [&]() {
+        int k = 0;
+        for (int i = node + 1; i < m_doc.count() && m_doc.node(i).start < m_doc.node(node).end; ++i) ++k;
+        return k;
+    }();
+    QString what = QObject::tr("%1 deleted").arg(label(m_doc, node));
+    if (kids > 0) what += QObject::tr(" (with the %n element(s) inside it)", nullptr, kids);
+    return stage(t, what, why);
+}
+
+bool Session::move(int node, int delta, int *moved, QString *why)
+{
+    const QString p = memberProblem(m_doc, node);
+    if (!p.isEmpty()) {
+        if (why) *why = p;
+        return false;
+    }
+    int at = -1;
+    QString err;
+    const QByteArray t = m_doc.withMoved(node, delta, &at, &err);
+    if (t.isEmpty()) {
+        if (why) *why = err;
+        return false;
+    }
+    const QString what = delta < 0 ? QObject::tr("%1 moved up").arg(label(m_doc, node))
+                                   : QObject::tr("%1 moved down").arg(label(m_doc, node));
+    if (!stage(t, what, why)) return false;
+    if (moved) *moved = m_doc.nodeAt(at);
+    return true;
+}
+
+bool Session::duplicate(int node, int *copy, QString *why)
+{
+    const QString p = memberProblem(m_doc, node);
+    if (!p.isEmpty()) {
+        if (why) *why = p;
+        return false;
+    }
+    int at = -1;
+    QString err;
+    QByteArray t = m_doc.withDuplicated(node, &at, &err);
+    if (t.isEmpty()) {
+        if (why) *why = err;
+        return false;
+    }
+    // A named copy gets a name of its own: X_2, X_3, ...
+    const SchemaDoc::Node &n = m_doc.node(node);
+    if (n.has(QStringLiteral("name"))) {
+        SchemaDoc::Document d;
+        d.parse(t);
+        const int c = d.nodeAt(at);
+        const int owner = d.container(c);
+        QSet<QString> taken;
+        for (int i = 0; i < d.count(); ++i) {
+            if (d.container(i) == owner) taken.insert(d.node(i).value(QStringLiteral("name")));
+        }
+        const QString base = n.value(QStringLiteral("name"));
+        int k = 2;
+        while (taken.contains(QStringLiteral("%1_%2").arg(base).arg(k))) ++k;
+        t = d.withAttribute(c, QStringLiteral("name"), QStringLiteral("%1_%2").arg(base).arg(k));
+    }
+    if (!stage(t, QObject::tr("%1 duplicated").arg(label(m_doc, node)), why)) return false;
+    if (copy) *copy = m_doc.nodeAt(at);
+    return true;
 }
 
 bool Session::save(QString *backup, QString *error)

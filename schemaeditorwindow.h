@@ -59,6 +59,13 @@ public:
     bool editAttribute(int node, const QString &attr, const QString &value);
     bool dropAttribute(int node, const QString &attr);
     bool rename(int node, const QString &newName, bool withReferences);
+    // Phase 2: structure. Each selects what it made (or what is now there).
+    bool insertElement(int anchor, SchemaDoc::Document::Place place, const SchemaEdit::NewElement &element);
+    bool deleteSelected();
+    bool moveSelected(int delta);
+    bool duplicateSelected();
+    // Opens the Add dialog for the selection.
+    void addElement();
     bool undo();
     bool redo();
 
@@ -75,6 +82,11 @@ public:
     QLineEdit   *findEdit() const { return m_find; }
     StatusLine  *status() const { return m_status; }
     QPushButton *saveButton() const { return m_saveButton; }
+    QToolButton *addButton() const { return m_addButton; }
+    QToolButton *deleteButton() const { return m_deleteButton; }
+    QToolButton *upButton() const { return m_upButton; }
+    QToolButton *downButton() const { return m_downButton; }
+    QToolButton *duplicateButton() const { return m_duplicateButton; }
     // The form's editor for one attribute of the selected element, or null.
     QWidget *editorFor(const QString &attr) const { return m_editors.value(attr); }
 
@@ -104,6 +116,10 @@ private:
     void applyFind();
     void updateActions();
     void showResult(bool ok, const QString &why);
+    // After an edit that may renumber elements: select `node`, or the
+    // element now at the old selection's place.
+    void reselect(int node, const QVector<int> &oldPath);
+    void memberMenu(const QPoint &pos);
     void makeEditableCopy();
     void reviewAndSave();
     void askRename(int node, const QString &newName);
@@ -128,6 +144,11 @@ private:
     QLabel      *m_membersTitle = nullptr;
     QLabel      *m_membersInfo = nullptr;
     QTreeWidget *m_members = nullptr;
+    QToolButton *m_addButton = nullptr;
+    QToolButton *m_duplicateButton = nullptr;
+    QToolButton *m_upButton = nullptr;
+    QToolButton *m_downButton = nullptr;
+    QToolButton *m_deleteButton = nullptr;
     QScrollArea *m_formArea = nullptr;
     QLabel      *m_changesLabel = nullptr;
     StatusLine  *m_status = nullptr;

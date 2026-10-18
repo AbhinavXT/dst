@@ -34,6 +34,7 @@
 #include <QByteArray>
 #include <QString>
 #include <QStringList>
+#include <QPair>
 #include <QVector>
 
 #include <climits>
@@ -102,6 +103,12 @@ bool isRequired(const SchemaDoc::Document &doc, int node, const QString &attr);
 // Why `value` cannot be `spec`'s value in `doc`, or empty.
 QString valueProblem(const SchemaDoc::Document &doc, const AttrSpec &spec, const QString &value);
 
+// A new element: its tag and its attributes, in the order written.
+struct NewElement {
+    QString                          tag;
+    QVector<QPair<QString, QString>> attrs;
+};
+
 class Session
 {
 public:
@@ -133,6 +140,15 @@ public:
     // name= with the references planRename() finds (or none).
     bool rename(int node, const QString &newName, bool withReferences, QString *why);
 
+    // Structure. *node receives the new (or moved) element's index.
+    // previewInsert() is insert() without staging: the dialog's preview.
+    bool previewInsert(int anchor, SchemaDoc::Document::Place place, const NewElement &element,
+                       QByteArray *text, int *node, QString *why) const;
+    bool insert(int anchor, SchemaDoc::Document::Place place, const NewElement &element, int *node, QString *why);
+    bool remove(int node, QString *why);
+    bool move(int node, int delta, int *moved, QString *why);
+    bool duplicate(int node, int *copy, QString *why);
+
     QStringList diff(int context = 2) const { return SchemaDoc::lineDiff(m_original, m_doc.text(), context); }
 
     // Writes the staged text: backup beside it, then atomically. *backup
@@ -143,6 +159,9 @@ private:
     // `key` (node:attribute) merges a run of edits to one attribute into
     // one step: a spin box's clicks are one change, not ten.
     bool stage(const QByteArray &text, const QString &what, QString *why, const QString &key = QString());
+    // Why `text` may not be staged (not XML, decoder refuses, a new dangling
+    // reference), or empty. *parsed gets the parse.
+    QString check(const QByteArray &text, SchemaDoc::Document *parsed) const;
 
     struct Step {
         QByteArray text;
@@ -157,6 +176,22 @@ private:
     QVector<Step>      m_done;     // text BEFORE each staged edit, and what it was
     QVector<Step>      m_undone;   // text AFTER an undone edit
 };
+
+// ---- structure (phase 2) ----------------------------------------------------
+
+// The element as one line: <field name="X" bits="4"/>.
+QString elementLine(const NewElement &element);
+// The tags that may go inside `parentTag`, of those the editor adds.
+bool allowedIn(const QString &tag, const QString &parentTag);
+// The element a Place puts `tag` into: anchor's parent for Before/After,
+// the anchor itself for First/LastChild.
+int parentFor(const SchemaDoc::Document &doc, int anchor, SchemaDoc::Document::Place place);
+// Can this element be deleted, moved or duplicated (a member of a packet,
+// struct, enum or table — not the packets, structs and sections themselves)?
+QString memberProblem(const SchemaDoc::Document &doc, int node);
+// Uses of names that nothing defines: count= with no such field, enum=,
+// struct=, table= and crc= with no such definition. One line each.
+QStringList dangling(const SchemaDoc::Document &doc);
 
 // Why the decoder would not load `text`, or empty.
 QString loadProblem(const QByteArray &text);

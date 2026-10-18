@@ -123,6 +123,7 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "testcasepanel.h"
 #include "linfofielddialog.h"
 #include "schemaeditorwindow.h"
+#include "schemaelementdialog.h"
 
 int main(int argc, char **argv)
 {
@@ -715,6 +716,20 @@ int main(int argc, char **argv)
                     m->setData(m->index(m->rowForKey(QStringLiteral("loco_unit_id")), LocoFieldModel::ColumnValue),
                                QStringLiteral("30421"), Qt::EditRole);
                 win = w;
+            }
+            if (which == QLatin1String("schemaadd")) {
+                // Session 309: Schema Editor ▸ Add, after SLRP's PKT_DIR.
+                static SchemaEdit::Session session;
+                session.open(QStringLiteral(":/schema/kavach.xml"), nullptr);
+                int anchor = -1;
+                for (int i : session.doc().all(QStringLiteral("field"))) {
+                    if (session.doc().node(i).value(QStringLiteral("name")) == QLatin1String("PKT_DIR")) { anchor = i; break; }
+                }
+                auto *d = new SchemaElementDialog(session, anchor, nullptr);
+                d->nameEdit()->setText(QStringLiteral("WEATHER_CODE"));
+                d->bitsSpin()->setValue(4);
+                d->unitEdit()->setText(QStringLiteral("code"));
+                win = d;
             }
             if (which == QLatin1String("schemaeditor") || which == QLatin1String("schemaeditorro")) {
                 // Session 308: Schema Editor. "schemaeditor" edits a temporary

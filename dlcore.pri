@@ -33,6 +33,7 @@ SOURCES += \
     $$PWD/schema/schemadoc.cpp \
     $$PWD/schema/schemaedit.cpp \
     $$PWD/schemaeditorwindow.cpp \
+    $$PWD/schemaelementdialog.cpp \
     $$PWD/colorrules.cpp \
     $$PWD/comparewindow.cpp \
     $$PWD/constants.cpp \
@@ -216,6 +217,7 @@ HEADERS += \
     $$PWD/schema/schemadoc.h \
     $$PWD/schema/schemaedit.h \
     $$PWD/schemaeditorwindow.h \
+    $$PWD/schemaelementdialog.h \
     $$PWD/IRS.h \
     $$PWD/Structures.h \
     $$PWD/colorrules.h \

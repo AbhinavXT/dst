@@ -11,6 +11,110 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-309"></a>
+## Session 309 — Schema Editor, phase 2: add, delete, duplicate and move elements
+
+Phase 2 of the editor Abhinav asked for (session 308): the structure of a
+packet or struct, not only its attributes.
+
+**What the operator sees.** Above the member list, five commands on the
+selected element (also on its right-click menu and keys):
+- **＋ Add… (Insert):** a dialog for a **field**, a **pad** or a **note**.
+  - **Where:** after / before the selection, inside a condition, repeat or
+    group (first or last), or at the start / end of the packet or struct.
+  - **A field:** name, type (integer of N bits, float, double, text of N
+    characters), signed, unit, value names (the existing enums), hex digits.
+  - It shows the line exactly as it will be written, and the effect:
+    `AAP: 22 B → 23 B`, or `Everything after it in SLRP moves 4 bits
+    later`, a warning when the packet stops being whole bytes, and when the
+    name is already used there.
+  - Add stays disabled, with the reason, while the session would refuse it.
+- **Duplicate (Ctrl+D):** a copy right after it, named `X_2`, `X_3`, … A
+  repeat or condition is copied with what is inside it.
+- **▲ Up / ▼ Down (Alt+↑/↓):** swaps it with its neighbour.
+- **Delete (Delete):** removes it and what is inside it. No confirmation:
+  nothing is written until Save, and Undo brings it back.
+- **The new line is laid out like its neighbours:** same indent, its
+  attributes in their columns (a pad's `bits` under a field's `name`, as
+  the file writes pads), the file's line endings.
+- **Selection follows the edit:** the new or moved element, the next one
+  after a delete, the same place after Undo / Redo.
+- **Duplicate, move and delete also work on enum values, flags, events
+  and sub-packet cases.** Adding those comes in a later phase. Whole
+  packets, structs, enums and tables are phase 3.
+
+**Checks** (refused with the reason, nothing staged):
+- the element must suit where it goes (a note does not go inside a
+  repeat), and a field needs a name and a valid size;
+- the decoder must load the result: deleting LOC_RESET, which three
+  conditions test, is refused;
+- **new:** no edit may leave a `count=`, `enum=`, `struct=`, `table=`
+  or `crc=` naming nothing. The decoder does not check these; deleting
+  ROUTE_RFID_CNT, TagLinking's repeat count, would have decoded silently
+  wrong. This also guards attribute edits and renames.
+- an element that shares a line with another is not cut through:
+  "edit the file by hand".
+
+**How.**
+- `SchemaDoc::Document`:
+  - `lineSpan`, `withInserted` (Before / After / FirstChild / LastChild,
+    column alignment), `withoutNode`, `withMoved`, `withDuplicated`;
+  - `nodeAt`, `pathOf` / `resolve` for selections that survive renumbering;
+  - `Node::closeStart`.
+- `SchemaEdit`:
+  - `NewElement`, `elementLine`, `allowedIn`, `memberProblem`, `dangling`;
+  - `Session::previewInsert` / `insert` / `remove` / `move` / `duplicate`;
+  - one `check()` used by every edit.
+- New `schemaelementdialog.{h,cpp}`. The window has the action bar, the
+  context menu, the shortcuts and reselection.
+
+**Files.**
+- New: `schemaelementdialog.{h,cpp}`, `tests/test_session309.cpp`.
+- Changed: `schema/schemadoc.{h,cpp}`, `schema/schemaedit.{h,cpp}`,
+  `schemaeditorwindow.{h,cpp}`, `dlcore.pri`, `tests/tests.pro`,
+  `tests/screenshot_main.cpp` (`SHOT_WINDOW=schemaadd`).
+
+**Tests.** `session309`, 71 checks, on the real kavach.xml and real frames:
+- **Line spans:** a field's, a repeat's block, a same-line comment.
+- **Insert:** after PKT_DIR in its columns; delete gives the file back;
+  a pad aligned as the file writes them; first inside a repeat; last in
+  SLRP; a CRLF line.
+- **Move** down and back (byte-exact); the first cannot move up.
+- **Duplicate:** a repeat with its fields.
+- **Paths:** every element's path resolves; a past-the-end path clamps.
+- **Real frame:** AAP's MAC_CODE deleted and re-added as MAC_HI + MAC_LO
+  (16 bits each). On a real @aap frame the halves are the original value,
+  and AAP stays 176 bits.
+- **Refusals:** LOC_RESET, ROUTE_RFID_CNT, a whole packet, a note in a
+  repeat, no name, 0 bits, a missing enum, read-only. A preview stages
+  nothing.
+- **Duplicate and move:** names `_2` / `_3`, the order after a move; an
+  enum value moved and deleted.
+- **The dialog:** the Where choices (3 / 5 / 2); Add disabled until named;
+  the preview line with signed / unit / enum; the char type; a pad; the
+  size effect; the duplicate-name warning.
+- **The window:** buttons per selection; delete then select the one
+  before; add, move and duplicate select the result; offsets; undo keeps
+  the place; a refused delete; read-only.
+
+The dialog and the window were rendered with the screenshot harness and
+looked at; the dialog's label columns were aligned after that.
+
+**Gate:** Qt 6 and Qt 5.15 green, 345 suites / 8934 checks, 0 failed; 15 validators; menu audit 185 ok; smoke.
+
+**Not tested / not done:**
+- **Not clicked through by hand:** the dialog's `exec()` from the window,
+  and the right-click menu. The suite drives the dialog and the window's
+  functions directly.
+- **Moving between levels** (into or out of a condition) is not offered.
+  Delete it and add it again.
+- **Adding enum values, flags, events and cases** waits for phase 4;
+  **whole structs, packets and enums** for phase 3.
+- **A deleted element's comment above it stays** in the file; the diff
+  shows it.
+
+---
+
 <a id="session-308"></a>
 ## Session 308 — Schema Editor, phase 1: browse kavach.xml, change any attribute
 
