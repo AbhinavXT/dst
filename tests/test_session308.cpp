@@ -31,10 +31,13 @@
 
 namespace {
 
+// LF, as the repository stores it: a Windows checkout (core.autocrlf) has
+// CRLF, and the checks below spell lines with "\n". CRLF files are
+// checked on purpose where it matters (session 309, session 311).
 QByteArray schema308()
 {
     QFile f(QStringLiteral(DL_SRC_DIR "/schema/kavach.xml"));
-    return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+    return f.open(QIODevice::ReadOnly) ? f.readAll().replace("\r\n", "\n") : QByteArray();
 }
 
 QByteArray frame308(const QString &prefix, QString *captype)

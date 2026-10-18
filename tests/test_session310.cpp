@@ -32,10 +32,13 @@ using Place = SchemaDoc::Document::Place;
 
 namespace {
 
+// LF, as the repository stores it: a Windows checkout (core.autocrlf) has
+// CRLF, and the checks below spell lines with "\n". CRLF files are
+// checked on purpose where it matters (session 309, session 311).
 QByteArray schema310()
 {
     QFile f(QStringLiteral(DL_SRC_DIR "/schema/kavach.xml"));
-    return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+    return f.open(QIODevice::ReadOnly) ? f.readAll().replace("\r\n", "\n") : QByteArray();
 }
 
 QVector<QByteArray> frames310(const QString &token, int max)

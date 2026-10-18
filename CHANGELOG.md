@@ -11,6 +11,46 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-312"></a>
+## Session 312 — CI: the Schema Editor suites on a Windows checkout (CRLF)
+
+Patches 308–311 were pushed together, and the Windows job failed for all
+four: 11 checks in `session308`–`session311`. Linux and Qt 6 were green.
+No release was made for 308–311. This patch's release carries all of them.
+
+**Why.** The Windows runner checks files out with `core.autocrlf`, so its
+`schema/kavach.xml` has CRLF line ends. The suites spelled expected lines
+with `"\n"`. One looked for a line's end, which still carried its `\r`.
+309's CRLF check converted an already-CRLF file again (`\r\r\n`). The
+editor itself was right: every edit kept the file's CRLF. Reproduced on the
+Mac by converting the working copy to CRLF: the same 11 failures.
+
+**Fix.**
+- The four suites read kavach.xml as LF, as the repository stores it.
+- Session 311 gains a deliberate CRLF check. On the same schema as LF and
+  as CRLF, it runs these phase-4 edits:
+  - move in, and delete with the comment;
+  - a new enum value, and a value made "otherwise";
+  - a flag table replaced by a paste.
+- The CRLF result must have only CRLF line ends, and be the LF result line
+  for line. This matters beyond CI: the Windows office PC's kavach.xml may
+  be CRLF.
+
+**What the operator sees.** Nothing changes. Patches 308–311 now reach a
+release.
+
+**Files.** `tests/test_session308.cpp`, `test_session309.cpp`,
+`test_session310.cpp`, `test_session311.cpp`.
+
+**Tests.** `session311`: 97 checks (3 new). Sessions 307–311 also pass on a
+CRLF working copy.
+
+**Gate:** Qt 6 and Qt 5.15 green, 347 suites / 9101 checks, 0 failed; 15 validators; menu audit 185 ok; smoke.
+
+**Not tested:** the Windows job itself until this patch is pushed.
+
+---
+
 <a id="session-311"></a>
 ## Session 311 — Schema Editor, phase 4: enum values, flags and events in a grid; paste; move between levels
 

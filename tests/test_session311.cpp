@@ -17,6 +17,8 @@
 #include <QToolButton>
 #include <QTreeWidget>
 
+#include <functional>
+
 // =============================================================================
 //  Session 311 — Schema Editor, phase 4: enum values, flags and events typed
 //  into a grid or pasted; a member's own comment goes when it is deleted; a
@@ -30,10 +32,13 @@ using Place = SchemaDoc::Document::Place;
 
 namespace {
 
+// LF, as the repository stores it: a Windows checkout (core.autocrlf) has
+// CRLF, and the checks below spell lines with "\n". CRLF files are
+// checked on purpose where it matters (session 309, session 311).
 QByteArray schema311()
 {
     QFile f(QStringLiteral(DL_SRC_DIR "/schema/kavach.xml"));
-    return f.open(QIODevice::ReadOnly) ? f.readAll() : QByteArray();
+    return f.open(QIODevice::ReadOnly) ? f.readAll().replace("\r\n", "\n") : QByteArray();
 }
 
 QVector<QByteArray> frames311(const QString &token, int max)
@@ -380,6 +385,43 @@ TEST_SUITE(session311)
         CHECK(ne.addContainer(en, &node, &why) && ne.doc().node(ne.doc().node(node).parent).tag == QLatin1String("enums")
                   && ne.doc().node(0).children.first() == ne.doc().node(node).parent,
               QByteArray("an enum: <enums> made first in the file: ") + why.toUtf8());
+    }
+
+    // ---- a CRLF file (a Windows copy of kavach.xml) stays CRLF -------------------------
+    {
+        QByteArray crlf = xml;
+        crlf.replace("\n", "\r\n");
+        SchemaEdit::Session lf, cr;
+        CHECK(lf.openText(xml, tmp.filePath(QStringLiteral("lf.xml")), &why) && cr.openText(crlf, tmp.filePath(QStringLiteral("cr.xml")), &why),
+              "the same schema, LF and CRLF");
+        auto both = [&](const std::function<bool(SchemaEdit::Session &)> &edit) {
+            return edit(lf) && edit(cr);
+        };
+        auto at = [](SchemaEdit::Session &x, const QString &tag, const QString &name) { return named311(x.doc(), tag, name); };
+        bool ok = both([&](SchemaEdit::Session &x) {
+            int m = -1;
+            return x.moveIn(member311(x.doc(), QStringLiteral("packet"), QStringLiteral("LSRP"), QStringLiteral("MAC_CODE")), &m, &why);
+        });
+        ok = ok && both([&](SchemaEdit::Session &x) {
+            return x.remove(member311(x.doc(), QStringLiteral("packet"), QStringLiteral("SOS_SNAPSHOT"), QStringLiteral("src_threats")), &why);
+        });
+        ok = ok && both([&](SchemaEdit::Session &x) {
+            QHash<QString, QString> c;
+            c.insert(QStringLiteral("label"), QStringLiteral("%v (Test)"));
+            int n = -1;
+            return x.addEntry(at(x, QStringLiteral("enum"), QStringLiteral("pktDir")), c, &n, &why);
+        });
+        ok = ok && both([&](SchemaEdit::Session &x) {
+            return x.setEntryCell(map311(x.doc(), QStringLiteral("pktDir"), QStringLiteral("3")), QStringLiteral("value"), QStringLiteral("otherwise"), &why);
+        });
+        ok = ok && both([&](SchemaEdit::Session &x) {
+            const int t = at(x, QStringLiteral("flagtable"), QStringLiteral("locoHealthG1"));
+            return x.applyRows(t, SchemaEdit::parseRows(x.doc(), t, QStringLiteral("A\nB\n"), true, nullptr), true, &why);
+        });
+        CHECK(ok, QByteArray("move in, delete with comment, add, reshape, replace: made on both: ") + why.toUtf8());
+        QByteArray back = cr.text();
+        CHECK(back.count('\n') == back.count("\r\n") && back.replace("\r\n", "\n") == lf.text(),
+              "the CRLF result has only CRLF line ends, and is the LF result line for line");
     }
 
     // ---- the window --------------------------------------------------------------------
