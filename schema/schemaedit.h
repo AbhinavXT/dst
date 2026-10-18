@@ -109,6 +109,15 @@ struct NewElement {
     QVector<QPair<QString, QString>> attrs;
 };
 
+struct NewContainer {
+    QString                          tag;     // packet, struct, enum, flagtable, eventtable, crc
+    QString                          name;
+    QVector<QPair<QString, QString>> attrs;   // after name=, in order
+    // A struct: also decode it as sub-packet `caseType` of this packet.
+    QString                          casePacket;
+    int                              caseType = -1;
+};
+
 class Session
 {
 public:
@@ -148,6 +157,11 @@ public:
     bool remove(int node, QString *why);
     bool move(int node, int delta, int *moved, QString *why);
     bool duplicate(int node, int *copy, QString *why);
+    // Containers. remove(), move() and duplicate() take them too.
+    bool previewContainer(const NewContainer &container, QByteArray *text, int *node, QString *why) const;
+    bool addContainer(const NewContainer &container, int *node, QString *why);
+    // A <case type= struct=> in the packet's <subpackets>.
+    bool registerCase(const QString &structName, const QString &packet, int type, int *node, QString *why);
 
     QStringList diff(int context = 2) const { return SchemaDoc::lineDiff(m_original, m_doc.text(), context); }
 
@@ -189,6 +203,24 @@ int parentFor(const SchemaDoc::Document &doc, int anchor, SchemaDoc::Document::P
 // Can this element be deleted, moved or duplicated (a member of a packet,
 // struct, enum or table — not the packets, structs and sections themselves)?
 QString memberProblem(const SchemaDoc::Document &doc, int node);
+// ---- containers (phase 3) ------------------------------------------------------
+
+// A packet, struct, enum, flag table, event table or CRC definition.
+bool isContainer(const SchemaDoc::Document &doc, int node);
+// The tags a "New" makes, in the order the menu offers them.
+QStringList containerTags();
+
+// The packets with a <subpackets>, by name.
+QStringList packetsWithSubpackets(const SchemaDoc::Document &doc);
+// The smallest sub-packet type the packet does not use yet.
+int freeCaseType(const SchemaDoc::Document &doc, const QString &packet);
+// The sub-packet cases that decode a struct: "SLRP type 5".
+QStringList caseUses(const SchemaDoc::Document &doc, const QString &structName);
+
+// Two packets answering one captype, two of a kind with one name, two
+// cases of one type. One line each; check() refuses new ones.
+QStringList clashes(const SchemaDoc::Document &doc);
+
 // Uses of names that nothing defines: count= with no such field, enum=,
 // struct=, table= and crc= with no such definition. One line each.
 QStringList dangling(const SchemaDoc::Document &doc);

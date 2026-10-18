@@ -240,7 +240,9 @@ TEST_SUITE(session309)
     const int rfidCnt = find309(s.doc(), QStringLiteral("field"), QStringLiteral("ROUTE_RFID_CNT"), tagLinking);
     CHECK(!s.remove(rfidCnt, &why) && why.contains(QLatin1String("count=\"ROUTE_RFID_CNT\"")),
           QByteArray("ROUTE_RFID_CNT, the tag repeat's count: refused (the decoder alone would not): ") + why.toUtf8());
-    CHECK(!s.remove(slrp, &why) && why.contains(QLatin1String("next phase")), "a whole packet: not in this phase");
+    // Session 310 made whole packets deletable; a section of the file still is not.
+    CHECK(!s.remove(s.doc().child(0, QStringLiteral("enums")), &why) && why.contains(QLatin1String("section")),
+          "<enums>, a section of the file, stays");
     SchemaEdit::NewElement note;
     note.tag = QStringLiteral("note");
     note.attrs = { qMakePair(QStringLiteral("text"), QStringLiteral("x")) };

@@ -1,6 +1,7 @@
 #include "schemaeditorwindow.h"
 
 #include "programdir.h"
+#include "schemacontainerdialog.h"
 #include "schemaelementdialog.h"
 #include "statusline.h"
 #include "uicolors.h"
@@ -181,7 +182,44 @@ void SchemaEditorWindow::buildUi()
     m_outline->header()->setStretchLastSection(false);
     m_outline->header()->setSectionResizeMode(0, QHeaderView::Stretch);
     m_outline->header()->setSectionResizeMode(1, QHeaderView::ResizeToContents);
+    // Phase 3: the containers themselves.
+    auto *otools = new QHBoxLayout;
+    otools->setContentsMargins(0, 2, 0, 2);
+    auto otool = [&](const QString &text, const QString &tip) {
+        auto *b = new QToolButton(left);
+        b->setText(text);
+        b->setToolTip(tip);
+        b->setToolButtonStyle(Qt::ToolButtonTextOnly);
+        otools->addWidget(b);
+        return b;
+    };
+    m_newButton = otool(tr("＋ New"), tr("A new packet, struct, enum, flag table, event table or CRC definition"));
+    m_newButton->setPopupMode(QToolButton::InstantPopup);
+    auto *newMenu = new QMenu(m_newButton);
+    for (const QString &t : SchemaEdit::containerTags()) {
+        const QString text = t == QLatin1String("crc") ? tr("CRC definition…") : SchemaEdit::title(t) + QStringLiteral("…");
+        newMenu->addAction(text, this, [this, t]() { newContainer(t); });
+    }
+    m_newButton->setMenu(newMenu);
+    // Compact: the outline pane stays narrow.
+    m_cUpButton = otool(QStringLiteral("▲"), tr("Before the previous one of its kind (packets: the first that matches decodes)"));
+    m_cDownButton = otool(QStringLiteral("▼"), tr("After the next one of its kind"));
+    QToolButton *more = otool(QStringLiteral("⋯"), tr("Duplicate or delete the selected one"));
+    more->setPopupMode(QToolButton::InstantPopup);
+    auto *moreMenu = new QMenu(more);
+    m_cDuplicateButton = moreMenu->addAction(tr("Duplicate"), this, [this]() { duplicateContainer(); });
+    m_cDuplicateButton->setToolTip(tr("A copy named …_2 (a packet's copy decodes nothing until given captures)"));
+    m_cDeleteButton = moreMenu->addAction(tr("Delete…"), this, [this]() { deleteContainer(); });
+    m_cDeleteButton->setToolTip(tr("Remove it and the comment above it. Refused while anything still refers to it."));
+    moreMenu->setToolTipsVisible(true);
+    more->setMenu(moreMenu);
+    otools->addStretch(1);
+    leftLay->addLayout(otools);
     leftLay->addWidget(m_outline, 1);
+    connect(m_cUpButton, &QToolButton::clicked, this, [this]() { moveContainer(-1); });
+    connect(m_cDownButton, &QToolButton::clicked, this, [this]() { moveContainer(+1); });
+    m_outline->setContextMenuPolicy(Qt::CustomContextMenu);
+    connect(m_outline, &QTreeWidget::customContextMenuRequested, this, &SchemaEditorWindow::outlineMenu);
     connect(m_find, &QLineEdit::textChanged, this, &SchemaEditorWindow::applyFind);
     connect(m_find, &QLineEdit::returnPressed, this, [this]() {
         // The first container that matches, and in it the first member that does.
@@ -244,6 +282,8 @@ void SchemaEditorWindow::buildUi()
     m_downButton = tool(tr("▼ Down"), tr("Swap with the element after it (Alt+Down)"));
     m_deleteButton = tool(tr("Delete"), tr("Remove it, and what is inside it (Delete). Undo brings it back."));
     tools->addStretch(1);
+    m_subpacketButton = tool(tr("Use as a sub-packet…"), tr("Decode this struct as a sub-packet type of a packet"));
+    connect(m_subpacketButton, &QToolButton::clicked, this, &SchemaEditorWindow::useAsSubpacket);
     midLay->addLayout(tools);
     midLay->addWidget(m_members, 1);
     connect(m_addButton, &QToolButton::clicked, this, &SchemaEditorWindow::addElement);
@@ -542,6 +582,12 @@ void SchemaEditorWindow::fillMembers()
         if (c.has(QStringLiteral("match"))) info << c.value(QStringLiteral("match"));
         if (c.has(QStringLiteral("crc"))) info << tr("CRC %1").arg(c.value(QStringLiteral("crc")));
         if (c.has(QStringLiteral("body_offset"))) info << tr("body from bit %1").arg(c.value(QStringLiteral("body_offset")));
+        if (tag == QLatin1String("struct")) {
+            const QStringList uses = SchemaEdit::caseUses(doc, c.value(QStringLiteral("name")));
+            info << (uses.isEmpty() ? tr("No packet decodes it yet: Use as a sub-packet…")
+                                    : tr("Decoded as %1").arg(uses.join(QStringLiteral(", "))));
+        }
+        if (c.children.isEmpty()) info << tr("Empty: ＋ Add… its first field");
         m_members->setHeaderLabels({ tr("Name"), tr("Kind"), tr("Bits"), tr("Offset"), tr("Details") });
         m_members->setColumnCount(5);
         addMemberItems(nullptr, m_container, 0);
@@ -895,8 +941,28 @@ void SchemaEditorWindow::updateActions()
         m_addButton->setEnabled(!ro && body);
         m_duplicateButton->setEnabled(!ro && member);
         m_deleteButton->setEnabled(!ro && member);
-        m_upButton->setEnabled(!ro && member && pos > 0);
-        m_downButton->setEnabled(!ro && member && pos >= 0 && pos + 1 < siblings);
+        // A container is moved, copied and deleted from the outline.
+        const bool memberOnly = member && !SchemaEdit::isContainer(doc, m_selected);
+        m_duplicateButton->setEnabled(!ro && memberOnly);
+        m_deleteButton->setEnabled(!ro && memberOnly);
+        m_upButton->setEnabled(!ro && memberOnly && pos > 0);
+        m_downButton->setEnabled(!ro && memberOnly && pos >= 0 && pos + 1 < siblings);
+        const bool box = m_container > 0 && SchemaEdit::isContainer(doc, m_container);
+        auto hasKind = [&](int delta) {
+            if (!box) return false;
+            const QVector<int> &sib = doc.node(doc.node(m_container).parent).children;
+            for (int k = sib.indexOf(m_container) + delta; k >= 0 && k < sib.size(); k += delta) {
+                if (doc.node(sib.at(k)).tag == doc.node(m_container).tag) return true;
+            }
+            return false;
+        };
+        m_newButton->setEnabled(!ro);
+        m_cDuplicateButton->setEnabled(!ro && box);
+        m_cDeleteButton->setEnabled(!ro && box);
+        m_cUpButton->setEnabled(!ro && hasKind(-1));
+        m_cDownButton->setEnabled(!ro && hasKind(+1));
+        m_subpacketButton->setVisible(box && doc.node(m_container).tag == QLatin1String("struct"));
+        m_subpacketButton->setEnabled(!ro);
     }
     m_saveButton->setEnabled(m_session.dirty() && !ro);
     m_changesLabel->setText(m_session.dirty() ? tr("%n change(s) not saved", nullptr, m_session.changeCount())
@@ -1030,6 +1096,7 @@ bool SchemaEditorWindow::deleteSelected()
 {
     const SchemaDoc::Document &doc = m_session.doc();
     if (m_selected < 0 || m_session.readOnly()) return false;
+    if (SchemaEdit::isContainer(doc, m_selected)) return deleteContainer();
     const QVector<int> path = doc.pathOf(m_selected);
     QString why;
     const bool ok = m_session.remove(m_selected, &why);
@@ -1047,6 +1114,7 @@ bool SchemaEditorWindow::deleteSelected()
 bool SchemaEditorWindow::moveSelected(int delta)
 {
     if (m_selected < 0 || m_session.readOnly()) return false;
+    if (SchemaEdit::isContainer(m_session.doc(), m_selected)) return moveContainer(delta);
     QString why;
     int node = -1;
     const bool ok = m_session.move(m_selected, delta, &node, &why);
@@ -1058,6 +1126,7 @@ bool SchemaEditorWindow::moveSelected(int delta)
 bool SchemaEditorWindow::duplicateSelected()
 {
     if (m_selected < 0 || m_session.readOnly()) return false;
+    if (SchemaEdit::isContainer(m_session.doc(), m_selected)) return duplicateContainer();
     QString why;
     int node = -1;
     const bool ok = m_session.duplicate(m_selected, &node, &why);
@@ -1078,6 +1147,134 @@ void SchemaEditorWindow::addElement()
     SchemaElementDialog dlg(m_session, m_selected, this);
     if (dlg.exec() != QDialog::Accepted) return;
     insertElement(dlg.anchor(), dlg.place(), dlg.element());
+}
+
+bool SchemaEditorWindow::addContainer(const SchemaEdit::NewContainer &container)
+{
+    QString why;
+    int node = -1;
+    const bool ok = m_session.addContainer(container, &node, &why);
+    if (ok) reselect(node, {});
+    showResult(ok, why);
+    return ok;
+}
+
+void SchemaEditorWindow::newContainer(const QString &tag)
+{
+    if (m_session.readOnly()) return;
+    SchemaContainerDialog dlg(m_session, tag, this);
+    if (dlg.exec() == QDialog::Accepted) addContainer(dlg.container());
+}
+
+bool SchemaEditorWindow::duplicateContainer()
+{
+    if (m_container <= 0 || m_session.readOnly()) return false;
+    QString why;
+    int node = -1;
+    const bool ok = m_session.duplicate(m_container, &node, &why);
+    if (ok) reselect(node, {});
+    showResult(ok, why);
+    if (ok && m_session.doc().node(node).tag == QLatin1String("packet")) {
+        m_status->ok(tr("Copied as %1. It answers captype %2 until you give it the captures it should decode (Match).")
+                         .arg(m_session.doc().node(node).value(QStringLiteral("name")),
+                              m_session.doc().node(node).value(QStringLiteral("match")).mid(9)));
+    }
+    return ok;
+}
+
+bool SchemaEditorWindow::moveContainer(int delta)
+{
+    if (m_container <= 0 || m_session.readOnly()) return false;
+    QString why;
+    int node = -1;
+    const bool ok = m_session.move(m_container, delta, &node, &why);
+    if (ok) reselect(node, {});
+    showResult(ok, why);
+    return ok;
+}
+
+bool SchemaEditorWindow::deleteContainer(bool ask)
+{
+    const SchemaDoc::Document &doc = m_session.doc();
+    if (m_container <= 0 || m_session.readOnly() || !SchemaEdit::isContainer(doc, m_container)) return false;
+    const SchemaDoc::Node &n = doc.node(m_container);
+    if (ask && n.tag == QLatin1String("packet")) {
+        const auto answer = QMessageBox::question(
+            this, tr("Delete %1").arg(n.value(QStringLiteral("name"))),
+            tr("Delete the packet %1? Captures of %2 will no longer decode, and DLConsole's own views that look "
+               "this packet up by name will show nothing. Undo brings it back until you save.")
+                .arg(n.value(QStringLiteral("name")), n.value(QStringLiteral("match")).mid(9)));
+        if (answer != QMessageBox::Yes) return false;
+    }
+    const QVector<int> path = doc.pathOf(m_container);
+    QString why;
+    const bool ok = m_session.remove(m_container, &why);
+    if (ok) reselect(-1, path);
+    showResult(ok, why);
+    return ok;
+}
+
+bool SchemaEditorWindow::registerStruct(const QString &packet, int type)
+{
+    if (m_container <= 0 || m_session.doc().node(m_container).tag != QLatin1String("struct")) return false;
+    const QVector<int> path = m_session.doc().pathOf(m_container);
+    QString why;
+    int node = -1;
+    const bool ok = m_session.registerCase(m_session.doc().node(m_container).value(QStringLiteral("name")), packet, type, &node, &why);
+    if (ok) reselect(-1, path);   // stay on the struct
+    showResult(ok, why);
+    return ok;
+}
+
+void SchemaEditorWindow::useAsSubpacket()
+{
+    if (m_session.readOnly() || m_container <= 0) return;
+    const QStringList packets = SchemaEdit::packetsWithSubpackets(m_session.doc());
+    if (packets.isEmpty()) {
+        m_status->warn(tr("No packet has sub-packets"));
+        return;
+    }
+    QDialog dlg(this);
+    dlg.setWindowTitle(tr("Use %1 as a sub-packet").arg(m_session.doc().node(m_container).value(QStringLiteral("name"))));
+    auto *form = new QFormLayout(&dlg);
+    auto *packet = new QComboBox(&dlg);
+    packet->addItems(packets);
+    auto *type = new QSpinBox(&dlg);
+    type->setRange(0, 65535);
+    type->setValue(std::max(0, SchemaEdit::freeCaseType(m_session.doc(), packets.first())));
+    connect(packet, &QComboBox::currentTextChanged, type, [this, type](const QString &p) {
+        type->setValue(std::max(0, SchemaEdit::freeCaseType(m_session.doc(), p)));
+    });
+    form->addRow(tr("Packet"), packet);
+    form->addRow(tr("Sub-packet type"), type);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    form->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+    if (dlg.exec() == QDialog::Accepted) registerStruct(packet->currentText(), type->value());
+}
+
+void SchemaEditorWindow::outlineMenu(const QPoint &pos)
+{
+    if (QTreeWidgetItem *item = m_outline->itemAt(pos)) {
+        const int node = item->data(0, kNodeRole).toInt();
+        if (node > 0 && node != m_container) selectNode(node);
+    }
+    QMenu menu(this);
+    QMenu *create = menu.addMenu(tr("New"));
+    create->setEnabled(m_newButton->isEnabled());
+    for (QAction *a : m_newButton->menu()->actions()) create->addAction(a);
+    menu.addAction(m_cDuplicateButton);
+    for (QToolButton *b : { m_cUpButton, m_cDownButton }) {
+        QAction *a = menu.addAction(b == m_cUpButton ? tr("Move up") : tr("Move down"), b, &QToolButton::click);
+        a->setEnabled(b->isEnabled());
+    }
+    menu.addAction(m_cDeleteButton);
+    if (m_subpacketButton->isVisible()) {
+        QAction *a = menu.addAction(m_subpacketButton->text(), m_subpacketButton, &QToolButton::click);
+        a->setEnabled(m_subpacketButton->isEnabled());
+    }
+    menu.exec(m_outline->viewport()->mapToGlobal(pos));
 }
 
 void SchemaEditorWindow::memberMenu(const QPoint &pos)

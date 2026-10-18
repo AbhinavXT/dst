@@ -27,6 +27,7 @@
 
 #include "schemaedit.h"
 
+class QAction;
 class QLabel;
 class QLineEdit;
 class QPushButton;
@@ -66,6 +67,15 @@ public:
     bool duplicateSelected();
     // Opens the Add dialog for the selection.
     void addElement();
+    // Phase 3: whole packets, structs, enums, tables, CRC definitions —
+    // the container selected in the outline.
+    bool addContainer(const SchemaEdit::NewContainer &container);
+    void newContainer(const QString &tag);          // the New dialog
+    bool duplicateContainer();
+    bool moveContainer(int delta);
+    bool deleteContainer(bool ask = true);
+    bool registerStruct(const QString &packet, int type);
+    void useAsSubpacket();                           // the dialog for registerStruct
     bool undo();
     bool redo();
 
@@ -87,6 +97,12 @@ public:
     QToolButton *upButton() const { return m_upButton; }
     QToolButton *downButton() const { return m_downButton; }
     QToolButton *duplicateButton() const { return m_duplicateButton; }
+    QToolButton *newButton() const { return m_newButton; }
+    QAction     *containerDuplicateButton() const { return m_cDuplicateButton; }
+    QToolButton *containerUpButton() const { return m_cUpButton; }
+    QToolButton *containerDownButton() const { return m_cDownButton; }
+    QAction     *containerDeleteButton() const { return m_cDeleteButton; }
+    QToolButton *subpacketButton() const { return m_subpacketButton; }
     // The form's editor for one attribute of the selected element, or null.
     QWidget *editorFor(const QString &attr) const { return m_editors.value(attr); }
 
@@ -120,6 +136,7 @@ private:
     // element now at the old selection's place.
     void reselect(int node, const QVector<int> &oldPath);
     void memberMenu(const QPoint &pos);
+    void outlineMenu(const QPoint &pos);
     void makeEditableCopy();
     void reviewAndSave();
     void askRename(int node, const QString &newName);
@@ -149,6 +166,12 @@ private:
     QToolButton *m_upButton = nullptr;
     QToolButton *m_downButton = nullptr;
     QToolButton *m_deleteButton = nullptr;
+    QToolButton *m_subpacketButton = nullptr;
+    QToolButton *m_newButton = nullptr;
+    QAction     *m_cDuplicateButton = nullptr;
+    QToolButton *m_cUpButton = nullptr;
+    QToolButton *m_cDownButton = nullptr;
+    QAction     *m_cDeleteButton = nullptr;
     QScrollArea *m_formArea = nullptr;
     QLabel      *m_changesLabel = nullptr;
     StatusLine  *m_status = nullptr;

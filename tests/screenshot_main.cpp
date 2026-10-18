@@ -124,6 +124,7 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "linfofielddialog.h"
 #include "schemaeditorwindow.h"
 #include "schemaelementdialog.h"
+#include "schemacontainerdialog.h"
 
 int main(int argc, char **argv)
 {
@@ -716,6 +717,15 @@ int main(int argc, char **argv)
                     m->setData(m->index(m->rowForKey(QStringLiteral("loco_unit_id")), LocoFieldModel::ColumnValue),
                                QStringLiteral("30421"), Qt::EditRole);
                 win = w;
+            }
+            if (which == QLatin1String("schemanew")) {
+                // Session 310: Schema Editor ▸ New, a struct decoded as SLRP's type 8.
+                static SchemaEdit::Session session;
+                session.open(QStringLiteral(":/schema/kavach.xml"), nullptr);
+                auto *d = new SchemaContainerDialog(session, QStringLiteral("struct"), nullptr);
+                d->nameEdit()->setText(QStringLiteral("WeatherProfile"));
+                d->casePacketBox()->setCurrentIndex(1);
+                win = d;
             }
             if (which == QLatin1String("schemaadd")) {
                 // Session 309: Schema Editor ▸ Add, after SLRP's PKT_DIR.

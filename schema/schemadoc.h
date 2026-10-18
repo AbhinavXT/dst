@@ -95,13 +95,22 @@ public:
     // after it. False (*why) when another element shares one of those lines,
     // which a line edit would cut through.
     bool lineSpan(int node, int *from, int *to, QString *why = nullptr) const;
+    // lineSpan() widened upward over the comment lines right above it (a
+    // packet's or struct's description goes where it goes).
+    bool blockSpan(int node, int *from, int *to, QString *why = nullptr) const;
+    // The text with node's block moved to just before (after == false) or
+    // after `target`'s block. *at receives its new start.
+    QByteArray withMovedBlock(int node, int target, bool after, int *at, QString *why) const;
+    // The text without node's block (comment above included).
+    QByteArray withoutBlock(int node, QString *why) const;
     // The whitespace before an element on its line.
     QByteArray indentOf(int node) const;
     // "\r\n" when the file's lines end that way, else "\n".
     QByteArray lineEnd() const;
 
     // The text with `line` (one element, no indent, no line break) added as
-    // a line of its own. *at receives the byte offset of its '<' in the new
+    // a line of its own. A `line` with '\n's is a block (lines indented
+    // relative to its first), each line put under the indent. *at receives the byte offset of its '<' in the new
     // text. `columnsFrom` (an element, or -1) lines its attributes up with
     // that element's: the first under its first, the rest under the same name.
     QByteArray withInserted(int anchor, Place place, const QString &line, int columnsFrom,

@@ -11,6 +11,144 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-310"></a>
+## Session 310 — Schema Editor, phase 3: whole packets, structs, enums and tables
+
+Phase 3 of the editor Abhinav asked for (session 308): the containers
+themselves.
+
+**What the operator sees.**
+- **Above the outline:**
+  - **＋ New** — packet, struct, enum, flag table, event table, CRC definition;
+  - **▲ / ▼** — reorder;
+  - **⋯** — Duplicate, Delete…;
+  - the same on its right-click menu.
+- **New** opens a dialog for the kind chosen:
+  - **Packet:** the captures it decodes (follows the name until typed
+    into), bit order, CRC (the existing definitions), trailer bytes, where
+    the body starts.
+  - **Struct:** optionally *decode it as a sub-packet of* SLRP, with the
+    next free type (8) offered. The struct and its `<case>` are one step.
+  - **CRC definition:** type, polynomial, initial, XOR out, reflect in/out,
+    trailer.
+  - **Enum, flag table, event table:** the name.
+  - It shows the block as it will be written and what it does; Add stays
+    disabled with the reason while it would be refused.
+- **Where a new one goes:**
+  - after the last of its kind, as an empty block with a blank line before
+    it, in the file's indent;
+  - inside `<enums>`, `<crcs>`, `<flagtables>` or `<eventtables>` for
+    those kinds;
+  - a CRC definition is one line, in the others' columns.
+  - Then **＋ Add…** puts its first field inside it.
+- **Duplicate:** `AAP_2`, `TagLinking_2`. A copied packet answers
+  `captype==aap_2` until given its own captures (two packets on one
+  captype: only the first ever decodes). A copied struct decodes nothing
+  until registered.
+- **▲ / ▼ moves past the next one of its kind,** with the comment above it
+  and its blank line: packets sit on both sides of the structs. Packet
+  order matters: the first that matches decodes.
+- **Delete** takes the comment above it too. A packet asks first: the
+  program's own views look some up by name.
+- **A struct's header says what decodes it** ("Decoded as SLRP type 5", or
+  "No packet decodes it yet"). **Use as a sub-packet…** registers it under
+  a packet and type.
+
+**Checks** (refused with the reason, nothing staged):
+- **Still referenced:** a struct a `<case>` names, an enum a field uses, a
+  flag/event table a `<flags>`/`<eventstream>` uses, a CRC definition a
+  packet names. These are session 309's dangling-reference check, now
+  reached by deletes.
+- **New clash check:** two packets answering one captype, two
+  containers of one kind with one name, two sub-packet cases of one type.
+  The shipped file has none, and only new ones are refused.
+- An empty name; captures with no token; a sub-packet type in use.
+
+**How.**
+- `SchemaDoc`:
+  - `blockSpan` (the element and the comment lines above it);
+  - `withMovedBlock` (each block with its leading blank line, so a move
+    and its reverse give the file back);
+  - `withoutBlock`;
+  - `withInserted` takes a multi-line block.
+- `SchemaEdit`:
+  - `isContainer`, `containerTags`, `NewContainer`;
+  - `packetsWithSubpackets`, `freeCaseType`, `caseUses`, `clashes`;
+  - `Session::previewContainer` / `addContainer` / `registerCase`;
+  - `remove` / `move` / `duplicate` take containers.
+  - `previewInsert` now requires a name only of a field (a note's text);
+    other elements (`<case>`, `<map>`) go by their required attributes.
+- New `schemacontainerdialog.{h,cpp}`. The window has the outline bar
+  (compact, so the panes keep their widths), its context menu, the struct
+  header line and the sub-packet dialog.
+
+**Files.**
+- New: `schemacontainerdialog.{h,cpp}`, `tests/test_session310.cpp`.
+- Changed:
+  - `schema/schemadoc.{h,cpp}`, `schema/schemaedit.{h,cpp}`;
+  - `schemaeditorwindow.{h,cpp}`;
+  - `dlcore.pri`, `tests/tests.pro`;
+  - `tests/screenshot_main.cpp` (`SHOT_WINDOW=schemanew`);
+  - `tests/test_session309.cpp`: its "a whole packet: not in this phase"
+    check now checks that a file section (`<enums>`) stays.
+
+**Tests.** `session310`, 70 checks, on the real kavach.xml and real frames:
+- **Blocks:**
+  - AAP's starts at its comment;
+  - deleting it leaves no doubled blank line;
+  - AEP moved before AAP with its comment, and back byte for byte.
+- **A struct registered as SLRP type 8:**
+  - one step, after TSR, at the structs' indent;
+  - `caseUses`;
+  - 200 real @slrp frames decode identically;
+  - its first field indented inside.
+- **Refused:** the same name, type 5 (TagLinking's), no name.
+- **A packet WEATHER:**
+  - 27 packets;
+  - a real frame's bytes under captype weather decode its first byte;
+  - captype slrp and an empty token refused.
+- **An enum, its value, a field using it;** deleting the used enum refused.
+- **A CRC definition** in `<crcs>` that a packet then names.
+- **A struct named by a case:** refused, then case and struct deleted.
+- **Registering:** a second case for TSR; the same type again and AAP (no
+  sub-packets) refused.
+- **Packets:** LOCO_SOS moved up jumps the structs to before DMI; SLRP
+  cannot move up; AEP deleted with its comment.
+- **Copies:** AAP_2 on captype aap_2, with real @aap frames unchanged;
+  TagLinking_2 unregistered; `<enums>` stays.
+- **The dialog:** captures follow the name, then stay; the packet block;
+  the captype clash; the struct with SLRP's type 8 and its case line; a
+  name in use; the CRC line.
+- **The window:**
+  - SLRP's bar (no Up);
+  - moving it keeps it selected;
+  - a new struct: Structs (9), selected, Use as a sub-packet visible;
+  - registered;
+  - delete refused while named;
+  - AEP deleted (Packets (25));
+  - all undone;
+  - read-only.
+
+Rendered with the screenshot harness and looked at. The first render
+showed the outline bar crowding the properties pane off screen. It was
+made compact (▲ ▼ ⋯) and rendered again.
+
+**Gate:** Qt 6 and Qt 5.15 green, 346 suites / 9004 checks, 0 failed; 15 validators; menu audit 185 ok; smoke. (The first Qt 5.15 run caught the new suite using QAction without its include, which Qt 6 pulls in indirectly; fixed.)
+
+**Not tested / not done:**
+- **Not clicked through by hand:** the New dialog's and the sub-packet
+  dialog's `exec()` from the window, the packet-delete question, the
+  right-click menus. The suite calls the same functions.
+- **Filling an enum, flag table or event table from a form** is phase 4.
+  They can be created, renamed, moved, copied and deleted now, and their
+  entries copied (Duplicate) and edited.
+- **No new top-level sections:** a schema without an `<eventtables>`
+  section, say, gets one by hand.
+- **A CRC definition records parameters only:** the CRC itself is
+  computed by an algorithm registered in code.
+
+---
+
 <a id="session-309"></a>
 ## Session 309 — Schema Editor, phase 2: add, delete, duplicate and move elements
 

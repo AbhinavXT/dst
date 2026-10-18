@@ -446,14 +446,110 @@ QByteArray Document::withInserted(int anchor, Place place, const QString &line, 
         pos = ls;
         indent = indentOf(anchor) + "  ";
     }
-    QHash<QString, int> cols;
-    if (columnsFrom >= 0 && columnsFrom < m_nodes.size()) cols = attrColumns(m_text, m_nodes.at(columnsFrom));
-    const QByteArray text = aligned(QString::fromUtf8(indent), line, cols).toUtf8() + lineEnd();
+    QByteArray text;
+    int lead = 0;   // bytes before the element's '<' within `text`
+    if (!line.contains(QLatin1Char('\n'))) {
+        QHash<QString, int> cols;
+        if (columnsFrom >= 0 && columnsFrom < m_nodes.size()) cols = attrColumns(m_text, m_nodes.at(columnsFrom));
+        text = aligned(QString::fromUtf8(indent), line, cols).toUtf8() + lineEnd();
+        lead = indent.size();
+    } else {
+        // A block (a whole struct, say): each line under the indent, blank
+        // lines left blank; *at is its first element line's '<'.
+        bool seen = false;
+        for (const QString &l : line.split(QLatin1Char('\n'))) {
+            if (l.trimmed().isEmpty()) {
+                text += lineEnd();
+                if (!seen) lead = text.size();
+                continue;
+            }
+            if (!seen) lead = text.size() + indent.size();
+            seen = true;
+            text += indent + l.toUtf8() + lineEnd();
+        }
+    }
     if (pos > m_text.size()) pos = m_text.size();
     QByteArray out = m_text.left(pos);
     if (pos == m_text.size() && !out.isEmpty() && !out.endsWith('\n')) out += lineEnd();
-    if (at) *at = out.size() + indent.size();
+    if (at) *at = out.size() + lead;
     return out + text + m_text.mid(pos);
+}
+
+bool Document::blockSpan(int node, int *from, int *to, QString *why) const
+{
+    if (!lineSpan(node, from, to, why)) return false;
+    for (;;) {
+        // The line above: is it (the end of) a comment that owns its lines?
+        if (*from == 0) break;
+        int prevEnd = *from - 1;                 // its '\n'
+        int ls = prevEnd;
+        while (ls > 0 && m_text.at(ls - 1) != '\n') --ls;
+        const QByteArray prev = m_text.mid(ls, prevEnd - ls).trimmed();
+        if (!prev.endsWith("-->")) break;
+        const int open = m_text.lastIndexOf("<!--", prevEnd);
+        if (open < 0) break;
+        int cs = open;
+        while (cs > 0 && (m_text.at(cs - 1) == ' ' || m_text.at(cs - 1) == '\t')) --cs;
+        if (cs > 0 && m_text.at(cs - 1) != '\n') break;   // shares a line with something
+        *from = cs;
+    }
+    return true;
+}
+
+QByteArray Document::withMovedBlock(int node, int target, bool after, int *at, QString *why) const
+{
+    int f = 0, t = 0, tf = 0, tt = 0;
+    if (!blockSpan(node, &f, &t, why) || !blockSpan(target, &tf, &tt, why)) return QByteArray();
+    // Each block takes the blank line that separates it from what is before
+    // it, so moving one and moving it back gives the file back.
+    auto blankBefore = [this](int at) {
+        if (at < 1 || m_text.at(at - 1) != '\n') return at;
+        int k = at - 1;
+        if (k >= 1 && m_text.at(k - 1) == '\r') --k;
+        int ls = k;
+        while (ls > 0 && m_text.at(ls - 1) != '\n') --ls;
+        return m_text.mid(ls, k - ls).trimmed().isEmpty() ? ls : at;
+    };
+    const int nodeStart = m_nodes.at(node).start;
+    f = blankBefore(f);
+    tf = blankBefore(tf);
+    if (tf < t && tt > f) {
+        if (why) *why = QStringLiteral("They overlap");
+        return QByteArray();
+    }
+    const QByteArray block = m_text.mid(f, t - f);
+    const int dest = after ? tt : tf;
+    QByteArray out;
+    int start = 0;
+    if (dest <= f) {
+        out = m_text.left(dest) + block + m_text.mid(dest, f - dest) + m_text.mid(t);
+        start = dest;
+    } else {
+        out = m_text.left(f) + m_text.mid(t, dest - t) + block + m_text.mid(dest);
+        start = f + (dest - t);
+    }
+    if (at) *at = start + (nodeStart - f);
+    return out;
+}
+
+QByteArray Document::withoutBlock(int node, QString *why) const
+{
+    if (node <= 0) {
+        if (why) *why = QStringLiteral("The root element stays");
+        return QByteArray();
+    }
+    int f = 0, t = 0;
+    if (!blockSpan(node, &f, &t, why)) return QByteArray();
+    // And one blank line that separated it from what came before.
+    int b = f;
+    if (b >= 1 && m_text.at(b - 1) == '\n') {
+        int k = b - 1;
+        if (k >= 1 && m_text.at(k - 1) == '\r') --k;
+        int ls = k;
+        while (ls > 0 && m_text.at(ls - 1) != '\n') --ls;
+        if (m_text.mid(ls, k - ls).trimmed().isEmpty() && ls < k + 1) f = ls;
+    }
+    return m_text.left(f) + m_text.mid(t);
 }
 
 QByteArray Document::withoutNode(int node, QString *why) const

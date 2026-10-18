@@ -586,6 +586,10 @@ QString Session::check(const QByteArray &text, SchemaDoc::Document *parsed) cons
     if (!fresh.isEmpty()) {
         return QObject::tr("It would leave %1 naming nothing. Not made.").arg(fresh.mid(0, 3).join(QStringLiteral("; ")));
     }
+    const QStringList had = clashes(m_doc);
+    for (const QString &c : clashes(*parsed)) {
+        if (!had.contains(c)) return QObject::tr("It would make %1. Not made.").arg(c);
+    }
     return QString();
 }
 
@@ -780,6 +784,10 @@ bool allowedIn(const QString &tag, const QString &parentTag)
     if (tag == QLatin1String("note")) {
         return parentTag == QLatin1String("packet") || parentTag == QLatin1String("struct") || parentTag == QLatin1String("when");
     }
+    if (tag == QLatin1String("case")) return parentTag == QLatin1String("subpackets");
+    if (tag == QLatin1String("map")) return parentTag == QLatin1String("enum");
+    if (tag == QLatin1String("flag")) return parentTag == QLatin1String("flagtable");
+    if (tag == QLatin1String("event")) return parentTag == QLatin1String("eventtable");
     return false;
 }
 
@@ -794,11 +802,91 @@ QString memberProblem(const SchemaDoc::Document &doc, int node)
 {
     if (node <= 0 || node >= doc.count()) return QObject::tr("Select an element");
     const int c = doc.container(node);
-    if (c < 0 || c == node) {
-        return QObject::tr("Whole %1s are added and removed in the next phase of the editor")
-            .arg(title(doc.node(node).tag).toLower());
+    if (c < 0 || (c == node && !isContainer(doc, node))) {
+        return QObject::tr("<%1> is a section of the file; it stays").arg(doc.node(node).tag);
     }
     return QString();
+}
+
+bool isContainer(const SchemaDoc::Document &doc, int node)
+{
+    if (node <= 0 || node >= doc.count() || doc.container(node) != node) return false;
+    return containerTags().contains(doc.node(node).tag);
+}
+
+QStringList containerTags()
+{
+    return { QStringLiteral("packet"), QStringLiteral("struct"), QStringLiteral("enum"), QStringLiteral("flagtable"),
+             QStringLiteral("eventtable"), QStringLiteral("crc") };
+}
+
+QStringList packetsWithSubpackets(const SchemaDoc::Document &doc)
+{
+    QStringList out;
+    for (int p : doc.all(QStringLiteral("packet"))) {
+        if (doc.child(p, QStringLiteral("subpackets")) >= 0) out << doc.node(p).value(QStringLiteral("name"));
+    }
+    return out;
+}
+
+int freeCaseType(const SchemaDoc::Document &doc, const QString &packet)
+{
+    for (int p : doc.all(QStringLiteral("packet"))) {
+        if (doc.node(p).value(QStringLiteral("name")) != packet) continue;
+        const int sp = doc.child(p, QStringLiteral("subpackets"));
+        if (sp < 0) return -1;
+        QSet<int> used;
+        for (int c : doc.node(sp).children) used.insert(doc.node(c).value(QStringLiteral("type")).toInt());
+        int t = 0;
+        while (used.contains(t)) ++t;
+        return t;
+    }
+    return -1;
+}
+
+QStringList caseUses(const SchemaDoc::Document &doc, const QString &structName)
+{
+    QStringList out;
+    for (int c : doc.all(QStringLiteral("case"))) {
+        if (doc.node(c).value(QStringLiteral("struct")) != structName) continue;
+        out << QObject::tr("%1 type %2").arg(doc.node(doc.container(c)).value(QStringLiteral("name")),
+                                            doc.node(c).value(QStringLiteral("type")));
+    }
+    return out;
+}
+
+QStringList clashes(const SchemaDoc::Document &doc)
+{
+    QStringList out;
+    QHash<QString, QString> token;   // captype -> packet
+    QHash<QString, int> seen;
+    for (int i = 0; i < doc.count(); ++i) {
+        const SchemaDoc::Node &n = doc.node(i);
+        if (isContainer(doc, i)) {
+            const QString key = n.tag + QLatin1Char(' ') + n.value(QStringLiteral("name"));
+            if (seen[key]++ == 1) out << QObject::tr("two %1s named %2").arg(title(n.tag).toLower(), n.value(QStringLiteral("name")));
+        }
+        if (n.tag == QLatin1String("packet")) {
+            for (const QString &t : Schema::captypeTokens(n.value(QStringLiteral("match")))) {
+                if (token.contains(t)) {
+                    out << QObject::tr("captype %1 answered by %2 and %3 (only the first decodes)").arg(t, token.value(t), n.value(QStringLiteral("name")));
+                } else {
+                    token.insert(t, n.value(QStringLiteral("name")));
+                }
+            }
+        }
+        if (n.tag == QLatin1String("subpackets")) {
+            QSet<QString> types;
+            for (int c : n.children) {
+                const QString t = doc.node(c).value(QStringLiteral("type"));
+                if (types.contains(t)) {
+                    out << QObject::tr("%1: two sub-packet cases of type %2").arg(doc.node(doc.container(i)).value(QStringLiteral("name")), t);
+                }
+                types.insert(t);
+            }
+        }
+    }
+    return out;
 }
 
 QStringList dangling(const SchemaDoc::Document &doc)
@@ -875,13 +963,12 @@ bool Session::previewInsert(int anchor, SchemaDoc::Document::Place place, const 
             }
         }
     }
-    if (element.tag != QLatin1String("pad")) {
-        bool named = false;
-        for (const auto &a : element.attrs) named = named || (a.first == QLatin1String("name") && !a.second.trimmed().isEmpty());
-        if (element.tag == QLatin1String("note")) {
-            for (const auto &a : element.attrs) named = named || (a.first == QLatin1String("text") && !a.second.trimmed().isEmpty());
-        }
-        if (!named) {
+    // A field needs a name and a note its text; the rest is isRequired()'s, below.
+    if (element.tag == QLatin1String("field") || element.tag == QLatin1String("note")) {
+        const QString key = element.tag == QLatin1String("note") ? QStringLiteral("text") : QStringLiteral("name");
+        bool given = false;
+        for (const auto &a : element.attrs) given = given || (a.first == key && !a.second.trimmed().isEmpty());
+        if (!given) {
             if (why) *why = element.tag == QLatin1String("note") ? QObject::tr("Give the note a text") : QObject::tr("Give it a name");
             return false;
         }
@@ -948,7 +1035,8 @@ bool Session::remove(int node, QString *why)
         return false;
     }
     QString err;
-    const QByteArray t = m_doc.withoutNode(node, &err);
+    // A container goes with the comment that describes it.
+    const QByteArray t = isContainer(m_doc, node) ? m_doc.withoutBlock(node, &err) : m_doc.withoutNode(node, &err);
     if (t.isEmpty()) {
         if (why) *why = err;
         return false;
@@ -972,7 +1060,27 @@ bool Session::move(int node, int delta, int *moved, QString *why)
     }
     int at = -1;
     QString err;
-    const QByteArray t = m_doc.withMoved(node, delta, &at, &err);
+    QByteArray t;
+    if (isContainer(m_doc, node)) {
+        // Past the next one of its kind (packets sit on both sides of the
+        // structs), its comment with it.
+        const QVector<int> &sib = m_doc.node(m_doc.node(node).parent).children;
+        int target = -1;
+        for (int k = sib.indexOf(node) + delta; k >= 0 && k < sib.size(); k += delta) {
+            if (m_doc.node(sib.at(k)).tag == m_doc.node(node).tag) {
+                target = sib.at(k);
+                break;
+            }
+        }
+        if (target < 0) {
+            if (why) *why = delta < 0 ? QObject::tr("It is already the first %1").arg(title(m_doc.node(node).tag).toLower())
+                                      : QObject::tr("It is already the last %1").arg(title(m_doc.node(node).tag).toLower());
+            return false;
+        }
+        t = m_doc.withMovedBlock(node, target, delta > 0, &at, &err);
+    } else {
+        t = m_doc.withMoved(node, delta, &at, &err);
+    }
     if (t.isEmpty()) {
         if (why) *why = err;
         return false;
@@ -1004,19 +1112,161 @@ bool Session::duplicate(int node, int *copy, QString *why)
         SchemaDoc::Document d;
         d.parse(t);
         const int c = d.nodeAt(at);
+        const bool whole = isContainer(m_doc, node);
         const int owner = d.container(c);
         QSet<QString> taken;
         for (int i = 0; i < d.count(); ++i) {
-            if (d.container(i) == owner) taken.insert(d.node(i).value(QStringLiteral("name")));
+            if (whole ? (isContainer(d, i) && d.node(i).tag == n.tag) : d.container(i) == owner) {
+                taken.insert(d.node(i).value(QStringLiteral("name")));
+            }
         }
         const QString base = n.value(QStringLiteral("name"));
         int k = 2;
         while (taken.contains(QStringLiteral("%1_%2").arg(base).arg(k))) ++k;
-        t = d.withAttribute(c, QStringLiteral("name"), QStringLiteral("%1_%2").arg(base).arg(k));
+        const QString copyName = QStringLiteral("%1_%2").arg(base).arg(k);
+        t = d.withAttribute(c, QStringLiteral("name"), copyName);
+        // A copied packet answers a captype of its own until it is given one:
+        // two packets on one captype, and only the first would ever decode.
+        if (n.tag == QLatin1String("packet") && whole) {
+            d.parse(t);
+            t = d.withAttribute(c, QStringLiteral("match"), QStringLiteral("captype==") + copyName.toLower());
+        }
     }
     if (!stage(t, QObject::tr("%1 duplicated").arg(label(m_doc, node)), why)) return false;
     if (copy) *copy = m_doc.nodeAt(at);
     return true;
+}
+
+namespace {
+
+QString startTagOf(const QString &tag, const QString &name, const QVector<QPair<QString, QString>> &attrs, bool empty)
+{
+    QString out = QStringLiteral("<%1 name=\"%2\"").arg(tag, SchemaDoc::escape(name, '"'));
+    for (const auto &a : attrs) out += QStringLiteral(" %1=\"%2\"").arg(a.first, SchemaDoc::escape(a.second, '"'));
+    return out + (empty ? QStringLiteral("/>") : QStringLiteral(">"));
+}
+
+}  // namespace
+
+bool Session::previewContainer(const NewContainer &nc, QByteArray *text, int *node, QString *why) const
+{
+    using Place = SchemaDoc::Document::Place;
+    auto fail = [why](const QString &w) {
+        if (why) *why = w;
+        return false;
+    };
+    if (!containerTags().contains(nc.tag)) return fail(QObject::tr("Not something the editor makes"));
+    if (nc.name.trimmed().isEmpty()) return fail(QObject::tr("Give it a name"));
+    if (nc.name != nc.name.trimmed()) return fail(QObject::tr("The name has spaces at its ends"));
+    for (int i = 0; i < m_doc.count(); ++i) {
+        if (isContainer(m_doc, i) && m_doc.node(i).tag == nc.tag && m_doc.node(i).value(QStringLiteral("name")) == nc.name) {
+            return fail(QObject::tr("There is already a %1 named %2").arg(title(nc.tag).toLower(), nc.name));
+        }
+    }
+    const QString parentTag = nc.tag == QLatin1String("enum") ? QStringLiteral("enums")
+                            : nc.tag == QLatin1String("flagtable") ? QStringLiteral("flagtables")
+                            : nc.tag == QLatin1String("eventtable") ? QStringLiteral("eventtables")
+                            : nc.tag == QLatin1String("crc") ? QStringLiteral("crcs") : QStringLiteral("schema");
+    const QVector<AttrSpec> specs = specsFor(nc.tag, parentTag);
+    for (const auto &a : nc.attrs) {
+        if (const AttrSpec *sp = specFor(specs, a.first)) {
+            const QString p = valueProblem(m_doc, *sp, a.second);
+            if (!p.isEmpty()) return fail(p);
+        }
+        if (nc.tag == QLatin1String("packet") && a.first == QLatin1String("match")
+            && Schema::captypeTokens(a.second).isEmpty()) {
+            return fail(QObject::tr("Captures: captype==token, or several tokens separated by commas"));
+        }
+    }
+    // Where: after the last one of its kind (a struct after the last struct,
+    // else after the last packet), or last in its section.
+    int anchor = -1;
+    Place place = Place::After;
+    QVector<int> same;
+    for (int i = 0; i < m_doc.count(); ++i) {
+        if (isContainer(m_doc, i) && m_doc.node(i).tag == nc.tag) same.push_back(i);
+    }
+    if (!same.isEmpty()) {
+        anchor = same.last();
+    } else if (parentTag == QLatin1String("schema")) {
+        const QVector<int> packets = m_doc.all(QStringLiteral("packet"));
+        if (!packets.isEmpty()) anchor = packets.last();
+    } else {
+        anchor = m_doc.child(m_doc.root(), parentTag);
+        place = Place::LastChild;
+        if (anchor < 0) return fail(QObject::tr("kavach.xml has no <%1> section; add one by hand").arg(parentTag));
+    }
+    if (anchor < 0) return fail(QObject::tr("Nowhere to put it"));
+    const bool empty = nc.tag == QLatin1String("crc");
+    QString block = startTagOf(nc.tag, nc.name, nc.attrs, empty);
+    if (!empty) block = QStringLiteral("\n") + block + QStringLiteral("\n</%1>").arg(nc.tag);
+    int at = -1;
+    QString err;
+    QByteArray t = m_doc.withInserted(anchor, place, block, empty && place == Place::After ? anchor : -1, &at, &err);
+    if (t.isEmpty()) return fail(err);
+    SchemaDoc::Document next;
+    next.parse(t);
+    if (nc.tag == QLatin1String("struct") && !nc.casePacket.isEmpty()) {
+        int sub = -1;
+        for (int p : next.all(QStringLiteral("packet"))) {
+            if (next.node(p).value(QStringLiteral("name")) == nc.casePacket) sub = next.child(p, QStringLiteral("subpackets"));
+        }
+        if (sub < 0) return fail(QObject::tr("%1 has no sub-packets").arg(nc.casePacket));
+        if (nc.caseType < 0) return fail(QObject::tr("Give the sub-packet a type"));
+        const int caseAnchor = next.node(sub).children.isEmpty() ? sub : next.node(sub).children.last();
+        const Place cp = next.node(sub).children.isEmpty() ? Place::LastChild : Place::After;
+        const QString line = QStringLiteral("<case type=\"%1\" struct=\"%2\"/>").arg(nc.caseType).arg(SchemaDoc::escape(nc.name, '"'));
+        int caseAt = -1;
+        const QByteArray t2 = next.withInserted(caseAnchor, cp, line, cp == Place::After ? caseAnchor : -1, &caseAt, &err);
+        if (t2.isEmpty()) return fail(err);
+        if (caseAt < at) {
+            // The case line sits before the struct (SLRP comes first): the struct moved down.
+            int lineLen = t2.size() - t.size();
+            at += lineLen;
+        }
+        t = t2;
+        next.parse(t);
+    }
+    err = check(t, &next);
+    if (!err.isEmpty()) return fail(err);
+    if (text) *text = t;
+    if (node) *node = next.nodeAt(at);
+    return true;
+}
+
+bool Session::addContainer(const NewContainer &nc, int *node, QString *why)
+{
+    if (readOnly()) {
+        if (why) *why = QObject::tr("The built-in kavach.xml cannot be changed: make an editable copy first");
+        return false;
+    }
+    QByteArray t;
+    int added = -1;
+    if (!previewContainer(nc, &t, &added, why)) return false;
+    QString what = QObject::tr("+ %1 %2").arg(title(nc.tag).toLower(), nc.name);
+    if (!nc.casePacket.isEmpty()) what += QObject::tr(" (sub-packet type %1 of %2)").arg(nc.caseType).arg(nc.casePacket);
+    if (!stage(t, what, why)) return false;
+    if (node) *node = added;
+    return true;
+}
+
+bool Session::registerCase(const QString &structName, const QString &packet, int type, int *node, QString *why)
+{
+    int sub = -1;
+    for (int p : m_doc.all(QStringLiteral("packet"))) {
+        if (m_doc.node(p).value(QStringLiteral("name")) == packet) sub = m_doc.child(p, QStringLiteral("subpackets"));
+    }
+    if (sub < 0) {
+        if (why) *why = QObject::tr("%1 has no sub-packets").arg(packet);
+        return false;
+    }
+    NewElement e;
+    e.tag = QStringLiteral("case");
+    e.attrs = { qMakePair(QStringLiteral("type"), QString::number(type)), qMakePair(QStringLiteral("struct"), structName) };
+    const auto place = m_doc.node(sub).children.isEmpty() ? SchemaDoc::Document::Place::LastChild
+                                                          : SchemaDoc::Document::Place::After;
+    const int anchor = m_doc.node(sub).children.isEmpty() ? sub : m_doc.node(sub).children.last();
+    return insert(anchor, place, e, node, why);
 }
 
 bool Session::save(QString *backup, QString *error)
