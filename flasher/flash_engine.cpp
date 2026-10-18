@@ -137,6 +137,8 @@ const char* reject_reason_text(uint8_t reason)
         case 2: return "the image is built for a different card type than it was sent as";
         case 3: return "downgrade: the image is older than the one running, and downgrades are blocked";
         case 4: return "the image trailer is damaged";
+        case 5: return "bad signature: wrong signature, unknown key, or a signed image changed afterwards";
+        case 6: return "the image is not signed, and the board requires a signature (sign it with fw_sign.py)";
         default: return "no reason given";
     }
 }

@@ -178,18 +178,32 @@ QString ImageTrailer::text() const
     return out;
 }
 
+QString ImageTrailer::signatureText() const
+{
+    return signatureKeyId < 0 ? QStringLiteral("not signed")
+                              : QStringLiteral("signed, key %1 (checked by the board)").arg(signatureKeyId);
+}
+
 ImageTrailer readImageTrailer(const QByteArray &bytes)
 {
     ImageTrailer trailer;
-    if (bytes.size() < kTrailerBytes) {
+    auto le32At = [&bytes](int offset) {
+        const auto *b = reinterpret_cast<const uchar *>(bytes.constData()) + offset;
+        return quint32(b[0]) | (quint32(b[1]) << 8) | (quint32(b[2]) << 16) | (quint32(b[3]) << 24);
+    };
+    // Session 313: the body ends before a signature block, as the board's
+    // FW_Sig_Body_Len() and the host tool's file_body_len() decide.
+    int body = int(bytes.size());
+    if (body >= kSignatureBytes && le32At(body - kSignatureBytes) == kSignatureMagic) {
+        trailer.signatureKeyId = uchar(bytes.at(body - kSignatureBytes + 6));
+        body -= kSignatureBytes;
+    }
+    if (body < kTrailerBytes) {
         return trailer;
     }
-    const int at = bytes.size() - kTrailerBytes;
+    const int at = body - kTrailerBytes;
     const auto *t = reinterpret_cast<const uchar *>(bytes.constData()) + at;
-    auto le32 = [t](int offset) {
-        return quint32(t[offset]) | (quint32(t[offset + 1]) << 8) | (quint32(t[offset + 2]) << 16)
-             | (quint32(t[offset + 3]) << 24);
-    };
+    auto le32 = [&](int offset) { return le32At(at + offset); };
     if (le32(0) != kTrailerMagic) {
         return trailer;
     }
@@ -1170,7 +1184,8 @@ PreflightReport evaluatePreflight(const PreflightInput &input)
                                                     ? cardName(row.trailer.cardType)
                                                     : QStringLiteral("card type %1").arg(row.trailer.cardType)));
             } else if (row.trailer.state == ImageTrailer::State::Valid) {
-                trailerNotes.append(QStringLiteral("Image trailer: %1").arg(row.trailer.text()));
+                trailerNotes.append(QStringLiteral("Image trailer: %1 · %2").arg(row.trailer.text(),
+                                                                                 row.trailer.signatureText()));
             } else if (row.trailer.state == ImageTrailer::State::Damaged) {
                 trailerProblems.append(QStringLiteral("%1: the image trailer is damaged (%2) — the board would "
                                                       "refuse it; re-stamp it with fw_stamp.py")
@@ -2022,7 +2037,7 @@ QString cardResultText(int result)
     case 2: return QStringLiteral("VERIFY_FAIL — the card's own CRC/SHA check failed");
     case 3: return QStringLiteral("FLASH_FAIL — flash write failed on the card");
     case 4: return QStringLiteral("INCOMPLETE — the card gave up with blocks missing");
-    case 5: return QStringLiteral("REJECTED — the card refused the image (wrong card, downgrade or trailer)");
+    case 5: return QStringLiteral("REJECTED — the card refused the image (wrong card, downgrade, trailer or signature)");
     default: return QStringLiteral("no report");
     }
 }

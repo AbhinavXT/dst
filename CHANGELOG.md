@@ -11,6 +11,62 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-313"></a>
+## Session 313 — Firmware Flasher: signed images (updater 2.7)
+
+Abhinav brought the new updater (`updater.zip`: 2.6.2 and 2.7.0). He chose
+**2.7 support without checking signatures on the PC**. The board checks
+them, and so does nothing else on the PC: the updater's own host tool
+doesn't either.
+
+- **2.6.2** (gratuitous ARPs at link-up) needs nothing on the PC side.
+- **2.7.0** lets `tools/fw_sign.py` add a 72-byte block after the trailer:
+  magic "FWSG", version, alg (Ed25519), key id, then the 64-byte signature.
+  It also adds reject reasons 5 (bad signature) and 6 (unsigned).
+
+Before this patch the Flasher looked for the trailer at the very end of
+the file. A signed image read as "no trailer (unstamped)", and a reason 5
+or 6 showed as "no reason given".
+
+**What the operator sees.**
+- **A signed image's trailer is read again.** The flasher looks in front
+  of a signature block, using the same rule as the board's
+  `FW_Sig_Body_Len()` and the host tool's `file_body_len()`.
+- **The detail strip has a Signature line:** "signed, key N (checked by
+  the board)" or "not signed".
+- **In 2.6 mode, pre-flight's trailer line names the signature too.**
+- **REJECTED reasons 5 and 6 are named** in the log, the Summary and
+  Ask board's "Last rejection". The card REJECTED text now includes
+  "signature".
+
+**Files.** `flasher/flashercore.{h,cpp}` (`kSignatureBytes`,
+`kSignatureMagic`, `ImageTrailer::signatureKeyId`, `signatureText()`,
+`readImageTrailer`), `flasher/flash_engine.cpp`,
+`flasher/flasherqueuepage.cpp`, `tests/screenshot_main.cpp` (`flasher26`
+loads the signed fixture).
+
+**Tests.** New `session313` (9 checks). The fixture
+`tests/fixtures/fw_trailer/KAVACH_Input_Card_signed_1.2.9.appimage` is
+session 298's stamped image signed by the updater's own `fw_sign.py`, with
+key id 1. `fw_sign.py verify` passes on it. The suite covers:
+- the trailer is found in front of the signature, and the key id is read;
+- an unsigned image reads as before;
+- a signed but unstamped image;
+- a damaged FWSG magic;
+- `loadImage`;
+- reasons 5, 6 and an unknown reason.
+
+**Gate:** Qt 6 and Qt 5.15 green, 348 suites / 9110 checks, 0 failed; 15
+validators; menu audit; smoke. Checked on screen (`SHOT_WINDOW=flasher26`).
+
+**Not tested:** a real 2.7 board (none exists yet; the updater's own notes
+say 2.7 isn't built with TI clang or run on a board). A live REJECTED 5/6
+from the fake board was not tested either, only the reason names. The
+version toggle still reads "2.6", which covers 2.6 and 2.7: the packets
+are the same.
+
+---
+
 <a id="session-312"></a>
 ## Session 312 — CI: the Schema Editor suites on a Windows checkout (CRLF)
 

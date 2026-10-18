@@ -670,7 +670,12 @@ int main(int argc, char **argv)
                 profile.defaultImages.insert(Flasher::CardVcc, writeImg(QStringLiteral("LKAVACH_v1.2.9.appimage"), 30 * 1450));
                 profile.updaterWaitSeconds = Flasher::kMinUpdaterWaitSeconds;
                 // Session 296: flasher26 is the queue with the 2.6 updater on.
-                if (which == QLatin1String("flasher26")) profile.updater = kflash::Updater::V26;
+                if (which == QLatin1String("flasher26")) {
+                    profile.updater = kflash::Updater::V26;
+                    // Session 313: a stamped and signed image (fw_sign.py).
+                    profile.defaultImages.insert(Flasher::CardInput, QStringLiteral(
+                        DL_SRC_DIR "/tests/fixtures/fw_trailer/KAVACH_Input_Card_signed_1.2.9.appimage"));
+                }
                 // Session 300: flasherloco, loco 1's four VCCs with 2.6 on.
                 if (which == QLatin1String("flasherloco")) {
                     profile.updater = kflash::Updater::V26;

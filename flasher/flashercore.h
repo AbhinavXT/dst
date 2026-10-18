@@ -112,8 +112,15 @@ NameCheckResult checkImageName(const QString &fileName, int cardType);
 //  (crcFast) over the 20 bytes before it. It is part of the image, so the
 //  CRC-32 / SHA-256 cover it; the board checks it after them and refuses a
 //  wrong card type or a damaged trailer (STATUS REJECTED).
+//
+//  Session 313: updater 2.7 (tools/fw_sign.py) may append a 72-byte signature
+//  block after the trailer: magic "FWSG" (0x47535746), version, alg, key_id,
+//  reserved, 64-byte Ed25519 signature. The trailer is then in front of it.
+//  The flasher does not check the signature: the board does.
 const int     kTrailerBytes = 24;
 const quint32 kTrailerMagic = 0x52545746u;
+const int     kSignatureBytes = 72;
+const quint32 kSignatureMagic = 0x47535746u;
 
 struct ImageTrailer {
     enum class State { None, Valid, Damaged };
@@ -124,9 +131,12 @@ struct ImageTrailer {
     quint32 fwVersion = 0;
     quint32 buildTime = 0;           // UNIX seconds
     quint32 imageLength = 0;
+    int     signatureKeyId = -1;     // session 313: -1 = no signature block
 
     // "Input card · 1.2.9 · built 2026-10-16 17:41 UTC"
     QString text() const;
+    // "signed, key 1 (checked by the board)" or "not signed"
+    QString signatureText() const;
 };
 
 // fw_stamp.py's parse_trailer(), and the board's check_image_trailer().

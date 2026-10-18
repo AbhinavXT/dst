@@ -1125,6 +1125,7 @@ void FlasherQueuePage::updateDetailStrip()
         } else if (row.image.trailer.state == Flasher::ImageTrailer::State::Damaged) {
             modified += tr("\nTrailer: damaged (%1)").arg(row.image.trailer.damage);
         }
+        modified += tr("\nSignature: %1").arg(row.image.trailer.signatureText());
         m_detailModified->setText(modified);
     } else {
         m_detailSha->setText(QStringLiteral("—"));
