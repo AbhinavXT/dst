@@ -186,6 +186,7 @@ private:
     // ---- data -------------------------------------------------------------------
     QString                 m_dataDirectory;
     QString                 m_loadError;
+    QString                 m_schemaNote;     // session 321: fell back to the built-in schema
     LocoInfo::Layout        m_layout;
     LocoInfo::Presentation  m_presentation;
     LocoInfo::Values        m_defaults;

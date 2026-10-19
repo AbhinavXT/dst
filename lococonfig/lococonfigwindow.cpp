@@ -81,7 +81,16 @@ LocoConfigWindow::LocoConfigWindow(QWidget *parent, const QString &dataDirectory
 
     // ---- the layout, its presentation, the tool's defaults -------------------------
     QString error;
-    if (!m_layout.load(schemaFile(), &error)) {
+    bool layoutOk = m_layout.load(schemaFile(), &error);
+    if (!layoutOk && !schemaFile().startsWith(QLatin1Char(':'))) {
+        // Session 321: the chosen kavach.xml is gone or broken: use the
+        // built-in copy and say so, as Packet Maker does, rather than refuse.
+        m_schemaNote = tr("The chosen kavach.xml could not be read (%1): using the built-in copy. "
+                          "Schema \u25B8 Use external schema file… picks another.").arg(error);
+        error.clear();
+        layoutOk = m_layout.load(QString::fromLatin1(kBuiltinSchema), &error);
+    }
+    if (!layoutOk) {
         m_loadError = tr("The LOCO_INFO layout could not be read from the schema:\n%1").arg(error);
     } else if (!LocoInfo::loadDefaults(QLatin1String(kDefaultsPath), m_layout, &m_defaults, &error,
                                        &m_defaultsSource)) {
@@ -124,6 +133,9 @@ LocoConfigWindow::LocoConfigWindow(QWidget *parent, const QString &dataDirectory
     pageLayout->addWidget(buildSendBar());
     m_status = new StatusLine(page);
     pageLayout->addWidget(m_status);
+    if (!m_schemaNote.isEmpty()) {
+        m_status->warn(m_schemaNote);   // session 321
+    }
     centralLayout->addWidget(page, 1);
     setCentralWidget(central);
 

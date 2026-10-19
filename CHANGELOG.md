@@ -11,6 +11,42 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-321"></a>
+## Session 321 — Loco Configuration opens when the chosen kavach.xml is gone
+
+Abhinav's screenshot: the Loco Configuration window showed only "The
+LOCO_INFO layout could not be read from the schema: Cannot open
+/Users/abhinavpathak/Desktop/kavach.xml: No such file or directory". The
+external schema chosen earlier (Schema ▸ Use external schema file…) had
+been moved or deleted, and the window refused to open without it.
+
+**What the operator sees.** The window opens on the **built-in**
+kavach.xml, with a warning in its status line: "The chosen kavach.xml
+could not be read (Cannot open …): using the built-in copy. Schema ▸ Use
+external schema file… picks another." Packet Maker already did the same
+(its encoder falls back and notes it).
+
+**Not changed.** The main decoder's own reload still says plainly that
+the chosen file failed and decodes nothing until it's fixed (its message
+says how to go back to the built-in copy). Adding or removing a LOCO_INFO
+field from this window still needs a readable external file: with the
+fallback in force, it says it cannot open the missing one.
+
+**Files.** `lococonfig/lococonfigwindow.{h,cpp}`.
+
+**Tests.** New `session321` (4 checks): a missing chosen schema, the
+window usable with its fields listed and the status naming the file; the
+built-in schema chosen, no note. The test restores the setting it
+changed.
+
+**Gate:** Qt 6 and Qt 5.15 green, 355 suites / 9218 checks, 0 failed; 15
+validators; menu audit; smoke.
+
+**Not tested:** a chosen file that exists but is broken XML (the same
+code path: any load failure falls back).
+
+---
+
 <a id="session-320"></a>
 ## Session 320 — Loco Configuration: a column per send IP, differences highlighted
 
