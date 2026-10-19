@@ -123,6 +123,7 @@ public:
     // tests. `address` empty = the queue's first VCC.
     QToolButton        *askBoardButton() const { return m_askBoardButton; }
     class FlasherBoardDialog *openBoardDialog(const QString &address = QString(), quint16 port = 0);
+    class FlasherImageDialog *openImageDialog();   // session 316: Make image…
 
 signals:
     // Emitted when the run has been recorded, after history has been
@@ -190,6 +191,7 @@ private:
     QToolButton            *m_updaterClassic = nullptr;
     QToolButton            *m_updater26 = nullptr;
     QToolButton            *m_askBoardButton = nullptr;   // session 297
+    QToolButton            *m_makeImageButton = nullptr;  // session 316
     QPointer<class FlasherBoardDialog> m_boardDialog;
     QLabel                 *m_flashingBadge = nullptr;
     QLabel                 *m_targetLabel = nullptr;

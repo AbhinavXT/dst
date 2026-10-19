@@ -8,9 +8,11 @@
 #include <QFileInfo>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QProcess>
 #include <QRandomGenerator>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QStandardPaths>
 #include <QTextStream>
 
 #include <algorithm>
@@ -293,6 +295,103 @@ SignatureCheck checkImageSignature(const ImageTrailer &trailer, const PublicKeys
                                 reinterpret_cast<const uint8_t *>(trailer.signedBodySha256.constData()), 32) == 0
                ? SignatureCheck::Valid
                : SignatureCheck::Mismatch;
+}
+
+bool parseFwVersion(const QString &text, quint32 *version)
+{
+    const QStringList parts = text.trimmed().split(QLatin1Char('.'));
+    if (parts.size() != 3) return false;
+    quint32 out = 0;
+    for (const QString &part : parts) {
+        bool ok = false;
+        const int n = part.toInt(&ok);
+        if (!ok || part.isEmpty() || !part.at(0).isDigit() || n < 0 || n > 255) return false;
+        out = (out << 8) | quint32(n);
+    }
+    *version = out;
+    return true;
+}
+
+QByteArray stampImage(const QByteArray &bytes, int cardType, quint32 fwVersion, int hwRev,
+                      quint32 buildTime, bool replace, QString *error)
+{
+    const ImageTrailer existing = readImageTrailer(bytes);
+    if (existing.signatureKeyId >= 0) {
+        *error = QStringLiteral("the image is signed: stamping would break the signature. "
+                                "Stamp the unsigned image, then sign it");
+        return QByteArray();
+    }
+    if (!isValidCardType(cardType) || hwRev < 0 || hwRev > 255 || fwVersion > 0xFFFFFFu) {
+        *error = QStringLiteral("card type, version or hardware revision out of range");
+        return QByteArray();
+    }
+    QByteArray body = bytes;
+    if (existing.state != ImageTrailer::State::None) {
+        if (!replace) {
+            *error = QStringLiteral("the image already has a trailer");
+            return QByteArray();
+        }
+        body.chop(kTrailerBytes);
+    }
+    QByteArray trailer;
+    auto le32 = [&trailer](quint32 v) {
+        for (int i = 0; i < 4; ++i) trailer.append(char((v >> (8 * i)) & 0xFF));
+    };
+    le32(kTrailerMagic);
+    trailer.append(char(1)).append(char(cardType)).append(char(hwRev)).append(char(0));
+    le32(fwVersion);
+    le32(buildTime);
+    le32(quint32(body.size()));
+    le32(kflash::image_crc32(reinterpret_cast<const uint8_t *>(trailer.constData()), 20));
+    return body + trailer;
+}
+
+SignResult runFwSign(const SignRequest &request)
+{
+    SignResult result;
+    if (request.python.isEmpty()) {
+        result.message = QStringLiteral("Python was not found on this PC (fw_sign.py needs it)");
+        return result;
+    }
+    QProcess process;
+    QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+    env.remove(QStringLiteral("FW_SIGN_PASSPHRASE"));
+    if (!request.passphrase.isEmpty()) env.insert(QStringLiteral("FW_SIGN_PASSPHRASE"), request.passphrase);
+    process.setProcessEnvironment(env);
+    QStringList args = request.python.mid(1);
+    args << request.script << QStringLiteral("sign") << request.input << request.output
+         << QStringLiteral("--key") << request.key << QStringLiteral("--key-id") << QString::number(request.keyId);
+    // shortcut: blocks the caller until fw_sign.py ends (about a second); move to a thread if it ever takes long.
+    process.start(request.python.first(), args);
+    if (!process.waitForStarted(5000)) {
+        result.message = QStringLiteral("could not start %1").arg(request.python.join(QLatin1Char(' ')));
+        return result;
+    }
+    if (!process.waitForFinished(request.timeoutMs)) {
+        process.kill();
+        process.waitForFinished(2000);
+        result.message = QStringLiteral("fw_sign.py did not finish in %1 s").arg(request.timeoutMs / 1000);
+        return result;
+    }
+    const QString out = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
+    const QString err = QString::fromUtf8(process.readAllStandardError()).trimmed();
+    result.ok = process.exitStatus() == QProcess::NormalExit && process.exitCode() == 0;
+    // A traceback's last line names the problem ("ValueError: Bad decrypt...").
+    result.message = result.ok ? out : (err.isEmpty() ? out : err.split(QLatin1Char('\n')).last().trimmed());
+    if (!result.ok && result.message.isEmpty()) result.message = QStringLiteral("fw_sign.py failed (exit %1)").arg(process.exitCode());
+    return result;
+}
+
+QStringList findPython()
+{
+    for (const char *name : { "python3", "python" }) {
+        const QString path = QStandardPaths::findExecutable(QString::fromLatin1(name));
+        // Windows' Store alias "python.exe" opens the Store instead of running; skip WindowsApps.
+        if (!path.isEmpty() && !path.contains(QLatin1String("WindowsApps"), Qt::CaseInsensitive)) return { path };
+    }
+    const QString py = QStandardPaths::findExecutable(QStringLiteral("py"));
+    if (!py.isEmpty()) return { py, QStringLiteral("-3") };
+    return {};
 }
 
 ImageInfo loadImage(const QString &path)

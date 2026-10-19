@@ -11,6 +11,89 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-316"></a>
+## Session 316 — Firmware Flasher: Make image… (stamp and sign a built image)
+
+Abhinav asked for stamped and signed images to be made in the flasher
+itself. He chose:
+- **signing by running the updater's own `fw_sign.py`**, not in DLConsole:
+  its private key is an encrypted PEM (scrypt + AES), which DLConsole could
+  only open with a new crypto library. The PC still never parses a private
+  key, and the format cannot drift from the tool that wrote the boards' key
+  header;
+- **a separate dialog**, apart from Flash: the updater treats stamping as a
+  build step, not a flash-time step.
+
+**What the operator sees.** **Make image…** in the Flasher's top bar
+(hidden while flashing):
+- **Built image:** the file and what it holds now ("Stamped: Input card ·
+  1.2.9 · built … · not signed").
+- **Stamp (as fw_stamp.py):** card, version, hardware rev. Filled in from
+  the trailer, else from the file's name. Ticked for an unstamped image,
+  unticked for a stamped one. **Replace the image's existing trailer**
+  shows when there is one. A signed image is refused: stamping would break
+  its signature.
+- **Sign (runs the updater's fw_sign.py):** the script, the private key,
+  the key id, the passphrase. The script, key path and key id are
+  remembered in `dlconsole.ini`; the passphrase is asked each time, passed
+  only in `FW_SIGN_PASSPHRASE` to the child, and cleared after use. The
+  Python found on PATH is shown (python3, python, then `py -3`; the
+  Windows Store alias is skipped).
+- **Write to:** a new file, `<name>_stamped.appimage` or
+  `<name>_signed.appimage` beside the built one. Writing over the built
+  image is refused.
+- **The result:**
+  - stamped: the trailer read back;
+  - signed: checked against the profile's `fw_pubkeys.h`, as pre-flight
+    does: "checked against", or a failure saying the boards would refuse
+    it (unknown key or mismatch), or a warning when the profile names no
+    key header;
+  - fw_sign.py failing: its own last line ("ValueError: Incorrect
+    password, could not decrypt key").
+
+**Files.**
+- `flasher/flashercore.{h,cpp}`: `parseFwVersion`, `stampImage`,
+  `SignRequest`, `SignResult`, `runFwSign`, `findPython`.
+- New `flasher/flasherimagedialog.{h,cpp}`; `flasher/flasher.pri`;
+  `flasher/flasherwindow.{h,cpp}` (the button, `openImageDialog()`).
+- `README_FLASHING_AND_CONFIG.md`: "Signed images and Make image… (2.7)".
+- `tests/screenshot_main.cpp`: `SHOT_WINDOW=flashermakeimage`.
+
+**Tests.** New `session316` (33 checks). New fixture
+`tests/fixtures/fw_trailer/fake_fw_sign.py`: a stand-in for `fw_sign.py
+sign` that appends the real tool's signature block (from session 313's
+fixture) and fails on the passphrase "wrong" the way the real tool does.
+- versions: good, two parts, 256, negative, not a number;
+- stamping: **byte for byte what `fw_stamp.py` wrote** (session 298's
+  fixture, same build time); no second trailer; Replace; a damaged trailer
+  replaced; a signed image refused; card 5 refused; read back;
+- `runFwSign`: arguments and the passphrase in the environment, the
+  output, a failure's last line, a missing Python;
+- the dialog: an unstamped image stamped with the card from its name and
+  the original unchanged; never over the original; a stamped image signed
+  and checked (key 1 matches `fw_pubkeys_two.h`); a mismatch with
+  `fw_pubkeys_swapped.h`; a wrong passphrase; no key header; the
+  passphrase cleared.
+
+Also run by hand with the **real** `fw_sign.py` (updater 2.7.0,
+cryptography 45): a throw-away encrypted key, `sign` with the arguments
+the flasher passes, `verify --header` says "Signature OK (key 0)"; a wrong
+passphrase ends with "ValueError: Incorrect password, could not decrypt
+key".
+
+**Gate:** Qt 6 and Qt 5.15 green, 351 suites / 9175 checks, 0 failed; 15
+validators; menu audit; smoke. Checked on screen (`SHOT_WINDOW=flashermakeimage`, light and dark).
+
+**Not tested:**
+- **The dialog driving the real fw_sign.py end to end** (the stand-in
+  does in the suite; the real tool was run by hand with the same
+  arguments).
+- **Windows:** Python found through `py -3`, and paths with spaces, until
+  CI and the field PC.
+- **A real board** taking an image made here.
+
+---
+
 <a id="session-315"></a>
 ## Session 315 — Edit profile holds a loco's four VCCs; lane band follows the font
 

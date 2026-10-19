@@ -27,6 +27,7 @@ SOURCES += \
     $$PWD/flasherwindow.cpp \
     $$PWD/vcclistedit.cpp \
     $$PWD/flasherboarddialog.cpp \
+    $$PWD/flasherimagedialog.cpp \
     $$PWD/third_party/monocypher/monocypher.c \
     $$PWD/third_party/monocypher/monocypher-ed25519.c
 
@@ -45,6 +46,7 @@ HEADERS += \
     $$PWD/flasherwindow.h \
     $$PWD/vcclistedit.h \
     $$PWD/flasherboarddialog.h \
+    $$PWD/flasherimagedialog.h \
     $$PWD/third_party/monocypher/monocypher.h \
     $$PWD/third_party/monocypher/monocypher-ed25519.h
 

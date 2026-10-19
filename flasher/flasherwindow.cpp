@@ -8,6 +8,7 @@
 
 #include "blockmapwidget.h"
 #include "flasherboarddialog.h"
+#include "flasherimagedialog.h"
 #include "flasherflashingpage.h"
 #include "flasherhistorydialog.h"
 #include "flasherprofiledialog.h"
@@ -272,6 +273,15 @@ QWidget *FlasherWindow::buildAppBar()
                                     "banks, firmware versions and card results; release a held board"));
     connect(m_askBoardButton, &QToolButton::clicked, this, [this]() { openBoardDialog(); });
     barLayout->addWidget(m_askBoardButton);
+    // Session 316: stamp and sign a built image (fw_sign.py does the signing).
+    m_makeImageButton = new QToolButton(m_appBar);
+    m_makeImageButton->setObjectName(QStringLiteral("flasherMakeImage"));
+    m_makeImageButton->setText(tr("Make image…"));
+    m_makeImageButton->setMinimumHeight(30);
+    m_makeImageButton->setToolTip(tr("Stamp a built .appimage with its card and version, and sign it with "
+                                     "the updater's fw_sign.py, into a new file"));
+    connect(m_makeImageButton, &QToolButton::clicked, this, [this]() { openImageDialog(); });
+    barLayout->addWidget(m_makeImageButton);
     barLayout->addSpacing(6);
 
     barLayout->addStretch(1);
@@ -372,6 +382,7 @@ void FlasherWindow::setFlashingState(bool flashing)
     m_updaterClassic->setEnabled(!flashing);
     m_updater26->setEnabled(!flashing);
     m_askBoardButton->setVisible(!flashing && updater() == kflash::Updater::V26);
+    m_makeImageButton->setVisible(!flashing);
     m_gearButton->setEnabled(!flashing);
     if (m_profileMenuButton) m_profileMenuButton->setEnabled(!flashing);   // no profile swaps mid-flash
     refreshAppBarTarget();
@@ -435,6 +446,15 @@ FlasherBoardDialog *FlasherWindow::openBoardDialog(const QString &address, quint
     m_boardDialog->setAttribute(Qt::WA_DeleteOnClose);
     m_boardDialog->show();
     return m_boardDialog;
+}
+
+FlasherImageDialog *FlasherWindow::openImageDialog()
+{
+    auto *dialog = new FlasherImageDialog(
+        Flasher::readPublicKeys(m_profiles.profile(m_profiles.activeName()).publicKeysPath), this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    dialog->show();
+    return dialog;
 }
 
 kflash::Updater FlasherWindow::updater() const

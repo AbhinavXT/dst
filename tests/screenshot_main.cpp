@@ -71,6 +71,7 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "incidentreportdialog.h"
 #include "flasherwindow.h"
 #include "flasherprofiledialog.h"
+#include "flasherimagedialog.h"
 #include "fielddocs.h"
 #include <QToolTip>
 #include "flasherboarddialog.h"
@@ -723,6 +724,13 @@ int main(int argc, char **argv)
                     profile.requireSignature = true;
                     auto *d = new FlasherProfileDialog(profile, Flasher::Mode::Engineer, store.names(), false, nullptr);
                     d->resize(720, 1100);
+                    win = d;
+                }
+                // Session 316: flashermakeimage, Make image… on the stamped fixture.
+                if (which == QLatin1String("flashermakeimage")) {
+                    auto *d = new FlasherImageDialog(Flasher::readPublicKeys(
+                        QStringLiteral(DL_SRC_DIR "/tests/fixtures/fw_trailer/fw_pubkeys_two.h")));
+                    d->setInput(QStringLiteral(DL_SRC_DIR "/tests/fixtures/fw_trailer/KAVACH_Input_Card_stamped_1.2.9.appimage"));
                     win = d;
                 }
             }

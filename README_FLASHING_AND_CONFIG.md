@@ -175,6 +175,28 @@ If the queue has images loaded, the dialog says whether the board's
 **active bank is one of them (same CRC)**. That settles a **Result
 unknown**: the Summary has an **Ask the board…** button for it.
 
+### Signed images and Make image… (2.7)
+
+Updater 2.7 boards can require images signed with the release key. The
+key pair is made once, on the release machine, with the updater's
+`tools/fw_sign.py keygen`; the public key goes into the updater's
+`source/inc/fw_pubkeys.h` (`fw_sign.py header`), and every card's updater
+is rebuilt with it.
+
+- **Edit profile ▸ Signed images:** point it at that `fw_pubkeys.h`.
+  Pre-flight then checks each signed image on this PC and stops one the
+  boards would refuse. Tick **Boards require signed images** if the boards
+  were built with `FW_REQUIRE_SIGNATURE = 1`.
+- **Make image… (top bar):** turns a built `.appimage` into a release
+  image, written to a new file (the built one is never changed).
+  - **Stamp:** card, version (`1.2.9`) and hardware rev, as `fw_stamp.py`
+    does. Filled in from the file's name, or its existing trailer.
+  - **Sign:** runs the updater's own `fw_sign.py` with your private key
+    (`release.pem`) and key id. Needs Python and its `cryptography`
+    package on this PC. The passphrase is asked each time and never saved.
+  - The result is checked against the profile's `fw_pubkeys.h`.
+- Keep the private key off shared drives; sign only on a PC you trust.
+
 ## What the result means
 
 | Result | Meaning | What to do |

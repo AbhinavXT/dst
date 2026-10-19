@@ -158,6 +158,34 @@ PublicKeys readPublicKeys(const QString &path);
 enum class SignatureCheck { NotSigned, NotChecked, Valid, UnknownKey, Mismatch, Unsupported };
 SignatureCheck checkImageSignature(const ImageTrailer &trailer, const PublicKeys &keys);
 
+// Session 316: making a release image in the flasher (Make image…).
+// "1.2.9" -> (1 << 16) | (2 << 8) | 9; false unless MAJOR.MINOR.PATCH, each 0..255.
+bool parseFwVersion(const QString &text, quint32 *version);
+// fw_stamp.py's "stamp": the bytes with a 24-byte trailer appended. Refuses a
+// signed image (the signature would break). An existing trailer, valid or
+// damaged, is replaced only with `replace` (fw_stamp.py --force).
+QByteArray stampImage(const QByteArray &bytes, int cardType, quint32 fwVersion, int hwRev,
+                      quint32 buildTime, bool replace, QString *error);
+
+// Signing runs the updater's own tools/fw_sign.py "sign": the PC never parses
+// the private key. The passphrase reaches the child only through
+// FW_SIGN_PASSPHRASE, as fw_sign.py reads it.
+struct SignRequest {
+    QStringList python;              // program and its leading arguments: {"py", "-3"}
+    QString     script;              // tools/fw_sign.py
+    QString     input, output, key;
+    int         keyId = 0;
+    QString     passphrase;          // empty: an unencrypted key
+    int         timeoutMs = 60000;
+};
+struct SignResult {
+    bool    ok = false;
+    QString message;                 // fw_sign.py's own words (stdout, or stderr on failure)
+};
+SignResult runFwSign(const SignRequest &request);
+// The first Python found on PATH: python3, python, then the Windows launcher "py -3".
+QStringList findPython();
+
 // -----------------------------------------------------------------------------
 //  An image on disk, read and hashed
 // -----------------------------------------------------------------------------

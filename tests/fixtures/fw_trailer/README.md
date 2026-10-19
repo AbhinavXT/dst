@@ -38,3 +38,8 @@ image above) and a second throw-away key (`other`). Public keys only:
 
 `fw_sign.py verify --header fw_pubkeys_two.h` says "Signature OK (key 1)",
 and with `fw_pubkeys_swapped.h` "Signature does NOT match (key 1)".
+
+`fake_fw_sign.py` (session 316): a stand-in for `fw_sign.py sign` in the
+tests. It appends the signature block of the signed fixture above, so the
+stamped fixture "signed" by it is byte for byte the real tool's output. A
+passphrase of "wrong" fails as the real tool does on a bad passphrase.
