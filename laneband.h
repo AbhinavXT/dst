@@ -137,6 +137,9 @@ protected:
 
 private:
     QRect track(int lane) const;
+    int laneH() const;
+    int headerH() const;
+    void placeMenuButton();
     int xFor(qint64 ms, const QRect &r) const;
     qint64 msFor(int x, const QRect &r) const;
 

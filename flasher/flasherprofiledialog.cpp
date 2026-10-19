@@ -4,6 +4,7 @@
 #include "statusline.h"
 #include "uicolors.h"
 #include "uistyle.h"
+#include "vcclistedit.h"
 
 #include <QButtonGroup>
 #include <QCheckBox>
@@ -76,17 +77,17 @@ FlasherProfileDialog::FlasherProfileDialog(const Flasher::FlashProfile &profile,
     m_name->setMinimumHeight(34);
     m_name->setToolTip(tr("Shown in the profile menu and written to history as the chassis/site."));
     basics->addWidget(m_name, 1, 0, 1, 3);
-    basics->addWidget(new QLabel(tr("VCC IP address"), form), 2, 0, 1, 2);
+    basics->addWidget(new QLabel(tr("VCC IP addresses"), form), 2, 0, 1, 2);
     basics->addWidget(new QLabel(tr("UDP port"), form), 2, 2);
-    m_ip = new QLineEdit(profile.vccIp, form);
-    m_ip->setToolTip(tr("One VCC, or up to %1 flashed at once: \"192.168.25.168, 192.168.25.169\" "
-                        "or \"192.168.25.168-175\".").arg(Flasher::kMaxParallelVccs));
-    m_ip->setFont(UiStyle::monoFont());
-    m_ip->setMinimumHeight(34);
-    basics->addWidget(m_ip, 3, 0, 1, 2);
+    // Session 315: the queue page's list, with Loco addresses ▾ for a loco's
+    // four controllers, so a profile can hold all four.
+    m_ip = new VccListEdit(form);
+    m_ip->setLocoPicker(true);
+    m_ip->setText(profile.vccIp);
+    basics->addWidget(m_ip, 3, 0, 1, 2, Qt::AlignTop);
     m_port = makeSpin(form, 1, 65535, tr("The updater's UDP port on the VCC (50001 on current firmware)."));
     m_port->setValue(profile.port);
-    basics->addWidget(m_port, 3, 2);
+    basics->addWidget(m_port, 3, 2, Qt::AlignTop);
     // How long Flash keeps calling the updater while the operator power-cycles
     // the chassis. Not tuning: it depends on how far the operator is from the
     // chassis's power switch, so it is editable in both modes.

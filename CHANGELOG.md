@@ -11,6 +11,45 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-315"></a>
+## Session 315 — Edit profile holds a loco's four VCCs; lane band follows the font
+
+Abhinav sent two photos from the Windows PC:
+1. Edit profile had one "VCC IP address" line, with nowhere to put a
+   loco's four controllers. He chose the queue page's list, with its loco
+   picker, in the profile.
+2. The lane band looked wrong: "Lanes ▾" was cut off at the top, and the
+   lane names filled their lanes. The band's heights were fixed (16 px
+   lanes, 22 px header) while its text follows the system font, which is
+   larger on that PC.
+
+**What the operator sees.**
+- **Edit profile ▸ VCC IP addresses** is the same list as the queue page:
+  one row per VCC, + Add VCC, Add range…, and **Loco addresses ▾** (Loco
+  1/2/3, one controller or All 4). The picker shows with either updater
+  here: the profile only stores the list. It is saved in the profile's
+  `vcc_ip`, as before, so older profiles load unchanged. An unticked row
+  is not saved.
+- **The lane band** sizes its header and lanes from its font: "Lanes ▾"
+  is never clipped, and each lane is at least as tall as its name. With the
+  Mac's default font nothing changes (the old sizes are the minimum).
+
+**Files.** `flasher/flasherprofiledialog.{h,cpp}`, `laneband.{h,cpp}`.
+
+**Tests.** New `session315`:
+- the profile's address is the list's one row, the loco picker is shown
+  in Classic, All 4 gives four rows, and Save keeps all four;
+- with a 20 pt font, Lanes ▾ is not clipped, the first lane starts below
+  it, a lane is as tall as its name, and the band grows.
+
+**Gate:** Qt 6 and Qt 5.15 green, 350 suites / 9142 checks, 0 failed; 15
+validators; menu audit; smoke. Checked on screen (`SHOT_WINDOW=flasherprofile`).
+
+**Not tested:** on the Windows PC itself (its font and scaling); the photos
+are the only view of it.
+
+---
+
 <a id="session-314"></a>
 ## Session 314 — Firmware Flasher: signatures checked on the PC (updater 2.7)
 

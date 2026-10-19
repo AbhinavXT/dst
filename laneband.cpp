@@ -29,12 +29,10 @@
 #include <memory>
 
 namespace {
-const int kLaneH   = 16;
 const int kLaneGap = 4;
 const int kLabelW  = 64;      // the five fixed lanes' names fit in this
 const int kLabelMaxW = 150;   // a custom lane's field name, up to this
 const int kPad     = 6;
-const int kHeaderH = 22;      // session 294: the Lanes ▾ button and the time span
 const char *kLanes[] = { "Mode", "Safety", "RFID", "Link", "Faults" };
 
 QString hm(qint64 ms) { return QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss")); }
@@ -97,8 +95,7 @@ LaneBand::LaneBand(QWidget *parent) : QWidget(parent)
     QFont small = m_menuButton->font();
     small.setPointSizeF(qMax(7.5, small.pointSizeF() - 1.0));
     m_menuButton->setFont(small);
-    m_menuButton->setFixedHeight(kHeaderH - 2);
-    m_menuButton->move(kPad - 2, 1);
+    placeMenuButton();
     connect(m_menuButton, &QToolButton::clicked, this, [this]() {
         std::unique_ptr<QMenu> menu(buildLaneMenu(this));
         menu->exec(m_menuButton->mapToGlobal(QPoint(0, m_menuButton->height())));
@@ -109,7 +106,23 @@ LaneBand::LaneBand(QWidget *parent) : QWidget(parent)
 void LaneBand::resizeEvent(QResizeEvent *e)
 {
     QWidget::resizeEvent(e);
-    m_menuButton->move(kPad - 2, 1);
+    placeMenuButton();
+}
+
+// Session 315: heights follow the font. Fixed 16/22 px clipped "Lanes ▾" and
+// crowded the names on a Windows PC with a larger system font.
+int LaneBand::laneH() const
+{
+    QFont small = font();
+    small.setPointSizeF(qMax(7.5, font().pointSizeF() - 1.5));
+    return qMax(16, QFontMetrics(small).height() + 4);
+}
+
+int LaneBand::headerH() const { return qMax(22, m_menuButton->sizeHint().height() + 2); }
+
+void LaneBand::placeMenuButton()
+{
+    m_menuButton->setGeometry(kPad - 2, 1, m_menuButton->sizeHint().width(), headerH() - 2);
 }
 
 QStringList LaneBand::builtInLanes()
@@ -302,7 +315,7 @@ QSize LaneBand::sizeHint() const
 {
     // One lane's height for the "all hidden" note when nothing is shown.
     const int n = qMax(1, laneCount());
-    return QSize(400, kPad * 2 + kHeaderH + n * kLaneH + (n - 1) * kLaneGap);
+    return QSize(400, kPad * 2 + headerH() + n * laneH() + (n - 1) * kLaneGap);
 }
 
 QSize LaneBand::minimumSizeHint() const { return QSize(120, sizeHint().height()); }
@@ -310,7 +323,7 @@ QSize LaneBand::minimumSizeHint() const { return QSize(120, sizeHint().height())
 QRect LaneBand::track(int lane) const
 {
     const int x = kPad + labelWidth();
-    return QRect(x, kPad + kHeaderH + lane * (kLaneH + kLaneGap), width() - x - kPad, kLaneH);
+    return QRect(x, kPad + headerH() + lane * (laneH() + kLaneGap), width() - x - kPad, laneH());
 }
 
 int LaneBand::xFor(qint64 ms, const QRect &r) const
@@ -346,12 +359,12 @@ void LaneBand::paintEvent(QPaintEvent *)
     // the span the lanes cover.
     if (m_to > m_from) {
         p.setPen(UiColor::muted());
-        p.drawText(QRect(kPad, 0, width() - 2 * kPad, kHeaderH), Qt::AlignRight | Qt::AlignVCenter,
+        p.drawText(QRect(kPad, 0, width() - 2 * kPad, headerH()), Qt::AlignRight | Qt::AlignVCenter,
                    tr("%1 \u2013 %2").arg(hm(m_from), hm(m_to)));
     }
     if (laneCount() == 0) {
         p.setPen(UiColor::muted());
-        p.drawText(QRect(kPad, kPad + kHeaderH, width() - 2 * kPad, kLaneH), Qt::AlignLeft | Qt::AlignVCenter,
+        p.drawText(QRect(kPad, kPad + headerH(), width() - 2 * kPad, laneH()), Qt::AlignLeft | Qt::AlignVCenter,
                    tr("Every lane is hidden: Lanes \u25BE to choose some"));
     }
     const int fixedRows = shownFixedCount();
@@ -613,6 +626,10 @@ bool LaneBand::event(QEvent *e)
         if (t.isEmpty()) QToolTip::hideText(); else QToolTip::showText(he->globalPos(), t, this);
         return true;
     }
+    if (e->type() == QEvent::FontChange) {   // session 315: heights follow the font
+        placeMenuButton();
+        updateGeometry();
+    }
     return QWidget::event(e);
 }
 
@@ -791,7 +808,7 @@ QMenu *LaneBand::buildLaneMenu(QWidget *parent, const QPoint &under)
 void LaneBand::mousePressEvent(QMouseEvent *e)
 {
     if (e->button() != Qt::LeftButton) return;
-    if (e->pos().y() < kPad + kHeaderH || laneCount() == 0) return;   // the header row
+    if (e->pos().y() < kPad + headerH() || laneCount() == 0) return;   // the header row
     const QRect r = track(0);
     if (e->pos().x() < r.left()) return;
     emit timeClicked(msFor(e->pos().x(), r));

@@ -25,6 +25,7 @@ class QPushButton;
 class QRadioButton;
 class QSpinBox;
 class StatusLine;
+class VccListEdit;
 
 class FlasherProfileDialog : public QDialog
 {
@@ -58,7 +59,7 @@ private:
     bool        m_deleteRequested = false;
 
     QLineEdit   *m_name = nullptr;
-    QLineEdit   *m_ip = nullptr;
+    VccListEdit *m_ip = nullptr;   // session 315: was one line
     QSpinBox    *m_port = nullptr;
     QSpinBox    *m_updaterWait = nullptr;
     QHash<int, QLineEdit *> m_imagePaths;
