@@ -273,15 +273,6 @@ QWidget *FlasherWindow::buildAppBar()
                                     "banks, firmware versions and card results; release a held board"));
     connect(m_askBoardButton, &QToolButton::clicked, this, [this]() { openBoardDialog(); });
     barLayout->addWidget(m_askBoardButton);
-    // Session 316: stamp and sign a built image (fw_sign.py does the signing).
-    m_makeImageButton = new QToolButton(m_appBar);
-    m_makeImageButton->setObjectName(QStringLiteral("flasherMakeImage"));
-    m_makeImageButton->setText(tr("Make image…"));
-    m_makeImageButton->setMinimumHeight(30);
-    m_makeImageButton->setToolTip(tr("Stamp a built .appimage with its card and version, and sign it with "
-                                     "the updater's fw_sign.py, into a new file"));
-    connect(m_makeImageButton, &QToolButton::clicked, this, [this]() { openImageDialog(); });
-    barLayout->addWidget(m_makeImageButton);
     barLayout->addSpacing(6);
 
     barLayout->addStretch(1);
@@ -316,9 +307,14 @@ QWidget *FlasherWindow::buildAppBar()
     m_profileMenuButton = new QToolButton(m_appBar);
     m_profileMenuButton->setObjectName(QStringLiteral("flasherProfileMenu"));
     m_profileMenuButton->setText(QStringLiteral("\u2630"));
-    m_profileMenuButton->setToolTip(tr("Export or import profiles, to use them on another PC"));
+    m_profileMenuButton->setToolTip(tr("Make a release image; export or import profiles, to use them on another PC"));
     m_profileMenuButton->setPopupMode(QToolButton::InstantPopup);
     auto *profileMenu = new QMenu(m_profileMenuButton);
+    // Session 316: stamp and sign a built image (fw_sign.py does the signing).
+    // In this menu, not the bar: a button there widened the window past a 1366 px laptop.
+    m_makeImageAction = profileMenu->addAction(tr("Make image… (stamp and sign)"), this, [this]() { openImageDialog(); });
+    m_makeImageAction->setObjectName(QStringLiteral("flasherMakeImage"));
+    profileMenu->addSeparator();
     profileMenu->addAction(tr("Export profiles…"), this, &FlasherWindow::exportProfilesDialog);
     profileMenu->addAction(tr("Import profiles…"), this, &FlasherWindow::importProfilesDialog);
     m_profileMenuButton->setMenu(profileMenu);
@@ -382,7 +378,7 @@ void FlasherWindow::setFlashingState(bool flashing)
     m_updaterClassic->setEnabled(!flashing);
     m_updater26->setEnabled(!flashing);
     m_askBoardButton->setVisible(!flashing && updater() == kflash::Updater::V26);
-    m_makeImageButton->setVisible(!flashing);
+    m_makeImageAction->setEnabled(!flashing);
     m_gearButton->setEnabled(!flashing);
     if (m_profileMenuButton) m_profileMenuButton->setEnabled(!flashing);   // no profile swaps mid-flash
     refreshAppBarTarget();

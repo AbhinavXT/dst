@@ -187,7 +187,7 @@ is rebuilt with it.
   Pre-flight then checks each signed image on this PC and stops one the
   boards would refuse. Tick **Boards require signed images** if the boards
   were built with `FW_REQUIRE_SIGNATURE = 1`.
-- **Make image… (top bar):** turns a built `.appimage` into a release
+- **☰ ▸ Make image… (top bar):** turns a built `.appimage` into a release
   image, written to a new file (the built one is never changed).
   - **Stamp:** card, version (`1.2.9`) and hardware rev, as `fw_stamp.py`
     does. Filled in from the file's name, or its existing trailer.

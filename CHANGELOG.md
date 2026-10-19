@@ -11,6 +11,31 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-317"></a>
+## Session 317 — CI: Make image… moves into the ☰ menu (window width)
+
+Patch 316's tag build failed on Linux (Qt 5.15): `session134` "fits a 1366
+x 768 laptop" saw the Flasher window's minimum width at 1209 px, over its
+1100. The new **Make image…** button widened the top bar; Linux's fonts
+are wider than the Mac's, where the gate passed.
+
+**What the operator sees.** **Make image… (stamp and sign)** is the first
+item of the top bar's **☰** menu (above Export / Import profiles), greyed
+while flashing. The dialog is unchanged.
+
+**Files.** `flasher/flasherwindow.{h,cpp}`, `README_FLASHING_AND_CONFIG.md`.
+
+**Tests.** No new checks: `session134` is the one that caught it;
+`session316` drives the dialog directly.
+
+**Gate:** Qt 6 and Qt 5.15 green, 351 suites / 9175 checks, 0 failed; 15
+validators; menu audit; smoke.
+
+**Not tested:** the Linux width locally (the Mac's fonts are narrower);
+CI's Linux job is the check.
+
+---
+
 <a id="session-316"></a>
 ## Session 316 — Firmware Flasher: Make image… (stamp and sign a built image)
 

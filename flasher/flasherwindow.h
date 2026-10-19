@@ -63,6 +63,7 @@ class FlasherFlashingPage;
 class FlasherHistoryDialog;
 class FlasherQueuePage;
 class FlasherSummaryPage;
+class QAction;
 class QComboBox;
 class QFrame;
 class QLabel;
@@ -191,7 +192,7 @@ private:
     QToolButton            *m_updaterClassic = nullptr;
     QToolButton            *m_updater26 = nullptr;
     QToolButton            *m_askBoardButton = nullptr;   // session 297
-    QToolButton            *m_makeImageButton = nullptr;  // session 316
+    QAction                *m_makeImageAction = nullptr;  // session 316, in the ☰ menu
     QPointer<class FlasherBoardDialog> m_boardDialog;
     QLabel                 *m_flashingBadge = nullptr;
     QLabel                 *m_targetLabel = nullptr;
