@@ -91,7 +91,7 @@ TEST_SUITE(session179)
     host.show();
     band->setModel(model, QStringLiteral("81_1"), QStringLiteral("81_1"));
     QCoreApplication::processEvents();
-    const QRect r = band->laneRect(3);
+    const QRect r = band->laneRect(band->fixedLaneRow(3));
     const double t = double(at179("11:08:53") - band->fromMs()) / double(qMax<qint64>(1, band->toMs() - band->fromMs()));
     const QString tip = band->describeAt(QPoint(r.left() + int(t * r.width()), r.top() + 2));
     CHECK(tip.startsWith(QStringLiteral("Session keys loaded")) || tip.startsWith(QStringLiteral("No session keys")),

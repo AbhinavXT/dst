@@ -11,6 +11,66 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-318"></a>
+## Session 318 — Lane band: a slim Lanes ▾, and a Safety row per kind
+
+From Abhinav's photos of a live tab (81_1):
+1. **"The cut Lanes button."** He chose: it was a tall framed box that
+   pushed the lanes down.
+2. **"What is in the Safety lane?"** Station-dest SoS, loco SoS and an
+   unusual stop were all on it, and none could be read. The Safety lane
+   held seven kinds in one row: emergencies and overspeed as bars, the
+   loco's own SoS in the top half, firmware threats in a middle strip,
+   EB/FSB in a 4 px strip along the bottom, collision detections and SoS
+   brake decisions as ticks. Overlapping, they hid each other and their
+   names. He chose a row per kind.
+
+**What the operator sees.**
+- **Lanes ▾** is plain text in the band's header line, underlined on
+  hover, with the time span on the right of the same line. The header is
+  one text line high.
+- **The Safety lane opens into one row per kind present in the window**,
+  each named in the label column and drawn full height with its name on
+  the bar when it fits:
+  - Emergency, Overspeed, EB / FSB, Own SoS;
+  - one row per firmware threat (@sos), named by the threat: "Manual
+    SoS", "Unusual stop", "Head-on", "Station DEST_LOCO_SOS", …; the bar
+    and its tooltip name the source ("… from loco 2");
+  - Collision (ticks), SoS brake (ticks).
+  - With none of them, Safety is one plain SAFETY row, as before.
+- Hovering a row describes only that row's kind.
+- Lanes ▾ ▸ Safety hides all of its rows at once.
+
+**How.** `LaneBand::m_safetyKinds`, built with the summary; Safety counts
+as that many display rows in `rowOfFixed`, `fixedAtRow` and
+`shownFixedCount`, so the lanes below and the custom lanes move down. The
+label column widens for the kinds' names (up to its 150 px limit).
+
+**Files.** `laneband.{h,cpp}`; tests `test_session164/178/179/180/294`
+address rows by `fixedLaneRow()` / `safetyRow()` instead of fixed
+numbers; `tests/screenshot_main.cpp`: `SHOT_WINDOW=lanessos` and
+`lanessafety`.
+
+**Tests.** New `session318` (16 checks):
+- the real 2026-10-08 capture (`loco_1_1_08102026_105200.cap`): own SoS
+  and the collision detection on different rows, each naming its own
+  event and not the other's, RFID right after the Safety rows, and Safety
+  hidden taking all its rows;
+- the synthetic SoS scenario (no real capture has an @sos threat yet): a
+  row per threat type, each threat named on its row;
+- the button: no frame, a one-line header, the first lane below it.
+
+**Gate:** Qt 6 and Qt 5.15 green, 353 suites / 9196 checks, 0 failed; 15
+validators; menu audit; smoke (gated together with 318/319, committed apart).
+
+Checked on screen: `lanessos` (light) and `lanessafety` (dark).
+
+**Not tested:** Abhinav's own capture (19:32, 81_1) is not in `replay/`;
+long bar names (e.g. "Manual SoS from loco 2 — ended: …") are left to the
+tooltip when they don't fit.
+
+---
+
 <a id="session-317"></a>
 ## Session 317 — CI: Make image… moves into the ☰ menu (window width)
 

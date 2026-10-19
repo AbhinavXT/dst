@@ -91,6 +91,11 @@ LaneBand::LaneBand(QWidget *parent) : QWidget(parent)
     m_menuButton->setObjectName(QStringLiteral("laneMenuButton"));
     m_menuButton->setText(tr("Lanes \u25BE"));
     m_menuButton->setAutoRaise(true);
+    // Session 318: a slim text button in the header line, not a framed box.
+    m_menuButton->setStyleSheet(QStringLiteral("QToolButton#laneMenuButton { border: none; background: transparent; "
+                                               "padding: 0 2px; }"
+                                               "QToolButton#laneMenuButton:hover { text-decoration: underline; }"));
+    m_menuButton->setCursor(Qt::PointingHandCursor);
     m_menuButton->setToolTip(tr("Choose the lanes: the built-in ones, and any field of the packets this tab carries"));
     QFont small = m_menuButton->font();
     small.setPointSizeF(qMax(7.5, small.pointSizeF() - 1.0));
@@ -118,7 +123,7 @@ int LaneBand::laneH() const
     return qMax(16, QFontMetrics(small).height() + 4);
 }
 
-int LaneBand::headerH() const { return qMax(22, m_menuButton->sizeHint().height() + 2); }
+int LaneBand::headerH() const { return qMax(16, m_menuButton->sizeHint().height() + 2); }
 
 void LaneBand::placeMenuButton()
 {
@@ -144,22 +149,64 @@ int LaneBand::rowOfFixed(int id) const
 {
     if (id < 0 || id >= kFixedLanes || m_hidden.contains(QString::fromLatin1(kLanes[id]))) return -1;
     int row = 0;
-    for (int i = 0; i < id; ++i) row += m_hidden.contains(QString::fromLatin1(kLanes[i])) ? 0 : 1;
+    for (int i = 0; i < id; ++i)
+        row += m_hidden.contains(QString::fromLatin1(kLanes[i])) ? 0 : (i == 1 ? safetyRows() : 1);
     return row;
 }
 
 int LaneBand::fixedAtRow(int row) const
 {
-    for (int id = 0; id < kFixedLanes; ++id)
-        if (rowOfFixed(id) == row) return id;
+    for (int id = 0; id < kFixedLanes; ++id) {
+        const int first = rowOfFixed(id);
+        if (first >= 0 && row >= first && row < first + (id == 1 ? safetyRows() : 1)) return id;
+    }
     return -1;
 }
 
 int LaneBand::shownFixedCount() const
 {
     int n = 0;
-    for (const char *l : kLanes) n += m_hidden.contains(QString::fromLatin1(l)) ? 0 : 1;
+    for (int id = 0; id < kFixedLanes; ++id)
+        n += m_hidden.contains(QString::fromLatin1(kLanes[id])) ? 0 : (id == 1 ? safetyRows() : 1);
     return n;
+}
+
+int LaneBand::safetyRow(const QString &kind) const
+{
+    const int first = rowOfFixed(1);
+    return first < 0 ? -1 : first + qMax(0, int(m_safetyKinds.indexOf(kind)));
+}
+
+QString LaneBand::threatKind(const QString &what)
+{
+    // SosLog::Spell::what(): "<threat> from loco 2", "<threat> from a station".
+    return QStringLiteral("threat:") + what.section(QStringLiteral(" from "), 0, 0);
+}
+
+QString LaneBand::safetyKindLabel(const QString &kind)
+{
+    if (kind.startsWith(QLatin1String("threat:"))) return kind.mid(7);
+    if (kind == QLatin1String("emergency")) return tr("Emergency");
+    if (kind == QLatin1String("overspeed")) return tr("Overspeed");
+    if (kind == QLatin1String("brakes"))    return tr("EB / FSB");
+    if (kind == QLatin1String("ownsos"))    return tr("Own SoS");
+    if (kind == QLatin1String("collision")) return tr("Collision");
+    if (kind == QLatin1String("decision"))  return tr("SoS brake");
+    return kind;
+}
+
+void LaneBand::buildSafetyKinds()
+{
+    QStringList kinds;
+    if (!m_sum.emergencies.isEmpty()) kinds << QStringLiteral("emergency");
+    if (!m_sum.overspeed.isEmpty())   kinds << QStringLiteral("overspeed");
+    if (!m_sum.brakes.isEmpty())      kinds << QStringLiteral("brakes");
+    if (!m_sum.selfSos.isEmpty())     kinds << QStringLiteral("ownsos");
+    for (const RunReport::Episode &e : m_sum.sosThreats)
+        if (!kinds.contains(threatKind(e.what))) kinds << threatKind(e.what);
+    if (!m_sum.collisionDetections.isEmpty()) kinds << QStringLiteral("collision");
+    if (!m_sum.sosDecisions.isEmpty())        kinds << QStringLiteral("decision");
+    m_safetyKinds = kinds;
 }
 
 void LaneBand::setModel(LogModel *model, const QString &tabKey, const QString &tabName)
@@ -206,6 +253,7 @@ void LaneBand::rebuildNow()
     m_sum = RunReport::summarise(m_model, m_key, m_name, o);
     m_from = qMax(from, m_sum.firstMs > 0 ? m_sum.firstMs : from);
     m_to = newest;
+    buildSafetyKinds();
     buildCustom();
     setVisible(hasContent());
     updateGeometry();
@@ -276,6 +324,7 @@ int LaneBand::labelWidth() const
     const QFontMetrics fm(small);
     int w = kLabelW;
     for (const LaneData &d : m_custom) w = qMax(w, fm.horizontalAdvance(d.def.field) + 10);
+    for (const QString &k : m_safetyKinds) w = qMax(w, fm.horizontalAdvance(safetyKindLabel(k)) + 10);
     return qMin(w, kLabelMaxW);
 }
 
@@ -372,8 +421,10 @@ void LaneBand::paintEvent(QPaintEvent *)
         const QRect r = track(lane);
         p.setPen(UiColor::muted());
         const int fixedId = fixedAtRow(lane);
-        const QString name = fixedId >= 0 ? QString::fromLatin1(kLanes[fixedId]).toUpper()
-                                          : m_custom.at(lane - fixedRows).def.field;
+        QString name = fixedId >= 0 ? QString::fromLatin1(kLanes[fixedId]).toUpper()
+                                    : m_custom.at(lane - fixedRows).def.field;
+        if (fixedId == 1 && !m_safetyKinds.isEmpty())   // session 318: one row per kind
+            name = safetyKindLabel(m_safetyKinds.at(lane - rowOfFixed(1)));
         p.drawText(QRect(kPad, r.top(), labelWidth() - 6, r.height()), Qt::AlignLeft | Qt::AlignVCenter,
                    fm.elidedText(name, Qt::ElideRight, labelWidth() - 6));
         p.setPen(Qt::NoPen);
@@ -383,7 +434,13 @@ void LaneBand::paintEvent(QPaintEvent *)
 
     // `lane` is a lane's id: 0..4 the built-in ones, kFixedLanes + i custom
     // lane i. A hidden lane draws nothing.
-    auto rowFor = [&](int lane) { return lane < kFixedLanes ? rowOfFixed(lane) : fixedRows + (lane - kFixedLanes); };
+    // Session 318: kSafetyLane + i is the Safety lane's row for m_safetyKinds[i].
+    constexpr int kSafetyLane = 1000;
+    auto rowFor = [&](int lane) {
+        if (lane >= kSafetyLane) return rowOfFixed(1) < 0 ? -1 : rowOfFixed(1) + (lane - kSafetyLane);
+        return lane < kFixedLanes ? rowOfFixed(lane) : fixedRows + (lane - kFixedLanes);
+    };
+    auto S = [&](const QString &kind) { return kSafetyLane + qMax(0, int(m_safetyKinds.indexOf(kind))); };
     auto bar = [&](int lane, qint64 a, qint64 b, const QColor &c, const QString &label) {
         const int row = rowFor(lane);
         if (row < 0) return;
@@ -445,36 +502,28 @@ void LaneBand::paintEvent(QPaintEvent *)
         p.setPen(QPen(UiColor::accent(), 2));
         p.drawLine(x1, r.top() - 2, x1, r.bottom() + 2);
     }
-    for (const RunReport::Episode &e : m_sum.emergencies) bar(1, e.fromMs, qMax(e.toMs, e.fromMs + 1), UiColor::error(), tr("EMERGENCY"));
-    for (const RunReport::Episode &e : m_sum.overspeed) bar(1, e.fromMs, qMax(e.toMs, e.fromMs + 1), UiColor::warning(), tr("overspeed"));
-    // Session 178: the loco's own SoS (accent, top half) and collision detections (ticks).
-    for (const RunReport::Episode &e : m_sum.selfSos) {
-        if (rowOfFixed(1) < 0) break;
-        const QRect r = track(rowOfFixed(1));
-        const int x1 = xFor(e.fromMs, r), x2 = qMax(xFor(e.toMs, r), x1 + 3);
-        p.fillRect(QRect(x1, r.top(), x2 - x1, r.height() / 2), UiColor::accent());
-    }
-    for (const RunReport::Change &c : m_sum.collisionDetections) tick(1, c.ms, UiColor::error(), QString());
-    // Session 184: the firmware's SoS threats (@sos), between the own-SoS half
-    // and the brake strip: collisions in the error colour, SoS in the warning
-    // colour; its brake decisions as ticks (applied: error, not applied: muted).
-    for (const RunReport::Episode &e : m_sum.sosThreats) {
-        if (rowOfFixed(1) < 0) break;
-        const QRect r = track(rowOfFixed(1));
-        const int x1 = xFor(e.fromMs, r), x2 = qMax(xFor(e.toMs, r), x1 + 3);
-        const int y = r.top() + r.height() / 2 + 1;
-        p.fillRect(QRect(x1, y, x2 - x1, qMax(2, r.bottom() - 5 - y)),
-                   SosLog::isCollisionText(e.what) ? UiColor::error() : UiColor::warning());
-    }
+    // Session 318: each kind on its own Safety row, full height and named
+    // (they shared one row in strips and halves, and could not be told apart).
+    for (const RunReport::Episode &e : m_sum.emergencies)
+        bar(S(QStringLiteral("emergency")), e.fromMs, qMax(e.toMs, e.fromMs + 1), UiColor::error(), tr("EMERGENCY"));
+    for (const RunReport::Episode &e : m_sum.overspeed)
+        bar(S(QStringLiteral("overspeed")), e.fromMs, qMax(e.toMs, e.fromMs + 1), UiColor::warning(), tr("overspeed"));
+    // Session 175: EB / FSB applications.
+    for (const RunReport::BrakeEvent &b : m_sum.brakes)
+        bar(S(QStringLiteral("brakes")), b.fromMs, qMax(b.toMs, b.fromMs + 1),
+            b.type.startsWith(QLatin1String("4")) ? UiColor::error() : UiColor::warning(), b.type);
+    // Session 178: the loco's own SoS, and collision detections (ticks).
+    for (const RunReport::Episode &e : m_sum.selfSos)
+        bar(S(QStringLiteral("ownsos")), e.fromMs, qMax(e.toMs, e.fromMs + 1), UiColor::accent(), e.what);
+    // Session 184: the firmware's SoS threats (@sos), a row per threat:
+    // collisions in the error colour, SoS in the warning colour.
+    for (const RunReport::Episode &e : m_sum.sosThreats)
+        bar(S(threatKind(e.what)), e.fromMs, qMax(e.toMs, e.fromMs + 1),
+            SosLog::isCollisionText(e.what) ? UiColor::error() : UiColor::warning(), e.what);
+    for (const RunReport::Change &c : m_sum.collisionDetections) tick(S(QStringLiteral("collision")), c.ms, UiColor::error(), QString());
+    // Its brake decisions as ticks (applied: error, not applied: muted).
     for (const RunReport::Change &c : m_sum.sosDecisions)
-        tick(1, c.ms, c.from == QLatin1String("applied") ? UiColor::error() : UiColor::muted(), QString());
-    // Session 175: EB / FSB applications, along the bottom of the Safety lane.
-    for (const RunReport::BrakeEvent &b : m_sum.brakes) {
-        if (rowOfFixed(1) < 0) break;
-        const QRect r = track(rowOfFixed(1));
-        const int x1 = xFor(b.fromMs, r), x2 = qMax(xFor(b.toMs, r), x1 + 3);
-        p.fillRect(QRect(x1, r.bottom() - 4, x2 - x1, 4), b.type.startsWith(QLatin1String("4")) ? UiColor::error() : UiColor::warning());
-    }
+        tick(S(QStringLiteral("decision")), c.ms, c.from == QLatin1String("applied") ? UiColor::error() : UiColor::muted(), QString());
     // RFID (session 164): the last tag read holds until the next read, as
     // the mode holds until the next change -- a span per tag, named.
     for (int i = 0; i < m_sum.tagReads.size(); ++i) {
@@ -555,26 +604,36 @@ QString LaneBand::describeAt(const QPoint &pos) const
             for (const RunReport::Change &c : m_sum.modeChanges) { if (c.ms > ms) break; mode = c.to; }
             return mode.isEmpty() ? QString() : tr("Mode %1 at %2").arg(mode, hm(ms));
         }
-        case 1:
+        case 1: {
+            // Session 318: only the kind on this row.
+            const QString kind = m_safetyKinds.value(lane - rowOfFixed(1));
+            auto is = [&kind](const char *k) { return kind == QLatin1String(k); };
+            if (is("collision"))
             for (const RunReport::Change &c : m_sum.collisionDetections)
                 if (qAbs(c.ms - ms) <= slack) return tr("Collision detection (NMS) at %1: %2").arg(hm(c.ms), c.to);
+            if (is("decision"))
             for (const RunReport::Change &c : m_sum.sosDecisions)
                 if (qAbs(c.ms - ms) <= slack) return tr("SoS decision at %1: %2").arg(hm(c.ms), c.to);
             for (const RunReport::Episode &e : m_sum.sosThreats)
-                if (ms >= e.fromMs - slack && ms <= e.toMs + slack)
+                if (kind == threatKind(e.what) && ms >= e.fromMs - slack && ms <= e.toMs + slack)
                     return tr("SoS (firmware): %1, %2 – %3").arg(e.what, hm(e.fromMs), hm(e.toMs));
+            if (is("ownsos"))
             for (const RunReport::Episode &e : m_sum.selfSos)
                 if (ms >= e.fromMs - slack && ms <= e.toMs + slack)
                     return tr("Own SoS (NMS): %1, %2 – %3").arg(e.what, hm(e.fromMs), hm(e.toMs));
+            if (is("brakes"))
             for (const RunReport::BrakeEvent &b : m_sum.brakes)
                 if (ms >= b.fromMs - slack && ms <= b.toMs + slack)
                     return tr("%1 %2 – %3: %4").arg(b.type, hm(b.fromMs), hm(b.toMs), b.reasonsText());
+            if (is("emergency"))
             for (const RunReport::Episode &e : m_sum.emergencies)
                 if (ms >= e.fromMs - slack && ms <= e.toMs + slack) return tr("Emergency %1 – %2: %3").arg(hm(e.fromMs), hm(e.toMs), e.what);
+            if (is("overspeed"))
             for (const RunReport::Episode &e : m_sum.overspeed)
                 if (ms >= e.fromMs - slack && ms <= e.toMs + slack)
                     return tr("Overspeed %1 – %2, worst %3 km/h over").arg(hm(e.fromMs), hm(e.toMs)).arg(e.worst, 0, 'f', 0);
             return QString();
+        }
         case 2: {
             for (const TagCheck::Tag &tg : m_sum.tagCheck.tags)
                 if (tg.duplicateMissingMs && qAbs(tg.duplicateMissingMs - ms) <= slack)

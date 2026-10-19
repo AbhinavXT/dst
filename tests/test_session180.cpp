@@ -98,7 +98,7 @@ TEST_SUITE(session180)
     host.show();
     band->setModel(model, QStringLiteral("81_1"), QStringLiteral("81_1"));
     QCoreApplication::processEvents();
-    const QRect lr = band->laneRect(2);
+    const QRect lr = band->laneRect(band->fixedLaneRow(2));
     const double t = double(at180("11:12:33") - band->fromMs()) / double(qMax<qint64>(1, band->toMs() - band->fromMs()));
     const QString tip = band->describeAt(QPoint(lr.left() + int(t * lr.width()), lr.top() + 2));
     CHECK(tip.contains(QStringLiteral("duplicate of tag 18 missing")), QByteArray("the RFID lane marks it: ") + tip.toUtf8());

@@ -154,7 +154,7 @@ TEST_SUITE(session294)
         const QVector<RunReport::Change> &tags = band->summary().tagReads;
         if (tags.size() >= 2) {
             const qint64 mid = (tags.at(0).ms + tags.at(1).ms) / 2;
-            CHECK(band->describeAt(at(*band, 1, mid)).startsWith(QLatin1String("RFID tag")),
+            CHECK(band->describeAt(at(*band, band->fixedLaneRow(2), mid)).startsWith(QLatin1String("RFID tag")),
                   "with Mode hidden, RFID is the second row and hovers as RFID");
         }
 

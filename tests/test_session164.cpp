@@ -65,17 +65,17 @@ TEST_SUITE(session164)
     CHECK(tags.size() >= 2, QByteArray("fixture: tag reads in the window (") + QByteArray::number(tags.size()) + ")");
     if (tags.size() >= 2) {
         const qint64 mid = (tags.at(0).ms + tags.at(1).ms) / 2;
-        const QString tip = band->describeAt(at(*band, 2, mid));
+        const QString tip = band->describeAt(at(*band, band->fixedLaneRow(2), mid));
         CHECK(tip.startsWith(QStringLiteral("RFID tag %1, read at").arg(tags.at(0).to)) && tip.contains(QStringLiteral("until")),
               QByteArray("between two reads, the lane is the first tag's span (") + tip.toUtf8() + ")");
         const qint64 afterLast = (tags.last().ms + band->toMs()) / 2;
-        CHECK(band->describeAt(at(*band, 2, afterLast)).contains(QStringLiteral("until now"))
+        CHECK(band->describeAt(at(*band, band->fixedLaneRow(2), afterLast)).contains(QStringLiteral("until now"))
                   || tags.last().ms >= band->toMs() - 1000,
               "the last tag's span runs to the end of the window");
         // Drawn, not ticked: the middle of the first span is painted in a colour.
         const QImage img = band->grab().toImage();
-        const QPoint p = at(*band, 2, mid);
-        const QPoint empty(band->laneRect(2).left() + 1, band->laneRect(2).center().y());
+        const QPoint p = at(*band, band->fixedLaneRow(2), mid);
+        const QPoint empty(band->laneRect(band->fixedLaneRow(2)).left() + 1, band->laneRect(band->fixedLaneRow(2)).center().y());
         CHECK(tags.at(0).ms <= band->fromMs() + 1000
                   || img.pixelColor(p * img.devicePixelRatio()) != img.pixelColor(empty * img.devicePixelRatio()),
               "the span between reads is filled, not empty track");
@@ -102,14 +102,14 @@ TEST_SUITE(session164)
     CHECK(!band->customLaneIsGraph(1), "LOCO_MODE (\"6 (On_Sight)\": names): spans, like MODE");
 
     const qint64 midWin = (band->fromMs() + band->toMs()) / 2;
-    const QString speedTip = band->describeAt(at(*band, 5, midWin));
+    const QString speedTip = band->describeAt(at(*band, band->fixedLaneRow(4) + 1, midWin));
     CHECK(speedTip.startsWith(QStringLiteral("@lsrp TRAIN_SPEED = ")) && speedTip.contains(QStringLiteral("km/h")),
           QByteArray("hover a graph: its value then (") + speedTip.toUtf8() + ")");
-    const QString modeTip = band->describeAt(at(*band, 6, midWin));
+    const QString modeTip = band->describeAt(at(*band, band->fixedLaneRow(4) + 2, midWin));
     CHECK(modeTip.startsWith(QStringLiteral("@lsrp LOCO_MODE = ")) && modeTip.contains(QLatin1Char('(')),
           QByteArray("hover spans: the named value (") + modeTip.toUtf8() + ")");
-    CHECK(band->customLaneAt(QPoint(4, band->laneRect(6).center().y())) == 1, "right-click on a custom lane's label finds it");
-    CHECK(band->customLaneAt(QPoint(4, band->laneRect(2).center().y())) == -1, "and the RFID lane is not a custom one");
+    CHECK(band->customLaneAt(QPoint(4, band->laneRect(band->fixedLaneRow(4) + 2).center().y())) == 1, "right-click on a custom lane's label finds it");
+    CHECK(band->customLaneAt(QPoint(4, band->laneRect(band->fixedLaneRow(2)).center().y())) == -1, "and the RFID lane is not a custom one");
 
     band->setCustomLanes({});
     CHECK(band->shownCustomLanes().isEmpty() && band->sizeHint().height() == fixedHeight, "removed: back to the five lanes");

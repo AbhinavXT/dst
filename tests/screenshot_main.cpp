@@ -77,6 +77,7 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "flasherboarddialog.h"
 #include "flasherfakeboard.h"
 #include "laneband.h"
+#include "sosfixture.h"
 #include "fieldcatalog.h"
 #include <QMenu>
 #include "flasherqueuepage.h"
@@ -277,6 +278,36 @@ int main(int argc, char **argv)
                     menu->grab().save(QStringLiteral("%1/shot_lanemenu_search_%2.png").arg(dir, ThemeUtil::toString(t)));
                 }
                 menu->hide();
+                win = host;
+            }
+            // Session 318: the Safety lane's rows: the synthetic SoS scenario
+            // (lanessos) and the real 2026-10-08 capture (lanessafety).
+            if (which == QLatin1String("lanessos") || which == QLatin1String("lanessafety")) {
+                LogModel *m = nullptr;
+                if (which == QLatin1String("lanessos")) {
+                    m = SosFixture::load(disp, 1);
+                } else {
+                    QFile run(QStringLiteral(DL_SRC_DIR "/replay/2026-10-08/loco_1_1_08102026_105200.cap"));
+                    run.open(QIODevice::ReadOnly);
+                    while (!run.atEnd()) {
+                        const QByteArray l = run.readLine().trimmed();
+                        const QList<QByteArray> tok = l.split(' ');
+                        if (!l.startsWith('@') || tok.size() < 3) continue;
+                        disp.ingestLocal(1, 1, l, QDateTime::fromString(QString::fromLatin1(tok.at(1)), Qt::ISODate).toMSecsSinceEpoch(),
+                                         QString());
+                    }
+                    disp.drainNow();
+                    m = disp.modelForKey(QStringLiteral("1_1"));
+                }
+                auto *host = new QWidget;
+                auto *lay = new QVBoxLayout(host);
+                auto *band = new LaneBand;
+                lay->addWidget(band);
+                lay->addStretch(1);
+                host->resize(1100, 300);
+                host->show();
+                band->setModel(m, QStringLiteral("1_1"), QStringLiteral("1_1"));
+                QCoreApplication::processEvents();
                 win = host;
             }
             if (which == QLatin1String("compare")) {

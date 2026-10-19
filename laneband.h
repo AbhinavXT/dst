@@ -113,6 +113,10 @@ public:
     QHash<QString, QStringList> addableFields() const;
     int customLaneAt(const QPoint &p) const;   // -1 if none
     QRect laneRect(int lane) const { return track(lane); }
+    // Session 318: the Safety lane's kinds in this window, and a kind's display row.
+    QStringList safetyKinds() const { return m_safetyKinds; }
+    int fixedLaneRow(int id) const { return rowOfFixed(id); }   // 0 Mode .. 4 Faults; -1 hidden
+    int safetyRow(const QString &kind) const;   // -1 while Safety is hidden
 
     QSize sizeHint() const override;
     QSize minimumSizeHint() const override;
@@ -151,8 +155,16 @@ private:
     // (-1: a custom lane, or none).
     int rowOfFixed(int id) const;
     int fixedAtRow(int row) const;
-    int shownFixedCount() const;
+    int shownFixedCount() const;      // display rows of the built-in lanes
     QStringList m_hidden;
+    // Session 318: the Safety lane opens into one row per kind present in the
+    // window: "emergency", "overspeed", "brakes", "ownsos", "threat:<name>",
+    // "collision", "decision". Empty: one plain SAFETY row.
+    QStringList m_safetyKinds;
+    void buildSafetyKinds();
+    int safetyRows() const { return qMax(1, int(m_safetyKinds.size())); }
+    static QString safetyKindLabel(const QString &kind);
+    static QString threatKind(const QString &what);   // "threat:Manual SoS"
     class QToolButton *m_menuButton = nullptr;
 
     // One custom lane's samples in the window.

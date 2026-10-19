@@ -80,14 +80,15 @@ TEST_SUITE(session178)
         host.show();
         band->setModel(m, QStringLiteral("81_1"), QStringLiteral("81_1"));
         QCoreApplication::processEvents();
-        const QRect r = band->laneRect(1);
-        auto at = [&](qint64 ms) {
+        // Session 318: each kind on its own Safety row.
+        auto at = [&](qint64 ms, const char *kind) {
+            const QRect r = band->laneRect(band->safetyRow(QLatin1String(kind)));
             const double t = double(ms - band->fromMs()) / double(qMax<qint64>(1, band->toMs() - band->fromMs()));
             return QPoint(r.left() + int(t * r.width()), r.top() + 2);
         };
-        CHECK(band->describeAt(at(at178("11:03:34"))).startsWith(QStringLiteral("Collision detection (NMS) at")),
-              QByteArray("the Safety lane marks the collision detection: ") + band->describeAt(at(at178("11:03:34"))).toUtf8());
-        CHECK(band->describeAt(at(at178("11:10:00"))).startsWith(QStringLiteral("Own SoS (NMS): Unusual stop (no end)")),
-              QByteArray("and the own SoS: ") + band->describeAt(at(at178("11:10:00"))).toUtf8());
+        CHECK(band->describeAt(at(at178("11:03:34"), "collision")).startsWith(QStringLiteral("Collision detection (NMS) at")),
+              QByteArray("the Safety lane marks the collision detection: ") + band->describeAt(at(at178("11:03:34"), "collision")).toUtf8());
+        CHECK(band->describeAt(at(at178("11:10:00"), "ownsos")).startsWith(QStringLiteral("Own SoS (NMS): Unusual stop (no end)")),
+              QByteArray("and the own SoS: ") + band->describeAt(at(at178("11:10:00"), "ownsos")).toUtf8());
     }
 }
