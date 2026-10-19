@@ -132,7 +132,8 @@ void UDPCommunication::drainSocket()
 
         QByteArray buf;
         buf.resize(dgramSize);
-        const qint64 got = m_socket->readDatagram(buf.data(), buf.size());
+        QHostAddress sender;
+        const qint64 got = m_socket->readDatagram(buf.data(), buf.size(), &sender);
         if (got <= 0) {
             // Spurious wake-up; keep draining.
             continue;
@@ -180,6 +181,7 @@ void UDPCommunication::drainSocket()
         msg->header    = hdr;
         msg->payload   = QByteArray(buf.constData() + sizeof(hdr), hdr.message_len);
         msg->arrivalMs = arrivalMs;
+        msg->senderIpv4 = sender.toIPv4Address();   // session 320
 
         // Increment depth BEFORE emitting, so a fast consumer that's already
         // running can never decrement below zero.

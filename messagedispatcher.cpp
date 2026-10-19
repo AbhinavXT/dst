@@ -4,6 +4,7 @@
 
 #include <QDateTime>
 #include <QDebug>
+#include <QHostAddress>
 #include <QTimer>
 #include <cstring>
 
@@ -97,7 +98,7 @@ QString MessageDispatcher::friendlyNameFor(const QString &tabKey) const
 }
 
 void MessageDispatcher::ingestLocal(quint8 sourceId, quint16 kvchId, const QByteArray &payload,
-                                    qint64 arrivalMs, const QString &friendlyName)
+                                    qint64 arrivalMs, const QString &friendlyName, quint32 senderIpv4)
 {
     auto msg = ParsedMessagePtr::create();
     msg->header.source_id = sourceId;
@@ -107,11 +108,18 @@ void MessageDispatcher::ingestLocal(quint8 sourceId, quint16 kvchId, const QByte
     msg->header.kvchId = kvchId;
     msg->payload = payload;
     msg->arrivalMs = arrivalMs;
+    msg->senderIpv4 = senderIpv4;
     if (!friendlyName.isEmpty()) {
         m_friendlyOverride.insert(QStringLiteral("%1_%2").arg(int(sourceId)).arg(int(kvchId)), friendlyName);
     }
     m_pending.append(msg);
     ++m_localPending;       // not the receiver's: never credited back to it
+}
+
+QString MessageDispatcher::senderIp(const QString &tabKey) const
+{
+    const quint32 ip = m_senderIp.value(tabKey);
+    return ip == 0 ? QString() : QHostAddress(ip).toString();
 }
 
 quint64 MessageDispatcher::droppedCount() const
@@ -322,6 +330,7 @@ void MessageDispatcher::drainBatch()
         if (!entry) continue;
 
         const QString key = entry->cachedTabKey;
+        if (msg->senderIpv4 != 0) m_senderIp.insert(key, msg->senderIpv4);   // session 320
 
         // Single hash probe instead of contains() + insert() + operator[].
         auto bucket = byKey.find(key);

@@ -11,6 +11,82 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-320"></a>
+## Session 320 — Loco Configuration: a column per send IP, differences highlighted
+
+Abhinav: "compare configuration that is in loco configuration window and
+that is arriving from the IPs entered and highlight where they are
+different". He chose a column per IP.
+
+**What was there.** The live check (session 81) matched a loco's
+`@linfo` to this configuration by `loco_unit_id`, and named the
+differing fields only in a tooltip. DLConsole threw away each datagram's
+sender address, so an `@linfo` could not be tied to a send IP, and the
+four controllers of a loco (same unit id) could not be told apart.
+
+**What the operator sees.**
+- **A column per ticked send IP** after Type, headed "VCC
+  192.168.25.16": that VCC's latest `@linfo`, formatted as the editor
+  shows values. "—" until one arrives.
+- **Differences highlighted**: a cell that differs from the editor's
+  value is amber and bold (the contrast-audited banner colours); its
+  tooltip says "192.168.25.16 holds 130; this configuration has 160".
+- **The group "Different on a VCC (N)"** lists only those fields.
+- **A summary line** under the live check, once a VCC has printed its
+  `@linfo`: "VCCs: 192.168.25.16: 12 fields differ · 192.168.25.102: no
+  @linfo yet", in the warning colour when anything differs, ok when every
+  VCC holds this configuration. Not shown before any arrives: the
+  columns' "—" says it, and the line would cost the table a row (the
+  Qt 5.15 gate's `session135` caught that: 8 rows for its 9).
+- Unticking or clearing an IP removes its column; the columns follow the
+  send bar's order. The comparison follows edits as they are made.
+
+**How.**
+- `ParsedMessage::senderIpv4`, read by `readDatagram(…, &sender)` in the
+  receiver; `MessageDispatcher::senderIp(tabKey)` keeps each tab's last
+  sender; `ingestLocal` takes an optional address (tests).
+- `LocoConfigWindow` keeps the latest `@linfo` per sender IP
+  (`m_liveByIp`) beside the existing per-capture-key one, and builds the
+  columns from the ticked targets (`refreshLiveColumns`).
+- `LocoFieldModel::setLiveColumns` inserts and removes columns (a reset
+  would lose the column widths); `DiffersFromLiveRole`,
+  `liveDifferences(i)`; `LocoFieldFilter::differsFromLive()`.
+
+**Files.** `udpcommunication.{h,cpp}`, `messagedispatcher.{h,cpp}`,
+`lococonfig/lococonfigmodel.{h,cpp}`, `lococonfig/lococonfigwindow.{h,cpp}`,
+`README_FLASHING_AND_CONFIG.md`, `tests/screenshot_main.cpp`
+(`SHOT_WINDOW=lococonfiglive`).
+
+**Tests.** New `session320` (18 checks), with a real `@linfo` from
+`replay/loco_81_1_14102026_110915.cap`:
+- the dispatcher keeps a tab's sender, and none without one;
+- **a real UDP datagram** from localhost: the receiver records
+  127.0.0.1;
+- two ticked IPs and one unticked: two columns, headed by the IP; "no
+  @linfo yet" before one arrives;
+- the `@linfo` fed through the dispatcher "from" .16: the differing
+  fields counted against an independent decode of the same line; the IP
+  without one counts none; the summary line;
+- a differing cell highlighted, its tooltip, the row in the group; the
+  other IP's dash not highlighted;
+- unticking removes a column; no targets, no columns and no line.
+
+**Gate:** Qt 6 and Qt 5.15 green, 354 suites / 9214 checks, 0 failed; 15
+validators; menu audit; smoke.
+
+Checked on screen: `lococonfiglive` (light): `loco_unit_id` and
+`loco_max_speed` highlighted on VCC 192.168.25.16.
+
+**Not tested:**
+- **A live loco's VCCs** sending `@linfo` from their own addresses (the
+  test datagram came from localhost).
+- **Four VCC columns at once**: the table scrolls sideways and the Field
+  column narrows on a small window.
+- Logs that pass through a relay or NAT arrive from the relay's address:
+  the column would then show the relay's IP, not the VCC's.
+
+---
+
 <a id="session-319"></a>
 ## Session 319 — Firmware Flasher: the updater switch reads "Classic | Signed"
 

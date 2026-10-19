@@ -313,6 +313,7 @@ QWidget *LocoConfigWindow::buildBody()
     addGroup(LocoFieldFilter::changedFromDefault());
     addGroup(LocoFieldFilter::changedSinceSent());
     addGroup(LocoFieldFilter::lockedFields());
+    addGroup(LocoFieldFilter::differsFromLive());   // session 320
     for (const LocoInfo::Presentation::Group &group : m_presentation.groups) {
         addGroup(group.title);
     }
@@ -548,6 +549,16 @@ QWidget *LocoConfigWindow::buildSendBar()
     });
     liveRow->addWidget(m_liveLoad);
     textColumn->addLayout(liveRow);
+    // Session 320: per send IP, does that VCC hold this configuration?
+    m_liveCompare = new QLabel(bar);
+    m_liveCompare->setObjectName(QStringLiteral("locoLiveCompare"));
+    m_liveCompare->setWordWrap(true);
+    m_liveCompare->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_liveCompare->setToolTip(tr("Each ticked send IP has a column in the table: what that VCC prints in its "
+                                 "@linfo. Cells that differ from this configuration are highlighted; the group "
+                                 "\"%1\" lists those fields.").arg(LocoFieldFilter::differsFromLive()));
+    m_liveCompare->hide();
+    textColumn->addWidget(m_liveCompare);
     bottomRow->addLayout(textColumn, 1);
 
     auto *exportButton = new QPushButton(tr("Export loco_info.bin…"), bar);
@@ -956,6 +967,7 @@ void LocoConfigWindow::refreshSummary()
     if (m_summary == nullptr || m_model == nullptr) {
         return;
     }
+    refreshLiveColumns();   // session 320: the targets or the values may have changed
     const QByteArray body = currentBody();
     if (!body.isEmpty()) {
         const quint32 crc = LocoInfo::crc32(body.left(body.size() - 4));
@@ -1026,6 +1038,9 @@ void LocoConfigWindow::refreshGroupCounts()
     int changedFromDefault = 0;
     int changedSinceSent = 0;
     const int locked = m_config.locked.size();
+    int differsFromLive = 0;   // session 320
+    for (int row = 0; row < m_model->rowCount(); ++row)
+        differsFromLive += m_model->index(row, 0).data(LocoFieldModel::DiffersFromLiveRole).toBool() ? 1 : 0;
     const LocoInfo::Values sent = lastSentValues();
     for (const LocoInfo::Field &field : m_layout.fields()) {
         if (field.isCrc) {
@@ -1052,6 +1067,8 @@ void LocoConfigWindow::refreshGroupCounts()
             count = changedSinceSent;
         } else if (key == LocoFieldFilter::lockedFields()) {
             count = locked;
+        } else if (key == LocoFieldFilter::differsFromLive()) {
+            count = differsFromLive;
         }
         if (count > 0) {
             item->setText(QStringLiteral("%1  (%2)").arg(key).arg(count));
@@ -1100,14 +1117,19 @@ void LocoConfigWindow::setLiveSource(MessageDispatcher *dispatcher)
         return;
     }
     connect(dispatcher, &MessageDispatcher::entryAppended, this,
-            [this](QString, QSharedPointer<LogEntry> entry) {
+            [this, dispatcher](QString tabKey, QSharedPointer<LogEntry> entry) {
                 if (entry && entry->text.startsWith(QLatin1String("@linfo"))) {
-                    observeCaptureLine(entry->text);
+                    observeCaptureLine(entry->text, dispatcher->senderIp(tabKey));
                 }
             });
 }
 
 void LocoConfigWindow::observeCaptureLine(const QString &line)
+{
+    observeCaptureLine(line, QString());
+}
+
+void LocoConfigWindow::observeCaptureLine(const QString &line, const QString &senderIp)
 {
     if (!isUsable()) {
         return;
@@ -1131,7 +1153,75 @@ void LocoConfigWindow::observeCaptureLine(const QString &line)
         m_linfoIntervalMs.insert(capture.key(), live.seenMs - previous->seenMs);
     }
     m_live.insert(capture.key(), live);
+    if (!senderIp.isEmpty()) {
+        m_liveByIp.insert(senderIp, live);
+        refreshLiveColumns();
+        refreshGroupCounts();
+    }
     refreshLiveCheck();
+}
+
+QString LocoConfigWindow::liveCompareText() const
+{
+    return m_liveCompare->isVisible() || !m_liveCompare->text().isEmpty() ? m_liveCompare->text() : QString();
+}
+
+void LocoConfigWindow::refreshLiveColumns()
+{
+    if (m_model == nullptr || m_liveCompare == nullptr) {
+        return;
+    }
+    // One column per ticked send IP, in the send bar's order, each once.
+    QVector<LocoFieldModel::LiveColumn> columns;
+    QStringList seenIps;
+    for (const LocoInfo::SendTarget &target : m_config.targets) {
+        const QHostAddress address(target.ip.trimmed());
+        if (!target.enabled || address.isNull()) {
+            continue;
+        }
+        const QString ip = address.toString();
+        if (seenIps.contains(ip)) {
+            continue;
+        }
+        seenIps << ip;
+        LocoFieldModel::LiveColumn column;
+        column.ip = ip;
+        const auto live = m_liveByIp.constFind(ip);
+        if (live != m_liveByIp.constEnd()) {
+            column.seen = true;
+            column.values = live->values;
+        }
+        columns << column;
+    }
+    m_model->setLiveColumns(columns);
+    for (int i = 0; i < columns.size(); ++i) {
+        m_table->setColumnWidth(LocoFieldModel::ColumnCount + i, 150);
+    }
+    m_filter->refresh();
+
+    QStringList parts;
+    bool anyDiffers = false, allSame = !columns.isEmpty();
+    for (int i = 0; i < columns.size(); ++i) {
+        const int n = m_model->liveDifferences(i);
+        if (!columns.at(i).seen) {
+            parts << tr("%1: no @linfo yet").arg(columns.at(i).ip);
+            allSame = false;
+        } else if (n > 0) {
+            parts << (n == 1 ? tr("%1: 1 field differs").arg(columns.at(i).ip)
+                             : tr("%1: %2 fields differ").arg(columns.at(i).ip).arg(n));
+            anyDiffers = true;
+            allSame = false;
+        } else {
+            parts << tr("%1: holds this configuration").arg(columns.at(i).ip);
+        }
+    }
+    // Only once a VCC has printed its @linfo: before that the columns' "—"
+    // says it, and the line would take a row of the table's height.
+    bool anySeen = false;
+    for (const LocoFieldModel::LiveColumn &c : columns) anySeen = anySeen || c.seen;
+    m_liveCompare->setVisible(anySeen);
+    m_liveCompare->setText(anySeen ? tr("VCCs: ") + parts.join(QStringLiteral(" · ")) : QString());
+    m_liveCompare->setStyleSheet(anyDiffers ? UiColor::warningStyle() : allSame ? UiColor::okStyle() : UiColor::mutedStyle());
 }
 
 QString LocoConfigWindow::liveCheckText() const

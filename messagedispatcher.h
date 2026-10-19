@@ -168,6 +168,7 @@ public:
     };
     QHash<QString, BlockBuf> m_blocks;
     QHash<QString, QString> m_friendlyOverride;   // tab key -> name, for ingestLocal
+    QHash<QString, quint32> m_senderIp;           // session 320: tab key -> last sender
     int m_localPending = 0;                       // of m_pending, how many ingestLocal added
     void feedBlockAssembler(const LogEntryPtr &entry, const QString &key);
 
@@ -185,7 +186,11 @@ public:
     // kvch `kvchId` -> tab "<sourceId>_<kvchId>". `friendlyName` names the
     // tab when the name map has nothing for it.
     void ingestLocal(quint8 sourceId, quint16 kvchId, const QByteArray &payload,
-                     qint64 arrivalMs, const QString &friendlyName = QString());
+                     qint64 arrivalMs, const QString &friendlyName = QString(),
+                     quint32 senderIpv4 = 0);
+    // Session 320: the IPv4 address a tab's datagrams last came from
+    // ("192.168.25.16"), empty when not known.
+    QString senderIp(const QString &tabKey) const;
     // Tests: run the batch now instead of on the next tick.
     void drainNow() { drainBatch(); }
 

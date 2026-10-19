@@ -126,7 +126,11 @@ public:
     // loco_unit_id. The result is the line under "Last sent".
     void setLiveSource(MessageDispatcher *dispatcher);
     void observeCaptureLine(const QString &line);   // one @-line (the tests; and the dispatcher)
+    // Session 320: an @-line and the IP its datagram came from. The table's
+    // VCC columns show, per ticked send IP, that VCC's latest @linfo.
+    void observeCaptureLine(const QString &line, const QString &senderIp);
     QString liveCheckText() const;
+    QString liveCompareText() const;                // the VCC columns' summary line
     // Re-judge now (the 5 s timer does this while a send awaits its answer).
     void recheck() { refreshLiveCheck(); }
 
@@ -208,6 +212,7 @@ private:
     QLabel          *m_lastSent = nullptr;
     QLabel          *m_blocker = nullptr;
     QLabel          *m_liveStatus = nullptr;
+    QLabel          *m_liveCompare = nullptr;     // session 320
     QPushButton     *m_liveLoad = nullptr;
     QTimer          *m_liveTimer = nullptr;
     struct LiveInfo {
@@ -216,6 +221,7 @@ private:
         bool             crcOk = true;
     };
     QHash<QString, LiveInfo> m_live;      // capture key ("7_1") -> its latest @linfo
+    QHash<QString, LiveInfo> m_liveByIp;  // session 320: sender IP -> its latest @linfo
     QHash<QString, qint64>   m_linfoIntervalMs;   // key -> time between its last two @linfo
     QDateTime                m_verifiedSentAt;    // the send already confirmed/refuted
     qint64                   m_confirmMinWaitMs = kConfirmMinWaitMs;
@@ -225,6 +231,7 @@ private:
     void   recordVerification(const QString &key, const LiveInfo &live, const QStringList &differences);
     QString                  m_liveKeyShown;
     void refreshLiveCheck();
+    void refreshLiveColumns();                    // session 320
     QPushButton     *m_sendButton = nullptr;
     StatusLine      *m_status = nullptr;
     UdpSender       *m_sender = nullptr;

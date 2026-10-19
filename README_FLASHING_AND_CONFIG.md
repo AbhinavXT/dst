@@ -321,6 +321,15 @@ The loco is matched by `loco_unit_id`. **Load the loco's values…** copies
 what the loco holds into the editor, handy to start from a loco's real
 settings.
 
+**Per VCC, field by field.** Each ticked IP in **Send to VCC** gets a
+column in the table, headed **VCC 192.168.25.16**: what that VCC prints
+in its latest `@linfo`. A cell that differs from the editor's value is
+highlighted (amber, bold); hover it to see both values. The group
+**Different on a VCC** lists only those fields, with their count. The
+line under the live check sums it up: "VCCs: 192.168.25.16: 12 fields
+differ · 192.168.25.102: no @linfo yet". The VCC is matched by the IP
+its logs come from, so the four controllers of one loco are told apart.
+
 ## Making a `loco_info.bin` file
 
 For flashing the configuration directly into memory (at `0x60700000`):

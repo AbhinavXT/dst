@@ -765,13 +765,27 @@ int main(int argc, char **argv)
                     win = d;
                 }
             }
-            if (which == QLatin1String("lococonfig")) {
+            if (which == QLatin1String("lococonfig") || which == QLatin1String("lococonfiglive")) {
                 auto *w = new LocoConfigWindow(nullptr, flashDir.path());
                 w->setAttribute(Qt::WA_DeleteOnClose, false);
                 // Session 279: one field off its default, to see it stand out.
                 if (LocoFieldModel *m = w->fieldModel())
                     m->setData(m->index(m->rowForKey(QStringLiteral("loco_unit_id")), LocoFieldModel::ColumnValue),
                                QStringLiteral("30421"), Qt::EditRole);
+                // Session 320: two send IPs, one with a real @linfo.
+                if (which == QLatin1String("lococonfiglive")) {
+                    LocoInfo::SendTarget a, b;
+                    a.ip = QStringLiteral("192.168.25.16");
+                    b.ip = QStringLiteral("192.168.25.102");
+                    w->setTargets({ a, b });
+                    QFile cap(QStringLiteral(DL_SRC_DIR "/replay/loco_81_1_14102026_110915.cap"));
+                    cap.open(QIODevice::ReadOnly);
+                    while (!cap.atEnd()) {
+                        const QByteArray l = cap.readLine().trimmed();
+                        if (l.startsWith("@linfo_")) { w->observeCaptureLine(QString::fromLatin1(l), a.ip); break; }
+                    }
+                    w->resize(1400, 900);
+                }
                 win = w;
             }
             if (which == QLatin1String("schemanew")) {

@@ -11,6 +11,8 @@
 //    2  Default     the loco_config tool's value (loco_defaults.json)
 //    3  Last sent   what went out last from this configuration
 //    4  Type        u8 / u16 / u32 / f32 / char[40]
+//    5… one per ticked send IP (session 320): what that VCC holds, from its
+//       latest @linfo; a cell that differs from Value is highlighted
 //
 //  A LOCKED field (session 158) shows a lock beside its name and cannot be
 //  edited here; right-click ▸ Unlock field first.
@@ -37,7 +39,14 @@ public:
         ChangedFromDefaultRole,
         ChangedSinceSentRole,
         SearchTextRole,
-        LockedRole
+        LockedRole,
+        DiffersFromLiveRole      // session 320: some VCC column holds another value
+    };
+    // Session 320: a send IP's VCC and its latest @linfo (seen = one arrived).
+    struct LiveColumn {
+        QString          ip;
+        bool             seen = false;
+        LocoInfo::Values values;
     };
 
     LocoFieldModel(const LocoInfo::Layout *layout, const LocoInfo::Presentation *presentation,
@@ -66,6 +75,12 @@ public:
 
     int rowForKey(const QString &key) const;
 
+    // Session 320: the VCC columns after Type, in send-target order.
+    void setLiveColumns(const QVector<LiveColumn> &columns);
+    int  liveColumnCount() const { return m_live.size(); }
+    // Fields whose value on live column `i` differs from Value (0 if not seen).
+    int  liveDifferences(int i) const;
+
 signals:
     void valueEdited(const QString &key);
     void editRejected(const QString &reason);
@@ -80,6 +95,8 @@ private:
     LocoInfo::Values  m_defaults;
     LocoInfo::Values  m_lastSent;
     QSet<QString>     m_locked;
+    QVector<LiveColumn> m_live;    // session 320
+    bool differsOnLive(int i, const LocoInfo::Field &field) const;
     QFont             m_baseFont;
 };
 
@@ -93,6 +110,7 @@ public:
     static QString changedFromDefault() { return QStringLiteral("Changed from defaults"); }
     static QString changedSinceSent()   { return QStringLiteral("Changed since last send"); }
     static QString lockedFields()       { return QStringLiteral("Locked fields"); }
+    static QString differsFromLive()    { return QStringLiteral("Different on a VCC"); }   // session 320
 
     explicit LocoFieldFilter(QObject *parent = nullptr);
     void setGroup(const QString &group);

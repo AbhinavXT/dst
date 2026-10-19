@@ -66,6 +66,10 @@ struct ParsedMessage
     // point of this tool, so the clock read happens as close to arrival as
     // we can get it.
     qint64 arrivalMs = 0;
+
+    // Session 320: the sender's IPv4 address (0: not known, e.g. a local
+    // ingest). Loco Configuration matches a send IP to the VCC's @linfo by it.
+    quint32 senderIpv4 = 0;
 };
 
 using ParsedMessagePtr = QSharedPointer<ParsedMessage>;
