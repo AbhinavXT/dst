@@ -258,8 +258,8 @@ QWidget *FlasherWindow::buildAppBar()
            "power-cycled, and the board must be caught in its 5 s window."),
         kflash::Updater::Classic);
     m_updater26 = makeUpdaterButton(
-        tr("2.6"), QStringLiteral("flasherUpdater26"),
-        tr("Boards with updater 2.2 or later (2.6): the flasher holds the board in the updater "
+        tr("Signed"), QStringLiteral("flasherUpdater26"),   // session 319: was "2.6"
+        tr("Boards with updater 2.2 or later (2.6, and 2.7 with signed images): the flasher holds the board in the updater "
            "(HOLD), stops on an image the board refuses (REJECTED), reports a lost answer at the "
            "end as \"result unknown\", and releases a VCC that relayed a card image (BOOT)."),
         kflash::Updater::V26);

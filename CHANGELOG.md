@@ -11,6 +11,36 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-319"></a>
+## Session 319 — Firmware Flasher: the updater switch reads "Classic | Signed"
+
+Abhinav: "in firmware flasher instead of 2.6 write signed there".
+
+**What the operator sees.** The top bar's updater switch is **Classic |
+Signed**. Signed is the mode that was "2.6": boards with updater 2.2 or
+later (2.6, and 2.7 with signed images). Its tooltip says so. Nothing
+else changed: HOLD, REJECTED, BOOT, Ask board and the signature checks
+work as before.
+
+**Kept as "2.6" on purpose.** Profiles and history store the updater as
+"2.6", so older files read the same and newer files open in older
+DLConsoles. The messages that name the updater version itself ("not a
+2.6 controller address") are about the board's updater and keep it.
+
+**Files.** `flasher/flasherwindow.cpp`, `README_FLASHING_AND_CONFIG.md`
+("Which updater: Classic or Signed").
+
+**Tests.** New `session319` (5 checks): the button reads Signed, its
+tooltip names 2.7, Classic is unchanged, the stored name is still "2.6".
+
+**Gate:** Qt 6 and Qt 5.15 green, 353 suites / 9196 checks, 0 failed; 15
+validators; menu audit; smoke (gated together with 318/319, committed apart).
+
+**Not tested:** the window's width on Linux with the longer label (the
+Mac's minimum is 880 px either way); CI's `session134` checks it.
+
+---
+
 <a id="session-318"></a>
 ## Session 318 — Lane band: a slim Lanes ▾, and a Safety row per kind
 

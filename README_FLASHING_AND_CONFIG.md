@@ -87,20 +87,21 @@ On the **Summary**, each VCC has its own result. **Try again** goes back
 with only the VCCs that were **not** updated in the address field, so a
 verified VCC is not flashed twice. History has one record per VCC.
 
-## Which updater: Classic or 2.6 (top bar)
+## Which updater: Classic or Signed (top bar)
 
-The top bar has an **Updater** switch: **Classic | 2.6**. Pick the one
-your boards run. It is saved **with the profile**, so a bench's profile
+The top bar has an **Updater** switch: **Classic | Signed**. **Signed** is
+for boards with updater 2.2 or later (2.6, and 2.7 with signed images); the
+sections below marked "(2.6)" apply to it. Pick the one your boards run. It is saved **with the profile**, so a bench's profile
 remembers it. It can't be changed while flashing.
 
-| | Classic | 2.6 (updater 2.2 or later) |
+| | Classic | Signed (updater 2.2 or later) |
 |---|---|---|
 | While you power-cycle | The flasher offers the image until the board answers in its 5 s window. | The flasher sends **HOLD**. The board answers and then **stays in the updater for 2 minutes** instead of 5 s. |
 | The board refuses the image (wrong card, older version, damaged trailer) | Not reported by older boards. | Stops at once with **"image refused by the board"** and the reason. Sending it again won't help. |
 | The answer is lost at the very end | **Not updated** | **Result unknown**: the board may have flashed. Let it boot and check its version before flashing again. |
 | After an Input/Output/Analog image | Nothing more. | The flasher sends **BOOT** so the VCC starts its program once it has passed the image on. |
 
-A board with an updater older than 2.2 still works in **2.6**: it isn't
+A board with an updater older than 2.2 still works in **Signed**: it isn't
 held, and the Summary says "updater older than 2.2". **Classic** is the
 flasher exactly as before.
 
