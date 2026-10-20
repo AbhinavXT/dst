@@ -774,10 +774,12 @@ int main(int argc, char **argv)
                                QStringLiteral("30421"), Qt::EditRole);
                 // Session 320: two send IPs, one with a real @linfo.
                 if (which == QLatin1String("lococonfiglive")) {
-                    LocoInfo::SendTarget a, b;
+                    LocoInfo::SendTarget a, b, c, d;
                     a.ip = QStringLiteral("192.168.25.16");
                     b.ip = QStringLiteral("192.168.25.102");
-                    w->setTargets({ a, b });
+                    c.ip = QStringLiteral("192.168.25.103");   // session 322: a loco's four controllers
+                    d.ip = QStringLiteral("192.168.25.104");
+                    w->setTargets({ a, b, c, d });
                     QFile cap(QStringLiteral(DL_SRC_DIR "/replay/loco_81_1_14102026_110915.cap"));
                     cap.open(QIODevice::ReadOnly);
                     while (!cap.atEnd()) {

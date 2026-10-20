@@ -91,6 +91,12 @@ int LocoFieldModel::columnCount(const QModelIndex &parent) const
 
 QVariant LocoFieldModel::headerData(int section, Qt::Orientation orientation, int role) const
 {
+    // Session 322: a VCC column says what it is in its tooltip; the header
+    // is the IP alone, so four of them fit side by side.
+    if (orientation == Qt::Horizontal && role == Qt::ToolTipRole && section >= ColumnCount
+        && section < ColumnCount + m_live.size()) {
+        return tr("VCC %1: what it holds, from its latest @linfo").arg(m_live.at(section - ColumnCount).ip);
+    }
     if (orientation != Qt::Horizontal || role != Qt::DisplayRole) {
         return QVariant();
     }
@@ -102,7 +108,7 @@ QVariant LocoFieldModel::headerData(int section, Qt::Orientation orientation, in
     case ColumnType:     return tr("Type");
     default:
         if (section >= ColumnCount && section < ColumnCount + m_live.size()) {
-            return tr("VCC %1").arg(m_live.at(section - ColumnCount).ip);   // session 320
+            return m_live.at(section - ColumnCount).ip;   // session 320; the IP alone since 322
         }
         return QVariant();
     }

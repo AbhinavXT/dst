@@ -106,8 +106,8 @@ TEST_SUITE(session320)
     LocoFieldModel *model = window.fieldModel();
     CHECK(model->liveColumnCount() == 2, "two ticked IPs, two columns (the unticked one has none)");
     CHECK(model->headerData(LocoFieldModel::ColumnCount, Qt::Horizontal, Qt::DisplayRole).toString()
-              == QStringLiteral("VCC 192.168.25.16"),
-          "headed by the IP");
+              == QStringLiteral("192.168.25.16"),
+          "headed by the IP (session 322: the IP alone)");
     CHECK(window.liveCompareText().isEmpty()
               && model->index(0, LocoFieldModel::ColumnCount).data(Qt::DisplayRole).toString() == QStringLiteral("—"),
           "nothing yet: the columns show a dash, and no summary line takes the table's room");

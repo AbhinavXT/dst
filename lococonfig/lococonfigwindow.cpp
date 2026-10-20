@@ -35,6 +35,7 @@
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QFontMetrics>
 #include <QHostAddress>
 #include <QInputDialog>
 #include <QLabel>
@@ -1206,8 +1207,12 @@ void LocoConfigWindow::refreshLiveColumns()
         columns << column;
     }
     m_model->setLiveColumns(columns);
+    // Session 322: wide enough for the whole IP in the header (150 px cut
+    // "192.168.25.16" so four columns all read "VCC 192.168.25.1…").
+    const QFontMetrics headerMetrics(m_table->horizontalHeader()->font());
     for (int i = 0; i < columns.size(); ++i) {
-        m_table->setColumnWidth(LocoFieldModel::ColumnCount + i, 150);
+        m_table->setColumnWidth(LocoFieldModel::ColumnCount + i,
+                                qMax(110, headerMetrics.horizontalAdvance(columns.at(i).ip) + 28));
     }
     m_filter->refresh();
 

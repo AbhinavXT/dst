@@ -11,6 +11,36 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-322"></a>
+## Session 322 — Loco Configuration: the whole IP in each VCC column's header
+
+Abhinav's screenshot ("last one getting cut"): with a loco's four
+controllers ticked, every VCC column read "VCC 192.168.25.1…". The 150 px
+column cut the last digits, so the four could not be told apart.
+
+**What the operator sees.** Each VCC column is headed by its IP alone
+("192.168.25.102"), and is as wide as that IP needs. Hovering the header
+says "VCC 192.168.25.102: what it holds, from its latest @linfo". With
+four columns on a small window the table scrolls sideways, as before.
+
+**Files.** `lococonfig/lococonfigmodel.cpp` (the header and its tooltip),
+`lococonfig/lococonfigwindow.cpp` (the width from the header's font),
+`tests/test_session320.cpp` (the header text), `tests/screenshot_main.cpp`
+(`lococonfiglive` ticks all four controllers).
+
+**Tests.** New `session322` (4 checks): four IPs, four different headers,
+each the whole IP in a column at least as wide as it, and the tooltip.
+
+**Gate:** Qt 6 and Qt 5.15 green, 356 suites / 9222 checks, 0 failed; 15
+validators; menu audit; smoke.
+
+Checked on screen: `lococonfiglive` with .16, .102, .103 and .104.
+
+**Not tested:** Windows' header font (Segoe UI), where the width is taken
+from the same font metrics.
+
+---
+
 <a id="session-321"></a>
 ## Session 321 — Loco Configuration opens when the chosen kavach.xml is gone
 
