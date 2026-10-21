@@ -1214,7 +1214,6 @@ void LocoConfigWindow::refreshLiveColumns()
         m_table->setColumnWidth(LocoFieldModel::ColumnCount + i,
                                 qMax(110, headerMetrics.horizontalAdvance(columns.at(i).ip) + 28));
     }
-    m_filter->refresh();
 
     QStringList parts;
     bool anyDiffers = false, allSame = !columns.isEmpty();

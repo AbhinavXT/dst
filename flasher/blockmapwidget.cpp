@@ -90,6 +90,14 @@ void BlockMapWidget::setBitmap(const QByteArray& bitmap, quint32 totalBlocks)
     update();
 }
 
+int BlockMapWidget::heldCount() const
+{
+    if (!haveBitmap_) {
+        return 0;
+    }
+    return static_cast<int>(cells_.count(Held) + cells_.count(Repaired));
+}
+
 int BlockMapWidget::cellAt(const QPoint& pos) const
 {
     const int columns = columnsForWidth(width());

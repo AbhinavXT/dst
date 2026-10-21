@@ -1187,9 +1187,8 @@ void MainWindow::on_pbSaveBtn_clicked()
 
     const QString friendly = m_dispatcher->friendlyNameFor(currentKey);
     const QString fileName = QString("%1_%2_%3.log").arg(friendly, dateStr, timeStr);
-    const QString filepath = QString("%1%2%3").arg("SAVED_LOGS",
-                                                   QDir::separator(),
-                                                   fileName);
+    // Beside the program, not the working dir: the single-exe package runs from a temp folder.
+    const QString filepath = programDir() + QStringLiteral("/SAVED_LOGS/") + fileName;
 
     // Source/kvch from the tab key, so the .dlr identifies itself when
     // reopened. The key is authoritative here; the first snapshot row might

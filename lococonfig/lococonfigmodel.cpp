@@ -287,8 +287,12 @@ void LocoFieldModel::setLiveColumns(const QVector<LiveColumn> &columns)
         m_live = columns;
     }
     if (!m_rows.isEmpty()) {
-        // The Field column's role (DiffersFromLiveRole) changes too.
-        emit dataChanged(index(0, 0), index(m_rows.size() - 1, columnCount() - 1));
+        // The Field column's role (DiffersFromLiveRole) changes too. Not the
+        // Value column: a change there reloads the editor the operator is
+        // typing in, and @linfo arrives every few seconds (session 323).
+        emit dataChanged(index(0, ColumnField), index(m_rows.size() - 1, ColumnField));
+        if (!m_live.isEmpty())
+            emit dataChanged(index(0, ColumnCount), index(m_rows.size() - 1, columnCount() - 1));
     }
 }
 

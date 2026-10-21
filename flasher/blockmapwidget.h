@@ -24,6 +24,7 @@ public:
     QSize sizeHint() const override;
     bool  hasHeightForWidth() const override { return true; }
     int   heightForWidth(int width) const override;
+    int   heldCount() const;   /* acknowledged cells (Held or Repaired), for the tests */
 
 public slots:
     void reset(quint32 totalBlocks);

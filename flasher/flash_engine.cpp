@@ -1545,6 +1545,13 @@ FlashResult Session::run()
 
     result_.repair_ms       = ms_since(phase_start);
 
+    /* COMPLETE (or "already holds it") carries no bitmap: without this the
+     * map and the block count kept the last checkpoint's, part-empty. */
+    if (success) {
+        std::vector<uint8_t> all((block_count_ + 7) / 8, 0xFF);
+        emit_bitmap(all.data(), static_cast<uint32_t>(all.size()));
+    }
+
     /* 2.6, a card image: collect the cards' own results from the VCC before
      * anything else (session 299). A controller that reports a failure makes
      * the card's run a failure: the VCC accepting it is not the card taking it. */

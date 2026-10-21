@@ -11,6 +11,52 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-323"></a>
+## Session 323 — Saved logs beside the program; Loco Configuration edits during live @linfo; a full block map after verify
+
+Three field reports from Abhinav.
+
+**1. Save wrote to a temp folder.** The Save button wrote to a relative
+`SAVED_LOGS`, so it followed the working directory, and the single-file
+Windows package runs from a temporary folder (`AppData\Local\Temp\…`).
+It now writes to `SAVED_LOGS` beside the program (`programDir()`, as `LOGS`
+already does). The status line shows the full path.
+
+**2. Loco Configuration: values could not be typed while Ethernet was
+up.** Each incoming @linfo (session 320's VCC columns) told the table that
+every cell had changed, Value included, and Qt reloads an open editor when
+its cell changes: what the operator typed was replaced by the old value
+every few seconds. Now only the Field column and the VCC columns are
+refreshed, and the filter is no longer re-run on each @linfo.
+
+**3. Flasher: verified VCCs with a part-empty block map.** With some
+listed VCCs not answering, the ones that did were flashed and verified but
+their map (and "Blocks N of M") stayed at the last checkpoint's bitmap.
+COMPLETE carries no bitmap. When the engine finishes with success (COMPLETE,
+or the board already holds the image), it now reports every block held.
+
+**Files.** `mainwindow.cpp`, `lococonfig/lococonfigmodel.cpp`,
+`lococonfig/lococonfigwindow.cpp`, `flasher/flash_engine.cpp`,
+`flasher/blockmapwidget.{h,cpp}` (`heldCount()` for the tests).
+
+**Tests.** New `session323` (8 checks): with a real @linfo
+(`replay/loco_81_1_14102026_110915.cap`) arriving while a Value editor is
+open, the typed text survives; two FakeBoards, one never powered on, the
+verified VCC's map holds all 301 blocks (256 before the fix). Both checks
+fail on the old code.
+
+**Gate:** Qt 6 and Qt 5.15 green, 357 suites / 9230 checks, 0 failed; 15
+validators; menu audit; smoke.
+
+**Not tested:** the Save path change has no test of its own (one line,
+`programDir()` is tested in session 269); not run from the Windows
+single-file package. Destroying the Loco Configuration window while a Value
+editor is open crashes in the test harness (the editor commits into a model
+half torn down). Not seen in the app and not changed here; the test closes
+the window first.
+
+---
+
 <a id="session-322"></a>
 ## Session 322 — Loco Configuration: the whole IP in each VCC column's header
 
