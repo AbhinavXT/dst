@@ -11,6 +11,79 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-329"></a>
+## Session 329 — Cab I/O Simulator: a Readback → VCC tab, and a default for every input
+
+Abhinav, after trying the simulator on the bench:
+1. *"make a output readback reply window in cab io simulator"*, with the rule
+   *"When a bit in loco output is 1 then its corresponding readback will be
+   a=0, b=0, fault=1, trans=1, output=0. When it is 0 readback will be a=1,
+   b=1, fault=1, trans=0, output=1"*. Requests come to 17/18 and replies go
+   from 13/14, header included.
+2. *"Let user set a default for all the inputs be it just 1 input or
+   combination of no and nc"*.
+
+He also sent `STRUCT_OUTPUT_READBACK_REQUEST`, `STRUCT_OUTPUT_PIN_READBACK`
+and `STRUCT_OUTPUT_READBACK_DATA`. They agree with the real frames
+(session 325), with three exceptions settled with him:
+- the readback goes *from* 13/14, not 17/18 (requests go *to* 17/18);
+- the readback carries the 6-byte header, which the struct as sent omits;
+- `voc_health` is 0x13 as on the wire, not the comment's 0x03.
+
+**What the operator sees.**
+- **Readback → VCC**, a new tab. It replaces the Outputs tab's checkbox.
+  - **Off | Answer readback requests**. It starts Off every time, because
+    with a real output card on the line two would answer.
+  - Chips **13** and **14** choose which cards it answers as, plus
+    `voc_health`.
+  - One row per output pin, named by the chosen cab's `STRUCT_LOCO_OUTPUT`.
+    Each row shows Auto | Manual, the five bits (a, b, fault, trans, output),
+    the byte sent, and the output bit it follows.
+  - **Auto** applies the rule above to the output word last sent to that
+    card. **Manual** sends the bits clicked: a fault to inject, such as
+    output not following the command, or fault = 0. A Manual pin's byte is
+    in the accent colour. **All pins Auto** undoes every override.
+  - Before any output data has gone to a card, Auto pins have nothing to
+    follow, so its request is counted and not answered, unless every pin is
+    Manual.
+- **Inputs: Default ▸** offers "Save these inputs as the default" and
+  "Forget the saved default".
+  - The default is whatever the inputs are set to: plain inputs 0 or 1, and
+    NO/NC inputs On, Off or either fault.
+  - It is kept per set (SIFA set 1, set 2, old cab). Padding bits are never
+    saved.
+  - The window opens with it, and **Reset** returns to it (no flicker).
+    Without one, Reset puts every input Off, as before.
+
+**Files.** `cabio.{h,cpp}` (`PinReadback`, `pinByte`/`pinFromByte`,
+`autoPinByte`, `ReadbackSim`, `layoutMask`); `cabiosimwindow.{h,cpp}`;
+`tests/screenshot_main.cpp` (readback on, one Manual pin; `SHOT_TAB=2` is
+Readback, 3 is Frames).
+
+**Tests.** New `session329` (23 checks):
+- the pin byte both ways (0x0C, 0x17) and the rule;
+- all-Auto readback equals real card 13's pins for 0x03E1; a Manual pin
+  changes only itself;
+- the window answers a real request to 17 with real card 13's exact frame,
+  and to 18 as card 14 only once 14 is ticked;
+- a Manual pin and voc_health 0x03 go out in the next readback; Off sends
+  nothing; no data and not all Manual means no reply;
+- a saved default (a fault, an On contact, plain inputs, with padding set
+  and dropped) is restored by Reset and by a new window;
+- the old cab keeps its own default; forgetting the default gives every
+  input Off.
+
+**Gate (Linux):**
+- **Qt 6.4:** green. 362 suites / 9322 checks, 0 failed; 15 validators; menu
+  audit; smoke.
+- **Qt 5.15:** only the four `session134`/`session135` pixel checks that fail
+  on patch 323 here too (session 324). Everything else green.
+
+**Not tested:** against a live VCC; the readback frames match the captured
+ones byte for byte.
+
+---
+
 <a id="session-328"></a>
 ## Session 328 — Cab I/O Simulator in every theme
 

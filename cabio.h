@@ -100,6 +100,9 @@ struct InputLayout {
     QVector<Input>  inputs;
 };
 
+// Every bit the layout's inputs own (the padding is not one of them).
+quint32 layoutMask(const InputLayout &l);
+
 const InputLayout &sifaSet1();
 const InputLayout &sifaSet2();
 const InputLayout &oldCabInputs();
@@ -226,6 +229,35 @@ QByteArray readback(quint8 src, quint8 dest, quint16 seq, const QByteArray &pins
                     const WireFormat &wf);
 // The 16 pin bytes the output card answered for `word` (kPinBitSet for a 1).
 QByteArray readbackPins(quint16 word);
+
+// STRUCT_OUTPUT_PIN_READBACK: a, b, fault, trans, output, LSB-first, 3 pad.
+struct PinReadback {
+    bool a = false, b = false, fault = false, trans = false, output = false;
+};
+quint8      pinByte(const PinReadback &p);
+PinReadback pinFromByte(quint8 byte);
+// Abhinav (session 329): a loco output bit of 1 reads back a=0 b=0 fault=1
+// trans=1 output=0 (0x0C); a 0 reads back a=1 b=1 fault=1 trans=0 output=1
+// (0x17). The real cards answer exactly that (session 325).
+quint8 autoPinByte(bool commanded);
+
+// What the simulator reads back, pin by pin: Auto follows the commanded bit
+// (autoPinByte), Manual sends a byte the operator set -- a fault to inject.
+class ReadbackSim
+{
+public:
+    bool   isManual(int pin) const { return m_manual.value(pin, -1) >= 0; }
+    quint8 manualByte(int pin) const { return quint8(qMax(0, m_manual.value(pin, 0))); }
+    void   setManual(int pin, quint8 byte) { if (pin >= 0 && pin < kPins) m_manual[pin] = byte; }
+    void   setAuto(int pin) { if (pin >= 0 && pin < kPins) m_manual[pin] = -1; }
+    void   allAuto() { m_manual.fill(-1); }
+    int    manualCount() const;
+    quint8 pinFor(int pin, quint16 word) const;
+    QByteArray pins(quint16 word) const;     // the 16 bytes sent
+
+private:
+    QVector<int> m_manual = QVector<int>(kPins, -1);
+};
 // A readback request's answer from the card it is for: readbackCard(dest),
 // to the VCC, its seq_num, `pins`.
 QByteArray readbackTo(const Frame &request, const QByteArray &pins, quint8 health, const WireFormat &wf);

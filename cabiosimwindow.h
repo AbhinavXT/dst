@@ -79,8 +79,24 @@ public:
     void setFlickerPeriodMs(int ms);
     int  flickerPeriodMs() const;
     void setHealth(quint8 h);
+    // Readback -> VCC (session 329): answer the readback requests to 17 / 18
+    // as output cards 13 / 14, each pin Auto (from the output word) or Manual.
     void setAnswerReadback(bool on);
+    bool answersReadback() const { return m_rbAnswer; }
+    void setReadbackCards(const QVector<quint8> &cards);     // 13, 14
+    QVector<quint8> readbackCards() const;
+    CabIo::ReadbackSim *readbackSim() { return &m_rb; }
+    void setReadbackHealth(quint8 h);
     int  readbacksSent() const { return m_readbacksSent; }
+    void refreshReadback();
+
+    // The inputs' default (session 329): the operator's own state for every
+    // input, plain or NO/NC, saved per bank; the window opens with it and
+    // "Reset to default" returns to it. Without one: every input Off.
+    void saveInputDefault();
+    void resetInputsToDefault();
+    void forgetInputDefault();
+    bool hasInputDefault() const;
     void setWireFormat(const CabIo::WireFormat &wf);
     CabIo::WireFormat wireFormat() const { return m_wf; }
 
@@ -125,6 +141,10 @@ private:
     QWidget *buildInputsTab();
     QWidget *buildOutputsTab();
     QWidget *buildFramesTab();
+    QWidget *buildReadbackTab();
+    void rebuildReadback();
+    void applyDefault(Bank &b) const;
+    quint16 readbackWord(quint8 card, bool *known) const;
     void rebuildInputs();
     void rebuildOutputs();
     void refreshInputs();
@@ -194,7 +214,24 @@ private:
     QLabel      *m_outBytes = nullptr;
     CabIoUi::TileGrid *m_lampGrid = nullptr;
     QVector<CabIoUi::LampTile *> m_lamps;
-    QCheckBox   *m_answerReadback = nullptr;
+    // Readback -> VCC
+    struct RbRow {
+        QLabel *name = nullptr;
+        QPushButton *mode = nullptr;           // checked = Manual
+        QPushButton *bits[5] = {};             // a b fault trans output
+        QLabel *byte = nullptr;
+        QLabel *commanded = nullptr;
+    };
+    CabIo::ReadbackSim m_rb;
+    bool m_rbAnswer = false;
+    quint8 m_rbHealth = CabIo::kHealthy;
+    QButtonGroup *m_rbAnswerGroup = nullptr;
+    QVector<QPushButton *> m_rbCardChips;
+    QSpinBox    *m_rbHealthSpin = nullptr;
+    QLabel      *m_rbSummary = nullptr;
+    QWidget     *m_rbTable = nullptr;
+    QVector<RbRow> m_rbRows;
+    QPushButton *m_resetDefault = nullptr;
     QLabel      *m_outFooter = nullptr;
 
     QComboBox   *m_crc = nullptr;

@@ -369,13 +369,13 @@ private:
     QString stateWords() const
     {
         if (!m_in.isPair())
-            return QStringLiteral("%1 · bit %2").arg(isOn() ? QStringLiteral("On") : QStringLiteral("Off")).arg(m_in.bit);
+            return QStringLiteral("%1 \u00B7 bit %2").arg(isOn() ? QStringLiteral("On") : QStringLiteral("Off")).arg(m_in.bit);
         const int no = (m_live >> 1) & 1, nc = m_live & 1;
         QString words;
         if (m_live == 0)      words = QStringLiteral("Fault: both 0");
         else if (m_live == 3) words = QStringLiteral("Fault: both 1");
         else                  words = isOn() ? QStringLiteral("On") : QStringLiteral("Off");
-        return QStringLiteral("%1 · NO %2 · NC %3").arg(words).arg(no).arg(nc);
+        return QStringLiteral("%1 \u00B7 NO %2 \u00B7 NC %3").arg(words).arg(no).arg(nc);
     }
 
     void showFaultMenu()
@@ -383,8 +383,8 @@ private:
         QMenu menu(this);
         const int states[] = { 1, 2, 0, 3 };
         const QString labels[] = {
-            QStringLiteral("Off — at rest (NO 0, NC 1)"),
-            QStringLiteral("On — operated (NO 1, NC 0)"),
+            QStringLiteral("Off \u2014 at rest (NO 0, NC 1)"),
+            QStringLiteral("On \u2014 operated (NO 1, NC 0)"),
             QStringLiteral("Fault: both 0 (NO 0, NC 0)"),
             QStringLiteral("Fault: both 1 (NO 1, NC 1)") };
         for (int k = 0; k < 4; ++k) {
@@ -533,7 +533,7 @@ protected:
                    p.fontMetrics().elidedText(displayName(m_o.name), Qt::ElideRight, w));
         p.setFont(scaled(font(), 0.85));
         p.setPen(UiColor::muted());
-        // "Applied · bit 13 = 0": what the output does, then the bit as sent.
+        // "Applied \u00B7 bit 13 = 0": what the output does, then the bit as sent.
         QString sub;
         if (!m_known) {
             sub = QStringLiteral("no data yet \u00B7 bit %1").arg(m_o.bit);
@@ -584,6 +584,7 @@ CabIoSimWindow::CabIoSimWindow(SerialManager *serial, QWidget *parent)
     m_tabs->setDocumentMode(true);
     m_tabs->addTab(buildInputsTab(),  tr("Inputs \u2192 VCC"));
     m_tabs->addTab(buildOutputsTab(), tr("Outputs \u2190 VCC"));
+    m_tabs->addTab(buildReadbackTab(), tr("Readback \u2192 VCC"));
     m_tabs->addTab(buildFramesTab(),  tr("Frames"));
     root->addWidget(m_tabs, 1);
 
@@ -608,6 +609,7 @@ CabIoSimWindow::CabIoSimWindow(SerialManager *serial, QWidget *parent)
     loadSettings();
     rebuildInputs();
     rebuildOutputs();
+    rebuildReadback();
     restyle();
     UiColor::onThemeChange(this, [this]() { restyle(); });
     refreshPort();
@@ -747,14 +749,30 @@ QWidget *CabIoSimWindow::buildInputsTab()
         m_status->say(tr("Every input holds its state."));
     });
     row->addWidget(stopFl);
-    auto *reset = new QPushButton(tr("Reset"), page);
-    reset->setToolTip(tr("Every input Off (NO/NC inputs at rest: NO 0, NC 1), no faults, no flicker"));
-    connect(reset, &QPushButton::clicked, this, [this]() {
-        for (Bank &b : m_banks) b.bank.reset();
-        refreshInputs();
-        m_status->say(tr("Every input Off, no faults, no flicker."));
+    // Session 329: the operator's own default for every input. Set the
+    // inputs as wanted, "Save as default"; Reset returns to it, and the
+    // window opens with it.
+    auto *defaults = new QPushButton(tr("Default"), page);
+    defaults->setToolTip(tr("Save the inputs as they are now as the default, or forget the saved default"));
+    auto *defaultsMenu = new QMenu(defaults);
+    defaultsMenu->addAction(tr("Save these inputs as the default"), this, [this]() {
+        saveInputDefault();
+        m_status->ok(tr("Saved: the window opens with these inputs, and Reset returns to them."));
     });
-    row->addWidget(reset);
+    QAction *forget = defaultsMenu->addAction(tr("Forget the saved default (every input Off)"), this, [this]() {
+        forgetInputDefault();
+        m_status->say(tr("No saved default: Reset puts every input Off."));
+    });
+    connect(defaultsMenu, &QMenu::aboutToShow, this, [this, forget]() { forget->setEnabled(hasInputDefault()); });
+    defaults->setMenu(defaultsMenu);
+    row->addWidget(defaults);
+    m_resetDefault = new QPushButton(tr("Reset"), page);
+    connect(m_resetDefault, &QPushButton::clicked, this, [this]() {
+        resetInputsToDefault();
+        m_status->say(hasInputDefault() ? tr("Inputs back to the saved default, no flicker.")
+                                        : tr("Every input Off, no faults, no flicker."));
+    });
+    row->addWidget(m_resetDefault);
     v->addLayout(row);
 
     auto *hint = new QLabel(tr("Click an input to switch it On or Off. Inputs with NO and NC feedbacks switch the same way "
@@ -818,18 +836,206 @@ QWidget *CabIoSimWindow::buildOutputsTab()
     scroll->setWidget(m_lampGrid);
     v->addWidget(scroll, 1);
 
-    m_answerReadback = new QCheckBox(tr("Answer readback requests as output cards 13 and 14"), page);
-    m_answerReadback->setToolTip(tr("Reply to each readback request (0x1D to 17 / 18) as the card it is for, with the "
-                                    "pin bytes the real card gave: 0x0C for an output bit of 1, 0x17 for 0. "
-                                    "Leave off when a real output card is on the line: two would answer."));
-    connect(m_answerReadback, &QCheckBox::toggled, this, [this]() { refreshOutputs(); });
-    v->addWidget(m_answerReadback);
-
     m_outFooter = new QLabel(page);
     m_outFooter->setObjectName(QStringLiteral("muted"));
     m_outFooter->setWordWrap(true);
     v->addWidget(m_outFooter);
     return page;
+}
+
+QWidget *CabIoSimWindow::buildReadbackTab()
+{
+    auto *page = new QWidget(this);
+    auto *v = new QVBoxLayout(page);
+    v->setContentsMargins(0, 10, 0, 0);
+    v->setSpacing(8);
+
+    auto *row = new QHBoxLayout;
+    row->setSpacing(8);
+    row->addWidget(segmented({ tr("Off"), tr("Answer readback requests") }, &m_rbAnswerGroup, page));
+    m_rbAnswerGroup->button(1)->setToolTip(tr("Reply to each readback request (0x1D to 17 / 18) as output card 13 / 14. "
+                                              "Leave Off while a real output card is on the line: two would answer."));
+    connect(m_rbAnswerGroup, &QButtonGroup::idClicked, this, [this](int id) { setAnswerReadback(id == 1); });
+    row->addSpacing(12);
+    auto *as = new QLabel(tr("as cards"), page);
+    as->setObjectName(QStringLiteral("muted"));
+    row->addWidget(as);
+    for (quint8 id : { quint8(13), quint8(14) }) {
+        auto *chip = new QPushButton(QString::number(id), page);
+        chip->setObjectName(QStringLiteral("idChip"));
+        chip->setCheckable(true);
+        chip->setChecked(true);
+        chip->setCursor(Qt::PointingHandCursor);
+        chip->setProperty("cardId", int(id));
+        chip->setToolTip(tr("Answer the readback requests to %1 as output card %2").arg(id + 4).arg(id));
+        connect(chip, &QPushButton::toggled, this, [this]() { refreshReadback(); });
+        m_rbCardChips << chip;
+        row->addWidget(chip);
+    }
+    row->addSpacing(16);
+    row->addWidget(new QLabel(tr("voc_health"), page));
+    m_rbHealthSpin = new HexSpin(page);
+    m_rbHealthSpin->setRange(0, 255);
+    m_rbHealthSpin->setPrefix(QStringLiteral("0x"));
+    m_rbHealthSpin->setValue(kHealthy);
+    m_rbHealthSpin->setToolTip(tr("The health byte after the 16 pins (0x13 in every real readback)"));
+    connect(m_rbHealthSpin, QOverload<int>::of(&QSpinBox::valueChanged), this,
+            [this](int h) { setReadbackHealth(quint8(h)); });
+    row->addWidget(m_rbHealthSpin);
+    row->addStretch(1);
+    auto *allAuto = new QPushButton(tr("All pins Auto"), page);
+    connect(allAuto, &QPushButton::clicked, this, [this]() {
+        m_rb.allAuto();
+        refreshReadback();
+        m_status->say(tr("Every pin follows its output bit again."));
+    });
+    row->addWidget(allAuto);
+    v->addLayout(row);
+
+    auto *hint = new QLabel(tr("Auto: a pin follows its output bit as the card does \u2014 1 reads back a=0 b=0 fault=1 trans=1 output=0 "
+                               "(0x0C), 0 reads back a=1 b=1 fault=1 trans=0 output=1 (0x17). Switch a pin to Manual and click "
+                               "its bits to send something else."), page);
+    hint->setObjectName(QStringLiteral("muted"));
+    hint->setWordWrap(true);
+    v->addWidget(hint);
+    m_rbSummary = new QLabel(page);
+    m_rbSummary->setWordWrap(true);
+    v->addWidget(m_rbSummary);
+
+    auto *scroll = new QScrollArea(page);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    m_rbTable = new QWidget(scroll);
+    scroll->setWidget(m_rbTable);
+    v->addWidget(scroll, 1);
+    return page;
+}
+
+// One row per pin, named by the cab's STRUCT_LOCO_OUTPUT.
+void CabIoSimWindow::rebuildReadback()
+{
+    if (!m_rbTable) return;
+    delete m_rbTable->layout();
+    for (QWidget *w : m_rbTable->findChildren<QWidget *>(QString(), Qt::FindDirectChildrenOnly)) {
+        w->hide();
+        w->deleteLater();
+    }
+    m_rbRows.clear();
+
+    auto *g = new QGridLayout(m_rbTable);
+    g->setContentsMargins(0, 0, 8, 0);
+    g->setHorizontalSpacing(10);
+    g->setVerticalSpacing(6);
+    const QStringList heads{ tr("Output pin"), tr("Mode"), QStringLiteral("a"), QStringLiteral("b"),
+                             QStringLiteral("fault"), QStringLiteral("trans"), QStringLiteral("output"),
+                             tr("Byte"), tr("Output bit") };
+    for (int c = 0; c < heads.size(); ++c) {
+        auto *h = new QLabel(heads.at(c).toUpper(), m_rbTable);
+        h->setObjectName(QStringLiteral("groupHeading"));
+        g->addWidget(h, 0, c);
+    }
+    QVector<OutputBit> byPin(kPins);
+    for (const OutputBit &o : outputBits(m_cab)) byPin[o.bit] = o;
+    static const char *const bitNames[5] = { "a", "b", "fault", "trans", "output" };
+    for (int pin = 0; pin < kPins; ++pin) {
+        RbRow r;
+        r.name = new QLabel(QStringLiteral("%1 <span style=\"%2\">\u00B7 pin %3</span>")
+                                .arg(displayName(byPin[pin].name).toHtmlEscaped(), UiColor::mutedStyle()).arg(pin),
+                            m_rbTable);
+        r.name->setToolTip(byPin[pin].name);
+        g->addWidget(r.name, pin + 1, 0);
+        r.mode = new QPushButton(tr("Auto"), m_rbTable);
+        r.mode->setObjectName(QStringLiteral("idChip"));
+        r.mode->setCheckable(true);
+        r.mode->setCursor(Qt::PointingHandCursor);
+        r.mode->setToolTip(tr("Auto follows the output bit; Manual sends the bits you set"));
+        connect(r.mode, &QPushButton::clicked, this, [this, pin](bool manual) {
+            bool known = false;
+            const QVector<quint8> cards = readbackCards();
+            const quint16 w = readbackWord(cards.isEmpty() ? quint8(13) : cards.first(), &known);
+            if (manual) m_rb.setManual(pin, m_rb.pinFor(pin, w));   // start from what Auto sends
+            else m_rb.setAuto(pin);
+            refreshReadback();
+        });
+        g->addWidget(r.mode, pin + 1, 1);
+        for (int k = 0; k < 5; ++k) {
+            auto *b = new QPushButton(QString::fromLatin1(bitNames[k]), m_rbTable);
+            b->setObjectName(QStringLiteral("idChip"));
+            b->setCheckable(true);
+            b->setCursor(Qt::PointingHandCursor);
+            connect(b, &QPushButton::clicked, this, [this, pin, k]() {
+                PinReadback p = pinFromByte(m_rb.manualByte(pin));
+                bool *fields[5] = { &p.a, &p.b, &p.fault, &p.trans, &p.output };
+                *fields[k] = !*fields[k];
+                m_rb.setManual(pin, quint8((m_rb.manualByte(pin) & 0xE0) | pinByte(p)));
+                refreshReadback();
+            });
+            r.bits[k] = b;
+            g->addWidget(b, pin + 1, 2 + k);
+        }
+        r.byte = new QLabel(m_rbTable);
+        r.byte->setObjectName(QStringLiteral("bankWord"));
+        g->addWidget(r.byte, pin + 1, 7);
+        r.commanded = new QLabel(m_rbTable);
+        r.commanded->setObjectName(QStringLiteral("muted"));
+        g->addWidget(r.commanded, pin + 1, 8);
+        m_rbRows << r;
+    }
+    g->setColumnStretch(9, 1);
+    g->setRowStretch(kPins + 1, 1);
+    refreshReadback();
+}
+
+// The output word card `card` was last sent; *known false when none yet.
+quint16 CabIoSimWindow::readbackWord(quint8 card, bool *known) const
+{
+    *known = m_outDest.contains(card);
+    return *known ? m_outDest.value(card).word : 0;
+}
+
+void CabIoSimWindow::refreshReadback()
+{
+    if (m_rbRows.isEmpty()) return;
+    const QVector<quint8> cards = readbackCards();
+    quint8 shown = cards.isEmpty() ? quint8(13) : cards.first();
+    for (quint8 c : cards)
+        if (m_outDest.contains(c)) { shown = c; break; }
+    bool known = false;
+    const quint16 word = readbackWord(shown, &known);
+    for (int pin = 0; pin < m_rbRows.size(); ++pin) {
+        RbRow &r = m_rbRows[pin];
+        const bool manual = m_rb.isManual(pin);
+        const quint8 byte = m_rb.pinFor(pin, word);
+        const PinReadback p = pinFromByte(byte);
+        const bool vals[5] = { p.a, p.b, p.fault, p.trans, p.output };
+        { const QSignalBlocker block(r.mode); r.mode->setChecked(manual); }
+        r.mode->setText(manual ? tr("Manual") : tr("Auto"));
+        for (int k = 0; k < 5; ++k) {
+            const QSignalBlocker block(r.bits[k]);
+            r.bits[k]->setChecked(vals[k]);
+            r.bits[k]->setEnabled(manual);
+        }
+        const bool sendable = manual || known;
+        r.byte->setText(sendable ? hex8(byte) : QStringLiteral("\u2014"));
+        r.byte->setStyleSheet(manual ? UiColor::accentStyle() : QString());   // what is overridden
+        r.commanded->setText(known ? QString::number((word >> pin) & 1u) : QStringLiteral("\u2014"));
+        r.commanded->setToolTip(known ? tr("Bit %1 of the output word last sent to card %2 (%3)")
+                                            .arg(pin).arg(shown).arg(hex16(word))
+                                      : tr("No output data sent to card %1 yet").arg(shown));
+    }
+    QString sum = m_rbAnswer ? tr("Answering readback requests as %1.").arg(
+                                   cards.isEmpty() ? tr("no card (tick 13 or 14)")
+                                                   : tr("card %1").arg(idRange(cards)))
+                             : tr("Off: readback requests are not answered.");
+    sum += tr(" %1 heard, %2 sent").arg(count(m_outRequests, "request", "requests"))
+               .arg(count(m_readbacksSent, "readback", "readbacks"));
+    if (m_readbackUnanswered)
+        sum += tr(", %1 not answered (no output data to that card yet)").arg(m_readbackUnanswered);
+    if (m_rb.manualCount()) sum += tr(" \u00B7 %1 Manual").arg(count(m_rb.manualCount(), "pin", "pins"));
+    sum += known ? tr(" \u00B7 the table shows card %1's word %2.").arg(shown).arg(hex16(word))
+                 : tr(" \u00B7 no output data yet: Auto pins have nothing to follow.");
+    m_rbSummary->setText(sum);
+    m_rbSummary->setStyleSheet(m_rbAnswer ? QString() : UiColor::mutedStyle());
 }
 
 QWidget *CabIoSimWindow::buildFramesTab()
@@ -958,6 +1164,8 @@ void CabIoSimWindow::restyle()
         "QPushButton#primary:disabled { background: %3; color: %5; border-color: %1; }"
         "QPushButton#idChip { border: 1px solid %1; border-radius: 11px; padding: 2px 10px; background: %3; color: %4; }"
         "QPushButton#idChip:checked { background: %2; color: %3; border-color: %2; font-weight: 600; }"
+        "QPushButton#idChip:disabled { color: %5; }"
+        "QPushButton#idChip:checked:disabled { background: %5; color: %3; border-color: %5; }"
         "QLabel#muted { color: %5; }"
         "QLabel#groupHeading { color: %5; font-weight: 600; letter-spacing: 1px; }"
         "QLabel#bankTitle { font-size: 15pt; font-weight: 600; }"
@@ -981,6 +1189,7 @@ void CabIoSimWindow::setCab(Cab cab)
     m_cab = cab;
     rebuildInputs();
     rebuildOutputs();
+    rebuildReadback();
     saveSettings();
 }
 
@@ -1002,7 +1211,7 @@ void CabIoSimWindow::rebuildInputs()
         const InputLayout *l = layouts.at(bi);
         Bank &b = m_banks[bi];
         b.bank = InputBank(l);
-        b.bank.reset();
+        applyDefault(b);
 
         auto *section = new QWidget(m_banksHost);
         auto *sv = new QVBoxLayout(section);
@@ -1168,7 +1377,78 @@ void CabIoSimWindow::setHealth(quint8 h)
 
 void CabIoSimWindow::setAnswerReadback(bool on)
 {
-    m_answerReadback->setChecked(on);
+    m_rbAnswer = on;
+    if (m_rbAnswerGroup) m_rbAnswerGroup->button(on ? 1 : 0)->setChecked(true);
+    refreshReadback();
+}
+
+void CabIoSimWindow::setReadbackCards(const QVector<quint8> &cards)
+{
+    for (QPushButton *c : m_rbCardChips) {
+        const QSignalBlocker block(c);
+        c->setChecked(cards.contains(quint8(c->property("cardId").toInt())));
+    }
+    refreshReadback();
+}
+
+QVector<quint8> CabIoSimWindow::readbackCards() const
+{
+    QVector<quint8> ids;
+    for (QPushButton *c : m_rbCardChips)
+        if (c->isChecked()) ids << quint8(c->property("cardId").toInt());
+    return ids;
+}
+
+void CabIoSimWindow::setReadbackHealth(quint8 h)
+{
+    m_rbHealth = h;
+    if (m_rbHealthSpin && m_rbHealthSpin->value() != h) m_rbHealthSpin->setValue(h);
+    refreshReadback();
+}
+
+// ---- input defaults ----------------------------------------------------------------------
+
+static QString defaultKey(const InputLayout *l) { return QStringLiteral("cabio/default_") + l->key; }
+
+void CabIoSimWindow::applyDefault(Bank &b) const
+{
+    b.bank.reset();
+    QSettings s(Settings::iniPath(), QSettings::IniFormat);
+    const QString key = defaultKey(b.bank.layout());
+    if (!s.contains(key)) return;
+    bool ok = false;
+    const quint32 w = s.value(key).toString().toUInt(&ok, 16);
+    if (ok) b.bank.setBase(w & layoutMask(*b.bank.layout()));
+}
+
+void CabIoSimWindow::saveInputDefault()
+{
+    QSettings s(Settings::iniPath(), QSettings::IniFormat);
+    for (const Bank &b : m_banks)
+        s.setValue(defaultKey(b.bank.layout()),
+                   QString::number(b.bank.base() & layoutMask(*b.bank.layout()), 16).toUpper());
+    refreshInputs();
+}
+
+void CabIoSimWindow::resetInputsToDefault()
+{
+    for (Bank &b : m_banks) applyDefault(b);
+    refreshInputs();
+}
+
+void CabIoSimWindow::forgetInputDefault()
+{
+    QSettings s(Settings::iniPath(), QSettings::IniFormat);
+    for (const Bank &b : m_banks) s.remove(defaultKey(b.bank.layout()));
+    refreshInputs();
+}
+
+bool CabIoSimWindow::hasInputDefault() const
+{
+    QSettings s(Settings::iniPath(), QSettings::IniFormat);
+    for (const Bank &b : m_banks)
+        if (s.contains(defaultKey(b.bank.layout()))) return true;
+    return false;
 }
 
 void CabIoSimWindow::setWireFormat(const WireFormat &wf)
@@ -1379,6 +1659,7 @@ void CabIoSimWindow::onFrame(const Frame &f)
         d.seq = f.h.seq;
         d.atMs = now;
         ++d.frames;
+        refreshReadback();
         // The lamps follow the lowest output id heard from: the two output
         // cards are sent the same word, and a difference is reported, not
         // drawn as changes.
@@ -1399,13 +1680,17 @@ void CabIoSimWindow::onFrame(const Frame &f)
     }
     if (f.isOutputRequest()) {
         ++m_outRequests;
-        if (!m_answerReadback || !m_answerReadback->isChecked()) return;
-        // The card answers with what it was last sent; never sent anything,
-        // it has nothing to read back, and is not made to invent it.
         const quint8 card = readbackCard(f.h.dest);
-        if (!m_outDest.contains(card)) { ++m_readbackUnanswered; return; }
-        write(readbackTo(f, readbackPins(m_outDest.value(card).word), m_health, m_wf));
+        if (!m_rbAnswer || !readbackCards().contains(card)) { refreshReadback(); return; }
+        // An Auto pin follows what the card was last sent: never sent
+        // anything, it has nothing to read back, and is not made to invent
+        // it -- unless every pin is Manual.
+        bool known = false;
+        const quint16 word = readbackWord(card, &known);
+        if (!known && m_rb.manualCount() < kPins) { ++m_readbackUnanswered; refreshReadback(); return; }
+        write(readbackTo(f, m_rb.pins(word), m_rbHealth, m_wf));
         ++m_readbacksSent;
+        refreshReadback();
         return;
     }
     if (f.isReadback()) {

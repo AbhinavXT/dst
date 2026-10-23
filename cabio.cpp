@@ -199,6 +199,13 @@ const InputLayout &oldCabInputs()
     return l;
 }
 
+quint32 layoutMask(const InputLayout &l)
+{
+    quint32 m = 0;
+    for (const Input &in : l.inputs) m |= in.mask();
+    return m;
+}
+
 QVector<const InputLayout *> inputLayouts(Cab cab)
 {
     if (cab == Cab::Old) return { &oldCabInputs() };
@@ -526,9 +533,45 @@ QByteArray readback(quint8 src, quint8 dest, quint16 seq, const QByteArray &pins
 
 QByteArray readbackPins(quint16 word)
 {
-    QByteArray pins;
-    for (int i = 0; i < kPins; ++i) pins.append(char((word >> i) & 1u ? kPinBitSet : kPinBitClear));
-    return pins;
+    return ReadbackSim().pins(word);
+}
+
+quint8 pinByte(const PinReadback &p)
+{
+    return quint8((p.a ? 0x01 : 0) | (p.b ? 0x02 : 0) | (p.fault ? 0x04 : 0) | (p.trans ? 0x08 : 0)
+                  | (p.output ? 0x10 : 0));
+}
+
+PinReadback pinFromByte(quint8 byte)
+{
+    PinReadback p;
+    p.a = byte & 0x01;
+    p.b = byte & 0x02;
+    p.fault = byte & 0x04;
+    p.trans = byte & 0x08;
+    p.output = byte & 0x10;
+    return p;
+}
+
+quint8 autoPinByte(bool commanded) { return commanded ? kPinBitSet : kPinBitClear; }
+
+int ReadbackSim::manualCount() const
+{
+    int n = 0;
+    for (int m : m_manual) n += m >= 0 ? 1 : 0;
+    return n;
+}
+
+quint8 ReadbackSim::pinFor(int pin, quint16 word) const
+{
+    return isManual(pin) ? manualByte(pin) : autoPinByte((word >> pin) & 1u);
+}
+
+QByteArray ReadbackSim::pins(quint16 word) const
+{
+    QByteArray b;
+    for (int i = 0; i < kPins; ++i) b.append(char(pinFor(i, word)));
+    return b;
 }
 
 QByteArray readbackTo(const Frame &request, const QByteArray &pins, quint8 health, const WireFormat &wf)

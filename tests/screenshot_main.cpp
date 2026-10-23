@@ -171,7 +171,7 @@ int main(int argc, char **argv)
             }
             // Session 324: the Cab I/O Simulator mid-run. Set 1 as a real
             // @dip1 reads, two inputs flickering, the VCC's requests answered
-            // and its output data lit. SHOT_TAB=1/2: Outputs / Frames.
+            // and its output data lit. SHOT_TAB=1/2/3: Outputs / Readback / Frames.
             if (which == QLatin1String("cabio")) {
                 auto *w = new CabIoSimWindow(nullptr);
                 w->setWriteSink([](const QByteArray &) {});
@@ -195,6 +195,10 @@ int main(int argc, char **argv)
                 w->feedBytes(CabIo::outputData(14, 1, 0x0002, CabIo::WireFormat()));
                 w->feedBytes(CabIo::outputData(13, 2, 0x03E1, CabIo::WireFormat()));   // the bench capture's word
                 w->feedBytes(CabIo::outputData(14, 2, 0x03E1, CabIo::WireFormat()));
+                // Readback answering on, one pin Manual (fault bit clear).
+                w->setAnswerReadback(true);
+                w->readbackSim()->setManual(13, 0x13);
+                w->feedBytes(CabIo::outputRequest(17, 2, CabIo::WireFormat()));
                 w->tickFlicker();
                 w->flushLog();
                 if (auto *tabs = w->findChild<QTabWidget *>())
