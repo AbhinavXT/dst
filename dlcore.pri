@@ -50,6 +50,8 @@ SOURCES += \
     $$PWD/gifwriter.cpp \
     $$PWD/dmiclip.cpp \
     $$PWD/dmiclipdialog.cpp \
+    $$PWD/radiochart.cpp \
+    $$PWD/radiochartdialog.cpp \
     $$PWD/testrun.cpp \
     $$PWD/dialogfocus.cpp \
     $$PWD/minimizeddock.cpp \
@@ -248,6 +250,8 @@ HEADERS += \
     $$PWD/gifwriter.h \
     $$PWD/dmiclip.h \
     $$PWD/dmiclipdialog.h \
+    $$PWD/radiochart.h \
+    $$PWD/radiochartdialog.h \
     $$PWD/testrun.h \
     $$PWD/dialogfocus.h \
     $$PWD/minimizeddock.h \

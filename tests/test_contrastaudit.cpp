@@ -65,6 +65,8 @@ bool literalsAllowed(const QString &file)
         // An exported image: the DMI clip's caption strip, fixed dark under
         // the DMI's own dark panel, whatever the theme (contrast stated there).
         || file == QLatin1String("dmiclip.cpp")
+        // An exported image on white, for paper (inks stated there).
+        || file == QLatin1String("radiochart.cpp")
         // A fixed dark plot canvas, deliberately independent of the theme.
         || file == QLatin1String("replaywindow.cpp");
 }

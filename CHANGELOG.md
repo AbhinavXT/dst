@@ -11,6 +11,72 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-345"></a>
+## Session 345 — the radio chart: a stretch of radio traffic as one picture
+
+Item 1 of the list after patch 344 (Abhinav picked 1, 2, 3, 4, 6, 7): *"A
+message-sequence diagram for any stretch of log: loco on the left, station
+on the right, one arrow per ARP, SLRP and LSRP … a ✕ on frames the receiver
+would drop, and a gap where a reply never came … exported as PNG or SVG."*
+
+**What the operator sees.**
+- **Right-click any row ▸ Radio chart around here…**: From / To (the row's
+  moment ±30 s), the chart drawn in the dialog as they change, a line saying
+  what it holds ("SLRP 30 received (12 would not be processed) · LSRP 30
+  sent · ARP 30 sent · 1 silence"), **Export PNG…** and **Export SVG…**.
+- **The chart**: two lifelines, Loco and Stations. Each SLRP, LSRP and ARP
+  is one arrow, in the order logged. The time it was logged is on the left,
+  and the label gives the type, FRAME_NUM and the time it stands for, the
+  station and, for an SLRP, its age on arrival.
+- **✕** on a frame the receiver would not process, with the reason beside
+  it: an SLRP over 4 s old or 2 s early by the loco's clock (the age as
+  Radio and GPS health reads it, session 214), or any reject rule that fires,
+  given the loco's identity as the run report gives it ("31.26.1
+  AUTHORITY_TYPE = 0").
+- **A dashed band** where one link went quiet: a FRAME_NUM step of two
+  cycles or more ("no SLRP from station 527 for 6 s: 2 frames expected"),
+  or over 30 s ("…: no contact"). It is drawn after the last frame heard on
+  that link. The cycle is read from the traffic, as session 214 reads it.
+- At most 10 minutes of log and 1200 frames per chart (a PNG stays under
+  32 767 px tall). Beyond that, or with no radio frames in the window, it is
+  refused and says why.
+
+PNG and SVG are made from one list of drawing steps, so they match. The
+SVG is written as plain text: there is no Qt SVG module, so nothing new to
+build or ship.
+
+**Not done:** received ARP from other locos (`arprecv`) is not drawn. LSRP
+has no destination station, so all stations share one lifeline.
+
+**Files.** `radiochart.{h,cpp}`, `radiochartdialog.{h,cpp}` (new,
+`dlcore.pri`); `mainwindow.cpp` (row menu); `tests/test_contrastaudit.cpp`
+(radiochart.cpp may name its inks: an image on white for paper, each 4.5:1
+or more, stated there).
+
+**Tests.** New `session345` (27 checks). On
+`replay/2026-10-08/loco_1_1_radiolinks.log`, the same counts as session
+214's oracle: 115 SLRP, 126 LSRP and 131 ARP in the order logged; SLRP 8
+gaps + 2 outages, LSRP 2 and ARP 2 outages; the outage after 04:56:30.199
+(+111) is drawn after its last frame; 114 SLRPs aged and one 5 s old marked.
+That log also shows 4 frames with AUTHORITY_TYPE 0 and 1 with REF_PROF_ID 0.
+The PNG reads back at the drawing's size. The SVG holds every line and text
+of the drawing and says the outage and the stale frame. On
+`replay/loco_1_1_27062026_140226.cap`, 14:03-14:04: its SLRPs are marked
+31.26.1 and there is no silence. With one SLRP cut out there is one
+silence, 1 frame expected. Over 10 minutes is refused, and an empty window
+says so. The dialog opens on ±30 s, shows the chart and its summary, and
+Export writes the SVG and says so. A window that is too long is not
+exported. `RADIO_CHART_OUT=<dir>` writes the radio links chart there to
+look at.
+
+**Gate (macOS):** green on Qt 5.15 and Qt 6.11: 376 suites / 9580 checks,
+0 failed; 15 validators; menu audit; smoke.
+
+**Not tested:** the file dialog; how the SVG looks in browsers other than
+the one used to check it.
+
+---
+
 <a id="session-344"></a>
 ## Session 344 — locoinfolivecheck's fixed wait, on a slow Windows runner
 

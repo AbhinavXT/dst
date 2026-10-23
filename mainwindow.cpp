@@ -95,6 +95,7 @@
 #include "dmipanel.h"
 #include "dmitimetravel.h"
 #include "dmiclipdialog.h"
+#include "radiochartdialog.h"
 #ifdef DL_HAVE_SERIAL
 #include "serialconsolewindow.h"
 #include "serialmanager.h"
@@ -1090,6 +1091,9 @@ void MainWindow::onLogRowContextMenu(const QPoint &pos)
     QAction *actClip = menu.addAction(tr("DMI c&lip around here…"));
     actClip->setObjectName(QStringLiteral("rowDmiClip"));
     actClip->setToolTip(tr("The DMI as the loco pilot saw it, ±30 s around this row, as an animated GIF"));
+    QAction *actRadio = menu.addAction(tr("Radio ch&art around here…"));
+    actRadio->setObjectName(QStringLiteral("rowRadioChart"));
+    actRadio->setToolTip(tr("SLRP, LSRP and ARP ±30 s around this row as a sequence diagram (PNG or SVG)"));
     menu.addSeparator();
     QAction *actWhy      = menu.addAction(tr("&Why is this row coloured?"));
     actWhy->setObjectName(QStringLiteral("rowWhyColoured"));
@@ -1141,6 +1145,9 @@ void MainWindow::onLogRowContextMenu(const QPoint &pos)
         attachTestStrip(DmiWindow::showFollowing(this, m_dispatcher));
     } else if (chosen == actClip) {
         DmiClipDialog dlg(model, key, entry->epochMs, dmiKeyOfText(entry->text), this);
+        dlg.exec();
+    } else if (chosen == actRadio) {
+        RadioChartDialog dlg(model, key, entry->epochMs, this);
         dlg.exec();
     }
 }
