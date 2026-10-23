@@ -3,6 +3,7 @@
 //  Part of MainWindow: split out of mainwindow.cpp in session 89 so each
 //  concern can be read, and recompiled, on its own. No behaviour change.
 // =============================================================================
+#include "soundalerts.h"
 #include "tabhealth.h"
 #include "mainwindow.h"
 #include "udpcommunication.h"
@@ -539,6 +540,8 @@ void MainWindow::notify(NoteLevel level, const QString &text,
                         const QString &detail)
 {
     if (m_notify) m_notify->post(level, text, detail);
+    if (level == NoteLevel::Error)   // session 341
+        SoundAlerts::ring(SoundAlerts::Event::ErrorNote, QDateTime::currentMSecsSinceEpoch());
 
     // Mirror anything non-routine to the application log too: a message the
     // operator dismissed is still worth having in a support bundle.

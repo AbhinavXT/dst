@@ -4,6 +4,7 @@
 //  concern can be read, and recompiled, on its own. No behaviour change.
 // =============================================================================
 #include "mainwindow.h"
+#include "soundalerts.h"
 #include <QSettings>
 #include "frameclock.h"
 #include "pinpanel.h"
@@ -379,6 +380,18 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     // Theme: every theme as a radio item, so one can be tried with a click,
     // and the toggle, which flips between the last light and last dark
     // theme used (Sepia <-> Nord, not always back to the Ayu pair).
+    // Session 341: sounds for what a watch cannot express (soundalerts.h).
+    QMenu *soundsMenu = viewMenu->addMenu(tr("Sounds"));
+    for (SoundAlerts::Event e : { SoundAlerts::Event::SourceOffline, SoundAlerts::Event::ClockSkew,
+                                  SoundAlerts::Event::ErrorNote }) {
+        QAction *a = soundsMenu->addAction(SoundAlerts::title(e));
+        a->setCheckable(true);
+        a->setChecked(SoundAlerts::enabled(e));
+        connect(a, &QAction::toggled, this, [e](bool on) { SoundAlerts::setEnabled(e, on); });
+    }
+    soundsMenu->addSeparator();
+    soundsMenu->addAction(tr("A watch can sound too: right-click it ▸ Beep when it fires"))->setEnabled(false);
+
     QMenu *themeMenu = viewMenu->addMenu(tr("&Theme"));
     auto *themeGroup = new QActionGroup(this);
     themeGroup->setExclusive(true);

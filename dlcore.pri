@@ -190,6 +190,7 @@ SOURCES += \
     $$PWD/followpill.cpp \
     $$PWD/missionpicker.cpp \
     $$PWD/framerestamp.cpp \
+    $$PWD/soundalerts.cpp \
     $$PWD/shortcutsdialog.cpp \
     $$PWD/uicolors.cpp \
     $$PWD/programdir.cpp \
@@ -379,6 +380,7 @@ HEADERS += \
     $$PWD/followpill.h \
     $$PWD/missionpicker.h \
     $$PWD/framerestamp.h \
+    $$PWD/soundalerts.h \
     $$PWD/shortcutsdialog.h \
     $$PWD/sendguard.h \
     $$PWD/uicolors.h \

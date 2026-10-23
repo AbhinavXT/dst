@@ -8,6 +8,7 @@
 //  anything with the capture pipeline.
 // =============================================================================
 
+#include "soundalerts.h"
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
@@ -185,6 +186,7 @@ void MainWindow::setupSessionFeatures(QMenu *fileMenu, QMenu *editMenu, QAction 
     // episode — and again when it is over, with how long it lasted.
     m_skewAlarm = new ClockSkewAlarm(3000, this);
     connect(m_skewAlarm, &ClockSkewAlarm::raised, this, [this](const ClockSkewAlarm::Episode &e) {
+        SoundAlerts::ring(SoundAlerts::Event::ClockSkew, QDateTime::currentMSecsSinceEpoch());   // session 341
         notify(NoteLevel::Warning,
                tr("Loco and station clocks are outside the accept window: %1").arg(ClockSkewAlarm::gapText(e.worstGap)),
                tr("Each end discards a packet more than 4 s old or 2 s or more ahead of its own clock, so while "

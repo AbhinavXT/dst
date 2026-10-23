@@ -1,3 +1,4 @@
+#include "soundalerts.h"
 #include "followpill.h"
 #include "rowwhy.h"
 #include "mainwindow.h"
@@ -952,6 +953,15 @@ void MainWindow::refreshSourceList()
         }
         if (health == SourceRowDelegate::Late) meta = tr("quiet");
         if (health == SourceRowDelegate::Offline) meta = tr("offline");
+        // Session 341: a sound on going offline, once per spell.
+        if (health == SourceRowDelegate::Offline) {
+            if (!m_offlineKeys.contains(key)) {
+                m_offlineKeys.insert(key);
+                SoundAlerts::ring(SoundAlerts::Event::SourceOffline, nowMs);
+            }
+        } else {
+            m_offlineKeys.remove(key);
+        }
         if (shownName != key) meta = key + QStringLiteral(" \u00B7 ") + meta;
         item->setData(0, SourceRowDelegate::HealthRole, health);
         item->setData(0, SourceRowDelegate::MetaRole, meta);

@@ -554,6 +554,7 @@ private:
     // comes from how the count moved since the last tick.
     QLabel *m_lblTabHealth    = nullptr;
     class MissionPicker *m_missionPicker = nullptr;   // session 339
+    QSet<QString> m_offlineKeys;   // session 341: sources in an offline spell
     QString m_missionQuery;   // the query focusMission set, so All takes off only that
     QString m_healthKey;
     int     m_healthCount = 0;

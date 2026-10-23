@@ -11,6 +11,45 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-341"></a>
+## Session 341 — View ▸ Sounds
+
+Item 6 of the earlier list (from the NMS debugging tool): *"Sound alerts."*
+A watch can already beep when it fires (session 82: right-click a watch ▸
+Beep when it fires), so anything the query language can say is covered.
+These are the three events it cannot express.
+
+**What the operator sees.** **View ▸ Sounds**, three tick boxes, all off
+until ticked and remembered in the INI (`sound/…`):
+- **A source goes offline**: once per spell, when a tab passes Settings'
+  offline threshold (30 s by default), the same moment the Sources panel
+  says *offline*;
+- **Loco and station clocks fall out of step**: when the clock-skew alarm
+  (session 81) is raised;
+- **An error is reported**: any error notification.
+A greyed line under them points to the watches. The sound is the system's
+(`QApplication::beep`), and at most one every two seconds, so a burst of
+errors is one sound.
+
+**Files.** `soundalerts.{h,cpp}` (new); `mainwindow_menus.cpp` (the menu),
+`mainwindow.{h,cpp}` (offline spells), `mainwindowsession.cpp` (the skew
+alarm), `mainwindow_status.cpp` (error notifications).
+
+**Tests.** New `session341` (12 checks), the sound replaced by a counter:
+off by default; each event its own switch; one sound, none again within
+two seconds, then again; View ▸ Sounds has one tick box per event,
+unticked; ticking writes the INI; with the clock box ticked, the window's
+own clock-skew alarm raised by clocks 12 s apart for 4 s makes one sound;
+unticking switches it off.
+
+**Gate (macOS):** green on Qt 5.15 and Qt 6.11: 373 suites / 9516 checks,
+0 failed; 15 validators; menu audit; smoke.
+
+**Not tested:** the system sound itself (headless), and the offline and
+error paths through the window (the same `ring()` the skew path calls).
+
+---
+
 <a id="session-340"></a>
 ## Session 340 — Stream session as live, with frame numbers as now
 
