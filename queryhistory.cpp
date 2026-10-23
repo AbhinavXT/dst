@@ -101,3 +101,40 @@ void QueryHistory::removePreset(const QString &name)
     s.setValue(QStringLiteral("query/preset_names"), names);
     s.setValue(QStringLiteral("query/preset_queries"), queries);
 }
+
+// Two parallel lists, like the presets: readable and hand-editable in the INI.
+QVector<QueryHistory::Find> QueryHistory::recentFinds()
+{
+    QSettings s = store();
+    const QStringList texts = s.value(QStringLiteral("find/recent_text")).toStringList();
+    const QList<QVariant> modes = s.value(QStringLiteral("find/recent_mode")).toList();
+    QVector<Find> out;
+    for (int i = 0; i < texts.size(); ++i)
+        out.append({ texts.at(i), i < modes.size() ? modes.at(i).toInt() : 0 });
+    return out;
+}
+
+void QueryHistory::rememberFind(const QString &text, int mode)
+{
+    if (text.trimmed().isEmpty()) return;
+    QVector<Find> list = recentFinds();
+    if (!list.isEmpty() && list.first().text == text && list.first().mode == mode) return;  // F3 held down
+    for (int i = list.size() - 1; i >= 0; --i)
+        if (list.at(i).text == text && list.at(i).mode == mode) list.remove(i);
+    list.prepend({ text, mode });
+    while (list.size() > kMaxFinds) list.removeLast();
+
+    QStringList texts;
+    QList<QVariant> modes;
+    for (const Find &f : list) { texts << f.text; modes << f.mode; }
+    QSettings s = store();
+    s.setValue(QStringLiteral("find/recent_text"), texts);
+    s.setValue(QStringLiteral("find/recent_mode"), modes);
+}
+
+void QueryHistory::clearRecentFinds()
+{
+    QSettings s = store();
+    s.remove(QStringLiteral("find/recent_text"));
+    s.remove(QStringLiteral("find/recent_mode"));
+}

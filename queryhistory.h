@@ -57,6 +57,15 @@ public:
     static void removePreset(const QString &name);
 
     static constexpr int kMaxRecent = 25;
+
+    // Session 331: the Find box's own recent searches (▾ beside it), in any
+    // mode, kept across restarts. Recorded when a search is USED (Next,
+    // Previous, Enter), not per keystroke. `mode` is FindBar::Mode's number.
+    struct Find { QString text; int mode = 0; };
+    static QVector<Find> recentFinds();
+    static void rememberFind(const QString &text, int mode);
+    static void clearRecentFinds();
+    static constexpr int kMaxFinds = 20;
 };
 
 #endif // QUERYHISTORY_H

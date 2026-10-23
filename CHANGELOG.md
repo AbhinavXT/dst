@@ -11,6 +11,47 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-332"></a>
+## Session 332 — Find history: ▾ beside the Find box
+
+UI item 2: *"Find history: a ▾ on the Find box listing your last 20
+searches, kept between runs."* The query box already kept recent *queries*
+(Query mode only, behind a right-click); a hex pattern or a regular
+expression typed ten minutes ago had to be typed again.
+
+**What the operator sees.**
+- A **▾** button right of the Find input, in the docked strip and in the
+  Find window. In a strip too narrow for it (a Compare pane), it steps
+  out with the mode box and All tabs, which are all in the ⧉ window. It lists the last 20 searches, newest first, each with its
+  mode ("@lsrp_\d+_\d+ · Regular expression").
+- Picking one switches to its mode, puts its text in, and goes straight to
+  the first match. **Clear recent searches** empties the list.
+- A search is remembered when it is *used* (Enter, Next, Previous), not as
+  it is typed, so the list never fills with the prefixes of one search.
+  The same text in another mode is another entry.
+- The list is one for every tab and is kept in the INI
+  (`find/recent_text`, `find/recent_mode`) across restarts.
+
+**Files.** `queryhistory.{h,cpp}` (`recentFinds`, `rememberFind`,
+`clearRecentFinds`); `findbar.{h,cpp}`.
+
+**Tests.** New `session332` (14 checks) on 400 real lines of
+`replay/loco_1_1_27062026_170217.cap`: blank searches are not kept;
+newest first, once each, mode kept; another mode is another entry; the cap
+of 20; typing alone keeps nothing, Next and Enter do; ▾ lists both with
+their modes; picking the regex search from Hex mode restores Regex, its
+text and its matches; a new bar reads the same list; Clear empties it.
+
+**Gate (macOS):** green on Qt 5.15 and Qt 6.11: 364 suites / 9390 checks,
+0 failed; 15 validators; menu audit; smoke. The first Qt 5 run caught ▾
+squeezing the Mark box in session 258's narrow strip; it now steps out
+there.
+
+**Not tested:** the menu opened by a real click (its actions are
+triggered).
+
+---
+
 <a id="session-331"></a>
 ## Session 331 — Edit ▸ Back / Forward (Alt+← / Alt+→)
 

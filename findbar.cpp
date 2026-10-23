@@ -16,6 +16,8 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include "querylineedit.h"
+#include "queryhistory.h"
+#include <QMenu>
 
 #include <QLineEdit>
 #include <QPushButton>
@@ -149,6 +151,17 @@ void FindBar::buildWidgets()
     m_edit = new QueryLineEdit(this);
     m_edit->setObjectName(QStringLiteral("findEdit"));
     m_edit->setClearButtonEnabled(true);
+
+    // Session 331: the last searches, any mode, across restarts. A search is
+    // remembered when it is used (Next / Previous / Enter), not as typed.
+    m_historyBtn = new QToolButton(this);
+    m_historyBtn->setObjectName(QStringLiteral("findHistoryBtn"));
+    m_historyBtn->setText(QStringLiteral("▾"));
+    m_historyBtn->setToolTip(tr("Recent searches"));
+    m_historyBtn->setAccessibleName(tr("Recent searches"));
+    m_historyBtn->setPopupMode(QToolButton::InstantPopup);
+    m_historyBtn->setMenu(new QMenu(m_historyBtn));
+    connect(m_historyBtn->menu(), &QMenu::aboutToShow, this, &FindBar::rebuildHistoryMenu);
 
     m_modeLabel = new QLabel(tr("Mode:"), this);
     m_modeBox   = new QComboBox(this);
@@ -314,7 +327,7 @@ void FindBar::fitDocked()
     // The whole strip at its natural size, the input at its floor. Hint
     // widths, not current widths: a squeezed control reports the squeeze.
     int need = 8 + kDockedEditMin;
-    for (QWidget *w : std::initializer_list<QWidget *>{ m_findLabel, m_modeBox, m_inLabel, m_columnBox, m_caseSens,
+    for (QWidget *w : std::initializer_list<QWidget *>{ m_findLabel, m_historyBtn, m_modeBox, m_inLabel, m_columnBox, m_caseSens,
                                                         m_wholeWord, m_markAll, m_prevBtn, m_nextBtn, m_count,
                                                         m_allTabsBtn, m_detachBtn, m_closeBtn })
         need += w->sizeHint().width() + 4;
@@ -323,6 +336,7 @@ void FindBar::fitDocked()
     m_inLabel   ->setVisible(roomy);
     m_columnBox ->setVisible(roomy);
     m_allTabsBtn->setVisible(roomy);
+    m_historyBtn->setVisible(roomy);   // session 332: in the ⧉ window either way
 }
 
 void FindBar::applyShape()
@@ -368,6 +382,7 @@ void FindBar::applyShape()
     m_modeBox  ->setVisible(true);
     m_columnBox->setVisible(true);
     m_allTabsBtn->setVisible(true);
+    m_historyBtn->setVisible(true);
 
     if (!win) {
         auto *row = new QHBoxLayout(this);
@@ -375,6 +390,7 @@ void FindBar::applyShape()
         row->setSpacing(4);
         row->addWidget(m_findLabel);
         row->addWidget(m_edit, 1);
+        row->addWidget(m_historyBtn);
         row->addWidget(m_modeBox);
         row->addWidget(m_inLabel);
         row->addWidget(m_columnBox);
@@ -405,6 +421,7 @@ void FindBar::applyShape()
     textRow->setSpacing(UiStyle::gap());
     textRow->addWidget(m_findLabel);
     textRow->addWidget(m_edit, 1);
+    textRow->addWidget(m_historyBtn);
     m_edit->setMinimumWidth(320);
     col->addLayout(textRow);
 
@@ -1283,8 +1300,42 @@ void FindBar::publishHits()
     lm->setFindHits(hits);
 }
 
+void FindBar::rebuildHistoryMenu()
+{
+    QMenu *menu = m_historyBtn->menu();
+    menu->clear();
+    const QVector<QueryHistory::Find> recent = QueryHistory::recentFinds();
+    if (recent.isEmpty()) {
+        menu->addAction(tr("(no searches yet)"))->setEnabled(false);
+        return;
+    }
+    for (const QueryHistory::Find &f : recent) {
+        const int idx = m_modeBox->findData(f.mode);
+        const QString modeName = idx >= 0 ? m_modeBox->itemText(idx) : tr("Text");
+        // Elided in the menu, whole in the tooltip: a long query would
+        // stretch the menu past the screen edge.
+        const QString shown = f.text.size() > 60 ? f.text.left(57) + QStringLiteral("…") : f.text;
+        QAction *a = menu->addAction(QStringLiteral("%1    · %2").arg(shown, modeName));
+        a->setToolTip(f.text);
+        connect(a, &QAction::triggered, this, [this, f]() {
+            // Picking one means using it: the mode first, so the text is read
+            // the way it was searched, then straight to the first match.
+            setMode(static_cast<Mode>(f.mode));
+            m_edit->setText(f.text);
+            m_debounce->stop();
+            m_userRescan = false;
+            rebuildMatches();
+            QueryHistory::rememberFind(f.text, f.mode);
+        });
+    }
+    menu->addSeparator();
+    connect(menu->addAction(tr("Clear recent searches")), &QAction::triggered,
+            this, []() { QueryHistory::clearRecentFinds(); });
+}
+
 void FindBar::findNext()
 {
+    QueryHistory::rememberFind(m_edit->text(), static_cast<int>(mode()));
     if (m_matches.isEmpty()) return;
     const int last = m_matches.size() - 1;
 
@@ -1310,6 +1361,7 @@ void FindBar::findNext()
 
 void FindBar::findPrev()
 {
+    QueryHistory::rememberFind(m_edit->text(), static_cast<int>(mode()));
     if (m_matches.isEmpty()) return;
 
     if (m_cursor > 0) {

@@ -272,6 +272,8 @@ private:
     QVector<QMetaObject::Connection> m_modelConns;
 
     QueryLineEdit *m_edit    = nullptr;
+    QToolButton   *m_historyBtn = nullptr;   // session 331: ▾ recent searches
+    void rebuildHistoryMenu();
     QPushButton   *m_allTabsBtn = nullptr;   // session 82
     QLabel     *m_findLabel  = nullptr;
     QComboBox  *m_modeBox    = nullptr;
