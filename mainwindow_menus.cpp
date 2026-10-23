@@ -713,6 +713,21 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     QAction *actFieldSweep = transmitMenu->addAction(tr("Field S&weep…"));
     connect(actFieldSweep, &QAction::triggered, this, &MainWindow::onActionFieldSweep);
 
+    // Session 324: stands in for the cab on the VCC's IOA serial link --
+    // answers its input requests with switches the operator toggles or
+    // flickers, and lights its output data as lamps. It sends, so it is here.
+    transmitMenu->addSeparator();
+    QAction *actCabIoSim = transmitMenu->addAction(tr("Cab &I/O Simulator…"));
+    actCabIoSim->setObjectName(QStringLiteral("actCabIoSim"));
+    actCabIoSim->setToolTip(tr("Simulate the cab's input controllers to the VCC over serial (toggle, NO/NC "
+                               "states, 250 ms flicker) and show the output data it sends back"));
+#ifdef DL_HAVE_SERIAL
+    connect(actCabIoSim, &QAction::triggered, this, &MainWindow::openCabIoSimulator);
+#else
+    actCabIoSim->setEnabled(false);
+    actCabIoSim->setToolTip(tr("Not available: this DLConsole was built without Qt's Serial Port module."));
+#endif
+
     // With the schema commands, not with the transmitting tools: it answers
     // a question about the schema, and the loop it belongs to is edit
     // kavach.xml → reload → validate against real traffic.

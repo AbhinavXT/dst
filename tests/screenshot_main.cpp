@@ -21,6 +21,7 @@
 #include <memory>
 #include "messagedispatcher.h"
 #ifdef DL_HAVE_SERIAL
+#include "cabiosimwindow.h"
 #include "serialconsolewindow.h"
 #include "serialmanager.h"
 #endif
@@ -166,6 +167,39 @@ int main(int argc, char **argv)
             if (which == QLatin1String("serial")) {
                 auto *w = new SerialConsoleWindow(&mgr);
                 for (const QString &l : lines.mid(0, 40)) w->findChild<QPlainTextEdit *>(QStringLiteral("serialView"))->appendPlainText(l);
+                win = w;
+            }
+            // Session 324: the Cab I/O Simulator mid-run. Set 1 as a real
+            // @dip1 reads, two inputs flickering, the VCC's requests answered
+            // and its output data lit. SHOT_TAB=1/2: Outputs / Frames.
+            if (which == QLatin1String("cabio")) {
+                auto *w = new CabIoSimWindow(nullptr);
+                w->setWriteSink([](const QByteArray &) {});
+                w->setCab(qEnvironmentVariable("SHOT_CAB") == QLatin1String("old") ? CabIo::Cab::Old : CabIo::Cab::Sifa);
+                w->setWireFormat(CabIo::WireFormat());
+                if (w->bankCount() == 2) {
+                    w->setBankIds(0, { 5, 6, 7, 8 });
+                    w->setBankIds(1, { 9, 10, 11, 12 });
+                    w->bank(0)->setBase(0x41F89595u);
+                    w->bank(0)->setState(1, 0);          // dmi1_cancel 00: NO and NC agree
+                    w->bank(0)->setFlicker(0, true);
+                    w->bank(1)->setBase(0x1AA0027Au);
+                    w->bank(1)->setFlicker(4, true);
+                } else {
+                    w->bank(0)->setBase(0x00105003u);
+                    w->bank(0)->setFlicker(3, true);
+                }
+                for (int i = 0; i < 40; ++i)
+                    w->feedBytes(CabIo::inputRequest(quint8(5 + i % 8), quint16(100 + i), CabIo::WireFormat()));
+                w->feedBytes(CabIo::outputData(13, 1, 0x0002, CabIo::WireFormat()));
+                w->feedBytes(CabIo::outputData(14, 1, 0x0002, CabIo::WireFormat()));
+                w->feedBytes(CabIo::outputData(13, 2, 0x2116, CabIo::WireFormat()));
+                w->feedBytes(CabIo::outputData(14, 2, 0x2116, CabIo::WireFormat()));
+                w->tickFlicker();
+                w->flushLog();
+                if (auto *tabs = w->findChild<QTabWidget *>())
+                    tabs->setCurrentIndex(qEnvironmentVariableIntValue("SHOT_TAB"));
+                w->resize(1240, 860);
                 win = w;
             }
 #endif
@@ -1181,6 +1215,7 @@ int main(int argc, char **argv)
                                || which == QLatin1String("flasherboard") || which == QLatin1String("fielddoctip")
                                || which == QLatin1String("sessionkey") || which == QLatin1String("gototime");
             if (which == QLatin1String("session")) win->resize(1200, 700);   // its own default
+            else if (which == QLatin1String("cabio")) win->resize(1240, 860);
             else if (small) {
                 const QStringList wh = qEnvironmentVariable("SHOT_SIZE").split(QLatin1Char('x'));
                 if (wh.size() == 2) win->resize(wh.at(0).toInt(), wh.at(1).toInt());

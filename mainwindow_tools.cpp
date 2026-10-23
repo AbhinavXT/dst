@@ -96,6 +96,7 @@
 #include "dmipanel.h"
 #include "dmitimetravel.h"
 #ifdef DL_HAVE_SERIAL
+#include "cabiosimwindow.h"
 #include "serialconsolewindow.h"
 #include "serialmanager.h"
 #endif
@@ -785,6 +786,17 @@ void MainWindow::openSerialTerminal(const QString &port)
     w->activateWindow();
 #else
     Q_UNUSED(port);
+#endif
+}
+
+// Session 324: one simulator window; triggering it again raises it.
+void MainWindow::openCabIoSimulator()
+{
+#ifdef DL_HAVE_SERIAL
+    if (!m_cabIoSim) m_cabIoSim = new CabIoSimWindow(m_serial, this);
+    m_cabIoSim->show();
+    m_cabIoSim->raise();
+    m_cabIoSim->activateWindow();
 #endif
 }
 

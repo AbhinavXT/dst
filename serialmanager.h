@@ -228,6 +228,13 @@ public:
     int  fedLines(const QString &portName) const;
     void resetFedLines(const QString &portName);     // and the line health
 
+    // Session 324: a port carrying binary frames (the Cab I/O Simulator's).
+    // Its "lines" are neither fed nor judged for health -- cut out of a
+    // binary stream they never decode, and the chip would say "check baud".
+    // Cleared when the port is closed.
+    void setBinary(const QString &portName, bool on);
+    bool isBinary(const QString &portName) const;
+
     // Line health of a port since it opened.
     SerialLineHealth::Stats health(const QString &portName, qint64 nowMs) const;
     // One line for a status bar or tooltip: "12.0 lines/s · 100% decode ·
@@ -271,6 +278,7 @@ private:
     struct Entry {
         SerialLink *link = nullptr;
         bool feed = true;
+        bool binary = false;            // session 324: frames, not lines
         int  fedLines = 0;
         SerialLineHealth health;
         QString label;

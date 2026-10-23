@@ -114,6 +114,7 @@ SOURCES += \
     $$PWD/faulttimelinewindow.cpp \
     $$PWD/iotimeline.cpp \
     $$PWD/iotimelinewindow.cpp \
+    $$PWD/cabio.cpp \
     $$PWD/runreportwindow.cpp \
     $$PWD/incidentreport.cpp \
     $$PWD/incidentreportdialog.cpp \
@@ -295,6 +296,7 @@ HEADERS += \
     $$PWD/faulttimelinewindow.h \
     $$PWD/iotimeline.h \
     $$PWD/iotimelinewindow.h \
+    $$PWD/cabio.h \
     $$PWD/runreportwindow.h \
     $$PWD/incidentreport.h \
     $$PWD/incidentreportdialog.h \

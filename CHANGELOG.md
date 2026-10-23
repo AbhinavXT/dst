@@ -11,6 +11,121 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-324"></a>
+## Session 324 — Cab I/O Simulator: the cab's input controllers to the VCC, and its output data back
+
+Abhinav sent the VCC ↔ IOA card serial protocol
+(`STRUCT_INTERNAL_MESSAGE_HEADER`, the input request / reply and output data
+frames, the message and card ids) with the SIFA-extended and old cab structs,
+and asked for:
+- an input simulator that sends inputs to the VCC over serial: toggle each
+  one, flicker any of them every 250 ms, and four states (00 01 10 11) for
+  each input with NO and NC feedbacks;
+- a view of the output data the VCC sends;
+- both for the old cab inputs and outputs too.
+
+He is collecting real frames meanwhile. `@dop1`/`@dop2` (the 16-byte readback
+logs) are a different thing from `STRUCT_LOCO_OUTPUT` (the 2-byte word that
+drives the output relays) and are unchanged.
+
+**What the operator sees.** Tools ▸ Transmit ▸ **Cab I/O Simulator…**, one
+window. A port bar (port, baud, Open) and a **Cab** switch (SIFA extended |
+Old cab) sit above three tabs:
+- **Inputs → VCC.** Set 1 (`_SET1`, controllers 5–8) and Set 2 (`_SET2`,
+  9–12), or the old `STRUCT_CAB_INPUT`, as tiles grouped like the cab (DMI 1,
+  DMI 2, Cab 1, Horns, Brake relays, SIFA, …).
+  - A plain input is a switch.
+  - A NO/NC contact is a four-segment control `00 01 10 11`, read NO NC.
+    00 and 11 (NO and NC agree, which a healthy contact never reports) are
+    drawn in the warning colour.
+  - Each tile has a flicker button: a plain input inverts every period, and
+    a contact goes to its complement (01 ↔ 10, 00 ↔ 11). The period defaults
+    to 250 ms and can be changed.
+  - Keyboard: Space toggles, 0–3 set a contact's state, F flickers.
+  - **Answer VCC requests** (the default) replies to each input request
+    (0x15) addressed to a ticked id. **Send every N ms** and **Send now**
+    send unasked.
+  - Each set's header shows the ids it answers as (chips), the `input_data`
+    word as sent now, and its reply count. `vic_health` defaults to 0x03.
+    The next reply's bytes are shown at the foot of the tab.
+- **Outputs ← VCC.** The output data (CC CC … 0x2D) to output cards 13/14,
+  as sixteen lamps named by the chosen `STRUCT_LOCO_OUTPUT`: SOS red/green,
+  brakes in red, the rest amber, spare white. Each lamp counts its changes
+  and is outlined for a second after one. If 13 and 14 are sent different
+  words, that is said; the lamps follow 13. Output requests (0x1D) are
+  counted and **not answered**: the readback (0xD1) payload is not known yet.
+- **Frames.** Every frame both ways (time, direction, message, from → to,
+  seq, data, CRC, bytes), a box to paste and decode a frame, and the **wire
+  format**.
+
+**Provisional until sample frames arrive (said in the window too).** The
+structs leave three things open, so the operator picks them instead of the
+tool guessing silently:
+- the CRC algorithm: JAMCRC init 0 as the DMI frame (default), CRC-32, JAMCRC
+  or none. The CRC covers header + payload and is stored little-endian;
+- what `message_length` counts: the whole frame (default), header + payload,
+  or the payload;
+- whether a reply echoes the request's `seq_num` (default yes).
+
+The frames are taken as packed (14 / 19 / 16 bytes); the three frame structs
+have no `PACK`. Every received frame's CRC is checked against all four
+algorithms, and the Frames tab names the one that matches, with a **Use it**
+button. The first real VCC frame settles the CRC. Requests are answered
+whatever their CRC (the log marks a mismatch), so the bench works before
+the algorithm is pinned.
+
+**The port.** It is one of SerialManager's, so it gets a status-bar chip and
+the terminal can watch it. New `SerialManager::setBinary()`: a binary
+port's "lines" are neither fed to a console tab nor judged for line health.
+Cut out of a frame stream they never decode, so after ten of them the chip
+would have said "check baud and line settings". The flag clears when the port
+closes. Closing the window closes a port it opened.
+
+**Files.** New `cabio.{h,cpp}` (layouts, the input bank, frames, the stream
+scanner; no UI) in `dlcore.pri`; new `cabiosimwindow.{h,cpp}` in `serial.pri`;
+`serialmanager.{h,cpp}` (`setBinary`); `mainwindow.h`,
+`mainwindow_menus.cpp`, `mainwindow_tools.cpp` (the menu entry, one window); `tests/screenshot_main.cpp` (`SHOT_WINDOW=cabio`,
+`SHOT_TAB`, `SHOT_CAB=old`).
+
+**Tests.** New `session324` (66 checks):
+- the bit layouts against kavach.xml's DIP1/DIP2 decode of every distinct real
+  `@dip1`/`@dip2` payload in `replay/` (13 and 3), so `input_data` means what
+  the VCC logs it as, including set 2's swapped `sifa_or_veb_relay` pair;
+- coverage (padding bits owned by nothing);
+- the four states and flicker;
+- frames built and read back, CRC check values, the three `message_length`
+  rules;
+- a byte-at-a-time stream with noise and a readback found by its end bytes;
+- the window answering requests to ticked ids only, with the request's seq and
+  the flickered word, Send now, output lamps and change counts, and the
+  received CRC named;
+- over a real serial line (a pty, as session 104): the window opens it
+  through SerialManager, a request arrives split in two writes, and the
+  reply is read back on the far end; frames with CR LF in them leave the
+  line health untouched and feed nothing; closing the window closes the
+  port.
+
+Menu audit: Transmit ▸ Cab I/O Simulator opens one window.
+
+**Gate (Linux):**
+- **Qt 6.4:** green. 358 suites / 9261 checks, 0 failed; 15 validators; menu
+  audit; smoke.
+- **Qt 5.15:** 4 checks red, all in `session134` (Firmware Flasher minimum
+  size) and `session135` (Packet Maker send bar): pixel measurements that fail
+  identically on the untouched patch-323 commit in this container, so they
+  come from its fonts, not this patch. Everything else green, including
+  `session324`, the menu audit and smoke.
+- Windows (MSVC) is CI's.
+
+**Not tested:** against a real VCC. No real VCC ↔ IOA frame exists yet, so
+the CRC, `message_length` and seq echo are unconfirmed, and the frames are
+built from the structs only. Not run on Windows or with a USB serial
+adapter (the pty test covers the port path on Linux). The card
+ids for the old cab's inputs are not known: chips 5–12 are offered and 5–8
+are ticked.
+
+---
+
 <a id="session-323"></a>
 ## Session 323 — Saved logs beside the program; Loco Configuration edits during live @linfo; a full block map after verify
 

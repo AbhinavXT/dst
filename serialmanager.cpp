@@ -191,6 +191,7 @@ void SerialManager::close(const QString &portName)
     // A Close stops a wait for the adapter too: closing is the operator
     // saying "not this port", whatever state it is in.
     const bool waiting = e->lostAtMs > 0 || e->reconnecting || e->suspect;
+    e->binary = false;
     e->lostAtMs = 0;
     e->reconnecting = false;
     if (e->asyncOpening) {
@@ -257,6 +258,18 @@ void SerialManager::setFeed(const QString &portName, bool on)
     entry(portName)->feed = on;
 }
 
+void SerialManager::setBinary(const QString &portName, bool on)
+{
+    linkFor(portName);
+    entry(portName)->binary = on;
+}
+
+bool SerialManager::isBinary(const QString &portName) const
+{
+    const EntryPtr e = entry(portName);
+    return e && e->binary;
+}
+
 bool SerialManager::feeds(const QString &portName) const
 {
     const EntryPtr e = entry(portName);
@@ -298,7 +311,7 @@ QString SerialManager::healthText(const QString &portName, qint64 nowMs) const
 
 void SerialManager::onLine(Entry *e, const QByteArray &line, qint64 ms)
 {
-    if (line.trimmed().isEmpty()) return;
+    if (line.trimmed().isEmpty() || e->binary) return;
     // Health counts every line, fed or not: it is about the wire.
     const bool decodes = SerialLineHealth::lineDecodes(line);
     e->health.note(decodes, ms);

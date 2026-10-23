@@ -13,8 +13,8 @@
     # The library compiles them; programs linking it only need the module
     # and the define (dlcore_link.pri sets dl_link_only).
     !dl_link_only {
-        SOURCES += $$PWD/seriallink.cpp $$PWD/serialconsolewindow.cpp $$PWD/serialmanager.cpp $$PWD/serialfilesender.cpp $$PWD/serialautobaud.cpp $$PWD/serialportscan.cpp
-        HEADERS += $$PWD/seriallink.h   $$PWD/serialconsolewindow.h $$PWD/serialmanager.h $$PWD/serialfilesender.h $$PWD/serialautobaud.h $$PWD/serialportscan.h
+        SOURCES += $$PWD/seriallink.cpp $$PWD/serialconsolewindow.cpp $$PWD/serialmanager.cpp $$PWD/serialfilesender.cpp $$PWD/serialautobaud.cpp $$PWD/serialportscan.cpp $$PWD/cabiosimwindow.cpp
+        HEADERS += $$PWD/seriallink.h   $$PWD/serialconsolewindow.h $$PWD/serialmanager.h $$PWD/serialfilesender.h $$PWD/serialautobaud.h $$PWD/serialportscan.h $$PWD/cabiosimwindow.h
     }
 } else:!dl_link_only {
     message("DLConsole: building without the serial terminal (Qt Serial Port module not used)")

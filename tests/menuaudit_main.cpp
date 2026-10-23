@@ -629,6 +629,23 @@ int main(int argc, char **argv) {
     CHECK(transmit && findAction(transmit, "Packet Maker"), "Transmit > Packet Maker");
     CHECK(transmit && findAction(transmit, "Field Sweep"), "Transmit > Field Sweep");
     CHECK(transmit && findAction(transmit, "Selected row"), "Transmit > Selected row -> Packet Maker");
+    // Session 324: the Cab I/O Simulator answers the VCC, so it is in Transmit.
+    if (QAction *cabIo = transmit ? findAction(transmit, "Cab I/O Simulator") : nullptr) {
+        cabIo->trigger();
+        cabIo->trigger();
+        int count = 0;
+        QWidget *opened = nullptr;
+        for (QWidget *top : QApplication::topLevelWidgets()) {
+            if (top->windowTitle() == QStringLiteral("Cab I/O Simulator") && top->isVisible()) {
+                ++count;
+                opened = top;
+            }
+        }
+        CHECK(count == 1, "Transmit > Cab I/O Simulator opens one window, raised again on a second trigger");
+        if (opened) opened->close();
+    } else {
+        CHECK(false, "Transmit > Cab I/O Simulator");
+    }
     // The point of the group: nothing that sends may sit outside it.
     CHECK(!findAction(tools, "Packet Maker") && !findAction(tools, "Field Sweep"),
           "no transmitting tool is left loose in Tools");
