@@ -160,7 +160,7 @@ const InputLayout &oldCabInputs()
         x.key = QStringLiteral("old");
         x.title = QStringLiteral("Cab inputs");
         x.structName = QStringLiteral("STRUCT_CAB_INPUT");
-        x.ids = { 5, 6, 7, 8 };
+        x.ids = { 5, 6, 7, 8, 9, 10, 11, 12 };      // all eight controllers (Abhinav, session 327)
         x.inputs = {
             bitIn("cab1_input",               "Cab 1", 12),
             bitIn("bl_key_cab1",              "Cab 1", 21),
@@ -207,31 +207,44 @@ QVector<const InputLayout *> inputLayouts(Cab cab)
 
 const QVector<OutputBit> &outputBits(Cab cab)
 {
-    auto ob = [](const char *n, const char *g, int bit, const char *lamp) {
+    // The words follow what the output drives; `low` is set for the SIFA
+    // layout's active-low outputs.
+    auto ob = [](const char *n, const char *g, int bit, const char *lamp, bool low = false) {
         OutputBit o;
         o.name = QString::fromLatin1(n);
         o.group = QString::fromLatin1(g);
         o.bit = bit;
         o.lamp = QString::fromLatin1(lamp);
+        o.activeLow = low;
+        const QString name = o.name;
+        if (name.contains(QLatin1String("buzzer"))) {
+            o.activeWord = QStringLiteral("Sounding"); o.idleWord = QStringLiteral("Silent");
+        } else if (name.endsWith(QLatin1String("_brake"))) {
+            o.activeWord = QStringLiteral("Applied"); o.idleWord = QStringLiteral("Released");
+        } else if (name == QLatin1String("sifa_valve")) {
+            o.activeWord = QStringLiteral("Open"); o.idleWord = QStringLiteral("Closed");
+        } else {
+            o.activeWord = QStringLiteral("Energised"); o.idleWord = QStringLiteral("De-energised");
+        }
         return o;
     };
     // The SIFA-extended STRUCT_LOCO_OUTPUT (data_byte1 = bits 0-7).
     static const QVector<OutputBit> sifa{
         ob("dmi_sos_red",        "DMI", 0, "red"),
         ob("dmi_sos_green",      "DMI", 1, "green"),
-        ob("dmi1_buzzer",        "DMI", 2, "yellow"),
-        ob("dmi2_buzzer",        "DMI", 3, "yellow"),
+        ob("dmi1_buzzer",        "DMI", 2, "yellow", true),
+        ob("dmi2_buzzer",        "DMI", 3, "yellow", true),
         ob("horn1",              "Horns", 4, "yellow"),
         ob("horn2",              "Horns", 5, "yellow"),
-        ob("light_engine_brake", "Brakes", 10, "red"),
-        ob("full_service_brake", "Brakes", 11, "red"),
-        ob("normal_brake",       "Brakes", 12, "red"),
-        ob("emergency_brake",    "Brakes", 13, "red"),
+        ob("light_engine_brake", "Brakes", 10, "red", true),
+        ob("full_service_brake", "Brakes", 11, "red", true),
+        ob("normal_brake",       "Brakes", 12, "red", true),
+        ob("emergency_brake",    "Brakes", 13, "red", true),
         ob("traction_on_off",    "Traction and track", 6, "yellow"),
         ob("pvef_disable",       "Traction and track", 7, "yellow"),
         ob("nuteral_section",    "Traction and track", 8, "yellow"),
         ob("fouling_mark",       "Traction and track", 9, "yellow"),
-        ob("sifa_valve",         "SIFA", 14, "yellow"),
+        ob("sifa_valve",         "SIFA", 14, "yellow", true),
         ob("spare",              "Spare", 15, "white"),
     };
     // The old cab's STRUCT_LOCO_OUTPUT: ten outputs and spare: 6.
@@ -254,6 +267,12 @@ const QVector<OutputBit> &outputBits(Cab cab)
         ob("spare_15",           "Spare", 15, "white"),
     };
     return cab == Cab::Old ? old : sifa;
+}
+
+bool outputActive(const OutputBit &o, quint16 word)
+{
+    const bool set = (word >> o.bit) & 1u;
+    return o.activeLow ? !set : set;
 }
 
 QString outputStructName(Cab cab)

@@ -177,6 +177,7 @@ private:
 
     QLabel      *m_outHeadline = nullptr;
     QLabel      *m_outDetail = nullptr;
+    QLabel      *m_outLegend = nullptr;
     QLabel      *m_outBytes = nullptr;
     CabIoUi::TileGrid *m_lampGrid = nullptr;
     QVector<CabIoUi::LampTile *> m_lamps;

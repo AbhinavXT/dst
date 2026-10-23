@@ -434,8 +434,9 @@ class LampTile : public QWidget
 public:
     LampTile(const OutputBit &o, QWidget *parent = nullptr) : QWidget(parent), m_o(o)
     {
-        setToolTip(QStringLiteral("%1: bit %2 (data_byte%3 bit %4)")
-                       .arg(o.name).arg(o.bit).arg(o.bit < 8 ? 1 : 2).arg(o.bit % 8));
+        setToolTip(QStringLiteral("%1: bit %2 (data_byte%3 bit %4)\n%5 when the bit is %6, %7 when it is %8")
+                       .arg(o.name).arg(o.bit).arg(o.bit < 8 ? 1 : 2).arg(o.bit % 8)
+                       .arg(o.activeWord).arg(o.activeLow ? 0 : 1).arg(o.idleWord.toLower()).arg(o.activeLow ? 1 : 0));
         setAccessibleName(displayName(o.name));
     }
     QSize sizeHint() const override { return QSize(250, 60); }
@@ -493,9 +494,15 @@ protected:
                    p.fontMetrics().elidedText(displayName(m_o.name), Qt::ElideRight, w));
         p.setFont(scaled(font(), 0.85));
         p.setPen(UiColor::muted());
-        QString sub = !m_known ? QStringLiteral("no data yet")
-                               : (m_on ? QStringLiteral("ON") : QStringLiteral("off"));
-        sub += QStringLiteral(" \u00B7 bit %1").arg(m_o.bit);
+        // "Applied · bit 13 = 0": what the output does, then the bit as sent.
+        QString sub;
+        if (!m_known) {
+            sub = QStringLiteral("no data yet \u00B7 bit %1").arg(m_o.bit);
+        } else {
+            const int bitValue = (m_on != m_o.activeLow) ? 1 : 0;
+            sub = QStringLiteral("%1 \u00B7 bit %2 = %3").arg(m_on ? m_o.activeWord : m_o.idleWord)
+                      .arg(m_o.bit).arg(bitValue);
+        }
         if (m_changes) sub += QStringLiteral(" \u00B7 %1 change%2").arg(m_changes).arg(QLatin1String(m_changes == 1 ? "" : "s"));
         if (m_readback >= 0)
             sub += QStringLiteral(" \u00B7 readback ")
@@ -755,6 +762,10 @@ QWidget *CabIoSimWindow::buildOutputsTab()
     m_outDetail->setObjectName(QStringLiteral("muted"));
     m_outDetail->setWordWrap(true);
     v->addWidget(m_outDetail);
+    m_outLegend = new QLabel(page);
+    m_outLegend->setObjectName(QStringLiteral("muted"));
+    m_outLegend->setWordWrap(true);
+    v->addWidget(m_outLegend);
     m_outBytes = new QLabel(page);
     m_outBytes->setObjectName(QStringLiteral("mono"));
     m_outBytes->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -1446,7 +1457,7 @@ void CabIoSimWindow::refreshOutputs()
     for (LampTile *l : m_lamps) {
         const int bit = l->bit().bit;
         const bool recent = m_outChangedAtMs.value(bit) && now - m_outChangedAtMs.value(bit) < 1000;
-        l->setValues(known, known && (m_outWord & (1u << bit)), m_outChanges.value(bit), recent,
+        l->setValues(known, known && outputActive(l->bit(), m_outWord), m_outChanges.value(bit), recent,
                      bit < m_readbackPinsHeard.size() ? int(quint8(m_readbackPinsHeard.at(bit))) : -1);
     }
     if (!known) {
@@ -1474,6 +1485,10 @@ void CabIoSimWindow::refreshOutputs()
                                 .arg(hex8(quint8(m_outWord & 0xFF)), hex8(quint8(m_outWord >> 8)),
                                      outputStructName(m_cab)));
     }
+    m_outLegend->setText(m_cab == Cab::Old
+        ? tr("A lamp is lit when its output acts: every output acts on 1 (relay energised).")
+        : tr("A lamp is lit when its output acts: the buzzers, the brakes and the SIFA valve act on 0 "
+             "(sounding, applied, open); every other output acts on 1 (relay energised)."));
     QString foot = count(m_outFrames, "output data frame", "output data frames");
     foot += tr(" \u00B7 %1 (0x1D) heard").arg(count(m_outRequests, "readback request", "readback requests"));
     if (m_readbacksSent) foot += tr(", %1").arg(count(m_readbacksSent, "readback sent", "readbacks sent"));

@@ -193,8 +193,8 @@ int main(int argc, char **argv)
                     w->feedBytes(CabIo::inputRequest(quint8(5 + i % 8), quint16(100 + i), CabIo::WireFormat()));
                 w->feedBytes(CabIo::outputData(13, 1, 0x0002, CabIo::WireFormat()));
                 w->feedBytes(CabIo::outputData(14, 1, 0x0002, CabIo::WireFormat()));
-                w->feedBytes(CabIo::outputData(13, 2, 0x2116, CabIo::WireFormat()));
-                w->feedBytes(CabIo::outputData(14, 2, 0x2116, CabIo::WireFormat()));
+                w->feedBytes(CabIo::outputData(13, 2, 0x03E1, CabIo::WireFormat()));   // the bench capture's word
+                w->feedBytes(CabIo::outputData(14, 2, 0x03E1, CabIo::WireFormat()));
                 w->tickFlicker();
                 w->flushLog();
                 if (auto *tabs = w->findChild<QTabWidget *>())

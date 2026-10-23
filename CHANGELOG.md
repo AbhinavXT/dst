@@ -11,6 +11,59 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-327"></a>
+## Session 327 — Cab I/O Simulator: which value each output acts on; the old cab answers as 5–12
+
+Abhinav answered session 325's open questions:
+1. *"For old output, 1 is relay energised. But for new outputs for buzzer,
+   brakes, sifa valve 0 means buzzer rang, brake applied or sifa valve
+   opened."*
+2. *"Don't implement analog card for now"*: nothing built. Analog frames
+   are still found and listed in Frames.
+3. *"Same card ids 5,6,7,8,9,10,11,12"* for the old cab's inputs.
+
+**What the operator sees.**
+- **Outputs ← VCC:** a lamp is lit when its output *acts*, not when its bit
+  is 1.
+  - SIFA: the two buzzers, the four brakes and the SIFA valve act on **0**.
+    Every other output acts on 1.
+  - Old cab: every output acts on 1.
+  - Each lamp says what the output does and then the bit as sent:
+    "Applied · bit 13 = 0", "Sounding · bit 2 = 0", "Open · bit 14 = 0",
+    "Energised · bit 0 = 1", "De-energised · bit 4 = 0".
+  - A line above the lamps states the rule for the chosen cab, and each
+    lamp's tooltip gives its own.
+  - With the bench capture's word 0x03E1, all four brakes read Applied, both
+    buzzers Sounding and the SIFA valve Open.
+- **Old cab:** the inputs bank answers as controllers 5–12 by default (it
+  was 5–8). A saved choice of ids still wins.
+- The wire is unchanged: the output word is shown and counted as sent;
+  only the lamps read it.
+
+**Files.** `cabio.{h,cpp}` (`OutputBit::activeLow`, `activeWord`, `idleWord`;
+`outputActive()`; the old layout's ids); `cabiosimwindow.{h,cpp}` (lamps,
+legend, tooltips); `tests/screenshot_main.cpp` (outputs scene on 0x03E1).
+
+**Tests.** New `session327` (12 checks):
+- exactly the seven SIFA outputs are active-low, and no old-cab output is;
+- on the real word 0x03E1: the emergency brake is applied, dmi1_buzzer
+  sounding, the SIFA valve open, dmi_sos_red energised and horn1 not;
+  setting bit 13 releases the brake;
+- the old cab's polarity;
+- the old cab's default ids are 5–12, and the window answers one request to
+  each of them.
+
+**Gate (Linux):**
+- **Qt 6.4:** green. 360 suites / 9293 checks, 0 failed; 15 validators; menu
+  audit; smoke.
+- **Qt 5.15:** only the four `session134`/`session135` pixel checks that fail
+  on patch 323 here too (session 324). Everything else green.
+
+**Not tested:** against a live VCC. The polarity is as Abhinav stated it;
+the frames do not say which way an output acts.
+
+---
+
 <a id="session-326"></a>
 ## Session 326 — Cab I/O Simulator: NO/NC inputs switch On and Off like the rest; faults behind ⚠
 

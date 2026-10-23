@@ -110,8 +110,17 @@ struct OutputBit {
     QString group;
     int     bit = 0;       // 0..15: data_byte1 bit 0 is 0, data_byte2 bit 0 is 8
     QString lamp;          // UiColor::signalLamp() name: red, yellow, green, white
+    // Abhinav (session 327): in the SIFA layout the buzzers, the brakes and
+    // the SIFA valve act on 0 -- 0 is the buzzer sounding, the brake
+    // applied, the valve open. Every other output, and every old-cab one,
+    // acts on 1 (relay energised).
+    bool    activeLow = false;
+    QString activeWord;    // "Applied", "Sounding", "Open", "Energised"
+    QString idleWord;      // "Released", "Silent", "Closed", "De-energised"
 };
 const QVector<OutputBit> &outputBits(Cab cab);
+// Is `o` acting (lamp lit) in the output word `word`?
+bool outputActive(const OutputBit &o, quint16 word);
 QString outputStructName(Cab cab);
 
 // "dmi1_sos" -> "DMI1 SOS", "kavach_isolation_fb" -> "Kavach isolation FB",
