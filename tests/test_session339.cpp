@@ -91,9 +91,11 @@ TEST_SUITE(session339)
         CHECK(ms.size() == 4, "fixture: the stretch before and three missions");
         if (ms.size() != 4) return;
 
-        QAction *m2 = item(picker, QStringLiteral("Mission 2 · "));
-        CHECK(m2 && item(picker, QStringLiteral("Before the first start")) && item(picker, QStringLiteral("Mission 3 · ")),
+        CHECK(item(picker, QStringLiteral("Before the first start")) && item(picker, QStringLiteral("Mission 3 · ")),
               "the menu lists the stretch before and each mission");
+        // Fetched last: each item() rebuilds the menu, and clear() deletes
+        // the actions it held.
+        QAction *m2 = item(picker, QStringLiteral("Mission 2 · "));
         if (!m2) return;
         m2->trigger();
         QApplication::processEvents();

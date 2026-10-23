@@ -138,6 +138,11 @@ public:
     void setStartOffsetMs(qint64 ms) { m_startOffsetMs = ms > 0 ? ms : 0; }
 
     void setLoop(bool on) { m_loop.store(on, std::memory_order_relaxed); }
+    // Session 340: each capture line's FRAME_NUM and timestamp moved on by
+    // the time since it was recorded, its CRC remade (framerestamp.h), so
+    // the replay reads as current traffic.
+    void setRestamp(bool on) { m_restamp.store(on, std::memory_order_relaxed); }
+    bool restamp() const { return m_restamp.load(std::memory_order_relaxed); }
 
     // ---- seeking by content --------------------------------------------
     //
@@ -244,6 +249,7 @@ private:
     std::atomic<bool> m_stop{false};
     std::atomic<bool> m_paused{false};
     std::atomic<bool> m_loop{false};
+    std::atomic<bool> m_restamp{false};
     std::atomic<bool> m_skipRequested{false};
     std::atomic<bool> m_tap{false};
 

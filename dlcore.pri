@@ -189,6 +189,7 @@ SOURCES += \
     $$PWD/tabhealth.cpp \
     $$PWD/followpill.cpp \
     $$PWD/missionpicker.cpp \
+    $$PWD/framerestamp.cpp \
     $$PWD/shortcutsdialog.cpp \
     $$PWD/uicolors.cpp \
     $$PWD/programdir.cpp \
@@ -377,6 +378,7 @@ HEADERS += \
     $$PWD/tabhealth.h \
     $$PWD/followpill.h \
     $$PWD/missionpicker.h \
+    $$PWD/framerestamp.h \
     $$PWD/shortcutsdialog.h \
     $$PWD/sendguard.h \
     $$PWD/uicolors.h \

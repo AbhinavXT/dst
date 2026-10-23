@@ -166,6 +166,13 @@ DlrPlayerDialog::DlrPlayerDialog(const ColorRules *rules, QWidget *parent)
 
     m_loop = new QCheckBox(tr("Loop when the archive ends"), cfgBox);
     cfg->addRow(QString(), m_loop);
+    // Session 340.
+    m_restamp = new QCheckBox(tr("Frame numbers as now (FRAME_NUM and CRC)"), cfgBox);
+    m_restamp->setObjectName(QStringLiteral("dlrRestamp"));
+    m_restamp->setToolTip(tr("Move each frame's FRAME_NUM and timestamp on by the time since it was "
+                             "recorded and remake its CRC, so the console's clocks and accept window "
+                             "read the replay as current traffic. An SLRP's MAC is not remade."));
+    cfg->addRow(QString(), m_restamp);
 
     root->addWidget(cfgBox);
 
@@ -418,6 +425,7 @@ void DlrPlayerDialog::onPlayPause()
         m_player->setMaxGapMs(m_maxGap->value());
         m_player->setStartOffsetMs(qint64(m_startAt->value()) * 1000);
         m_player->setLoop(m_loop->isChecked());
+        m_player->setRestamp(m_restamp->isChecked());
 
         // Refuse to start on a query that does not parse. Starting anyway
         // would send nothing and look exactly like an archive that never
@@ -465,6 +473,7 @@ void DlrPlayerDialog::setRunningUi(bool running)
     m_maxGap->setEnabled(!running);
     m_startAt->setEnabled(!running);
     m_loop->setEnabled(!running);
+    m_restamp->setEnabled(!running);
     m_seekQuery->setEnabled(!running);
     m_skipBtn->setEnabled(running && !m_seekQuery->text().trimmed().isEmpty());
     m_playBtn->setEnabled(running || !m_sources.isEmpty());

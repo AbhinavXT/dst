@@ -105,6 +105,7 @@ private:
     RawBytesPanel  *m_rawPanel  = nullptr;
     FieldInspector *m_fieldPanel = nullptr;
     QCheckBox    *m_loop      = nullptr;
+    QCheckBox *m_restamp = nullptr;   // session 340
     QPushButton  *m_playBtn   = nullptr;
     QPushButton  *m_stopBtn   = nullptr;
     QPushButton  *m_addBtn    = nullptr;

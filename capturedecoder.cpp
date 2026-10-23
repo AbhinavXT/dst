@@ -707,6 +707,32 @@ static QVector<FieldRow> locoWillIgnore(const QVector<FieldRow> &rows)
     return out;
 }
 
+bool remakeCrc(CapType type, QByteArray &b)
+{
+    int from = 0, len = 0;
+    switch (type) {
+    case CapType::AAP:
+    case CapType::SLRP:
+        from = 0; len = b.size() - 4;
+        break;
+    case CapType::ARP:
+    case CapType::ArpRecv:
+    case CapType::LSRP: {
+        int pktLen = 0;
+        const int hdr = arpHeaderBytes(b, &pktLen);
+        if (hdr <= 0 || hdr + pktLen > b.size()) return false;
+        from = hdr; len = pktLen - 4;
+        break;
+    }
+    default:
+        return false;
+    }
+    if (len <= 0) return false;
+    const quint32 crc = jamcrc(b, from, len);
+    for (int i = 0; i < 4; ++i) b[from + len + i] = char((crc >> (24 - 8 * i)) & 0xFF);
+    return true;
+}
+
 static void verifyCrc(CaptureLine &c)
 {
     const QByteArray &b = c.bytes;

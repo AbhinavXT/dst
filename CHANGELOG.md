@@ -11,6 +11,62 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-340"></a>
+## Session 340 — Stream session as live, with frame numbers as now
+
+Item 5 of the earlier list (from the NMS debugging tool, session 207's
+notes): *"Replay with fresh frame numbers and CRCs."* Of the two replays,
+only **Tools ▸ Stream session (.dlr) as live** re-sends frames (the Replay
+window scrubs a .cap and sends nothing), so the option is there. Every
+frame in a recording carries FRAME_NUM from the day it was recorded: the
+frame clocks read hours off, the clock-skew alarm fires, the Packet Maker
+seeds from a stale counter, and a receiver's accept window (more than 4 s
+old: rejected) would drop the lot.
+
+**What the operator sees.** In the Stream session dialog, a new box
+**Frame numbers as now (FRAME_NUM and CRC)**, off by default. Ticked, each
+capture line is changed as it is sent:
+- every FRAME_NUM in an ARP, LSRP, SLRP or AAP frame moves on by the time
+  since that frame was recorded (seconds since midnight + 1, wrapping at
+  midnight), so it is as old now as it was then: a loco 2 s behind the
+  station still is;
+- the line's own timestamp moves by the same;
+- the frame's CRC is made again by the recipe the check uses (new
+  `CaptureDecoder::remakeCrc`); `message_len` follows the line.
+Other lines only have their timestamp moved. **An SLRP's MAC is not
+remade** (it needs the session key): where a MAC check is made, a
+restamped SLRP fails it. The tooltip says so.
+
+**Files.** `framerestamp.{h,cpp}` (new); `capturedecoder.{h,cpp}`
+(`remakeCrc`); `dlrplayer.{h,cpp}` (`setRestamp`); `dlrplayerdialog.{h,cpp}`.
+
+**Tests.** New `session340` (30 checks) on real lines of
+`replay/loco_1_1_27062026_170217.cap`: the frame number wraps at midnight
+both ways and drops whole days; for an ARP, LSRP and SLRP moved 118 days
+on, the CRC is good before and after, FRAME_NUM moved by exactly the
+delta, the timestamp by the same, sequence, frame size and line length
+unchanged, and every other decoded field as it was; a DMI line keeps its
+bytes; text is untouched. End to end: a .dlr of the real ARP and LSRP,
+streamed in burst mode with the box ticked to a socket, arrives with
+`message_len` right, CRC good, and FRAME_NUM within 2 s of the recording's
+own lag behind its arrival.
+
+**Gate (macOS):** green on Qt 5.15 and Qt 6.11: 372 suites / 9504 checks,
+0 failed; 15 validators; menu audit; smoke. The first Qt 5 run caught
+session 339's flaky suite (above).
+
+**Fixed on the way: session 339's suite.** It failed 1 run in 5 on Qt 5:
+it kept the *Mission 2* action, opened the menu twice more (each opening
+rebuilds it, and `QMenu::clear()` deletes the actions), then triggered the
+deleted action. It now takes the action just before triggering it; 12 of
+12 runs pass. The app was not affected.
+
+**Not tested:** against a real Kavach unit (the console is the receiver
+here); speeds other than burst (the delta is taken per frame at sending,
+so it holds at any speed).
+
+---
+
 <a id="session-339"></a>
 ## Session 339 — Mission ▾: every tab on one mission
 

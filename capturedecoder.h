@@ -320,6 +320,12 @@ QVector<ActiveFaultInfo> faultsOf(const CaptureLine &c);
 // JAMCRC: poly 0x04C11DB7, init 0, refin/refout true, xorout 0.
 quint32 jamcrc(const QByteArray &d, int from, int len);
 
+// Session 340: write the frame's CRC again, by the same recipe the check
+// uses: AAP / SLRP over the whole frame, ARP / LSRP over the packet behind
+// its header; big-endian. False (and `b` untouched) for any other type, or
+// a frame whose length fields do not place the packet.
+bool remakeCrc(CapType type, QByteArray &b);
+
 // Payload decoders (empty if the frame is too short or the wrong type).
 QVector<NmsHealthEvent> decodeHealth(const QByteArray &b);
 QVector<NmsFaultEntry>  decodeFault (const QByteArray &b);

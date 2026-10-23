@@ -1,3 +1,5 @@
+#include "framerestamp.h"
+#include <QDateTime>
 #include "dlrplayer.h"
 
 #include "messagedispatcher.h"
@@ -432,7 +434,9 @@ void DlrPlayer::run()
             // Burst mode has no wait to interrupt, so the skip is caught here.
             if (m_skipRequested.load(std::memory_order_relaxed)) { armed = false; continue; }
 
-            const bool ok = sendOne(wire);
+            const bool ok = sendOne(m_restamp.load(std::memory_order_relaxed)
+                                        ? FrameRestamp::wire(wire, (QDateTime::currentMSecsSinceEpoch() - raw) / 1000)
+                                        : wire);
 
             {
                 QMutexLocker lk(&m_mtx);
