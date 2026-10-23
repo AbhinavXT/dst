@@ -43,6 +43,19 @@ class StatusLine;
 
 namespace CabIoUi { class TileGrid; class InputTile; class LampTile; }
 
+// The window's own colour decisions (session 328). Everything else it draws
+// is a palette role or a UiColor, which the contrast audit already holds in
+// every theme; these mix their own -- a tinted tile, a lamp's rim -- so they
+// are public for tests/test_session328.cpp to hold to the same floors.
+namespace CabIoColors {
+enum class Tile { Plain, On, Fault };
+double textFloor();                          // 7 : 1 in High Contrast, else 4.5 : 1
+double graphicFloor();                       // 7 : 1 in High Contrast, else 3 : 1
+QColor tileFill(Tile t);                     // Base, tinted for On and Fault
+QColor tileInk(const QColor &ink, Tile t);   // `ink`, held to textFloor() on tileFill(t)
+QColor lampRim(const QString &lamp);         // a lit lamp's outline, graphicFloor() on Base
+}
+
 class CabIoSimWindow : public QWidget
 {
     Q_OBJECT

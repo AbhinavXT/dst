@@ -11,6 +11,52 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-328"></a>
+## Session 328 — Cab I/O Simulator in every theme
+
+Abhinav: *"The new windows should work with all themes."* The window was
+rendered in all eleven themes (both tabs, and switched from Dark while
+open). Most of what it draws is a palette role or a `UiColor`, which the
+contrast audit already holds in every theme. It also follows a theme change
+while open (`UiColor::onThemeChange`). Three things it mixes itself were
+not covered, and are now:
+- **Tile text and icons on a tinted tile.** An On tile is the card tinted
+  with the accent, a faulted one tinted with the warning colour. The audit
+  checks the inks on the plain card only. They are now held, on the tile's
+  actual fill, to 4.5:1, or 7:1 in High Contrast (`UiColor::withContrast`).
+- **A lit lamp's rim.** The lamps are the railway's fixed colours.
+  - The rim was the lamp colour darkened: a yellow lamp on a light theme was
+    a faint disc.
+  - The "white" spare lamp (#F4F4F4) had a rim of about 2.3:1 on a white
+    card, so it all but vanished when lit.
+  - The rim is now held to 3:1 against the card (a graphical object), 7:1 in
+    High Contrast.
+- These decisions are in `CabIoColors` (`tileFill`, `tileInk`, `lampRim`), so
+  a test can reach them.
+
+**Files.** `cabiosimwindow.{h,cpp}`.
+
+**Tests.** New `session328` (6 checks):
+- all eleven themes, with colour-blind-safe colours off and on (22
+  combinations): every tile ink on every tile fill (plain, On, Fault)
+  reaches its floor, and every lamp colour's rim reaches its floor on the
+  card;
+- a window built in Light restyles to Mocha's accent, and then to High
+  Contrast's, while open.
+
+`contrastaudit` is unchanged and still green.
+
+**Gate (Linux):**
+- **Qt 6.4:** green. 361 suites / 9299 checks, 0 failed; 15 validators; menu
+  audit; smoke.
+- **Qt 5.15:** only the four `session134`/`session135` pixel checks that fail
+  on patch 323 here too (session 324). Everything else green.
+
+**Not tested:** looked at in every theme offscreen on Linux, not on Windows'
+native style.
+
+---
+
 <a id="session-327"></a>
 ## Session 327 — Cab I/O Simulator: which value each output acts on; the old cab answers as 5–12
 

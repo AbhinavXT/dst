@@ -4,6 +4,7 @@
 #include "seriallink.h"
 #include "settings.h"
 #include "statusline.h"
+#include "theme.h"
 #include "uicolors.h"
 #include "windowgeometry.h"
 
@@ -14,6 +15,7 @@
 #include <QDateTime>
 #include <QFontDatabase>
 #include <QFormLayout>
+#include <QGuiApplication>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -137,7 +139,50 @@ QWidget *segmented(const QStringList &labels, QButtonGroup **group, QWidget *par
     return w;
 }
 
+QColor blend(const QColor &a, const QColor &b, double t)
+{
+    return QColor::fromRgbF(a.redF() + (b.redF() - a.redF()) * t,
+                            a.greenF() + (b.greenF() - a.greenF()) * t,
+                            a.blueF() + (b.blueF() - a.blueF()) * t);
+}
+
 }  // namespace
+
+// =============================================================================
+//  Colours
+// =============================================================================
+namespace CabIoColors {
+
+static bool highContrast() { return UiColor::activeTheme() == int(Theme::HighContrast); }
+
+double textFloor()    { return highContrast() ? 7.0 : 4.5; }
+double graphicFloor() { return highContrast() ? 7.0 : 3.0; }
+
+QColor tileFill(Tile t)
+{
+    const QColor base = QGuiApplication::palette().color(QPalette::Base);
+    switch (t) {
+    case Tile::On:    return blend(base, UiColor::accent(), 0.08);
+    case Tile::Fault: return blend(base, UiColor::warning(), 0.10);
+    case Tile::Plain: break;
+    }
+    return base;
+}
+
+QColor tileInk(const QColor &ink, Tile t)
+{
+    return UiColor::withContrast(ink, tileFill(t), textFloor());
+}
+
+QColor lampRim(const QString &lamp)
+{
+    const QColor base = QGuiApplication::palette().color(QPalette::Base);
+    return UiColor::withContrast(UiColor::signalLamp(lamp).darker(140), base, graphicFloor());
+}
+
+}  // namespace CabIoColors
+
+using CabIoColors::Tile;
 
 // =============================================================================
 //  The painted pieces
@@ -262,10 +307,8 @@ protected:
         if (fault) border = UiColor::warning();
         if (hasFocus()) border = accent;
         p.setPen(QPen(border, (hasFocus() || fault) ? 2 : 1));
-        QColor fill = base;
-        if (on) fill = blend(base, accent, 0.08);
-        if (fault) fill = blend(base, UiColor::warning(), 0.10);
-        p.setBrush(fill);
+        const Tile tile = fault ? Tile::Fault : (on ? Tile::On : Tile::Plain);
+        p.setBrush(CabIoColors::tileFill(tile));
         p.drawRoundedRect(card, 9, 9);
         if (m_flicker) {
             p.setPen(Qt::NoPen);
@@ -278,18 +321,18 @@ protected:
         // The name, then the state in words with its bits.
         const int textLeft = 16;
         const int textRight = (m_in.isPair() ? m_faultRect.left() : m_control.left()) - 10;
-        p.setPen(pal.color(QPalette::Text));
+        p.setPen(CabIoColors::tileInk(pal.color(QPalette::Text), tile));
         p.setFont(scaled(font(), 1.0, QFont::DemiBold));
         const QString name = p.fontMetrics().elidedText(displayName(m_in.name), Qt::ElideRight, textRight - textLeft);
         p.drawText(QRect(textLeft, 10, textRight - textLeft, 22), Qt::AlignLeft | Qt::AlignVCenter, name);
         p.setFont(scaled(font(), 0.85, fault ? int(QFont::DemiBold) : -1));
-        p.setPen(fault ? UiColor::warning() : UiColor::muted());
+        p.setPen(CabIoColors::tileInk(fault ? UiColor::warning() : UiColor::muted(), tile));
         p.drawText(QRect(textLeft, 32, textRight - textLeft, 18), Qt::AlignLeft | Qt::AlignVCenter,
                    p.fontMetrics().elidedText(stateWords(), Qt::ElideRight, textRight - textLeft));
 
         paintSwitch(p, on, fault, base, accent);
-        if (m_in.isPair()) paintFaultButton(p, fault, base);
-        paintFlicker(p, base, accent);
+        if (m_in.isPair()) paintFaultButton(p, fault, base, tile);
+        paintFlicker(p, base, accent, tile);
     }
 
     void mousePressEvent(QMouseEvent *e) override
@@ -356,13 +399,6 @@ private:
             if (onSetState) onSetState(chosen->data().toInt());
     }
 
-    static QColor blend(const QColor &a, const QColor &b, double t)
-    {
-        return QColor::fromRgbF(a.redF() + (b.redF() - a.redF()) * t,
-                                a.greenF() + (b.greenF() - a.greenF()) * t,
-                                a.blueF() + (b.blueF() - a.blueF()) * t);
-    }
-
     void layoutRects()
     {
         const int fl = 30;
@@ -387,26 +423,27 @@ private:
         p.drawEllipse(QRectF(x, track.top() + 4, d, d));
     }
 
-    void paintFaultButton(QPainter &p, bool fault, const QColor &base)
+    void paintFaultButton(QPainter &p, bool fault, const QColor &base, Tile tile)
     {
         const QRectF r = QRectF(m_faultRect).adjusted(1, 1, -1, -1);
-        const QColor warn = UiColor::warning();
+        const QColor warn = CabIoColors::tileInk(UiColor::warning(), tile);
         // A triangle with "!" in it: filled while a fault is set.
         QPainterPath tri;
         tri.moveTo(r.center().x(), r.top() + 3);
         tri.lineTo(r.right() - 2, r.bottom() - 4);
         tri.lineTo(r.left() + 2, r.bottom() - 4);
         tri.closeSubpath();
-        p.setPen(QPen(fault ? warn : UiColor::muted(), 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.setPen(QPen(fault ? warn : CabIoColors::tileInk(UiColor::muted(), tile), 1.5, Qt::SolidLine,
+                      Qt::RoundCap, Qt::RoundJoin));
         p.setBrush(fault ? QBrush(warn) : QBrush(Qt::NoBrush));
         p.drawPath(tri);
-        p.setPen(QPen(fault ? base : UiColor::muted(), 1.8, Qt::SolidLine, Qt::RoundCap));
+        p.setPen(QPen(fault ? base : CabIoColors::tileInk(UiColor::muted(), tile), 1.8, Qt::SolidLine, Qt::RoundCap));
         const double cx = r.center().x();
         p.drawLine(QPointF(cx, r.top() + 10), QPointF(cx, r.bottom() - 11));
         p.drawPoint(QPointF(cx, r.bottom() - 7.5));
     }
 
-    void paintFlicker(QPainter &p, const QColor &base, const QColor &accent)
+    void paintFlicker(QPainter &p, const QColor &base, const QColor &accent, Tile tile)
     {
         const QRectF r = m_flickerRect;
         p.setPen(QPen(m_flicker ? accent : UiColor::frame(), 1.5));
@@ -417,7 +454,7 @@ private:
         wave.moveTo(c.x() - 8, c.y());
         wave.cubicTo(c.x() - 5, c.y() - 8, c.x() - 1, c.y() - 8, c.x(), c.y());
         wave.cubicTo(c.x() + 1, c.y() + 8, c.x() + 5, c.y() + 8, c.x() + 8, c.y());
-        p.setPen(QPen(m_flicker ? base : UiColor::muted(), 2, Qt::SolidLine, Qt::RoundCap));
+        p.setPen(QPen(m_flicker ? base : CabIoColors::tileInk(UiColor::muted(), tile), 2, Qt::SolidLine, Qt::RoundCap));
         p.setBrush(Qt::NoBrush);
         p.drawPath(wave);
     }
@@ -477,7 +514,9 @@ protected:
             body.setColorAt(0, c.lighter(150));
             body.setColorAt(1, c);
             p.setBrush(body);
-            p.setPen(QPen(c.darker(140), 1));
+            // A rim the card can see: a yellow or white lamp on a light
+            // theme is otherwise a faint disc (session 328).
+            p.setPen(QPen(CabIoColors::lampRim(m_o.lamp), 1.5));
             p.drawEllipse(lamp);
         } else {
             p.setBrush(pal.color(QPalette::Window));
