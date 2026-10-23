@@ -23,6 +23,9 @@ public:
     const IncidentReport::Summary &summary() const { return m_summary; }
     QString html() const { return m_html; }
     bool saveHtml(const QString &path) const;
+    // Session 343: whose bookmarks become the report's Operator notes
+    // (borrowed; may be null). Rebuilds.
+    void setBookmarks(const BookmarkStore *marks) { m_marks = marks; rebuild(); }
 
     // The report as the in-app viewer can show it: its data: URI images
     // registered on `doc` as resources. The saved file keeps the data: URIs.
@@ -38,6 +41,7 @@ private:
     IncidentReport::Options m_options;
     IncidentReport::Summary m_summary;
     QString   m_html;
+    const BookmarkStore *m_marks = nullptr;
     QTextBrowser *m_view = nullptr;
     StatusLine   *m_status = nullptr;
 };

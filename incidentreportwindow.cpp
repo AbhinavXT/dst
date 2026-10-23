@@ -78,6 +78,7 @@ void IncidentReportWindow::rebuild()
 {
     QApplication::setOverrideCursor(Qt::WaitCursor);
     m_summary = IncidentReport::build(m_model, m_tabKey, m_tabName, m_atMs, m_options);
+    if (m_marks) IncidentReport::addNotes(&m_summary, m_marks->all());
     m_html = IncidentReport::toHtml(m_summary, m_options);
     QApplication::restoreOverrideCursor();
     m_view->setHtml(forViewer(m_html, m_view->document()));

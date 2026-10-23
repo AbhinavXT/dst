@@ -662,6 +662,7 @@ void MainWindow::onActionIncidentReport()
 
     QString name = m_tabs.value(key).friendlyName;
     auto *w = new IncidentReportWindow(model, key, name.isEmpty() ? key : name, dlg.atMs(), options, this);
+    w->setBookmarks(&m_bookmarks);   // session 343: notes in the pack
     w->show();
     w->raise();
 }

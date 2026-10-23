@@ -11,6 +11,50 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-343"></a>
+## Session 343 — notes on log rows, in the incident pack
+
+Item 13 of the earlier list: *"Notes on a log line: a free-text note
+attached to a frame, saved with the capture and carried into the incident
+pack."* Most of it existed: a bookmark has carried a note since its first
+version (Bookmarks dock ▸ right-click ▸ Edit note…), kept in
+`bookmarks.json` beside the INI, keyed by tab and time so it survives a
+restart and resolves against a reloaded .dlr. Two parts were missing.
+
+**What the operator sees.**
+- **Right-click a row ▸ Add note…** (Edit note… on a bookmarked row): one
+  step that bookmarks the row if it is not, and asks for the note.
+- **The incident pack lists the notes first**: *Operator notes: N*, every
+  bookmark on the report's tab inside its window, in time order, with its
+  time, the note (or "bookmark, no note") and the start of the row. It
+  comes before the DMI moments: the operator's own words say what to look
+  at.
+
+**Not done: notes saved next to each capture file.** They stay in
+`bookmarks.json` as before. A sidecar file per capture can be added if
+wanted.
+
+**Files.** `incidentreport.{h,cpp}` (`OperatorNote`, `addNotes`, the
+section); `incidentreportwindow.{h,cpp}` (`setBookmarks`);
+`mainwindow.{h,cpp}` (the row menu, `setRowNote`, `bookmarks()`);
+`mainwindow_tools.cpp` (Tools ▸ Incident report hands over the bookmarks).
+
+**Tests.** New `session343` (14 checks) on the rear-end capture
+`replay/loco_1_1_27062026_151052.cap` (session 133): of four bookmarks,
+the two on the tab inside the window are listed in time order, one with
+no note; the section is escaped, before the DMI moments, and leaves out
+the one outside the window and the one on another tab; no bookmarks, no
+section. In the real window: Add note on an unmarked row bookmarks it; a
+second note replaces the first on the same bookmark; a report window
+given the bookmarks carries the note.
+
+**Gate (macOS):** green on Qt 5.15 and Qt 6.11: 375 suites / 9553 checks,
+0 failed; 15 validators; menu audit; smoke.
+
+**Not tested:** the note dialog itself (`setRowNote` is what it calls).
+
+---
+
 <a id="session-342"></a>
 ## Session 342 — Packet Maker: values typed with their unit
 

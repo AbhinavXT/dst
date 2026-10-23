@@ -224,6 +224,16 @@ QString toHtml(const Summary &s, const Options &options)
              .arg(esc(s.tabKey), timeText(s.atMs), timeText(s.fromMs), timeText(s.toMs),
                   durationText(options.beforeMs), durationText(options.afterMs),
                   QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss")), esc(by));
+    // Session 343: the operator's own words first: they say what to look at.
+    if (!s.notes.isEmpty()) {
+        h += QStringLiteral("<h2>Operator notes: %1</h2><table><tr><th>Time</th><th>Note</th><th>Row</th></tr>")
+                 .arg(s.notes.size());
+        for (const OperatorNote &n : s.notes)
+            h += QStringLiteral("<tr><td>%1</td><td>%2</td><td class=\"muted\">%3</td></tr>")
+                     .arg(timeText(n.ms), n.note.isEmpty() ? QStringLiteral("<span class=\"muted\">(bookmark, no note)</span>") : esc(n.note),
+                          esc(n.snippet.left(120)));
+        h += QStringLiteral("</table>");
+    }
     if (!s.valid) {
         h += QStringLiteral("<p>The tab has no rows in this window.</p></body></html>");
         return h;
@@ -371,6 +381,16 @@ QString toHtml(const Summary &s, const Options &options)
 
     h += QStringLiteral("</body></html>");
     return h;
+}
+
+void addNotes(Summary *s, const QVector<Bookmark> &marks)
+{
+    s->notes.clear();
+    for (const Bookmark &b : marks)
+        if (b.tabKey == s->tabKey && b.epochMs >= s->fromMs && b.epochMs <= s->toMs)
+            s->notes.push_back({ b.epochMs, b.note, b.messageSnippet });
+    std::sort(s->notes.begin(), s->notes.end(),
+              [](const OperatorNote &a, const OperatorNote &b) { return a.ms < b.ms; });
 }
 
 }  // namespace IncidentReport

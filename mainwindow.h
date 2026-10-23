@@ -98,6 +98,10 @@ public:
     // Recent. Returns the paths not opened (unknown kind, or missing); the
     // status bar names them.
     QStringList openFiles(const QStringList &paths);
+    // Session 343: bookmark the row if it is not, and set its note (the row
+    // menu's Add note…). The bookmarks, for the incident pack and tests.
+    void setRowNote(const QString &tabKey, const LogEntryPtr &entry, const QString &note);
+    BookmarkStore &bookmarks() { return m_bookmarks; }
     // File ▸ Open Recent, rebuilt from the INI each time it is shown.
     QMenu *recentMenu() const { return m_recentMenu; }
     void rebuildRecentMenu();
@@ -219,6 +223,7 @@ private slots:
     // Shared by the search window's jump and anything else that needs to
     // land on a specific moment in a specific source.
     void jumpToEntry(const QString &tabKey, qint64 epochMs);
+
     // Session 331: Edit ▸ Back / Forward (Alt+Left / Alt+Right).
     void onActionNavBack();
     void onActionNavForward();

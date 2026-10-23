@@ -1047,6 +1047,9 @@ void MainWindow::onLogRowContextMenu(const QPoint &pos)
     menu.addSeparator();
     QAction *actBookmark = menu.addAction(
         entry->bookmarked ? tr("Remove &bookmark") : tr("Add &bookmark"));
+    // Session 343: bookmark and note in one step; the incident pack lists it.
+    QAction *actNote = menu.addAction(entry->bookmarked ? tr("Edit &note…") : tr("Add &note…"));
+    actNote->setObjectName(QStringLiteral("rowAddNote"));
     menu.addSeparator();
     // Diff needs exactly two rows: it compares A against B, and quietly
     // picking two out of five would be a guess at which the operator meant.
@@ -1109,6 +1112,15 @@ void MainWindow::onLogRowContextMenu(const QPoint &pos)
         notify(NoteLevel::Info, tr("Copied %1 row(s)").arg(rows.size()));
     } else if (chosen == actBookmark) {
         onActionToggleBookmark();
+    } else if (chosen == actNote) {
+        bool ok = false;
+        int at = -1;
+        for (int i = 0; i < m_bookmarks.count(); ++i)
+            if (m_bookmarks.all().at(i).tabKey == key && m_bookmarks.all().at(i).epochMs == entry->epochMs) at = i;
+        const QString note = QInputDialog::getText(this, tr("Note on this row"),
+                                                   tr("Note (kept with the bookmark, and in the incident pack):"),
+                                                   QLineEdit::Normal, at >= 0 ? m_bookmarks.all().at(at).note : QString(), &ok);
+        if (ok) setRowNote(key, entry, note);
     } else if (chosen == actWhy) {
         // The affordance that would have made the shipped colour_rules.json
         // bug obvious: decorative RAD/CAN rules were pinning severity to
@@ -2653,6 +2665,19 @@ void MainWindow::onActionMergedView()
     connect(m_mergedWin, &QObject::destroyed,
             this, [this]() { m_mergedWin = nullptr; });
     m_mergedWin->show();
+}
+
+void MainWindow::setRowNote(const QString &tabKey, const LogEntryPtr &entry, const QString &note)
+{
+    if (!entry) return;
+    if (!m_bookmarks.has(tabKey, entry->epochMs)) {
+        m_bookmarks.toggle(tabKey, entry->epochMs, entry->text);
+        entry->bookmarked = true;
+        if (m_bookmarkDock) m_bookmarkDock->show();
+    }
+    for (int i = 0; i < m_bookmarks.count(); ++i)
+        if (m_bookmarks.all().at(i).tabKey == tabKey && m_bookmarks.all().at(i).epochMs == entry->epochMs)
+            m_bookmarks.setNote(i, note);
 }
 
 void MainWindow::onActionToggleBookmark()

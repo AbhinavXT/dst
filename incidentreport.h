@@ -54,6 +54,7 @@
 //    module does not re-decode what they already decode.
 // =============================================================================
 
+#include "bookmarks.h"
 #include "runreport.h"
 #include "speeddistance.h"
 
@@ -91,6 +92,9 @@ struct KeyMoment {
 
 struct RawFrame { qint64 ms = 0; QString text; };
 
+// Session 343: a bookmark in the window, with the operator's note.
+struct OperatorNote { qint64 ms = 0; QString note; QString snippet; };
+
 struct Summary {
     QString tabKey, tabName;
     qint64  atMs = 0, fromMs = 0, toMs = 0;
@@ -109,6 +113,7 @@ struct Summary {
 
     QVector<RawFrame> rawFrames;
     int               rawFrameTotal = 0;   // rows in the window, before Options::maxRawFrames
+    QVector<OperatorNote> notes;           // session 343: addNotes()
 };
 
 // Builds the pack for one tab around `atMs`. `tabKey`/`tabName` are for the
@@ -117,6 +122,11 @@ Summary build(LogModel *tabModel, const QString &tabKey, const QString &tabName,
               qint64 atMs, const Options &options = Options());
 
 QString toHtml(const Summary &s, const Options &options = Options());
+
+// Session 343: the bookmarks on the report's tab inside its window, in time
+// order, notes and all (a bookmark with no note is listed too: the operator
+// marked the moment). toHtml shows them first, as "Operator notes".
+void addNotes(Summary *s, const QVector<Bookmark> &marks);
 
 // Session 191: the tab's own latest @dmi at or before `ms`, rendered (the
 // incident pack's key moments; the mission report uses it too). No @dmi that
