@@ -1160,7 +1160,7 @@ QString Decoder::walkEntry(QDomElement rep, Cursor &c, Ctx &ctx,
     return toks.join(sep) + suf;
 }
 
-void Decoder::walkStruct(const QString &name, Cursor &c, Ctx ctx,
+void Decoder::walkStruct(const QString &name, Cursor &c, Ctx &ctx,
                          QVector<FieldRow> &rows, const Geo &geo,
                          int depth) const
 {
@@ -1207,6 +1207,7 @@ QVector<FieldRow> Decoder::decode(const QByteArray &frame,
                boff, (n - trailer) * 8, msb, n };
     Ctx ctx;
     Geo nogeo;
+    QHash<QString, qint64> subVals;   // sub-packet fields, for rawValues only
 
     for (QDomElement node = pkt->firstChildElement(); !node.isNull();
          node = node.nextSiblingElement()) {
@@ -1237,6 +1238,14 @@ QVector<FieldRow> Decoder::decode(const QByteArray &frame,
                 cases.insert(cs.attribute("type").toInt(), cs.attribute("struct"));
             }
             int idx = 1;
+            // Session 338: each sub-packet decodes in its own scope (a copy
+            // of the header's values), so one sub-packet's fields never steer
+            // another's conditions, as before. Its values are then kept for
+            // rawValues, which the reject rules read: until now they were
+            // dropped, and every rule on a sub-packet field (CUR / NEXT_SIG_
+            // ASPECT, TSR_STATUS, AUTHORITY_TYPE, ...) could never fire.
+            // shortcut: a field in two sub-packets keeps the first one's
+            // value; per-sub-packet judging would need rules that know scope.
             while (c.pos / 8 < n - reserve) {
                 const int sb = c.pos / 8;
                 const int t  = int(c.take(tb));
@@ -1250,7 +1259,11 @@ QVector<FieldRow> Decoder::decode(const QByteArray &frame,
                                  QStringLiteral("%1 B").arg(L) });
                 if (!sname.isEmpty() && m_structs.contains(sname)) {
                     Cursor sc { c.b, sb * 8 + tb + lb, sb * 8 + L * 8, msb, n };
-                    walkStruct(sname, sc, ctx, rows, geo, 1);
+                    Ctx sub = ctx;
+                    walkStruct(sname, sc, sub, rows, geo, 1);
+                    for (auto it = sub.vals.constBegin(); it != sub.vals.constEnd(); ++it)
+                        if (!ctx.vals.contains(it.key()) && !subVals.contains(it.key()))
+                            subVals.insert(it.key(), it.value());
                 }
                 c.pos = sb * 8 + L * 8;
                 ++idx;
@@ -1269,7 +1282,11 @@ QVector<FieldRow> Decoder::decode(const QByteArray &frame,
 
     // Hand back the numeric context the walk built. Published only on
     // request: every existing caller wants rows and nothing else.
-    if (rawValues) { *rawValues = ctx.vals; }
+    if (rawValues) {
+        *rawValues = ctx.vals;
+        for (auto it = subVals.constBegin(); it != subVals.constEnd(); ++it)
+            if (!rawValues->contains(it.key())) rawValues->insert(it.key(), it.value());
+    }
     return rows;
 }
 

@@ -209,7 +209,9 @@ private:
                       Grp &grp, const Geo &geo, const QString &sep) const;
     // `depth` guards against a schema whose structs reference each other in
     // a cycle, which would otherwise recurse until the stack is gone.
-    void walkStruct(const QString &name, Cursor &c, Ctx ctx,
+    // Session 338: `ctx` by reference, so the struct's values reach the
+    // caller (it used to be by value, and they were lost).
+    void walkStruct(const QString &name, Cursor &c, Ctx &ctx,
                     QVector<FieldRow> &rows, const Geo &geo,
                     int depth = 0) const;
     static constexpr int kMaxStructDepth = 32;

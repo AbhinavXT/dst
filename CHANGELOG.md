@@ -11,6 +11,61 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-338"></a>
+## Session 338 — sub-packet fields reach the reject rules
+
+Item 7 of the earlier list, flagged since session 239: `Decoder::walkStruct`
+took its `Ctx` by value, so no field inside an SLRP sub-packet ever reached
+the decoder's numeric values. Every reject rule on such a field —
+CUR_SIG_ASPECT and NEXT_SIG_ASPECT (10 rules), AUTHORITY_TYPE,
+TRAIN_SECTION_TYPE, TSR_STATUS, ROUTE_RFID_CNT, ADJ_LINE_CNT — could never
+fire in the Field Inspector, the run report, the hover card (334) or
+"Why is this row coloured?" (335). The Packet Maker was not affected (it
+judges its encoder's read-back, session 239).
+
+**The fix.** `walkStruct` takes `Ctx` by reference. Each sub-packet is
+still decoded in its own copy of the header's values, so one sub-packet's
+fields never steer another's conditions and **the decoded rows are
+unchanged** (the SLRP validator: 6770/6770 identical). Only the numeric
+values handed to the rules gain the sub-packet fields. Where a field occurs
+in two sub-packets, the first one's value is the one judged (a comment
+marks this shortcut).
+
+**What the operator sees — on the real captures in `replay/`.**
+- **149 real SLRP frames are now reported as "would not be processed"**,
+  clause 31.26.1: their Movement Authority carries AUTHORITY_TYPE 0
+  ("Not used"). The clause: *"Stationary KAVACH should send a packet with
+  AUTHORITY_TYPE as '00' … The Onboard KAVACH should not process
+  packets."* None of the 149 had any finding before.
+  - 115 from loco 1 on 27 June around 14:00
+    (`loco_1_1_27062026_140226.cap`), 21 from loco 1 and 13 from loco 2
+    around 17:00.
+  - These are the station's frames as captured; whether AUTHORITY_TYPE 0
+    there is expected station behaviour is for Abhinav to judge.
+- The 870 frames already reported for REF_PROF_ID 0 (31.13.2) are
+  unchanged.
+- No real frame carries a spare signal aspect or TSR_STATUS 3.
+
+**Files.** `schema/schemadecoder.{h,cpp}`.
+
+**Tests.** New `session338` (7 checks) on real SLRPs from `replay/`: the
+Movement Authority's four fields are in the raw values and equal the
+decoded rows; the header's still are; a real frame with CUR_SIG_ASPECT set
+to 16 (spare), CRC remade, fires 31.23.17, and the Field Inspector says a
+receiver would not process it. It prints the per-clause counts above. The
+whole suite passed unchanged before the new suite was added.
+
+**Gate (macOS):** green on Qt 5.15 and Qt 6.11: 370 suites / 9461 checks,
+0 failed; 15 validators (SLRP 6770/6770 identical); menu audit; smoke. The
+first Qt 5 run caught the new suite writing through `QByteArray`'s
+`operator[]` (Qt 5's `QByteRef` does not bind to `char&`); it uses
+`data()`.
+
+**Not tested:** sub-packet fields that occur in more than one sub-packet
+of one frame (none of the rules' fields do in `replay/`).
+
+---
+
 <a id="session-337"></a>
 ## Session 337 — "▼ N new rows": scrolling up pauses a following tab
 
