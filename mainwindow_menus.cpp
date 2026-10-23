@@ -255,6 +255,24 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     actPrevProb->setShortcut(QKeySequence("Shift+F4"));
     connect(actPrevProb, &QAction::triggered, this, &MainWindow::onActionPrevProblem);
 
+    // Session 331: back to where the last jump left from, like a browser.
+    // Disabled until there is somewhere to go, so the menu says why the key
+    // does nothing. In a text box Alt+Left still moves by word (macOS).
+    editMenu->addSeparator();
+    m_actNavBack = editMenu->addAction(tr("Bac&k"));
+    m_actNavBack->setObjectName(QStringLiteral("actNavBack"));
+    m_actNavBack->setShortcut(QKeySequence("Alt+Left"));
+    m_actNavBack->setToolTip(tr("Back to where you were before the last jump "
+                                "(Go to timestamp, next problem, a bookmark, a tool window)."));
+    m_actNavBack->setEnabled(false);
+    connect(m_actNavBack, &QAction::triggered, this, &MainWindow::onActionNavBack);
+
+    m_actNavForward = editMenu->addAction(tr("For&ward"));
+    m_actNavForward->setObjectName(QStringLiteral("actNavForward"));
+    m_actNavForward->setShortcut(QKeySequence("Alt+Right"));
+    m_actNavForward->setEnabled(false);
+    connect(m_actNavForward, &QAction::triggered, this, &MainWindow::onActionNavForward);
+
     auto *viewMenu = menuBar()->addMenu(tr("&View"));
 
     QAction *actMerged = viewMenu->addAction(tr("All sources, &chronological…"));

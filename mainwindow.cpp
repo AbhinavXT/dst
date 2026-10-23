@@ -1328,6 +1328,7 @@ void MainWindow::gotoProblem(int dir)
         return;
     }
 
+    noteJumpFrom(currentNavPoint());
     const QModelIndex target = proxy->index(row, 0);
     it->view->setCurrentIndex(target);
     it->view->scrollTo(target, QAbstractItemView::PositionAtCenter);
@@ -1595,6 +1596,7 @@ void MainWindow::onActionGotoTimestamp()
     if (bestRow < 0) return;
     const qint64 bestMs = GotoTimestamp::epochAtProxyRow(proxy, src, bestRow);
 
+    noteJumpFrom(currentNavPoint());
     const QModelIndex landing = proxy->index(bestRow, LogModel::ColTime);
     it->view->setCurrentIndex(landing);
     it->view->scrollTo(landing, QAbstractItemView::PositionAtCenter);
@@ -2664,6 +2666,7 @@ void MainWindow::stepBookmark(int direction)
     // Shared with the session window, so the two cannot drift apart.
     const int r = nextBookmarkedRow(proxy, model, from, direction);
     if (r >= 0) {
+        noteJumpFrom(currentNavPoint());
         const QModelIndex landing = proxy->index(r, LogModel::ColTime);
         it->view->setCurrentIndex(landing);
         it->view->scrollTo(landing, QAbstractItemView::PositionAtCenter);
@@ -2808,6 +2811,7 @@ void MainWindow::jumpToEntry(const QString &tabKey, qint64 epochMs)
 {
     auto it = m_tabs.find(tabKey);
     if (it == m_tabs.end()) return;
+    const NavPoint from = currentNavPoint();   // before the tab switch below
 
     // The tab may be hidden (no traffic for a while, or manually closed);
     // a jump has to be able to bring it back or the result is a silent
@@ -2842,10 +2846,59 @@ void MainWindow::jumpToEntry(const QString &tabKey, qint64 epochMs)
         return;
     }
 
+    noteJumpFrom(from);
     const QModelIndex landing = proxy->index(bestRow, LogModel::ColTime);
     it->view->setCurrentIndex(landing);
     it->view->scrollTo(landing, QAbstractItemView::PositionAtCenter);
     it->view->setFocus();
+}
+
+NavPoint MainWindow::currentNavPoint() const
+{
+    NavPoint p;
+    p.tabKey = currentTabKey();
+    auto it = m_tabs.constFind(p.tabKey);
+    if (it == m_tabs.constEnd() || !it->view || !it->filterBar || !m_dispatcher) return {};
+    const QModelIndex cur = it->view->currentIndex();
+    LogModel *model = m_dispatcher->modelForKey(p.tabKey);
+    if (!cur.isValid() || !model) return {};
+    const LogEntryPtr e = model->entryAt(it->filterBar->proxyModel()->mapToSource(cur).row());
+    if (!e) return {};
+    p.epochMs = e->epochMs;
+    return p;
+}
+
+void MainWindow::noteJumpFrom(const NavPoint &from)
+{
+    if (!m_navReplaying) m_nav.record(from);
+    if (m_actNavBack)    m_actNavBack->setEnabled(m_nav.canBack());
+    if (m_actNavForward) m_actNavForward->setEnabled(m_nav.canForward());
+}
+
+void MainWindow::onActionNavBack()
+{
+    const NavPoint to = m_nav.back(currentNavPoint());
+    if (!to.isValid()) {
+        statusBar()->showMessage(tr("Nothing to go back to: no jump yet in this session."), 3000);
+        return;
+    }
+    m_navReplaying = true;
+    jumpToEntry(to.tabKey, to.epochMs);
+    m_navReplaying = false;
+    noteJumpFrom({});
+}
+
+void MainWindow::onActionNavForward()
+{
+    const NavPoint to = m_nav.forward(currentNavPoint());
+    if (!to.isValid()) {
+        statusBar()->showMessage(tr("Nothing to go forward to."), 3000);
+        return;
+    }
+    m_navReplaying = true;
+    jumpToEntry(to.tabKey, to.epochMs);
+    m_navReplaying = false;
+    noteJumpFrom({});
 }
 
 void MainWindow::onActionSearchArchive()

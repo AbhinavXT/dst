@@ -40,6 +40,7 @@
 #include "logentry.h"
 #include "logwriter.h"
 #include "messagedispatcher.h"
+#include "navhistory.h"
 #include "laneband.h"
 #include "namemap.h"
 #include "rawbytespanel.h"
@@ -213,6 +214,9 @@ private slots:
     // Shared by the search window's jump and anything else that needs to
     // land on a specific moment in a specific source.
     void jumpToEntry(const QString &tabKey, qint64 epochMs);
+    // Session 331: Edit ▸ Back / Forward (Alt+Left / Alt+Right).
+    void onActionNavBack();
+    void onActionNavForward();
     void onActionCompareTabs();   // Tools → Compare tabs…
     void onActionLocoConsole();   // Tools → Live Loco Console…
     void onActionFaultPanel();    // Tools → Active Fault Panel…
@@ -278,6 +282,14 @@ private:
     };
 
     Ui::MainWindow *ui;
+
+    // Session 331: where each jump left from (navhistory.h). The place is
+    // read BEFORE a jump switches tabs, and recorded once it lands.
+    NavHistory m_nav;
+    bool       m_navReplaying = false;   // Back/Forward's own jump: not recorded
+    QAction   *m_actNavBack = nullptr, *m_actNavForward = nullptr;
+    NavPoint   currentNavPoint() const;
+    void       noteJumpFrom(const NavPoint &from);
 
     // Owned pipeline objects.
     UDPCommunication  *m_receiver   = nullptr;

@@ -182,6 +182,7 @@ SOURCES += \
     $$PWD/savedata.cpp \
     $$PWD/statusline.cpp \
     $$PWD/recentfiles.cpp \
+    $$PWD/navhistory.cpp \
     $$PWD/shortcutsdialog.cpp \
     $$PWD/uicolors.cpp \
     $$PWD/programdir.cpp \
@@ -363,6 +364,7 @@ HEADERS += \
     $$PWD/savedata.h \
     $$PWD/statusline.h \
     $$PWD/recentfiles.h \
+    $$PWD/navhistory.h \
     $$PWD/shortcutsdialog.h \
     $$PWD/sendguard.h \
     $$PWD/uicolors.h \

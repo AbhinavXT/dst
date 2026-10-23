@@ -11,6 +11,48 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-331"></a>
+## Session 331 — Edit ▸ Back / Forward (Alt+← / Alt+→)
+
+Abhinav picked UI item 1: *"Back / Forward: return to where you were after
+a jump"*. Go to timestamp, next problem, next bookmark, a minimap or ribbon
+click and every tool window's "jump to this frame" move the view, and
+there was no way back to the row you were reading.
+
+**What the operator sees.**
+- **Edit ▸ Back** (Alt+←) and **Edit ▸ Forward** (Alt+→), greyed out until
+  there is somewhere to go.
+- Back returns to the tab and row selected before the last jump, switching
+  tabs if the jump did. Forward undoes a Back. A new jump after Back drops
+  Forward, as a browser does. Up to 100 places are kept for the session.
+- A place is a tab and a moment, not a row number, so rows arriving or a
+  changed filter in between still land on the same frame (or its nearest
+  visible neighbour, as jumps already do).
+- In a text box on macOS, Alt+← still moves by word.
+
+**Files.** `navhistory.{h,cpp}` (new); `mainwindow.{h,cpp}` (the place is
+read before each jump and recorded once it lands: `jumpToEntry`,
+`gotoProblem`, Go to timestamp, `stepBookmark`); `mainwindow_menus.cpp`.
+
+**Tests.** New `session331` (19 checks): the history alone (nothing
+recorded without a selected row, duplicates, Forward dropped by a new jump,
+the 100 cap); in the window, on 600 real rows of
+`replay/loco_1_1_27062026_170217.cap` fed as sources 21 and 51: a jump
+lights Back, Back crosses back to the first tab at its row, Back again
+reaches the row selected before any jump, Forward twice returns to the
+other tab, and new rows in between do not move the place.
+
+**Gate (macOS):** green on Qt 5.15 and Qt 6.11: 363 suites / 9376 checks,
+0 failed; 15 validators; menu audit; smoke. The first run caught this
+suite leaving the field catalogue loaded, which broke `assertions` after
+it; it now puts the catalogue back as found, like session 287.
+
+**Not tested:** the shortcut keys pressed for real (the actions are
+triggered); jumps from each tool window individually (they all go through
+`jumpToEntry`).
+
+---
+
 <a id="session-330"></a>
 ## Session 330 — session111's flaky auto-baud test, fixed
 
