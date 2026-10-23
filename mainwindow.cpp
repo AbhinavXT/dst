@@ -1,3 +1,4 @@
+#include "rowwhy.h"
 #include "mainwindow.h"
 #include <QSettings>
 #include "frameclock.h"
@@ -462,6 +463,11 @@ MainWindow::MainWindow(QWidget *parent)
             });
     connect(m_fieldPanel, &FieldInspector::decodeFailed,
             this,         &MainWindow::onDecodeFailed);
+    // Session 333: the crumb's tab part, back to the row in the log.
+    connect(m_fieldPanel, &FieldInspector::contextActivated, this, [this]() {
+        auto it = m_tabs.find(currentTabKey());
+        if (it != m_tabs.end() && it->view) it->view->setFocus();
+    });
 
     // Decode failures. Hidden until something actually fails, so it costs
     // nothing on a healthy system but is impossible to miss when a schema
@@ -1068,7 +1074,8 @@ void MainWindow::onLogRowContextMenu(const QPoint &pos)
     actClip->setObjectName(QStringLiteral("rowDmiClip"));
     actClip->setToolTip(tr("The DMI as the loco pilot saw it, ±30 s around this row, as an animated GIF"));
     menu.addSeparator();
-    QAction *actWhy      = menu.addAction(tr("&Why this colour?"));
+    QAction *actWhy      = menu.addAction(tr("&Why is this row coloured?"));
+    actWhy->setObjectName(QStringLiteral("rowWhyColoured"));
     QAction *actFilterSrc = menu.addAction(
         tr("Filter to this source (%1)").arg(key));
 
@@ -1093,13 +1100,8 @@ void MainWindow::onLogRowContextMenu(const QPoint &pos)
         // bug obvious: decorative RAD/CAN rules were pinning severity to
         // info, so real errors rendered as info and nothing on screen said
         // which rule was responsible.
-        QMessageBox box(this);
-        box.setWindowTitle(tr("Colour rule attribution"));
-        box.setIcon(QMessageBox::NoIcon);
-        box.setText(tr("How this row was classified:"));
-        box.setInformativeText(entry->text);
-        box.setDetailedText(m_colorRules.explainClassification(entry->text));
-        box.exec();
+        // Session 335: in sentences first, the rules under Details.
+        RowWhy::showDialog(this, entry->text, m_colorRules);
     } else if (chosen == actFilterSrc) {
         it->filterBar->setQuery(QStringLiteral("src:%1").arg(key));
     } else if (chosen == actDiff) {

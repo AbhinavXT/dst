@@ -183,6 +183,9 @@ SOURCES += \
     $$PWD/statusline.cpp \
     $$PWD/recentfiles.cpp \
     $$PWD/navhistory.cpp \
+    $$PWD/fieldcrumb.cpp \
+    $$PWD/rowcard.cpp \
+    $$PWD/rowwhy.cpp \
     $$PWD/shortcutsdialog.cpp \
     $$PWD/uicolors.cpp \
     $$PWD/programdir.cpp \
@@ -365,6 +368,9 @@ HEADERS += \
     $$PWD/statusline.h \
     $$PWD/recentfiles.h \
     $$PWD/navhistory.h \
+    $$PWD/fieldcrumb.h \
+    $$PWD/rowcard.h \
+    $$PWD/rowwhy.h \
     $$PWD/shortcutsdialog.h \
     $$PWD/sendguard.h \
     $$PWD/uicolors.h \

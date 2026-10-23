@@ -192,12 +192,15 @@ void MainWindow::buildOrShowTab(const QString &tabKey,
     // Row-selection → raw bytes side panel.
     connect(view->selectionModel(),
             &QItemSelectionModel::currentRowChanged,
-            this, [this, tabKey](const QModelIndex &cur, const QModelIndex &) {
+            this, [this, tabKey, friendlyName](const QModelIndex &cur, const QModelIndex &) {
                 const LogEntryPtr e = entryFromProxyIndex(cur);
                 m_rawPanel->showEntry(e);
                 // Decode after the hex dump exists — the inspector's byte
                 // highlight writes into it.
-                if (m_fieldPanel) m_fieldPanel->showEntry(e);
+                if (m_fieldPanel) {
+                    m_fieldPanel->setContextLabel(friendlyName);   // the crumb's first part
+                    m_fieldPanel->showEntry(e);
+                }
                 // Session 84: the DMI window, following, shows this moment.
                 offerDmiMoment(tabKey, cur);
             });

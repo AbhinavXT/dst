@@ -1,6 +1,7 @@
 #include "logmodel.h"
 #include "uicolors.h"
 #include "namemap.h"
+#include "rowcard.h"
 
 #include <QBrush>
 #include <QColor>
@@ -297,13 +298,19 @@ QVariant LogModel::data(const QModelIndex &index, int role) const
             }
             return tip;
         }
+        {
         // Hovering a row shows the raw (source_id, kvchId, msg_id) header
         // tuple — useful when the friendly name hides what's underneath.
-        return QString("source=%1  kvch=%2  msg_id=%3  len=%4")
+        const QString tuple = QString("source=%1  kvch=%2  msg_id=%3  len=%4")
                    .arg(e->header.source_id)
                    .arg(e->header.kvchId)
                    .arg(e->header.message_id)
                    .arg(e->header.message_len);
+        // Session 334: a capture row's card over it — decoded here, on
+        // hover, never on the ingest path.
+        const QString card = RowCard::html(e->text);
+        return card.isEmpty() ? tuple : card + QStringLiteral("<br><br>") + tuple.toHtmlEscaped();
+        }
 
     default:
         break;

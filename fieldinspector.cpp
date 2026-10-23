@@ -4,6 +4,7 @@
 #include "uistyle.h"
 
 #include "capturedecoder.h"
+#include "fieldcrumb.h"
 #include "locoidentity.h"
 #include "rejectrules.h"
 #include "schema/schemadecoder.h"
@@ -132,15 +133,34 @@ FieldInspector::FieldInspector(QWidget *parent)
     m_summary->installEventFilter(this);
     m_summary->hide();
 
+    // Session 333: where the selected field sits. Links, not buttons: it
+    // reads as a path and wraps when the dock is narrow.
+    m_crumb = new QLabel;
+    m_crumb->setObjectName(QStringLiteral("fieldCrumb"));
+    m_crumb->setTextFormat(Qt::RichText);
+    m_crumb->setWordWrap(true);
+    m_crumb->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+    m_crumb->setToolTip(tr("Where the selected field sits. Click a part to go to it."));
+    m_crumb->hide();
+    connect(m_crumb, &QLabel::linkActivated, this, [this](const QString &href) {
+        if (href == QLatin1String("tab")) { emit contextActivated(); return; }
+        const int row = href == QLatin1String("top") ? 0 : href.mid(4).toInt();
+        if (row >= 0 && row < m_table->rowCount()) {
+            m_table->selectRow(row);
+            m_table->scrollToItem(m_table->item(row, 0), QAbstractItemView::PositionAtTop);
+        }
+    });
+
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(4, 4, 4, 4);
     layout->setSpacing(UiStyle::space(2));
     layout->addWidget(m_summary);
     layout->addWidget(m_status);
+    layout->addWidget(m_crumb);
     layout->addWidget(m_table, 1);
 
     connect(m_table, &QTableWidget::currentCellChanged,
-            this, [this](int row, int, int, int) { onRowChanged(row); });
+            this, [this](int row, int, int, int) { onRowChanged(row); updateCrumb(); });
 }
 
 void FieldInspector::setDecoder(const Schema::Decoder *decoder)
@@ -163,6 +183,7 @@ void FieldInspector::clear()
     m_rows.clear();
     m_table->setRowCount(0);
     if (m_summary) m_summary->hide();
+    updateCrumb();
     setStatus(tr("Select a row to decode it."), false);
     emit byteRangeSelected(-1, -1);
 }
@@ -182,6 +203,7 @@ void FieldInspector::showEntry(const LogEntryPtr &entry)
     m_rows.clear();
     m_table->setRowCount(0);
     if (m_summary) m_summary->hide();
+    updateCrumb();
     emit byteRangeSelected(-1, -1);
 
     if (!entry) { clear(); return; }
@@ -314,6 +336,7 @@ void FieldInspector::showEntry(const LogEntryPtr &entry)
     // test sheet. Silence means no rule in rejectrules.xml matched, which is
     // not the same claim as the packet being good, so nothing here says so.
     fillSummary(cap);
+    updateCrumb();
 
     if (!m_findings.isEmpty()) {
         setStatus(tr("A receiver would not process this frame — %1")
@@ -362,9 +385,8 @@ QStringList FieldInspector::keyFields()
              QStringLiteral("LAST_RFID_TAG"), QStringLiteral("PKT_TYPE") };
 }
 
-namespace {
 // "7 (Trip)" reads best as "Trip"; "0 km/h" and "163821 m" as they are.
-QString tileValue(const QString &value)
+QString FieldInspector::tileValue(const QString &value)
 {
     const int open = value.indexOf(QLatin1Char('('));
     const int close = value.lastIndexOf(QLatin1Char(')'));
@@ -372,7 +394,7 @@ QString tileValue(const QString &value)
     return value.trimmed();
 }
 
-QString tileCaption(const QString &field)
+QString FieldInspector::tileCaption(const QString &field)
 {
     const QString f = field.toUpper();
     if (f == QLatin1String("LOCO_MODE"))     return QObject::tr("Loco mode");
@@ -383,7 +405,36 @@ QString tileCaption(const QString &field)
     if (f == QLatin1String("PKT_TYPE"))      return QObject::tr("Packet type");
     return field;
 }
-}  // namespace
+
+QStringList FieldInspector::crumbParts() const
+{
+    if (m_entry.isNull() || m_rows.isEmpty()) return {};
+    QStringList out{ m_context.isEmpty() ? m_entry->tabKey() : m_context,
+                     CaptureDecoder::parseLine(m_entry->text).typeToken.toUpper() };
+    const int row = m_table->currentRow();
+    if (row < 0 || row >= m_rows.size()) return out;
+    for (int p : FieldCrumb::parents(m_rows, row)) out << FieldCrumb::label(m_rows.at(p));
+    out << FieldCrumb::label(m_rows.at(row));
+    return out;
+}
+
+void FieldInspector::updateCrumb()
+{
+    const QStringList parts = crumbParts();
+    m_crumb->setVisible(!parts.isEmpty());
+    if (parts.isEmpty()) return;
+    // Every part but the last is a link: the tab, the packet's first row,
+    // then each containing row by number.
+    QStringList hrefs{ QStringLiteral("tab"), QStringLiteral("top") };
+    for (int p : FieldCrumb::parents(m_rows, m_table->currentRow())) hrefs << QStringLiteral("row:%1").arg(p);
+    QStringList html;
+    for (int i = 0; i < parts.size(); ++i) {
+        const QString t = parts.at(i).toHtmlEscaped();
+        html << (i + 1 < parts.size() ? QStringLiteral("<a href=\"%1\">%2</a>").arg(hrefs.at(i), t)
+                                      : QStringLiteral("<b>%1</b>").arg(t));
+    }
+    m_crumb->setText(html.join(QStringLiteral(" › ")));
+}
 
 void FieldInspector::fillSummary(const CaptureLine &cap)
 {

@@ -54,6 +54,7 @@ bool ColorRules::loadFromFile(const QString &path)
                                      &r.hasSeverity);
         r.direction = parseDirection(o.value("direction").toString(),
                                      &r.hasDirection);
+        r.note      = o.value("_note").toString();
 
         // Convenience: if dark variants are not specified, fall back to
         // the light ones. This keeps legacy color_rules.json files (no
@@ -174,6 +175,11 @@ ColorRules::RuleMatch ColorRules::classify(const QString &text) const
         }
     }
     return m;   // matched=false + defaults if nothing hit
+}
+
+QString ColorRules::ruleNote(int index) const
+{
+    return index < 0 || index >= m_rules.size() ? QString() : m_rules.at(index).note;
 }
 
 QString ColorRules::rulePattern(int index) const

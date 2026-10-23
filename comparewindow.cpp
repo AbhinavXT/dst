@@ -1,3 +1,4 @@
+#include "rowwhy.h"
 #include "comparewindow.h"
 #include <QMenu>
 #include <QMenuBar>
@@ -665,15 +666,10 @@ QMenu *CompareWindow::buildRowMenu(int paneIndex, const QModelIndex &index,
     // The affordance that made the shipped colour_rules.json bug findable:
     // decorative rules were pinning severity to info, so real errors
     // rendered as info and nothing on screen said which rule did it.
-    a = menu->addAction(tr("&Why this colour?"));
+    a = menu->addAction(tr("&Why is this row coloured?"));
     a->setEnabled(m_rules != nullptr);
     connect(a, &QAction::triggered, this, [this, entry] {
-        if (!m_rules) { return; }
-        QMessageBox box(this);
-        box.setWindowTitle(tr("Why this colour?"));
-        box.setTextFormat(Qt::PlainText);
-        box.setText(m_rules->explainClassification(entry->text));
-        box.exec();
+        if (m_rules) RowWhy::showDialog(this, entry->text, *m_rules);
     });
 
     menu->addSeparator();

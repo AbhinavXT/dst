@@ -83,6 +83,16 @@ public:
     // in a frame are shown. Matched case-insensitively (the DMI's fields are
     // lower case).
     static QStringList keyFields();
+    // How the card captions a key field ("Speed") and shows its value
+    // ("7 (Trip)" -> "Trip"). Shared with the row hover card (session 334).
+    static QString tileCaption(const QString &field);
+    static QString tileValue(const QString &value);
+
+    // Session 333: the crumb over the table, "Tab › SLRP › subpkt[3] TSR ›
+    // TSR_ID". `label` names the tab (its friendly name); empty = the
+    // entry's own key. crumbParts() is what it shows, for tests.
+    void setContextLabel(const QString &label) { m_context = label; }
+    QStringList crumbParts() const;
 
 public slots:
     void showEntry(const LogEntryPtr &entry);
@@ -110,6 +120,8 @@ signals:
     void locateFieldRequested(const QString &fieldName);
 
     void plotFieldRequested(const QString &fieldName);
+    // The crumb's first part (the tab) was clicked: back to the log row.
+    void contextActivated();
 
 private slots:
     void onRowChanged(int row);
@@ -138,6 +150,9 @@ protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
 private:
     QTableWidget *m_table  = nullptr;
+    QLabel       *m_crumb  = nullptr;   // session 333
+    QString       m_context;
+    void          updateCrumb();
     const SessionKeyStore *m_keys = nullptr;   // not owned
 };
 

@@ -98,6 +98,8 @@ public:
 
     // Source pattern of a rule, for display. Empty if out of range.
     QString rulePattern(int index) const;
+    // A rule's "_note" from the JSON, in its author's words (session 335).
+    QString ruleNote(int index) const;
 
     // Load rules from `path`. Returns true on success. On failure the
     // built-in defaults are loaded instead and the function returns false.
@@ -125,6 +127,7 @@ private:
         // value and every rule looks like it declares both.
         bool               hasSeverity  = false;
         bool               hasDirection = false;
+        QString            note;
     };
 
     void loadDefaults();

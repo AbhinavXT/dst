@@ -11,6 +11,126 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-335"></a>
+## Session 335 — "Why is this row coloured?" in sentences
+
+UI item 5: *"Why is this red? On a row with a warning or error, one click
+shows the reason in plain words: the rule that fired and its SIF clause."*
+The row menu had **Why this colour?** since session 44, but it answered
+with rule numbers and regular expressions, and said nothing about the
+frame itself.
+
+**What the operator sees.** Right-click a row ▸ **Why is this row
+coloured?** (in the log tabs and in Compare) opens one dialog:
+- first, for a capture frame a reject rule fires on: *"A receiver would
+  not process this LSRP frame:"*, then each finding with its clause and
+  the rule's note from `rejectrules.xml`;
+- a failed CRC: *"Its CRC does not match its bytes: the frame was damaged
+  on the way, or was built with a different CRC."*;
+- then which colour rule set the severity, in a sentence, with that rule's
+  `_note` from `color_rules.json` when it has one ("shown as an error
+  because its text matches colour rule #2 (…)"); or that no rule sets it;
+- the old rule-by-rule attribution under **Show Details…**.
+Wording stays with what a receiver would do; nothing says "invalid".
+
+**Files.** `rowwhy.{h,cpp}` (new); `colorrules.{h,cpp}` (`_note` is read:
+`ruleNote()`); `mainwindow.cpp`, `comparewindow.cpp` (the menu item).
+
+**Tests.** New `session335` (11 checks) with the shipped
+`color_rules.json`: an error row names its rule; a rule's `_note` comes
+with it; nothing matched says so. The first real frame in `replay/` a
+reject rule fires on: the answer starts with what a receiver would do and
+carries the finding, never "invalid". The first real frame whose CRC
+fails is named; one whose CRC passes is not.
+
+**Gate (macOS):** green on Qt 5.15 and Qt 6.11: 367 suites / 9426 checks,
+0 failed; 15 validators; menu audit; smoke. Gated together with sessions
+333–335, which share files and went in as one commit.
+
+**Not tested:** the dialog itself on screen (its text is `explain()`).
+The receiver findings here do not include the loco-identity context the
+Field Inspector adds (session 168), so a rule that needs the loco's own
+ID can fire in the inspector and not here.
+
+---
+
+<a id="session-334"></a>
+## Session 334 — the hover card on a log row
+
+UI item 4: *"Hover card on a row: after a short hover, a card shows the
+decoded key fields without clicking or opening the decode pane."*
+
+**What the operator sees.** Hovering a capture row (any column but Δt)
+shows a card: **LSRP · 39 B** and its CRC, then the values the inspector's
+card leads with — loco mode, speed, location, frame number, last RFID tag,
+packet type — whichever the frame carries, and, when a reject rule fires,
+*"▲ A receiver would not process this frame: …"*. The source / kvch /
+msg_id line the tooltip used to show stays under it. A text row's tooltip
+is unchanged.
+
+The frame is decoded only when the tooltip is asked for, on hover; the
+ingest path does no extra work.
+
+**Files.** `rowcard.{h,cpp}` (new); `logmodel.cpp` (the tooltip);
+`fieldinspector.{h,cpp}` (`tileCaption` / `tileValue` shared, public).
+
+**Tests.** New `session334` (11 checks) on the first real LSRP and DMI
+lines of `replay/loco_1_1_27062026_170217.cap`: the card names the packet
+and its size, carries every key value the frame has with its caption, and
+the CRC; a text row and a capture line with no bytes get no card; in a
+`LogModel`, the message column's tooltip is the card with the header tuple
+under it, and a text row's is the tuple alone.
+
+**Gate (macOS):** green on Qt 5.15 and Qt 6.11: 367 suites / 9426 checks,
+0 failed; 15 validators; menu audit; smoke. Gated together with sessions
+333–335, which share files and went in as one commit.
+
+**Not tested:** the tooltip's look on screen in each theme (it is plain
+rich text, no colours of its own).
+
+---
+
+<a id="session-333"></a>
+## Session 333 — the breadcrumb over the decoded fields
+
+UI item 3: *"Breadcrumb over the decode pane: Tab › Packet › Sub-packet ›
+Field, each part clickable."* In an SLRP of a hundred rows, a TSR_ID row
+looks the same in every sub-packet.
+
+**What the operator sees.** Over the Field Inspector's table, a line such
+as **Loco 1 VCC › SLRP › subpkt[3] TSR_PROFILE › TSR_ID**: the tab, the
+packet, the rows that contain the selected one, and the field. Every part
+but the last is a link: the tab goes back to the log row, the packet to
+its first field, a sub-packet to its header row. With no field chosen it
+reads *Tab › Packet*; with nothing decoded it is not shown. It wraps when
+the dock is narrow.
+
+The rows are nested only by their leading spaces, so a row's parents are
+the rows above it with less indent; the envelope rows (type, CRC, …) are
+never parents.
+
+**Files.** `fieldcrumb.{h,cpp}` (new); `fieldinspector.{h,cpp}`
+(`setContextLabel`, `crumbParts`, `contextActivated`);
+`mainwindow.cpp`, `mainwindow_tabs.cpp` (the tab's name, and focus back to
+the table).
+
+**Tests.** New `session333` (14 checks) on the first real SLRP and ARP of
+`replay/loco_1_1_27062026_170217.cap`: a sub-packet field's parent is its
+sub-packet; the sub-packet has none and drops its `@byte`; a header field
+before the sub-packets has none; in the inspector the crumb reads Tab ›
+SLRP › sub-packet › field; its links select the sub-packet row, go to the
+first row, and ask for the log table; a new frame shows Tab › ARP; clear()
+hides it.
+
+**Gate (macOS):** green on Qt 5.15 and Qt 6.11: 367 suites / 9426 checks,
+0 failed; 15 validators; menu audit; smoke. Gated together with sessions
+333–335, which share files and went in as one commit.
+
+**Not tested:** a link clicked with the mouse (`linkActivated` is
+emitted).
+
+---
+
 <a id="session-332"></a>
 ## Session 332 — Find history: ▾ beside the Find box
 
