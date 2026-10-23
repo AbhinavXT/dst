@@ -264,9 +264,10 @@ TEST_SUITE(session324)
         stream += QByteArray::fromHex("AA");                               // a lone AA
         stream += inputReply(5, 1, 1, 0x41F89595u, 3, wf);
         stream += outputData(14, 2, 0x0003, wf);
-        // Analog data: its payload is not known, so it is found by its end pair.
+        // A message this file does not know is found by its end pair. (It
+        // was analog data until session 346 gave analog its size.)
         Header h;
-        h.src = 15; h.dest = 1; h.msgId = kMsgAnalogToVcc; h.seq = 3;
+        h.src = 15; h.dest = 1; h.msgId = 0x7E; h.seq = 3;
         stream += build(kVccRxSof, h, QByteArray::fromHex("0102030405060708"), wf);
 
         Scanner s;
@@ -275,8 +276,8 @@ TEST_SUITE(session324)
         CHECK(got.size() == 4, qPrintable(QStringLiteral("four frames from a byte-at-a-time stream (%1)").arg(got.size())));
         if (got.size() == 4) {
             CHECK(got[0].isInputRequest() && got[1].isInputReply() && got[2].isOutputData(), "in order, by kind");
-            CHECK(got[3].h.msgId == kMsgAnalogToVcc && !got[3].known && got[3].payload.size() == 8,
-                  "analog data by its end bytes, 8 bytes of payload");
+            CHECK(got[3].h.msgId == 0x7E && !got[3].known && got[3].payload.size() == 8,
+                  "an unknown message by its end bytes, 8 bytes of payload");
         }
         CHECK(s.skippedBytes() == 4 && s.pending() == 0, "the noise and the lone AA skipped, nothing held");
     }

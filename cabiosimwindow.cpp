@@ -13,9 +13,11 @@
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QDateTime>
+#include <QDoubleSpinBox>
 #include <QFontDatabase>
 #include <QFormLayout>
 #include <QGuiApplication>
+#include <QGridLayout>
 #include <QGroupBox>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -585,6 +587,7 @@ CabIoSimWindow::CabIoSimWindow(SerialManager *serial, QWidget *parent)
     m_tabs->addTab(buildInputsTab(),  tr("Inputs \u2192 VCC"));
     m_tabs->addTab(buildOutputsTab(), tr("Outputs \u2190 VCC"));
     m_tabs->addTab(buildReadbackTab(), tr("Readback \u2192 VCC"));
+    m_tabs->addTab(buildAnalogTab(),  tr("Analog \u2192 VCC"));
     m_tabs->addTab(buildFramesTab(),  tr("Frames"));
     root->addWidget(m_tabs, 1);
 
@@ -600,6 +603,11 @@ CabIoSimWindow::CabIoSimWindow(SerialManager *serial, QWidget *parent)
     m_periodTimer = new QTimer(this);
     m_periodTimer->setTimerType(Qt::PreciseTimer);
     connect(m_periodTimer, &QTimer::timeout, this, &CabIoSimWindow::onPeriodic);
+
+    m_anTimer = new QTimer(this);
+    m_anTimer->setTimerType(Qt::PreciseTimer);
+    m_anTimer->setInterval(100);
+    connect(m_anTimer, &QTimer::timeout, this, &CabIoSimWindow::sendAnalogNow);
 
     m_uiTimer = new QTimer(this);
     m_uiTimer->setInterval(250);
@@ -909,6 +917,138 @@ QWidget *CabIoSimWindow::buildReadbackTab()
     scroll->setWidget(m_rbTable);
     v->addWidget(scroll, 1);
     return page;
+}
+
+QWidget *CabIoSimWindow::buildAnalogTab()
+{
+    auto *page = new QWidget(this);
+    auto *v = new QVBoxLayout(page);
+    v->setContentsMargins(0, 10, 0, 0);
+    v->setSpacing(8);
+
+    auto *row = new QHBoxLayout;
+    row->setSpacing(8);
+    row->addWidget(segmented({ tr("Off"), tr("Send every") }, &m_anSendGroup, page));
+    m_anSendGroup->button(1)->setToolTip(tr("Send the six channels as each ticked controller, unasked, every period. "
+                                            "Leave Off while a real analog card is on the line."));
+    connect(m_anSendGroup, &QButtonGroup::idClicked, this, [this](int id) { setAnalogSending(id == 1); });
+    m_anPeriod = new QSpinBox(page);
+    m_anPeriod->setRange(10, 10000);
+    m_anPeriod->setSingleStep(10);
+    m_anPeriod->setValue(100);
+    m_anPeriod->setSuffix(tr(" ms"));
+    connect(m_anPeriod, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int ms) { setAnalogPeriodMs(ms); });
+    row->addWidget(m_anPeriod);
+    auto *once = new QPushButton(tr("Send now"), page);
+    once->setToolTip(tr("Send the six channels once, as each ticked controller"));
+    connect(once, &QPushButton::clicked, this, &CabIoSimWindow::sendAnalogNow);
+    row->addWidget(once);
+    row->addSpacing(12);
+    auto *as = new QLabel(tr("as"), page);
+    as->setObjectName(QStringLiteral("muted"));
+    row->addWidget(as);
+    for (quint8 id : { kAnalogTopId, kAnalogBottomId }) {
+        auto *chip = new QPushButton(id == kAnalogTopId ? tr("15 top") : tr("16 bottom"), page);
+        chip->setObjectName(QStringLiteral("idChip"));
+        chip->setCheckable(true);
+        chip->setChecked(id == kAnalogTopId);
+        chip->setCursor(Qt::PointingHandCursor);
+        chip->setProperty("cardId", int(id));
+        chip->setToolTip(tr("Send as analog controller %1 (src_id %1)").arg(id));
+        connect(chip, &QPushButton::toggled, this, [this]() { refreshAnalog(); });
+        m_anCardChips << chip;
+        row->addWidget(chip);
+    }
+    row->addStretch(1);
+    v->addLayout(row);
+
+    auto *hint = new QLabel(tr("Set a channel's loop current, or the pressure it should read as. The VCC reads "
+                               "raw / 2\u00B3\u00B9 \u00D7 75 mA (the firmware's 2500/33 is integer division), then "
+                               "4\u201320 mA across the sensor's full scale \u00D7 1.02 in kg/cm\u00B2. Below 3.5 mA it is an "
+                               "open loop, above 20.5 mA a short: no pressure."), page);
+    hint->setObjectName(QStringLiteral("muted"));
+    hint->setWordWrap(true);
+    v->addWidget(hint);
+
+    auto *grid = new QGridLayout;
+    grid->setHorizontalSpacing(10);
+    grid->setVerticalSpacing(6);
+    const QStringList heads{ tr("Channel"), tr("Current"), tr("Pressure"), tr("Sensor"), tr("The VCC reads") };
+    for (int c = 0; c < heads.size(); ++c) {
+        auto *h = new QLabel(heads.at(c).toUpper(), page);
+        h->setObjectName(QStringLiteral("groupHeading"));
+        grid->addWidget(h, 0, c);
+    }
+    for (int ch = 0; ch < kAnalogChannels; ++ch) {
+        AnRow r;
+        grid->addWidget(new QLabel(QStringLiteral("%1 <span style=\"%2\">\u00B7 channel%3_data</span>")
+                                       .arg(analogChannelName(ch), UiColor::mutedStyle()).arg(ch + 1), page),
+                        ch + 1, 0);
+        r.mA = new QDoubleSpinBox(page);
+        r.mA->setRange(0, 25);
+        r.mA->setDecimals(3);
+        r.mA->setSingleStep(0.1);
+        r.mA->setSuffix(tr(" mA"));
+        r.mA->setValue(4);
+        connect(r.mA, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this]() { refreshAnalog(); });
+        grid->addWidget(r.mA, ch + 1, 1);
+        r.kg = new QDoubleSpinBox(page);
+        r.kg->setRange(0, 16.32);
+        r.kg->setDecimals(2);
+        r.kg->setSingleStep(0.1);
+        r.kg->setSuffix(tr(" kg/cm\u00B2"));
+        r.kg->setToolTip(tr("Sets the current that reads as this pressure"));
+        connect(r.kg, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
+                [this, ch](double kg) { setAnalogPressure(ch, kg); });
+        grid->addWidget(r.kg, ch + 1, 2);
+        r.scale = new QComboBox(page);
+        r.scale->addItem(tr("10 bar"), 10);
+        r.scale->addItem(tr("16 bar"), 16);
+        connect(r.scale, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() { refreshAnalog(); });
+        grid->addWidget(r.scale, ch + 1, 3);
+        r.reads = new QLabel(page);
+        r.reads->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        grid->addWidget(r.reads, ch + 1, 4);
+        m_anRows << r;
+    }
+    grid->setColumnStretch(4, 1);
+    v->addLayout(grid);
+    m_anSummary = new QLabel(page);
+    m_anSummary->setWordWrap(true);
+    v->addWidget(m_anSummary);
+    v->addStretch(1);
+    return page;
+}
+
+void CabIoSimWindow::refreshAnalog()
+{
+    if (m_anRows.isEmpty()) return;
+    for (AnRow &r : m_anRows) {
+        const quint32 raw = analogRawFor(r.mA->value());
+        const double ma = CabIo::analogMa(raw);
+        const int bar = r.scale->currentData().toInt();
+        const PressureReading p = currentToPressure(ma, bar);
+        { const QSignalBlocker block(r.kg); r.kg->setMaximum(bar * 1.02); }
+        QString t = QStringLiteral("%1 \u2192 %2 mA \u2192 ").arg(hex32(raw)).arg(ma, 0, 'f', 3);
+        if (p.status == PressureReading::Ok) {
+            t += tr("%1 kg/cm\u00B2 (%2 kPa)").arg(p.kgcm2, 0, 'f', 2).arg(p.kgcm2 * 98.0665, 0, 'f', 0);
+            const QSignalBlocker block(r.kg);
+            r.kg->setValue(p.kgcm2);
+        } else {
+            t += p.status == PressureReading::Open ? tr("open loop (< 3.5 mA): no pressure")
+                                                   : tr("short (> 20.5 mA): no pressure");
+        }
+        r.kg->setEnabled(p.status == PressureReading::Ok);
+        r.reads->setText(t);
+        r.reads->setStyleSheet(p.status == PressureReading::Ok ? QString() : UiColor::warningStyle());
+    }
+    const QVector<quint8> cards = analogCards();
+    QString sum = analogSending() ? tr("Sending every %1 ms as %2.").arg(m_anTimer->interval())
+                                        .arg(cards.isEmpty() ? tr("no controller (tick 15 or 16)") : idRange(cards))
+                                  : tr("Off: nothing sent unasked.");
+    sum += tr(" %1 sent.").arg(count(m_analogSent, "analog frame", "analog frames"));
+    m_anSummary->setText(sum);
+    m_anSummary->setStyleSheet(analogSending() ? QString() : UiColor::mutedStyle());
 }
 
 // One row per pin, named by the cab's STRUCT_LOCO_OUTPUT.
@@ -1479,6 +1619,18 @@ void CabIoSimWindow::loadSettings()
     wf.crc = Crc(s.value(QStringLiteral("crc"), int(wf.crc)).toInt());
     wf.length = LengthRule(s.value(QStringLiteral("length"), int(wf.length)).toInt());
     wf.echoSeq = s.value(QStringLiteral("echoSeq"), true).toBool();
+    // No brake by default: BP 5.0, BC 0, MR 9.0 kg/cm^2, the rest 4 mA.
+    static const double defaultKg[kAnalogChannels] = { 5.0, 0, 9.0, 0, 0, 0 };
+    for (int ch = 0; ch < kAnalogChannels; ++ch) {
+        setAnalogScale(ch, s.value(QStringLiteral("analogBar_%1").arg(ch + 1), 10).toInt());
+        const QVariant ma = s.value(QStringLiteral("analogMa_%1").arg(ch + 1));
+        if (ma.isValid()) setAnalogMa(ch, ma.toDouble()); else setAnalogPressure(ch, defaultKg[ch]);
+    }
+    setAnalogPeriodMs(s.value(QStringLiteral("analogPeriodMs"), 100).toInt());
+    QVector<quint8> anIds;
+    for (const QString &id : s.value(QStringLiteral("analogIds"), QStringLiteral("15")).toString().split(QLatin1Char(','), Qt::SkipEmptyParts))
+        anIds << quint8(id.toInt());
+    setAnalogCards(anIds);
     s.endGroup();
     setWireFormat(wf);
     // Always start answering: a window that opened sending unasked would
@@ -1499,6 +1651,14 @@ void CabIoSimWindow::saveSettings() const
     s.setValue(QStringLiteral("crc"), int(m_wf.crc));
     s.setValue(QStringLiteral("length"), int(m_wf.length));
     s.setValue(QStringLiteral("echoSeq"), m_wf.echoSeq);
+    for (int ch = 0; ch < m_anRows.size(); ++ch) {
+        s.setValue(QStringLiteral("analogMa_%1").arg(ch + 1), analogMa(ch));
+        s.setValue(QStringLiteral("analogBar_%1").arg(ch + 1), analogScale(ch));
+    }
+    s.setValue(QStringLiteral("analogPeriodMs"), m_anPeriod->value());
+    QStringList anIds;
+    for (quint8 id : analogCards()) anIds << QString::number(id);
+    s.setValue(QStringLiteral("analogIds"), anIds.join(QLatin1Char(',')));
     for (int bi = 0; bi < m_banks.size(); ++bi) {
         QStringList ids;
         for (quint8 id : bankIds(bi)) ids << QString::number(id);
@@ -1616,6 +1776,71 @@ void CabIoSimWindow::refreshPort()
     m_traffic->setText(m_link && (open || m_link->rxBytes() || m_link->txBytes())
                            ? tr("rx %1 B \u00B7 tx %2 B").arg(m_link->rxBytes()).arg(m_link->txBytes())
                            : QString());
+}
+
+// ---- analog -------------------------------------------------------------------------------
+
+void CabIoSimWindow::setAnalogMa(int ch, double mA) { if (ch >= 0 && ch < m_anRows.size()) m_anRows[ch].mA->setValue(mA); }
+double CabIoSimWindow::analogMa(int ch) const { return m_anRows.value(ch).mA ? m_anRows.at(ch).mA->value() : 0; }
+
+void CabIoSimWindow::setAnalogPressure(int ch, double kgcm2)
+{
+    if (ch < 0 || ch >= m_anRows.size()) return;
+    setAnalogMa(ch, 4.0 + 16.0 * kgcm2 / (analogScale(ch) * 1.02));
+}
+
+void CabIoSimWindow::setAnalogScale(int ch, int bar)
+{
+    if (ch < 0 || ch >= m_anRows.size()) return;
+    m_anRows[ch].scale->setCurrentIndex(qMax(0, m_anRows[ch].scale->findData(bar)));
+}
+
+int CabIoSimWindow::analogScale(int ch) const
+{
+    return m_anRows.value(ch).scale ? m_anRows.at(ch).scale->currentData().toInt() : 10;
+}
+
+void CabIoSimWindow::setAnalogCards(const QVector<quint8> &ids)
+{
+    for (QPushButton *c : m_anCardChips) {
+        const QSignalBlocker b(c);
+        c->setChecked(ids.contains(quint8(c->property("cardId").toInt())));
+    }
+    refreshAnalog();
+}
+
+QVector<quint8> CabIoSimWindow::analogCards() const
+{
+    QVector<quint8> ids;
+    for (QPushButton *c : m_anCardChips)
+        if (c->isChecked()) ids << quint8(c->property("cardId").toInt());
+    return ids;
+}
+
+void CabIoSimWindow::setAnalogSending(bool on)
+{
+    { const QSignalBlocker b(m_anSendGroup); m_anSendGroup->button(on ? 1 : 0)->setChecked(true); }
+    if (on) m_anTimer->start(); else m_anTimer->stop();
+    refreshAnalog();
+}
+
+bool CabIoSimWindow::analogSending() const { return m_anTimer->isActive(); }
+
+void CabIoSimWindow::setAnalogPeriodMs(int ms)
+{
+    { const QSignalBlocker b(m_anPeriod); m_anPeriod->setValue(ms); }
+    m_anTimer->setInterval(ms);
+    refreshAnalog();
+}
+
+void CabIoSimWindow::sendAnalogNow()
+{
+    QVector<quint32> raw;
+    for (int ch = 0; ch < kAnalogChannels; ++ch) raw << analogRawFor(analogMa(ch));
+    for (quint8 id : analogCards()) {
+        write(analogData(id, m_anSeq++, raw, m_wf));
+        ++m_analogSent;
+    }
 }
 
 // ---- traffic -------------------------------------------------------------------------------
@@ -1865,6 +2090,11 @@ void CabIoSimWindow::logFrame(bool tx, const Frame &f)
         data = hex16(f.outputWord());
     else if (f.isReadback())
         data = tr("%1  health %2").arg(hex(f.pins()), hex8(f.health()));
+    else if (f.isAnalog()) {
+        QStringList mA;
+        for (int ch = 0; ch < kAnalogChannels; ++ch) mA << QString::number(CabIo::analogMa(f.analogRaw(ch)), 'f', 3);
+        data = mA.join(QLatin1Char(' ')) + tr(" mA");
+    }
     else
         data = f.payload.isEmpty() ? QStringLiteral("\u2014") : hex(f.payload);
     QString crc;

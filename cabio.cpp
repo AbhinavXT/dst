@@ -27,6 +27,8 @@ QString unitName(quint8 id)
     if (id == kVccId)              return QStringLiteral("VCC");
     if (id >= 5 && id <= 12)       return QStringLiteral("input %1").arg(id);
     if (id == 13 || id == 14)      return QStringLiteral("output %1").arg(id);
+    if (id == kAnalogTopId)        return QStringLiteral("analog top 15");
+    if (id == kAnalogBottomId)     return QStringLiteral("analog bottom 16");
     if (id == 17 || id == 18)      return QStringLiteral("readback %1").arg(id);
     return QStringLiteral("unit %1").arg(id);
 }
@@ -431,6 +433,7 @@ static int knownSize(quint8 sof, quint8 msgId)
     if (sof == kOutputSof && msgId == kMsgVccOutputData) return fixed + 2;
     if (sof == kOutputSof && msgId == kMsgVccOutputReq)  return fixed;
     if (sof == kVccRxSof && msgId == kMsgOutputToVcc)    return fixed + kPins + 1;
+    if (sof == kVccRxSof && msgId == kMsgAnalogToVcc)    return fixed + 4 * kAnalogChannels;
     return 0;
 }
 
@@ -531,6 +534,51 @@ QByteArray readback(quint8 src, quint8 dest, quint16 seq, const QByteArray &pins
     return build(kVccRxSof, h, p, wf);
 }
 
+double analogMa(quint32 raw)
+{
+    return raw / 2147483648.0 * 75.0;
+}
+
+quint32 analogRawFor(double mA)
+{
+    const double r = mA / 75.0 * 2147483648.0;
+    return r <= 0 ? 0u : r >= 4294967295.0 ? 0xFFFFFFFFu : quint32(r + 0.5);
+}
+
+PressureReading currentToPressure(double mA, double fullScaleBar)
+{
+    // The firmware takes a float: compare as it does.
+    const float ma = float(mA);
+    PressureReading r;
+    if (ma < 3.5f)  { r.status = PressureReading::Open;  return r; }
+    if (ma > 20.5f) { r.status = PressureReading::Short; return r; }
+    float fraction = (ma - 4.0f) / 16.0f;
+    fraction = qBound(0.0f, fraction, 1.0f);
+    r.kgcm2 = float(fraction * float(fullScaleBar) * 1.02);
+    return r;
+}
+
+QString analogChannelName(int ch)
+{
+    static const char *const names[3] = { "BP", "BC", "MR" };
+    return ch >= 0 && ch < 3 ? QString::fromLatin1(names[ch]) : QStringLiteral("Channel %1").arg(ch + 1);
+}
+
+QByteArray analogData(quint8 src, quint16 seq, const QVector<quint32> &raw, const WireFormat &wf)
+{
+    Header h;
+    h.src = src;
+    h.dest = kVccId;
+    h.msgId = kMsgAnalogToVcc;
+    h.seq = seq;
+    QByteArray p;
+    for (int ch = 0; ch < kAnalogChannels; ++ch) {
+        const quint32 v = raw.value(ch);
+        for (int i = 3; i >= 0; --i) p.append(char((v >> (8 * i)) & 0xFF));
+    }
+    return build(kVccRxSof, h, p, wf);
+}
+
 QByteArray readbackPins(quint16 word)
 {
     return ReadbackSim().pins(word);
@@ -592,6 +640,13 @@ quint8  Frame::health() const
     return (isInputReply() || isReadback()) && !payload.isEmpty() ? quint8(payload.at(payload.size() - 1)) : 0;
 }
 quint16 Frame::outputWord() const { return payload.size() >= 2 ? quint16(getLe(payload, 0, 2)) : 0; }
+quint32 Frame::analogRaw(int ch) const
+{
+    if (!isAnalog() || ch < 0 || ch >= kAnalogChannels) return 0;
+    quint32 v = 0;
+    for (int i = 0; i < 4; ++i) v = (v << 8) | quint8(payload.at(4 * ch + i));
+    return v;
+}
 
 static Frame makeFrame(const QByteArray &raw, bool known)
 {

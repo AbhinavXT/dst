@@ -10,6 +10,8 @@
 //                    are answered (or the data is sent on a period).
 //    Outputs <- VCC  the output data the VCC sends to the output cards
 //                    (13 / 14), drawn as lamps by STRUCT_LOCO_OUTPUT's names.
+//    Analog -> VCC   the analog card (session 346): six 4-20 mA channels as
+//                    controllers 15 / 16 send them, with what the VCC reads.
 //    Frames          every frame both ways, and the wire format.
 //  SIFA-extended and old cab layouts both (cabio.h).
 //
@@ -29,6 +31,7 @@
 class QButtonGroup;
 class QCheckBox;
 class QComboBox;
+class QDoubleSpinBox;
 class QLabel;
 class QLineEdit;
 class QPushButton;
@@ -97,6 +100,20 @@ public:
     void resetInputsToDefault();
     void forgetInputDefault();
     bool hasInputDefault() const;
+    // Analog -> VCC (session 346): one set of six channels, sent as each
+    // ticked controller (15 top, 16 bottom) every period while sending is on.
+    void   setAnalogMa(int ch, double mA);
+    double analogMa(int ch) const;
+    void   setAnalogPressure(int ch, double kgcm2);   // sets the mA that reads as it
+    void   setAnalogScale(int ch, int bar);           // 10 or 16
+    int    analogScale(int ch) const;
+    void   setAnalogCards(const QVector<quint8> &ids);
+    QVector<quint8> analogCards() const;
+    void   setAnalogSending(bool on);
+    bool   analogSending() const;
+    void   setAnalogPeriodMs(int ms);
+    void   sendAnalogNow();
+    int    analogSent() const { return m_analogSent; }
     void setWireFormat(const CabIo::WireFormat &wf);
     CabIo::WireFormat wireFormat() const { return m_wf; }
 
@@ -142,6 +159,8 @@ private:
     QWidget *buildOutputsTab();
     QWidget *buildFramesTab();
     QWidget *buildReadbackTab();
+    QWidget *buildAnalogTab();
+    void refreshAnalog();
     void rebuildReadback();
     void applyDefault(Bank &b) const;
     quint16 readbackWord(quint8 card, bool *known) const;
@@ -231,6 +250,21 @@ private:
     QLabel      *m_rbSummary = nullptr;
     QWidget     *m_rbTable = nullptr;
     QVector<RbRow> m_rbRows;
+    // Analog -> VCC
+    struct AnRow {
+        QDoubleSpinBox *mA = nullptr;
+        QDoubleSpinBox *kg = nullptr;
+        QComboBox *scale = nullptr;
+        QLabel *reads = nullptr;
+    };
+    QVector<AnRow> m_anRows;
+    QButtonGroup *m_anSendGroup = nullptr;
+    QSpinBox    *m_anPeriod = nullptr;
+    QVector<QPushButton *> m_anCardChips;
+    QLabel      *m_anSummary = nullptr;
+    QTimer      *m_anTimer = nullptr;
+    quint16 m_anSeq = 0;
+    int m_analogSent = 0;
     QPushButton *m_resetDefault = nullptr;
     QLabel      *m_outFooter = nullptr;
 

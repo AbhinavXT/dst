@@ -11,6 +11,56 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-346"></a>
+## Session 346 — Cab I/O Simulator: the analog card
+
+Abhinav: *"each channel gives me an analog current value that i convert into
+kPa pressure based on what the scale is 10 bar or 16 bar … i want to add a
+UI to simulate the working of analog card"*, with the firmware's
+`STRUCT_ANALOG_SENSOR_DATA`, `Process_Analog_Card_Data_CAN` and
+`current_to_pressure`. Asked and answered: in the Cab I/O Simulator, on its
+serial port; CRC uint32 JAMCRC; message_length the whole frame; sent every
+N ms.
+
+**What the operator sees.** A new tab, **Analog → VCC**:
+- Off / **Send every N ms** / **Send now**, as **15 top** and/or **16 bottom**.
+- Six rows (BP, BC, MR, Channel 4–6): the loop current in mA, or the
+  pressure it should read as in kg/cm² (it sets the current), the sensor's
+  full scale (10 or 16 bar), and what the VCC reads: raw → mA → kg/cm²
+  (and kPa), or "open loop (< 3.5 mA)" / "short (> 20.5 mA)" in amber.
+- Opens Off, at no brake: BP 5.0, BC 0, MR 9.0 kg/cm², the rest 4 mA. The
+  values, scales, period and controllers are remembered.
+- Frames lists analog frames with their six currents.
+
+**The frame.** `AF AF` + header (length 38, src 15/16, dest 1, 0xF1, seq LE)
++ six uint32 **big-endian** (the VCC `PP_HTONL`s them) + JAMCRC LE + `FA FA`.
+The VCC reads `mA = raw / 2³¹ × (2500/33)`; in C `2500/33` is **75**
+(integer division), so the simulator uses 75 to read as the VCC does.
+Pressure: `(mA − 4) / 16` clamped 0..1 × full scale × 1.02, kg/cm².
+
+The analog frame now has a known size (38 B), so channels holding `FA FA`
+are not cut short. `session324`'s "found by its end pair" case now uses an
+unknown message id (0x7E) instead of 0xF1.
+
+Noted for the firmware (not changed here): the card is picked by
+`src_id - INPUT_CARD_1_CONTROLLER_1_ID` but `log_id` compares the raw
+`src_id` with `ANALOG_CARD_1_CONTROLLER_1_ID`.
+
+**Files.** `cabio.{h,cpp}`, `cabiosimwindow.{h,cpp}`,
+`tests/test_session324.cpp`, `tests/test_session346.cpp`, `tests/tests.pro`.
+
+**Tests.** New `session346` (32 checks): mA ↔ raw, the pressure and fault
+thresholds, the 38-byte frame byte by byte, FA FA inside the channels, and
+the window sending as 15 and 16, on its period, and stopping.
+
+**Gate (Mac):** Qt 6 and Qt 5.15 both green: 377 suites / 9612 checks, 0
+failed; 15 validators; menu audit; smoke.
+
+**Not tested:** against a real VCC or analog card: no real analog frame has
+been captured. The tab was not looked at on screen.
+
+---
+
 <a id="session-345"></a>
 ## Session 345 — the radio chart: a stretch of radio traffic as one picture
 

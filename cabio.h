@@ -38,7 +38,16 @@
 //      each pin whose bit was 1 and 0x17 for each pin whose bit was 0.
 //    The Wire format settings stay in the window, defaulting to these.
 //
-//    The analog (0xF1) payload is not known: found and shown, never built.
+//  ANALOG CARD (Abhinav, session 346: the firmware's Process_Analog_Card_Data_CAN)
+//
+//      analog card -> VCC data      AF AF  header ch1..ch6  crc  FA FA  38 B
+//
+//    src 15 (top) / 16 (bottom), dest 1, message 0xF1. Each channel is a
+//    uint32 sent big-endian (the VCC PP_HTONLs it). The VCC reads
+//    mA = raw / 2^31 * (2500/33) -- integer division in C, so * 75 -- then
+//    current_to_pressure(): < 3.5 mA open, > 20.5 mA short, else
+//    (mA - 4) / 16 clamped to 0..1, * full scale (10 or 16 bar) * 1.02, in
+//    kg/cm^2. Channels 1-3 are BP, BC, MR. No real frame captured yet.
 // =============================================================================
 #include <QByteArray>
 #include <QString>
@@ -67,6 +76,9 @@ constexpr quint8 kHealthy = 0x13;        // vic_health in every real reply (the 
 constexpr quint8 kPinBitSet   = 0x0C;    // a=0 b=0 fault=1 trans=1 output=0
 constexpr quint8 kPinBitClear = 0x17;    // a=1 b=1 fault=1 trans=0 output=1
 constexpr int    kPins = 16;
+
+constexpr quint8 kAnalogTopId = 15, kAnalogBottomId = 16;
+constexpr int    kAnalogChannels = 6;
 
 constexpr int kHeaderSize = 6;
 constexpr int kCrcSize    = 4;
@@ -209,6 +221,8 @@ struct Frame {
     bool isOutputData()   const { return sof == kOutputSof && h.msgId == kMsgVccOutputData && payload.size() == 2; }
     bool isOutputRequest() const { return sof == kOutputSof && h.msgId == kMsgVccOutputReq; }
     bool isReadback() const { return sof == kVccRxSof && h.msgId == kMsgOutputToVcc && payload.size() == kPins + 1; }
+    bool isAnalog() const { return sof == kVccRxSof && h.msgId == kMsgAnalogToVcc && payload.size() == 4 * kAnalogChannels; }
+    quint32 analogRaw(int ch) const;   // channel 0..5, as the VCC reads it (big-endian)
     QByteArray pins() const { return isReadback() ? payload.left(kPins) : QByteArray(); }
     quint32 inputWord() const;   // an input reply's input_data
     quint8  health() const;      // an input reply's or readback's health byte (the last)
@@ -261,6 +275,20 @@ private:
 // A readback request's answer from the card it is for: readbackCard(dest),
 // to the VCC, its seq_num, `pins`.
 QByteArray readbackTo(const Frame &request, const QByteArray &pins, quint8 health, const WireFormat &wf);
+
+// ---- the analog card ----------------------------------------------------------------
+// The VCC's reading of a channel: raw / 2^31 * 75 mA (the firmware's
+// (double)(2500/33) is 75), and the raw value that reads as `mA`.
+double  analogMa(quint32 raw);
+quint32 analogRawFor(double mA);
+// current_to_pressure() as the VCC runs it: kg/cm^2, set only when Ok.
+struct PressureReading {
+    enum Status { Ok, Open, Short } status = Ok;
+    double kgcm2 = 0;
+};
+PressureReading currentToPressure(double mA, double fullScaleBar);
+QString analogChannelName(int ch);   // "BP", "BC", "MR", "Channel 4"...
+QByteArray analogData(quint8 src, quint16 seq, const QVector<quint32> &raw, const WireFormat &wf);
 
 // The reply of the card `request` is addressed to: src and dest swapped,
 // seq_num echoed (or `ownSeq` when wf.echoSeq is off).
