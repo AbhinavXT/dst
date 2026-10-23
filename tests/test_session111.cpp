@@ -12,6 +12,7 @@
 #include <QSignalSpy>
 
 #ifdef Q_OS_UNIX
+#  include <poll.h>
 #  include <termios.h>
 #  include <unistd.h>
 #  if defined(Q_OS_MACOS)
@@ -40,6 +41,14 @@ const QByteArray kGarbage = QByteArray::fromHex("8fe31cf0007e9bc3f806e0fe18");
 #ifdef Q_OS_UNIX
 // Run the event loop for `ms`, the card printing a line every 25 ms at
 // whatever the console has set — right only at `cardBaud` (0: never right).
+//
+// Session 329: and only while the console has the port open. A real card's
+// bytes on a line nobody is reading are lost, but a pty keeps them -- and a
+// closed port's line reads back at its ORIGINAL speed (QSerialPort restores
+// the termios on close), so the card printed garbage into the gap between
+// Find and the reopen, the pty held it, and the reopened port read it: two
+// garbage lines in the console about one run in five. No port open on the
+// far end is a hang-up on the master.
 void runCard(int master, speed_t cardBaud, int ms, int *linesAtRight = nullptr)
 {
     QElapsedTimer t, tick;
@@ -52,6 +61,8 @@ void runCard(int master, speed_t cardBaud, int ms, int *linesAtRight = nullptr)
         }
         first = false;
         tick.restart();
+        pollfd pfd{ master, POLLOUT, 0 };
+        if (::poll(&pfd, 1, 0) >= 0 && (pfd.revents & POLLHUP)) continue;   // nobody listening
         termios tio{};
         tcgetattr(master, &tio);
         const bool right = cardBaud && cfgetospeed(&tio) == cardBaud;
@@ -150,25 +161,41 @@ TEST_SUITE(session111)
         runCard(master, B57600, 200);
         CHECK(mgr.health(c.portName, QDateTime::currentMSecsSinceEpoch()).decoded == 0,
               "at 9600 nothing decodes (line health says so)");
-        disp.drainNow();
-        const int fedBefore = disp.modelForKey(SerialManager::tabKeyFor(c.portName))->count();
+        LogModel *tab = disp.modelForKey(SerialManager::tabKeyFor(c.portName));
 
         CHECK(w.findBaud({ 115200, 57600, 9600 }, 300), "Find");
         CHECK(!w.link()->isOpen(), "the port is closed while it looks");
+        // Session 329: counted once the 9600 session's last lines are in --
+        // a close hands them back, but through the event loop, and counting
+        // before they landed read one of them as the probe's.
+        QCoreApplication::processEvents();
+        disp.drainNow();
+        const int fedBefore = tab->count();
         QElapsedTimer clock;
         clock.start();
         while (w.autoBaud()->isRunning() && clock.elapsed() < 4000) runCard(master, B57600, 25);
+        QCoreApplication::processEvents();
+        disp.drainNow();
+        // The reopen at the found rate does not wait for this line, so the
+        // card's first good lines may already be in: what must not be is a
+        // line of the probe's garbage.
+        int garbage = 0;
+        for (int i = fedBefore; i < tab->count(); ++i)
+            if (!tab->entryAt(i)->text.startsWith(QLatin1Char('@'))) ++garbage;
+        CHECK(garbage == 0, "the probe's garbage never reached the console tab");
         // Session 156: the open after a find does not wait for the driver.
         while (!w.link()->isOpen() && clock.elapsed() < 6000) runCard(master, B57600, 25);
         CHECK(w.link()->isOpen() && w.link()->config().baud == 57600 && w.configFromUi().baud == 57600,
               "found 57600, set it, and opened at it");
         CHECK(w.receivedText().contains(QLatin1String("baud: 57600:")), "the terminal says what it found");
-        disp.drainNow();
-        CHECK(disp.modelForKey(SerialManager::tabKeyFor(c.portName))->count() == fedBefore,
-              "the probe's garbage never reached the console tab");
+        // A port opened mid-line may read one partial line, as from a real
+        // card; the lines after it are what must decode.
+        runCard(master, B57600, 100);
+        const SerialLineHealth::Stats before = mgr.health(c.portName, QDateTime::currentMSecsSinceEpoch());
         int good = 0;
         runCard(master, B57600, 200, &good);
-        CHECK(good > 0 && mgr.health(c.portName, QDateTime::currentMSecsSinceEpoch()).decodePercent() == 100,
+        const SerialLineHealth::Stats after = mgr.health(c.portName, QDateTime::currentMSecsSinceEpoch());
+        CHECK(good > 0 && after.lines > before.lines && after.decoded - before.decoded == after.lines - before.lines,
               "and now the card's lines decode");
         w.closePort();
     }

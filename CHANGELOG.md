@@ -11,6 +11,48 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-330"></a>
+## Session 330 — session111's flaky auto-baud test, fixed
+
+CI's Linux Qt 5 job failed on `main` (run 407) in `session111` (serial
+auto-baud on a pty). It is the flaky test noted in session 325, which
+failed 6 of 25 runs on the untouched patch 323 here. The release job needs
+that job green, so it would have blocked a release.
+
+The failures were all in the test's stand-in, not the app. Instrumented,
+they had three causes:
+- **The stand-in card printed into a closed port.** It writes good lines
+  only when the line is set to its rate. A closed `QSerialPort` puts the
+  pty back to its original speed, so between Find and the reopen it printed
+  garbage. A pty, unlike a real line, keeps those bytes, and the reopened
+  port read two garbage lines.
+  - Fix: the card is silent while no port is open, seen as a hang-up on the
+    master (`poll`, `POLLHUP`).
+- **"Nothing fed" was counted too early and too broadly.**
+  - The count was taken before the 9600 session's last line had come
+    through the event loop.
+  - It was also checked after the reopen, which does not wait (session
+    156), so the card's first good `@dop1` lines were already in.
+  - Now the count is taken once the 9600 session has delivered, and the
+    check is that no *garbage* line reaches the tab while the probe runs.
+- **"The card's lines decode" read a partial line from the moment of
+  opening**, as a real card mid-line gives too.
+  - It now measures a clean window after the open: every line in it
+    decodes.
+
+The app is unchanged: no probe bytes ever reached the console (the extra
+lines seen were good `@dop1` lines).
+
+**Files.** `tests/test_session111.cpp`.
+
+**Tests.** `session111` passed 300 of 300 runs on Qt 5 (it failed about 1
+in 5 before) and 60 of 60 on Qt 6.
+
+**Gate:** test-only change; the suite was stress-run on both Qt versions,
+not the whole gate again. Patch 329's gate stands.
+
+---
+
 <a id="session-329"></a>
 ## Session 329 — Cab I/O Simulator: a Readback → VCC tab, and a default for every input
 
