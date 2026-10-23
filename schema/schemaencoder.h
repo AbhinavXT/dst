@@ -21,6 +21,7 @@
 //  region, the MAC coverage and the tail layout are per-regime and
 //  belong with the code that also self-verifies the finished frame.
 // =====================================================================
+#include "engunits.h"
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -40,6 +41,7 @@ struct FieldInfo {
     bool    isSigned = false;
     bool    isPad   = false;
     QString enumName;      // non-empty => offer a choice list
+    QString unit;          // session 342: the field's unit= ("m", "km/h"), carried as it is
     QString when;          // present only when this condition holds
     // Session 92: a <crc> element (the lsb-first packets carry their CRC as
     // one). Written as zeros, then computed over the finished frame and
@@ -158,6 +160,9 @@ public:
     // a picker leaves them out and takes the raw number instead.
     QVector<QPair<qint64, QString>> enumChoices(const QString &enumName,
                                                 bool withRanges = false) const;
+    // Session 342: the enum's <map from= to= formula= unit=> ranges, for
+    // values typed with their unit ("45 km/h"). Empty when it has none.
+    QVector<EngUnits::Range> enumRanges(const QString &enumName) const;
 
     // Pack header + sub-packets into an msb-first body. Does NOT append MAC or
     // CRC. `header` supplies the flat field values (PKT_LENGTH included —

@@ -191,6 +191,7 @@ SOURCES += \
     $$PWD/missionpicker.cpp \
     $$PWD/framerestamp.cpp \
     $$PWD/soundalerts.cpp \
+    $$PWD/engunits.cpp \
     $$PWD/shortcutsdialog.cpp \
     $$PWD/uicolors.cpp \
     $$PWD/programdir.cpp \
@@ -381,6 +382,7 @@ HEADERS += \
     $$PWD/missionpicker.h \
     $$PWD/framerestamp.h \
     $$PWD/soundalerts.h \
+    $$PWD/engunits.h \
     $$PWD/shortcutsdialog.h \
     $$PWD/sendguard.h \
     $$PWD/uicolors.h \

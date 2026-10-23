@@ -437,6 +437,7 @@ void Encoder::collectFields(const QDomElement &parent, const QString &whenCtx,
             fi.bits     = e.attribute("bits").toInt();
             fi.isSigned = (e.attribute("signed") == QLatin1String("true"));
             fi.enumName = e.attribute("enum");
+            fi.unit     = e.attribute("unit");
             fi.when     = combine(whenCtx, e.attribute("when"));
             out.push_back(fi);
         } else if (t == "repeat" && repeats) {
@@ -698,7 +699,11 @@ QVector<QPair<qint64, QString>> Encoder::enumChoices(const QString &enumName,
     const auto label = [](const QDomElement &m, qint64 v) {
         QString l = m.attribute("label", m.attribute("name"));
         if (l.isEmpty()) {
-            l = (m.attribute("formula") + QLatin1Char(' ') + m.attribute("unit")).trimmed();
+            // Session 342: the formula's value ("45 km/h"), not its text ("v*5 km/h").
+            double val = 0;
+            l = EngUnits::apply(m.attribute("formula"), v, &val)
+                    ? (QString::number(val) + QLatin1Char(' ') + m.attribute("unit")).trimmed()
+                    : (m.attribute("formula") + QLatin1Char(' ') + m.attribute("unit")).trimmed();
         }
         return l.replace(QLatin1String("%v"), QString::number(v));
     };
@@ -713,6 +718,22 @@ QVector<QPair<qint64, QString>> Encoder::enumChoices(const QString &enumName,
         const qint64 to   = m.attribute("to").toLongLong(&okT);
         if (!okF || !okT) { continue; }
         for (qint64 r = from; r <= to; ++r) { out.push_back({ r, label(m, r) }); }
+    }
+    return out;
+}
+
+QVector<EngUnits::Range> Encoder::enumRanges(const QString &enumName) const
+{
+    QVector<EngUnits::Range> out;
+    const QDomElement en = m_enums.value(enumName);
+    for (QDomElement m = en.firstChildElement("map"); !m.isNull(); m = m.nextSiblingElement("map")) {
+        if (!m.hasAttribute("from") || !m.hasAttribute("formula") || !m.hasAttribute("unit")) continue;
+        EngUnits::Range r;
+        r.from = m.attribute("from").toLongLong();
+        r.to = m.attribute("to").toLongLong();
+        r.formula = m.attribute("formula");
+        r.unit = m.attribute("unit");
+        out << r;
     }
     return out;
 }

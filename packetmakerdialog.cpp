@@ -1,3 +1,4 @@
+#include "engunits.h"
 #include "packetmakerdialog.h"
 #include "framenumberwatch.h"
 #include "frameclock.h"
@@ -19,6 +20,7 @@
 #include "packetvariation.h"
 
 #include <QComboBox>
+#include <QToolTip>
 #include <QLineEdit>
 #include <QSpinBox>
 #include <QListWidget>
@@ -58,6 +60,35 @@
 namespace {
 
 // Parse a decimal or 0x-hex integer, allowing a leading '-' for signed fields.
+// Session 342: a value typed with its unit becomes the raw value when the
+// editor is left ("45 km/h" -> 9 in a speed6 field, "1200 m" -> 1200). One
+// that is not a value the field can carry is refused: the box goes back to
+// its last value and says why. A bare number stays the raw value.
+void watchUnits(QLineEdit *edit, QWidget *editor, const QVector<EngUnits::Range> &ranges, const QString &unit,
+                const QString &plainTip)
+{
+    edit->setProperty("pmLastGood", edit->text());
+    QObject::connect(edit, &QLineEdit::editingFinished, editor, [edit, editor, ranges, unit, plainTip]() {
+        const QString typed = edit->text();
+        QString why;
+        qint64 raw = 0;
+        bool ok = true;
+        if (EngUnits::hasUnit(typed)) {
+            ok = !ranges.isEmpty() ? EngUnits::toRaw(ranges, typed, &raw, &why)
+                                   : EngUnits::plainToRaw(unit, typed, &raw, &why);
+            if (ok) PacketMakerDialog::writeFieldEditor(editor, raw);
+        }
+        if (!ok) {
+            edit->setText(edit->property("pmLastGood").toString());
+            editor->setToolTip(QObject::tr("Not taken: %1.").arg(why) + QStringLiteral("\n\n") + plainTip);
+            QToolTip::showText(editor->mapToGlobal(QPoint(0, editor->height())), why, editor);
+            return;
+        }
+        editor->setToolTip(plainTip);
+        edit->setProperty("pmLastGood", edit->text());
+    });
+}
+
 qint64 parseNum(const QString &s, bool *ok)
 {
     QString t = s.trimmed();
@@ -186,13 +217,30 @@ QWidget *PacketMakerDialog::makeEditor(const Schema::FieldInfo &f,
             // Start at 0 like a plain field does, named if 0 is declared.
             const int zero = cb->findData(QVariant(qlonglong(0)));
             if (zero >= 0) { cb->setCurrentIndex(zero); } else { cb->setEditText(QStringLiteral("0")); }
+            // Session 342: a coded speed takes "45 km/h" too.
+            const QVector<EngUnits::Range> ranges = enc.enumRanges(f.enumName);
+            if (!ranges.isEmpty()) {
+                QStringList spans;
+                for (const auto &r : ranges)
+                    spans << EngUnits::text({ r }, r.from) + QStringLiteral("–") + EngUnits::text({ r }, r.to);
+                const QString tip = tr("A code. Type a number for the code itself, or a value with its unit "
+                                       "for the code that means it (%1).").arg(spans.join(QStringLiteral(", ")));
+                cb->setToolTip(tip);
+                watchUnits(cb->lineEdit(), cb, ranges, QString(), tip);
+            }
             return cb;
         }
     }
     auto *le = new QLineEdit(parent);
     le->setText(QStringLiteral("0"));
-    le->setToolTip(QStringLiteral("%1 bits%2 — decimal or 0x-hex")
-                       .arg(f.bits).arg(f.isSigned ? QStringLiteral(", signed") : QString()));
+    QString tip = QStringLiteral("%1 bits%2 — decimal or 0x-hex")
+                      .arg(f.bits).arg(f.isSigned ? QStringLiteral(", signed") : QString());
+    if (!f.unit.isEmpty()) {
+        tip = tr("In %1. ").arg(f.unit) + tip + tr("; \"1200 %1\" is taken too").arg(f.unit);   // session 342
+        le->setPlaceholderText(f.unit);
+    }
+    le->setToolTip(tip);
+    watchUnits(le, le, {}, f.unit, tip);
     return le;
 }
 

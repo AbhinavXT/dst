@@ -11,6 +11,52 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-342"></a>
+## Session 342 — Packet Maker: values typed with their unit
+
+Item 8 of the earlier list (item 4 of session 238's, not picked then):
+*"Packet Maker takes km/h and metres, and shows the raw value beside
+them."* Checked against `kavach.xml` first: of its 75 fields with a
+`unit=`, all but the coded speeds are carried as they are (a distance in
+metres, a speed in km/h), so there is nothing to convert for them. The
+coded speeds are the hazard: a profile speed (enum `speed6`) of 9 means
+9 × 5 = 45 km/h, and typing **45** built a frame carrying code 45, a
+reserved value.
+
+**What the operator sees.**
+- A **coded speed** (speed6: AUTHORIZED_SPEED, the SSP and TSR speeds;
+  toSpeed: turnout speed) takes **45 km/h** and writes code 9. A speed no
+  code means (**47 km/h**, or past 250) is **not taken**: the box goes back
+  to its last value and its tooltip says why ("47 km/h is not a value this
+  field can carry (it carries 5–250 km/h)"). Nothing is rounded.
+- A **field in metres or km/h** says so in its tooltip and placeholder,
+  and takes **1200 m** as 1200. Another unit (**1.2 km**) is refused, not
+  converted; so is a fraction of a metre.
+- A bare number is still the raw value, as before.
+- The choice lists (here and in Field Sweep) read a coded speed by its
+  value: "9 — 45 km/h", not "v*5 km/h".
+
+**Files.** `engunits.{h,cpp}` (new: the formulas `v*N`, `v/N`, `v+N`,
+`v-N`, their inverse, and the refusals); `schema/schemaencoder.{h,cpp}`
+(`FieldInfo::unit`, `enumRanges`, formula labels); `packetmakerdialog.cpp`.
+
+**Tests.** New `session342` (23 checks): the formulas and their inverse;
+45 km/h → 9, 250km/h → 50; 47 and 300 km/h refused, saying what the field
+carries; another unit refused; 1200 m → 1200, 1.2 km and 12.5 m refused.
+On the shipped `kavach.xml`: speed6 has one formula range and pktDir none;
+the choice list reads 9 as 45 km/h; MovementAuthority's AUTHORIZED_SPEED
+editor turns 45 km/h into 9, refuses 47 km/h keeping 9 with "Not taken:",
+and takes 62 as the code; SLRP's DIST_PKT_START says "In m.", takes
+1200 m and refuses 1.2 km.
+
+**Gate (macOS):** green on Qt 5.15 and Qt 6.11: 374 suites / 9539 checks,
+0 failed; 15 validators; menu audit; smoke.
+
+**Not tested:** the refusal tooltip popping up on screen (its text is
+checked).
+
+---
+
 <a id="session-341"></a>
 ## Session 341 — View ▸ Sounds
 
