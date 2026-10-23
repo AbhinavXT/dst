@@ -11,6 +11,30 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-344"></a>
+## Session 344 — locoinfolivecheck's fixed wait, on a slow Windows runner
+
+CI's Windows job failed on the `patch-331` tag in `locoinfolivecheck`
+("overdue: the check says no @linfo since the send"), while the same
+commit passed on `main`. The app's rule is right: a send is overdue after
+three of the loco's own `@linfo` intervals (session 81). The test fed
+`@linfo` lines and took that interval from the wall clock between them,
+then waited a fixed 400 ms. On a slow runner the steps between those lines
+(writing the send history) took over 133 ms, so three intervals were more
+than 400 ms and the check was not yet overdue.
+
+**Fix.** The test waits until the check says overdue, rechecking every
+50 ms, up to 5 s. What it checks is unchanged.
+
+**Files.** `tests/test_livedata.cpp`.
+
+**Tests.** `locoinfolivecheck` 20 of 20 on Qt 5 and 20 of 20 on Qt 6.
+
+**Gate:** test-only change; the suite was stress-run on both Qt versions,
+not the whole gate again (as session 330). Patch 343's gate stands.
+
+---
+
 <a id="session-343"></a>
 ## Session 343 — notes on log rows, in the incident pack
 

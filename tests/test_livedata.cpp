@@ -20,6 +20,7 @@
 #include <QSettings>
 #include <QTableWidget>
 #include <QTemporaryDir>
+#include <QElapsedTimer>
 #include <QThread>
 #include <QUdpSocket>
 
@@ -327,10 +328,16 @@ TEST_SUITE(locoinfolivecheck)
         QThread::msleep(5);
         CHECK(window.sendNow(false), "sent again");
         window.setConfirmMinWaitMs(0);
-        // Past three of this loco's own intervals (in this test, the few ms
-        // between the @linfo lines fed above).
-        QThread::msleep(400);
-        window.recheck();   // no frame: only the clock has moved
+        // Past three of this loco's own intervals: the time between the
+        // @linfo lines fed above, by the wall clock. A few ms here; on a slow
+        // Windows runner it was over 133 ms, so a fixed 400 ms wait came up
+        // short (patch 331's CI). Wait until it is overdue, up to 5 s.
+        QElapsedTimer waited;
+        waited.start();
+        do {
+            QThread::msleep(50);
+            window.recheck();   // no frame: only the clock has moved
+        } while (!window.liveCheckText().startsWith(QStringLiteral("⚠ No @linfo")) && waited.elapsed() < 5000);
         CHECK(window.liveCheckText().startsWith(QStringLiteral("⚠ No @linfo from loco 7_1")),
               "overdue: the check says no @linfo since the send, and why that may be");
         window.setConfirmMinWaitMs(LocoConfigWindow::kConfirmMinWaitMs);
