@@ -16,6 +16,7 @@
 //    status bar keeps the notices, pins, queue, drops and disk.
 // =============================================================================
 
+#include "missionpicker.h"
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
 
@@ -199,6 +200,15 @@ void MainWindow::buildShell()
     hl->addWidget(m_headerTitle);
     hl->addWidget(m_headerMeta);
     hl->addStretch(1);
+
+    // Session 339: one mission at a time, across every tab.
+    m_missionPicker = new MissionPicker(header);
+    m_missionPicker->setSource([this]() -> const LogModel * {
+        return m_dispatcher ? m_dispatcher->modelForKey(currentTabKey()) : nullptr;
+    });
+    connect(m_missionPicker, &MissionPicker::missionChosen, this, &MainWindow::focusMission);
+    connect(m_missionPicker, &MissionPicker::allChosen, this, &MainWindow::unfocusMission);
+    hl->addWidget(m_missionPicker);
 
     // The count, as a quiet mono readout.
     ui->label_2->hide();

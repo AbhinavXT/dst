@@ -11,6 +11,48 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-339"></a>
+## Session 339 — Mission ▾: every tab on one mission
+
+Item 4 of the earlier list (offered in session 219): *"Focus on one
+mission: a toolbar picker that filters the open views."* A day's capture
+holds several missions (session 171); looking at one meant reading its
+times off the mission report and typing them into each tab's filter.
+
+**What the operator sees.**
+- **Mission ▾** in the log header, beside the count. It lists the missions
+  of the tab on show, worked out when the menu opens: *Before the first
+  start of mission*, then *Mission 2 · 10:58–11:30 · On_Sight · 32m 05s*
+  (number, span, the highest supervision reached, duration).
+- Choosing one filters **every tab** to that span, as the visible query
+  `after:… before:…` the ribbon's range drag already writes, so it can be
+  read, edited or cleared like any filter. The button then reads
+  *Mission 2*.
+- **All missions** takes the mission's filter off again, only in tabs
+  where it is still the filter: a filter typed since is left alone.
+- A tab with no start of mission says so in the menu.
+- Tool windows (DMI, track diagram, reports) are not filtered; they follow
+  their own controls.
+
+**Files.** `missionpicker.{h,cpp}` (new); `mainwindow.{h,cpp}`
+(`focusMission`, `unfocusMission`, `timeRangeQuery` taken out of
+`applyTimeRangeFilter`); `mainwindow_shell.cpp`.
+
+**Tests.** New `session339` (13 checks) on the real 2026-10-08 excerpt
+(session 219: the stretch before and three missions), fed as two sources:
+the menu lists them; Mission 2 filters both tabs to the same span and
+only mission 2's rows remain; the button names it; All missions is
+unticked meanwhile; All missions takes the filter off one tab and leaves a
+filter typed into the other.
+
+**Gate (macOS):** green on Qt 5.15 and Qt 6.11: 371 suites / 9474 checks,
+0 failed; 15 validators; menu audit; smoke.
+
+**Not tested:** a tab whose rows were trimmed at the tab's row limit (the
+missions are those of the rows it still holds).
+
+---
+
 <a id="session-338"></a>
 ## Session 338 — sub-packet fields reach the reject rules
 

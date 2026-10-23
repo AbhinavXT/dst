@@ -200,6 +200,11 @@ private slots:
     void loadBuiltinTestCases();              // Tools → Test cases → Load built-in test cases
     // Turn a ribbon drag into a visible `after:… before:…` query.
     void applyTimeRangeFilter(const QString &tabKey, qint64 fromMs, qint64 toMs);
+    // "after:… before:…", in the zone the Time column shows.
+    QString timeRangeQuery(qint64 fromMs, qint64 toMs) const;
+    // Session 339: Mission ▾ — every tab to one mission's span, or back.
+    void focusMission(int index, qint64 fromMs, qint64 toMs);
+    void unfocusMission();
     void onActionToggleBookmark();      // Ctrl+B on the selected row
     void onActionNextProblem();      // F4      — next error or warning
     void onActionPrevProblem();      // Shift+F4
@@ -548,6 +553,8 @@ private:
     // Session 336: the tab on show, in one chip (tabhealth.h). Its rate
     // comes from how the count moved since the last tick.
     QLabel *m_lblTabHealth    = nullptr;
+    class MissionPicker *m_missionPicker = nullptr;   // session 339
+    QString m_missionQuery;   // the query focusMission set, so All takes off only that
     QString m_healthKey;
     int     m_healthCount = 0;
     qint64  m_healthAtMs  = 0;

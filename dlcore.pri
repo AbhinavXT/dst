@@ -188,6 +188,7 @@ SOURCES += \
     $$PWD/rowwhy.cpp \
     $$PWD/tabhealth.cpp \
     $$PWD/followpill.cpp \
+    $$PWD/missionpicker.cpp \
     $$PWD/shortcutsdialog.cpp \
     $$PWD/uicolors.cpp \
     $$PWD/programdir.cpp \
@@ -375,6 +376,7 @@ HEADERS += \
     $$PWD/rowwhy.h \
     $$PWD/tabhealth.h \
     $$PWD/followpill.h \
+    $$PWD/missionpicker.h \
     $$PWD/shortcutsdialog.h \
     $$PWD/sendguard.h \
     $$PWD/uicolors.h \

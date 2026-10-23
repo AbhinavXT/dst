@@ -2152,21 +2152,47 @@ void MainWindow::applyTimeRangeFilter(const QString &tabKey,
     //
     // In the zone the Time column shows, since that is how the query reads
     // a date without one; UTC carries its 'Z', so it is unambiguous anyway.
-    const bool utc = Settings::showUtc();
-    auto stamp = [utc](qint64 ms) {
-        return (utc ? QDateTime::fromMSecsSinceEpoch(ms, Qt::UTC)
-                    : QDateTime::fromMSecsSinceEpoch(ms)).toString(Qt::ISODateWithMs);
-    };
-    const QString expr =
-        QStringLiteral("after:%1 before:%2").arg(stamp(fromMs), stamp(toMs));
-
-    it->filterBar->setQuery(expr);
+    it->filterBar->setQuery(timeRangeQuery(fromMs, toMs));
 
     notify(NoteLevel::Info, tr("Filtered to %1 – %2. Clear the filter box to show everything again.")
             .arg(QDateTime::fromMSecsSinceEpoch(fromMs).toString("HH:mm:ss.zzz"),
                  QDateTime::fromMSecsSinceEpoch(toMs).toString("HH:mm:ss.zzz")));
 }
 
+
+QString MainWindow::timeRangeQuery(qint64 fromMs, qint64 toMs) const
+{
+    const bool utc = Settings::showUtc();
+    auto stamp = [utc](qint64 ms) {
+        return (utc ? QDateTime::fromMSecsSinceEpoch(ms, Qt::UTC)
+                    : QDateTime::fromMSecsSinceEpoch(ms)).toString(Qt::ISODateWithMs);
+    };
+    return QStringLiteral("after:%1 before:%2").arg(stamp(fromMs), stamp(toMs));
+}
+
+void MainWindow::focusMission(int index, qint64 fromMs, qint64 toMs)
+{
+    // Every tab, not just the one the list came from: the other sources of
+    // the same run are what one wants beside it. A visible query, as the
+    // ribbon's range drag sets, so it can be read, edited and cleared.
+    m_missionQuery = timeRangeQuery(fromMs, toMs);
+    for (const TabUi &t : qAsConst(m_tabs))
+        if (t.filterBar) t.filterBar->setQuery(m_missionQuery);
+    notify(NoteLevel::Info, tr("Every tab shows mission %1 only (%2 – %3). Mission ▸ All missions shows everything again.")
+            .arg(index)
+            .arg(QDateTime::fromMSecsSinceEpoch(fromMs).toString(QStringLiteral("HH:mm:ss")),
+                 QDateTime::fromMSecsSinceEpoch(toMs).toString(QStringLiteral("HH:mm:ss"))));
+}
+
+void MainWindow::unfocusMission()
+{
+    // Only where the mission's filter is still the one in the box: a filter
+    // typed since is the operator's, and stays.
+    for (const TabUi &t : qAsConst(m_tabs))
+        if (t.filterBar && !m_missionQuery.isEmpty() && t.filterBar->filterText() == m_missionQuery)
+            t.filterBar->setQuery(QString());
+    m_missionQuery.clear();
+}
 
 void MainWindow::onActionChooseSchema()
 {
