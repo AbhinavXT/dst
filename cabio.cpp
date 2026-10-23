@@ -14,9 +14,9 @@ QString msgName(quint8 msgId)
     switch (msgId) {
     case kMsgVccInputReq:   return QStringLiteral("input request (%1)").arg(code);
     case kMsgInputToVcc:    return QStringLiteral("input data (%1)").arg(code);
-    case kMsgVccOutputReq:  return QStringLiteral("output request (%1)").arg(code);
+    case kMsgVccOutputReq:  return QStringLiteral("readback request (%1)").arg(code);
     case kMsgVccOutputData: return QStringLiteral("output data (%1)").arg(code);
-    case kMsgOutputToVcc:   return QStringLiteral("output readback (%1)").arg(code);
+    case kMsgOutputToVcc:   return QStringLiteral("readback data (%1)").arg(code);
     case kMsgAnalogToVcc:   return QStringLiteral("analog data (%1)").arg(code);
     default:                return QStringLiteral("message %1").arg(code);
     }
@@ -30,6 +30,8 @@ QString unitName(quint8 id)
     if (id == 17 || id == 18)      return QStringLiteral("readback %1").arg(id);
     return QStringLiteral("unit %1").arg(id);
 }
+
+quint8 readbackCard(quint8 requestDest) { return quint8(requestDest - 4); }
 
 QString displayName(const QString &name)
 {
@@ -401,6 +403,8 @@ static int knownSize(quint8 sof, quint8 msgId)
     if (sof == kInputSof && msgId == kMsgVccInputReq)    return fixed;
     if (sof == kVccRxSof && msgId == kMsgInputToVcc)     return fixed + 5;
     if (sof == kOutputSof && msgId == kMsgVccOutputData) return fixed + 2;
+    if (sof == kOutputSof && msgId == kMsgVccOutputReq)  return fixed;
+    if (sof == kVccRxSof && msgId == kMsgOutputToVcc)    return fixed + kPins + 1;
     return 0;
 }
 
@@ -477,6 +481,42 @@ QByteArray outputData(quint8 dest, quint16 seq, quint16 word, const WireFormat &
     return build(kOutputSof, h, p, wf);
 }
 
+QByteArray outputRequest(quint8 dest, quint16 seq, const WireFormat &wf)
+{
+    Header h;
+    h.src = kVccId;
+    h.dest = dest;
+    h.msgId = kMsgVccOutputReq;
+    h.seq = seq;
+    return build(kOutputSof, h, QByteArray(), wf);
+}
+
+QByteArray readback(quint8 src, quint8 dest, quint16 seq, const QByteArray &pins, quint8 health,
+                    const WireFormat &wf)
+{
+    Header h;
+    h.src = src;
+    h.dest = dest;
+    h.msgId = kMsgOutputToVcc;
+    h.seq = seq;
+    QByteArray p = pins.left(kPins);
+    p.append(QByteArray(kPins - p.size(), char(kPinBitClear)));
+    p.append(char(health));
+    return build(kVccRxSof, h, p, wf);
+}
+
+QByteArray readbackPins(quint16 word)
+{
+    QByteArray pins;
+    for (int i = 0; i < kPins; ++i) pins.append(char((word >> i) & 1u ? kPinBitSet : kPinBitClear));
+    return pins;
+}
+
+QByteArray readbackTo(const Frame &request, const QByteArray &pins, quint8 health, const WireFormat &wf)
+{
+    return readback(readbackCard(request.h.dest), request.h.src, request.h.seq, pins, health, wf);
+}
+
 QByteArray replyTo(const Frame &request, quint32 word, quint8 health, const WireFormat &wf,
                    quint16 ownSeq)
 {
@@ -485,7 +525,10 @@ QByteArray replyTo(const Frame &request, quint32 word, quint8 health, const Wire
 }
 
 quint32 Frame::inputWord() const { return payload.size() >= 4 ? getLe(payload, 0, 4) : 0; }
-quint8  Frame::health() const    { return payload.size() >= 5 ? quint8(payload.at(4)) : 0; }
+quint8  Frame::health() const
+{
+    return (isInputReply() || isReadback()) && !payload.isEmpty() ? quint8(payload.at(payload.size() - 1)) : 0;
+}
 quint16 Frame::outputWord() const { return payload.size() >= 2 ? quint16(getLe(payload, 0, 2)) : 0; }
 
 static Frame makeFrame(const QByteArray &raw, bool known)

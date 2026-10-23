@@ -11,6 +11,79 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-325"></a>
+## Session 325 — Cab I/O Simulator: checked against real VCC ↔ IOA frames; it answers readback requests too
+
+Abhinav captured the bench traffic between the VCC and the IOA cards: input
+requests and data for controllers 5–12, output data to 13/14, readback
+requests to 17/18 and the cards' readback. That is 44 frames, now
+`tests/fixtures/cabio_frames_20261023.txt`. They settle what session 324
+left to the operator:
+- **CRC: JAMCRC init 0** (the DMI frame's) over the header and payload,
+  little-endian. All 44 frames match it, and no other algorithm or coverage
+  tried. It was the default already.
+- **message_length counts the whole frame** (14, 19, 16, 31), and frames are
+  packed. Already the default.
+- **A reply carries its request's seq_num.** Already the default.
+- **vic_health is 0x13**, not the 0x03 in the struct's comment. The default
+  is now 0x13.
+- **The readback.** The VCC sends `CC CC … 0x1D` (14 B) to 17/18. Output
+  card 13/14 (the id less 4) answers `AF AF … 0xD1` (31 B): 16 pin bytes,
+  the same layout the `@dop1` log shows, then health 0x13. With output data
+  0x03E1 the card gave 0x0C for each pin whose bit was 1 and 0x17 for each
+  pin whose bit was 0.
+
+**What the operator sees.**
+- The Frames tab's wire-format box now reads "the defaults are what the real
+  frames carry".
+- Readback frames are named ("readback request", "readback data") and their
+  pins and health are shown.
+- Outputs tab: a new **Answer readback requests as output cards 13 and 14**
+  option, **off by default**. With a real output card on the line, two would
+  answer. When on, the simulator answers each 0x1D as the card it is for,
+  with pins made from the last output word sent to that card by the rule
+  above. A card that has been sent no output data is not answered, and that
+  is counted.
+- A readback heard from a real card shows on each lamp ("readback 17").
+
+**Files.** `cabio.{h,cpp}` (readback request / data builders,
+`readbackPins`, `readbackCard`, known sizes 14 and 31, `kHealthy` 0x13);
+`cabiosimwindow.{h,cpp}`; new fixture
+`tests/fixtures/cabio_frames_20261023.txt`.
+
+**Tests.** New `session325` (18 checks):
+- all 44 real frames parse at known sizes, with only the default CRC matching
+  and message_length equal to the frame's size;
+- the builders rebuild every one of them byte for byte;
+- the whole capture fed in 7-byte pieces gives 44 frames with nothing
+  skipped;
+- the window, fed the VCC's 16 real input requests, answers each with the
+  real card's exact bytes;
+- with readback answering on, card 14's readback matches the real one byte
+  for byte; off, or before any output data, nothing is sent.
+
+`session324` now expects health 0x13, and its found-by-end-bytes case uses
+an analog frame, since the readback has a known size now.
+
+**Gate (Linux):**
+- **Qt 6.4:** green. 359 suites / 9279 checks, 0 failed; 15 validators; menu
+  audit; smoke.
+- **Qt 5.15:** the four `session134`/`session135` pixel checks noted in
+  session 324, and once `session111` (serial auto-baud on a pty).
+  `session111` is intermittent here on the untouched patch-323 commit too:
+  6 of 25 runs failed there, 3 of 25 with this patch. Not changed here; it
+  needs a look of its own. Everything else green.
+
+**Not tested:**
+- against a live VCC; the frames are a captured sample.
+- The readback pin rule comes from one output word (0x03E1, all 16 pins
+  consistent); other words are inferred from it.
+- The output word's meaning (is a 1 "energise"?) is not interpreted. The
+  lamps show the bits as sent, and a real card reads back the opposite
+  `output` bit.
+
+---
+
 <a id="session-324"></a>
 ## Session 324 — Cab I/O Simulator: the cab's input controllers to the VCC, and its output data back
 

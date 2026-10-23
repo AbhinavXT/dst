@@ -66,6 +66,8 @@ public:
     void setFlickerPeriodMs(int ms);
     int  flickerPeriodMs() const;
     void setHealth(quint8 h);
+    void setAnswerReadback(bool on);
+    int  readbacksSent() const { return m_readbacksSent; }
     void setWireFormat(const CabIo::WireFormat &wf);
     CabIo::WireFormat wireFormat() const { return m_wf; }
 
@@ -150,6 +152,8 @@ private:
     QMap<quint8, OutDest> m_outDest;
     QHash<int, int>    m_outChanges;
     QHash<int, qint64> m_outChangedAtMs;
+    int m_readbacksSent = 0, m_readbackUnanswered = 0, m_readbacksHeard = 0;
+    QByteArray m_readbackPinsHeard;      // the last readback a real card sent
     QVector<CabIo::Crc> m_lastCrcMatches;
     bool m_crcSeen = false;
 
@@ -176,6 +180,7 @@ private:
     QLabel      *m_outBytes = nullptr;
     CabIoUi::TileGrid *m_lampGrid = nullptr;
     QVector<CabIoUi::LampTile *> m_lamps;
+    QCheckBox   *m_answerReadback = nullptr;
     QLabel      *m_outFooter = nullptr;
 
     QComboBox   *m_crc = nullptr;

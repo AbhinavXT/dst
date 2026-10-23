@@ -426,10 +426,12 @@ public:
     QSize sizeHint() const override { return QSize(250, 60); }
     const OutputBit &bit() const { return m_o; }
 
-    void setValues(bool known, bool on, int changes, bool recent)
+    // `readbackByte`: the pin's byte in the last readback heard, -1 for none.
+    void setValues(bool known, bool on, int changes, bool recent, int readbackByte = -1)
     {
-        if (known == m_known && on == m_on && changes == m_changes && recent == m_recent) return;
-        m_known = known; m_on = on; m_changes = changes; m_recent = recent;
+        if (known == m_known && on == m_on && changes == m_changes && recent == m_recent
+            && readbackByte == m_readback) return;
+        m_known = known; m_on = on; m_changes = changes; m_recent = recent; m_readback = readbackByte;
         setAccessibleDescription(on ? QStringLiteral("on") : QStringLiteral("off"));
         update();
     }
@@ -480,6 +482,9 @@ protected:
                                : (m_on ? QStringLiteral("ON") : QStringLiteral("off"));
         sub += QStringLiteral(" \u00B7 bit %1").arg(m_o.bit);
         if (m_changes) sub += QStringLiteral(" \u00B7 %1 change%2").arg(m_changes).arg(QLatin1String(m_changes == 1 ? "" : "s"));
+        if (m_readback >= 0)
+            sub += QStringLiteral(" \u00B7 readback ")
+                   + QString::number(m_readback, 16).toUpper().rightJustified(2, QLatin1Char('0'));
         p.drawText(QRect(left, 32, w, 18), Qt::AlignLeft | Qt::AlignVCenter,
                    p.fontMetrics().elidedText(sub, Qt::ElideRight, w));
     }
@@ -488,6 +493,7 @@ private:
     OutputBit m_o;
     bool m_known = false, m_on = false, m_recent = false;
     int  m_changes = 0;
+    int  m_readback = -1;
 };
 
 }  // namespace CabIoUi
@@ -551,8 +557,7 @@ CabIoSimWindow::CabIoSimWindow(SerialManager *serial, QWidget *parent)
     if (!m_serial)
         m_status->state(tr("Not connected to the console's serial ports: the simulator can be looked at, not opened."));
     else
-        m_status->state(tr("Pick the port wired to the VCC's IOA link and press Open. "
-                           "The wire format is provisional until sample frames confirm it (Frames tab)."));
+        m_status->state(tr("Pick the port wired to the VCC's IOA link and press Open."));
 }
 
 CabIoSimWindow::~CabIoSimWindow()
@@ -669,7 +674,7 @@ QWidget *CabIoSimWindow::buildInputsTab()
     m_healthSpin->setRange(0, 255);
     m_healthSpin->setPrefix(QStringLiteral("0x"));
     m_healthSpin->setValue(kHealthy);
-    m_healthSpin->setToolTip(tr("The health byte after the input data (0x03 in the sample)"));
+    m_healthSpin->setToolTip(tr("The health byte after the input data (0x13 in every real reply)"));
     connect(m_healthSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int h) { setHealth(quint8(h)); });
     row->addWidget(m_healthSpin);
     row->addStretch(1);
@@ -741,6 +746,13 @@ QWidget *CabIoSimWindow::buildOutputsTab()
     scroll->setWidget(m_lampGrid);
     v->addWidget(scroll, 1);
 
+    m_answerReadback = new QCheckBox(tr("Answer readback requests as output cards 13 and 14"), page);
+    m_answerReadback->setToolTip(tr("Reply to each readback request (0x1D to 17 / 18) as the card it is for, with the "
+                                    "pin bytes the real card gave: 0x0C for an output bit of 1, 0x17 for 0. "
+                                    "Leave off when a real output card is on the line: two would answer."));
+    connect(m_answerReadback, &QCheckBox::toggled, this, [this]() { refreshOutputs(); });
+    v->addWidget(m_answerReadback);
+
     m_outFooter = new QLabel(page);
     m_outFooter->setObjectName(QStringLiteral("muted"));
     m_outFooter->setWordWrap(true);
@@ -755,7 +767,7 @@ QWidget *CabIoSimWindow::buildFramesTab()
     v->setContentsMargins(0, 10, 0, 0);
     v->setSpacing(8);
 
-    auto *box = new QGroupBox(tr("Wire format \u2014 provisional until sample frames confirm it"), page);
+    auto *box = new QGroupBox(tr("Wire format \u2014 the defaults are what the real frames carry"), page);
     auto *form = new QFormLayout(box);
     m_crc = new QComboBox(box);
     for (Crc c : allCrcs()) m_crc->addItem(crcName(c), int(c));
@@ -1082,6 +1094,11 @@ void CabIoSimWindow::setHealth(quint8 h)
     refreshInputs();
 }
 
+void CabIoSimWindow::setAnswerReadback(bool on)
+{
+    m_answerReadback->setChecked(on);
+}
+
 void CabIoSimWindow::setWireFormat(const WireFormat &wf)
 {
     m_wf = wf;
@@ -1308,7 +1325,23 @@ void CabIoSimWindow::onFrame(const Frame &f)
         refreshOutputs();
         return;
     }
-    if (f.isOutputRequest()) { ++m_outRequests; return; }
+    if (f.isOutputRequest()) {
+        ++m_outRequests;
+        if (!m_answerReadback || !m_answerReadback->isChecked()) return;
+        // The card answers with what it was last sent; never sent anything,
+        // it has nothing to read back, and is not made to invent it.
+        const quint8 card = readbackCard(f.h.dest);
+        if (!m_outDest.contains(card)) { ++m_readbackUnanswered; return; }
+        write(readbackTo(f, readbackPins(m_outDest.value(card).word), m_health, m_wf));
+        ++m_readbacksSent;
+        return;
+    }
+    if (f.isReadback()) {
+        m_readbackPinsHeard = f.pins();
+        ++m_readbacksHeard;
+        refreshOutputs();
+        return;
+    }
     ++m_otherFrames;
 }
 
@@ -1391,7 +1424,8 @@ void CabIoSimWindow::refreshOutputs()
     for (LampTile *l : m_lamps) {
         const int bit = l->bit().bit;
         const bool recent = m_outChangedAtMs.value(bit) && now - m_outChangedAtMs.value(bit) < 1000;
-        l->setValues(known, known && (m_outWord & (1u << bit)), m_outChanges.value(bit), recent);
+        l->setValues(known, known && (m_outWord & (1u << bit)), m_outChanges.value(bit), recent,
+                     bit < m_readbackPinsHeard.size() ? int(quint8(m_readbackPinsHeard.at(bit))) : -1);
     }
     if (!known) {
         m_outHeadline->setText(tr("Waiting for output data from the VCC"));
@@ -1419,8 +1453,11 @@ void CabIoSimWindow::refreshOutputs()
                                      outputStructName(m_cab)));
     }
     QString foot = count(m_outFrames, "output data frame", "output data frames");
-    foot += tr(" \u00B7 %1 (0x1D) heard").arg(count(m_outRequests, "output request", "output requests"));
-    if (m_outRequests) foot += tr(" \u2014 not answered: the readback (0xD1) payload is not known yet");
+    foot += tr(" \u00B7 %1 (0x1D) heard").arg(count(m_outRequests, "readback request", "readback requests"));
+    if (m_readbacksSent) foot += tr(", %1").arg(count(m_readbacksSent, "readback sent", "readbacks sent"));
+    if (m_readbackUnanswered)
+        foot += tr(", %1 not answered (no output data sent to that card yet)").arg(m_readbackUnanswered);
+    if (m_readbacksHeard) foot += tr(" \u00B7 %1 from a card on the line").arg(count(m_readbacksHeard, "readback", "readbacks"));
     if (m_otherFrames) foot += tr(" \u00B7 %1: see Frames").arg(count(m_otherFrames, "other frame", "other frames"));
     m_outFooter->setText(foot + QLatin1Char('.'));
 }
@@ -1465,6 +1502,8 @@ void CabIoSimWindow::logFrame(bool tx, const Frame &f)
         data = tr("%1  health %2").arg(hex32(f.inputWord()), hex8(f.health()));
     else if (f.isOutputData())
         data = hex16(f.outputWord());
+    else if (f.isReadback())
+        data = tr("%1  health %2").arg(hex(f.pins()), hex8(f.health()));
     else
         data = f.payload.isEmpty() ? QStringLiteral("\u2014") : hex(f.payload);
     QString crc;

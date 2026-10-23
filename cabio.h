@@ -15,26 +15,30 @@
 //          uint16_t seq_num;           // little-endian
 //      };
 //
-//      VCC -> input card request   AA AA  header            crc32  BB BB  14 B
-//      input card -> VCC reply     AF AF  header data health crc32  FA FA  19 B
-//      VCC -> output card data     CC CC  header byte1 byte2 crc32  DD DD  16 B
+//      VCC -> input card request    AA AA  header                 crc  BB BB  14 B
+//      input card -> VCC data       AF AF  header data(4) health  crc  FA FA  19 B
+//      VCC -> output card data      CC CC  header byte1 byte2     crc  DD DD  16 B
+//      VCC -> output readback req.  CC CC  header                 crc  DD DD  14 B
+//      output card -> VCC readback  AF AF  header pins(16) health crc  FA FA  31 B
 //
 //    Card ids: input controllers 5-8 carry STRUCT_CAB_INPUTS_SIFA_EXTENDED_SET1,
-//    9-12 _SET2; output data goes to 13 / 14; output readback comes from
-//    17 / 18. message_id: 0x15 request, 0x51 input reply, 0x1D output
-//    request, 0x2D output data, 0xD1 output readback, 0xF1 analog.
+//    9-12 _SET2. Output data goes to 13 / 14; the readback request goes to
+//    17 / 18 and is answered by 13 / 14 (the id less 4). message_id: 0x15
+//    input request, 0x51 input data, 0x2D output data, 0x1D readback
+//    request, 0xD1 readback, 0xF1 analog.
 //
-//  PROVISIONAL UNTIL SAMPLE FRAMES ARRIVE
-//    Three things the structs do not say, so the operator picks them (Wire
-//    format, in the window) instead of the tool guessing silently: the CRC
-//    algorithm, what message_length counts, and that the frames are packed
-//    (the sizes above are the packed sizes). The CRC covers the header and
-//    the payload -- everything between the start pair and the CRC -- and is
-//    stored little-endian. A received frame's CRC is checked against every
-//    algorithm, so the first real VCC frame says which one it is.
+//  CONFIRMED BY REAL FRAMES (session 325: Abhinav's bench capture, 44 frames,
+//  tests/fixtures/cabio_frames_20261023.txt)
+//    - CRC: JAMCRC init 0 (the DMI frame's), over the header and payload --
+//      everything between the start pair and the CRC -- stored little-endian.
+//    - message_length counts the whole frame; frames are packed.
+//    - A reply carries its request's seq_num; vic_health is 0x13.
+//    - The readback's 16 pin bytes are the @dop1 log's (a, b, fault, trans,
+//      output LSB-first); with output data 0x03E1 the card answered 0x0C for
+//      each pin whose bit was 1 and 0x17 for each pin whose bit was 0.
+//    The Wire format settings stay in the window, defaulting to these.
 //
-//    The readback (0xD1) and analog (0xF1) payloads are not known: those
-//    frames are found and shown, never built.
+//    The analog (0xF1) payload is not known: found and shown, never built.
 // =============================================================================
 #include <QByteArray>
 #include <QString>
@@ -57,7 +61,12 @@ constexpr quint8 kInputSof  = 0xAA, kInputEof  = 0xBB;   // to an input card
 constexpr quint8 kVccRxSof  = 0xAF, kVccRxEof  = 0xFA;   // to the VCC
 constexpr quint8 kOutputSof = 0xCC, kOutputEof = 0xDD;   // to an output card
 
-constexpr quint8 kHealthy = 0x03;        // vic_health in the sample struct
+constexpr quint8 kHealthy = 0x13;        // vic_health in every real reply (the struct's comment says 0x03)
+
+// A readback pin byte, as the real output card answered (and @dop1 logs).
+constexpr quint8 kPinBitSet   = 0x0C;    // a=0 b=0 fault=1 trans=1 output=0
+constexpr quint8 kPinBitClear = 0x17;    // a=1 b=1 fault=1 trans=0 output=1
+constexpr int    kPins = 16;
 
 constexpr int kHeaderSize = 6;
 constexpr int kCrcSize    = 4;
@@ -65,6 +74,7 @@ constexpr int kMaxFrame   = 64;          // longest frame looked for
 
 QString msgName(quint8 msgId);           // "input request (0x15)"
 QString unitName(quint8 id);             // "VCC", "input 5", "output 13", ...
+quint8  readbackCard(quint8 requestDest); // 17 -> 13, 18 -> 14
 
 // ---- the cab type and its layouts ---------------------------------------------
 enum class Cab { Sifa, Old };
@@ -183,9 +193,11 @@ struct Frame {
     bool isInputRequest() const { return sof == kInputSof && h.msgId == kMsgVccInputReq; }
     bool isInputReply()   const { return sof == kVccRxSof && h.msgId == kMsgInputToVcc; }
     bool isOutputData()   const { return sof == kOutputSof && h.msgId == kMsgVccOutputData && payload.size() == 2; }
-    bool isOutputRequest() const { return h.msgId == kMsgVccOutputReq; }
+    bool isOutputRequest() const { return sof == kOutputSof && h.msgId == kMsgVccOutputReq; }
+    bool isReadback() const { return sof == kVccRxSof && h.msgId == kMsgOutputToVcc && payload.size() == kPins + 1; }
+    QByteArray pins() const { return isReadback() ? payload.left(kPins) : QByteArray(); }
     quint32 inputWord() const;   // an input reply's input_data
-    quint8  health() const;      // an input reply's vic_health
+    quint8  health() const;      // an input reply's or readback's health byte (the last)
     quint16 outputWord() const;  // output data: byte1 | byte2 << 8
 };
 
@@ -198,6 +210,14 @@ QByteArray inputRequest(quint8 dest, quint16 seq, const WireFormat &wf);
 QByteArray inputReply(quint8 src, quint8 dest, quint16 seq, quint32 word, quint8 health,
                       const WireFormat &wf);
 QByteArray outputData(quint8 dest, quint16 seq, quint16 word, const WireFormat &wf);
+QByteArray outputRequest(quint8 dest, quint16 seq, const WireFormat &wf);   // to 17 / 18
+QByteArray readback(quint8 src, quint8 dest, quint16 seq, const QByteArray &pins, quint8 health,
+                    const WireFormat &wf);
+// The 16 pin bytes the output card answered for `word` (kPinBitSet for a 1).
+QByteArray readbackPins(quint16 word);
+// A readback request's answer from the card it is for: readbackCard(dest),
+// to the VCC, its seq_num, `pins`.
+QByteArray readbackTo(const Frame &request, const QByteArray &pins, quint8 health, const WireFormat &wf);
 
 // The reply of the card `request` is addressed to: src and dest swapped,
 // seq_num echoed (or `ownSeq` when wf.echoSeq is off).

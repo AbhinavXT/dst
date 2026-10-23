@@ -219,8 +219,8 @@ TEST_SUITE(session324)
         const quint32 w = wordOf(QStringLiteral("95 95 F8 41"));
         const QByteArray rep = inputReply(5, kVccId, 0x1234, w, kHealthy, wf);
         CHECK(rep.size() == 19, "input reply: 19 bytes (packed)");
-        CHECK(hex(rep.left(13)) == QLatin1String("AF AF 13 05 01 51 34 12 95 95 F8 41 03"),
-              "AF AF, 5 -> VCC, 0x51, input_data as the @dip1 log prints it, vic_health 03");
+        CHECK(hex(rep.left(13)) == QLatin1String("AF AF 13 05 01 51 34 12 95 95 F8 41 13"),
+              "AF AF, 5 -> VCC, 0x51, input_data as the @dip1 log prints it, vic_health 13");
         CHECK(quint8(rep.at(17)) == kVccRxEof && quint8(rep.at(18)) == kVccRxEof, "ends FA FA");
 
         const QByteArray out = outputData(13, 7, 0x2041, wf);
@@ -228,7 +228,7 @@ TEST_SUITE(session324)
               "output data: 16 bytes, CC CC, VCC -> 13, 0x2D, data_byte1 then data_byte2");
 
         Frame f;
-        CHECK(parse(rep, &f) && f.isInputReply() && f.inputWord() == w && f.health() == 3 && f.known,
+        CHECK(parse(rep, &f) && f.isInputReply() && f.inputWord() == w && f.health() == kHealthy && f.known,
               "the reply reads back");
         CHECK(f.crcMatches.contains(wf.crc), "its CRC is the one it was built with");
         CHECK(parse(out, &f) && f.isOutputData() && f.outputWord() == 0x2041, "the output data reads back");
@@ -260,9 +260,9 @@ TEST_SUITE(session324)
         stream += QByteArray::fromHex("AA");                               // a lone AA
         stream += inputReply(5, 1, 1, 0x41F89595u, 3, wf);
         stream += outputData(14, 2, 0x0003, wf);
-        // A readback: its payload is not known, so it is found by its end pair.
+        // Analog data: its payload is not known, so it is found by its end pair.
         Header h;
-        h.src = 17; h.dest = 1; h.msgId = kMsgOutputToVcc; h.seq = 3;
+        h.src = 15; h.dest = 1; h.msgId = kMsgAnalogToVcc; h.seq = 3;
         stream += build(kVccRxSof, h, QByteArray::fromHex("0102030405060708"), wf);
 
         Scanner s;
@@ -271,8 +271,8 @@ TEST_SUITE(session324)
         CHECK(got.size() == 4, qPrintable(QStringLiteral("four frames from a byte-at-a-time stream (%1)").arg(got.size())));
         if (got.size() == 4) {
             CHECK(got[0].isInputRequest() && got[1].isInputReply() && got[2].isOutputData(), "in order, by kind");
-            CHECK(got[3].h.msgId == kMsgOutputToVcc && !got[3].known && got[3].payload.size() == 8,
-                  "the readback by its end bytes, 8 bytes of payload");
+            CHECK(got[3].h.msgId == kMsgAnalogToVcc && !got[3].known && got[3].payload.size() == 8,
+                  "analog data by its end bytes, 8 bytes of payload");
         }
         CHECK(s.skippedBytes() == 4 && s.pending() == 0, "the noise and the lone AA skipped, nothing held");
     }
@@ -286,6 +286,7 @@ TEST_SUITE(session324)
         w.setCab(Cab::Sifa);
         w.setWireFormat(WireFormat());
         w.setRespond(CabIoSimWindow::Respond::Answer);
+        w.setHealth(kHealthy);
         CHECK(w.bankCount() == 2, "SIFA: two banks, set 1 and set 2");
         w.setBankIds(0, { 5, 6, 7, 8 });
         w.setBankIds(1, { 9, 10, 11, 12 });
@@ -300,7 +301,7 @@ TEST_SUITE(session324)
         if (!sent.isEmpty() && parse(sent.last(), &f)) {
             CHECK(f.isInputReply() && f.h.src == 6 && f.h.dest == kVccId && f.h.seq == 0x0102,
                   "from 6 to the VCC, the request's seq_num");
-            CHECK(f.inputWord() == real && f.health() == kHealthy, "carrying set 1's word and vic_health 03");
+            CHECK(f.inputWord() == real && f.health() == kHealthy, "carrying set 1's word and vic_health");
         } else {
             CHECK(false, "the reply parses");
         }
@@ -383,6 +384,7 @@ TEST_SUITE(session324)
             w.setCab(Cab::Sifa);
             w.setWireFormat(WireFormat());
             w.setRespond(CabIoSimWindow::Respond::Answer);
+            w.setHealth(kHealthy);
             w.setBankIds(0, { 5, 6, 7, 8 });
             w.setBankIds(1, { 9, 10, 11, 12 });
             const quint32 real = wordOf(QStringLiteral("95 95 F8 41"));
