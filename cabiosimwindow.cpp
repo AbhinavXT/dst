@@ -20,6 +20,7 @@
 #include <QKeyEvent>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -209,7 +210,10 @@ private:
     QVector<Item> m_items;
 };
 
-// One input: a switch, or a NO/NC contact's four states, and a flicker button.
+// One input: an Off/On switch and a flicker button. An input with NO and NC
+// feedbacks switches the same way -- Off is the contact at rest (NO 0, NC 1),
+// On is operated (NO 1, NC 0) -- and its two abnormal states (both 0, both 1)
+// are a fault set from the warning button, not two more positions to read.
 class InputTile : public QWidget
 {
 public:
@@ -219,9 +223,11 @@ public:
         setCursor(Qt::PointingHandCursor);
         setAccessibleName(displayName(in.name));
         QString tip = in.isPair()
-            ? QStringLiteral("%1_no (bit %2) and %1_nc (bit %3)\nClick a state, or press 0-3 (NO NC). "
-                             "Space steps to the next state.").arg(in.name).arg(in.noBit).arg(in.ncBit)
-            : QStringLiteral("%1 (bit %2)\nClick or press Space to toggle.").arg(in.name).arg(in.bit);
+            ? QStringLiteral("%1_no (bit %2) and %1_nc (bit %3)\n"
+                             "Off: NO 0, NC 1 (at rest).  On: NO 1, NC 0 (operated).\n"
+                             "Click or press Space to switch. The warning button (or E) sets a fault: "
+                             "both 0, or both 1.").arg(in.name).arg(in.noBit).arg(in.ncBit)
+            : QStringLiteral("%1 (bit %2)\nClick or press Space to switch.").arg(in.name).arg(in.bit);
         tip += QStringLiteral("\nF or the wave button: flicker.");
         setToolTip(tip);
     }
@@ -232,6 +238,7 @@ public:
         if (live == m_live && flicker == m_flicker) return;
         m_live = live;
         m_flicker = flicker;
+        setAccessibleDescription(stateWords());
         update();
     }
 
@@ -246,13 +253,18 @@ protected:
         p.setRenderHint(QPainter::Antialiasing);
         const QPalette pal = palette();
         const QColor accent = UiColor::accent(), base = pal.color(QPalette::Base);
-        const bool on = m_in.isPair() ? false : (m_live & 1);
+        const bool fault = isFault();
+        const bool on = isOn();
 
-        // The card.
+        // The card: tinted when on, outlined in the warning colour on a fault.
         QRectF card = QRectF(rect()).adjusted(1, 1, -1, -1);
-        p.setPen(QPen(hasFocus() ? accent : UiColor::frame(), hasFocus() ? 2 : 1));
+        QColor border = UiColor::frame();
+        if (fault) border = UiColor::warning();
+        if (hasFocus()) border = accent;
+        p.setPen(QPen(border, (hasFocus() || fault) ? 2 : 1));
         QColor fill = base;
         if (on) fill = blend(base, accent, 0.08);
+        if (fault) fill = blend(base, UiColor::warning(), 0.10);
         p.setBrush(fill);
         p.drawRoundedRect(card, 9, 9);
         if (m_flicker) {
@@ -263,23 +275,20 @@ protected:
 
         layoutRects();
 
-        // The name and its bits.
+        // The name, then the state in words with its bits.
         const int textLeft = 16;
-        const int textRight = m_control.left() - 12;
+        const int textRight = (m_in.isPair() ? m_faultRect.left() : m_control.left()) - 10;
         p.setPen(pal.color(QPalette::Text));
         p.setFont(scaled(font(), 1.0, QFont::DemiBold));
         const QString name = p.fontMetrics().elidedText(displayName(m_in.name), Qt::ElideRight, textRight - textLeft);
         p.drawText(QRect(textLeft, 10, textRight - textLeft, 22), Qt::AlignLeft | Qt::AlignVCenter, name);
-        p.setFont(scaled(font(), 0.85));
-        p.setPen(UiColor::muted());
-        const QString sub = m_in.isPair()
-            ? QStringLiteral("NO bit %1 \u00B7 NC bit %2").arg(m_in.noBit).arg(m_in.ncBit)
-            : QStringLiteral("bit %1 \u00B7 %2").arg(m_in.bit).arg(on ? QStringLiteral("1") : QStringLiteral("0"));
+        p.setFont(scaled(font(), 0.85, fault ? int(QFont::DemiBold) : -1));
+        p.setPen(fault ? UiColor::warning() : UiColor::muted());
         p.drawText(QRect(textLeft, 32, textRight - textLeft, 18), Qt::AlignLeft | Qt::AlignVCenter,
-                   p.fontMetrics().elidedText(sub, Qt::ElideRight, textRight - textLeft));
+                   p.fontMetrics().elidedText(stateWords(), Qt::ElideRight, textRight - textLeft));
 
-        if (m_in.isPair()) paintSegments(p, base, accent);
-        else               paintSwitch(p, on, base, accent);
+        paintSwitch(p, on, fault, base, accent);
+        if (m_in.isPair()) paintFaultButton(p, fault, base);
         paintFlicker(p, base, accent);
     }
 
@@ -290,10 +299,7 @@ protected:
         layoutRects();
         const QPoint pt = eventPos(e);
         if (m_flickerRect.adjusted(-4, -4, 4, 4).contains(pt)) { if (onFlicker) onFlicker(); return; }
-        if (m_in.isPair()) {
-            for (int s = 0; s < 4; ++s)
-                if (segmentRect(s).contains(pt)) { if (onSetState) onSetState(s); return; }
-        }
+        if (m_in.isPair() && m_faultRect.adjusted(-4, -4, 4, 4).contains(pt)) { showFaultMenu(); return; }
         if (onToggle) onToggle();
     }
 
@@ -303,8 +309,8 @@ protected:
             if (onToggle) onToggle();
         } else if (e->key() == Qt::Key_F) {
             if (onFlicker) onFlicker();
-        } else if (m_in.isPair() && e->key() >= Qt::Key_0 && e->key() <= Qt::Key_3) {
-            if (onSetState) onSetState(e->key() - Qt::Key_0);
+        } else if (m_in.isPair() && e->key() == Qt::Key_E) {
+            showFaultMenu();
         } else {
             QWidget::keyPressEvent(e);
         }
@@ -313,6 +319,43 @@ protected:
     void focusOutEvent(QFocusEvent *e) override { update(); QWidget::focusOutEvent(e); }
 
 private:
+    // A pair's live state is (NO << 1) | NC: 1 at rest, 2 operated, 0 and 3 faults.
+    bool isFault() const { return m_in.isPair() && (m_live == 0 || m_live == 3); }
+    bool isOn() const { return m_in.isPair() ? m_live == 2 : (m_live & 1); }
+
+    QString stateWords() const
+    {
+        if (!m_in.isPair())
+            return QStringLiteral("%1 · bit %2").arg(isOn() ? QStringLiteral("On") : QStringLiteral("Off")).arg(m_in.bit);
+        const int no = (m_live >> 1) & 1, nc = m_live & 1;
+        QString words;
+        if (m_live == 0)      words = QStringLiteral("Fault: both 0");
+        else if (m_live == 3) words = QStringLiteral("Fault: both 1");
+        else                  words = isOn() ? QStringLiteral("On") : QStringLiteral("Off");
+        return QStringLiteral("%1 · NO %2 · NC %3").arg(words).arg(no).arg(nc);
+    }
+
+    void showFaultMenu()
+    {
+        QMenu menu(this);
+        const int states[] = { 1, 2, 0, 3 };
+        const QString labels[] = {
+            QStringLiteral("Off — at rest (NO 0, NC 1)"),
+            QStringLiteral("On — operated (NO 1, NC 0)"),
+            QStringLiteral("Fault: both 0 (NO 0, NC 0)"),
+            QStringLiteral("Fault: both 1 (NO 1, NC 1)") };
+        for (int k = 0; k < 4; ++k) {
+            if (k == 2) menu.addSeparator();
+            QAction *a = menu.addAction(labels[k]);
+            a->setCheckable(true);
+            a->setChecked(m_live == states[k]);
+            a->setData(states[k]);
+        }
+        layoutRects();
+        if (QAction *chosen = menu.exec(mapToGlobal(m_faultRect.bottomLeft() + QPoint(0, 4))))
+            if (onSetState) onSetState(chosen->data().toInt());
+    }
+
     static QColor blend(const QColor &a, const QColor &b, double t)
     {
         return QColor::fromRgbF(a.redF() + (b.redF() - a.redF()) * t,
@@ -324,71 +367,43 @@ private:
     {
         const int fl = 30;
         m_flickerRect = QRect(width() - 14 - fl, (height() - fl) / 2, fl, fl);
-        if (m_in.isPair()) {
-            const int w = 4 * 34;
-            m_control = QRect(m_flickerRect.left() - 12 - w, 24, w, 26);
-        } else {
-            m_control = QRect(m_flickerRect.left() - 14 - 46, (height() - 26) / 2, 46, 26);
-        }
-    }
-    QRect segmentRect(int s) const
-    {
-        const int w = m_control.width() / 4;
-        return QRect(m_control.left() + s * w, m_control.top(), w, m_control.height());
+        m_control = QRect(m_flickerRect.left() - 12 - 46, (height() - 26) / 2, 46, 26);
+        m_faultRect = QRect(m_control.left() - 10 - 28, (height() - 28) / 2, 28, 28);
     }
 
-    void paintSwitch(QPainter &p, bool on, const QColor &base, const QColor &accent)
+    void paintSwitch(QPainter &p, bool on, bool fault, const QColor &base, const QColor &accent)
     {
         const QRectF track = m_control;
-        p.setPen(QPen(on ? accent : UiColor::muted(), 1.5));
+        const QColor ink = fault ? UiColor::warning() : (on ? accent : UiColor::muted());
+        p.setPen(QPen(ink, 1.5));
         p.setBrush(on ? accent : palette().color(QPalette::Window));
         p.drawRoundedRect(track, track.height() / 2, track.height() / 2);
         const double d = track.height() - 8;
-        const double x = on ? track.right() - 4 - d : track.left() + 4;
+        // A fault puts the knob in the middle: neither off nor on.
+        double x = on ? track.right() - 4 - d : track.left() + 4;
+        if (fault) x = track.center().x() - d / 2;
         p.setPen(Qt::NoPen);
-        p.setBrush(on ? base : UiColor::muted());
+        p.setBrush(on ? base : ink);
         p.drawEllipse(QRectF(x, track.top() + 4, d, d));
     }
 
-    void paintSegments(QPainter &p, const QColor &base, const QColor &accent)
+    void paintFaultButton(QPainter &p, bool fault, const QColor &base)
     {
-        // "NO NC" over the digits: which digit is which.
-        p.setFont(scaled(font(), 0.75));
-        p.setPen(UiColor::muted());
-        p.drawText(QRect(m_control.left(), 6, m_control.width(), 16), Qt::AlignCenter,
-                   QStringLiteral("NO \u00B7 NC"));
-
-        QPainterPath outline;
-        outline.addRoundedRect(QRectF(m_control).adjusted(0.5, 0.5, -0.5, -0.5), 6, 6);
-        p.setPen(Qt::NoPen);
-        p.setBrush(palette().color(QPalette::Window));
-        p.drawPath(outline);
-
-        p.save();
-        p.setClipPath(outline);
-        for (int s = 0; s < 4; ++s) {
-            const QRect r = segmentRect(s);
-            if (s == m_live) {
-                // 00 and 11: NO and NC agree, which a healthy contact never
-                // reports -- drawn in the warning colour.
-                const bool odd = (s == 0 || s == 3);
-                p.fillRect(r, odd ? UiColor::warning() : accent);
-            }
-        }
-        p.restore();
-
-        p.setPen(QPen(UiColor::frame(), 1));
-        p.setBrush(Qt::NoBrush);
-        p.drawPath(outline);
-        for (int s = 1; s < 4; ++s) {
-            const int x = segmentRect(s).left();
-            p.drawLine(QPointF(x + 0.5, m_control.top() + 1), QPointF(x + 0.5, m_control.bottom()));
-        }
-        p.setFont(scaled(font(), 0.95, QFont::DemiBold));
-        for (int s = 0; s < 4; ++s) {
-            p.setPen(s == m_live ? base : palette().color(QPalette::Text));
-            p.drawText(segmentRect(s), Qt::AlignCenter, InputBank::stateText(m_in, s));
-        }
+        const QRectF r = QRectF(m_faultRect).adjusted(1, 1, -1, -1);
+        const QColor warn = UiColor::warning();
+        // A triangle with "!" in it: filled while a fault is set.
+        QPainterPath tri;
+        tri.moveTo(r.center().x(), r.top() + 3);
+        tri.lineTo(r.right() - 2, r.bottom() - 4);
+        tri.lineTo(r.left() + 2, r.bottom() - 4);
+        tri.closeSubpath();
+        p.setPen(QPen(fault ? warn : UiColor::muted(), 1.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.setBrush(fault ? QBrush(warn) : QBrush(Qt::NoBrush));
+        p.drawPath(tri);
+        p.setPen(QPen(fault ? base : UiColor::muted(), 1.8, Qt::SolidLine, Qt::RoundCap));
+        const double cx = r.center().x();
+        p.drawLine(QPointF(cx, r.top() + 10), QPointF(cx, r.bottom() - 11));
+        p.drawPoint(QPointF(cx, r.bottom() - 7.5));
     }
 
     void paintFlicker(QPainter &p, const QColor &base, const QColor &accent)
@@ -410,7 +425,7 @@ private:
     Input m_in;
     int   m_live = 0;
     bool  m_flicker = false;
-    QRect m_control, m_flickerRect;
+    QRect m_control, m_faultRect, m_flickerRect;
 };
 
 // One output: a lamp, its name, its state and how often it changed.
@@ -687,14 +702,21 @@ QWidget *CabIoSimWindow::buildInputsTab()
     });
     row->addWidget(stopFl);
     auto *reset = new QPushButton(tr("Reset"), page);
-    reset->setToolTip(tr("Every input to 0, every NO/NC contact at rest (NO 0, NC 1), no flicker"));
+    reset->setToolTip(tr("Every input Off (NO/NC inputs at rest: NO 0, NC 1), no faults, no flicker"));
     connect(reset, &QPushButton::clicked, this, [this]() {
         for (Bank &b : m_banks) b.bank.reset();
         refreshInputs();
-        m_status->say(tr("Inputs reset: 0, contacts at rest (NO 0 NC 1)."));
+        m_status->say(tr("Every input Off, no faults, no flicker."));
     });
     row->addWidget(reset);
     v->addLayout(row);
+
+    auto *hint = new QLabel(tr("Click an input to switch it On or Off. Inputs with NO and NC feedbacks switch the same way "
+                               "(Off = NO 0 NC 1, On = NO 1 NC 0); their \u26A0 button sets a fault (both 0 or both 1). "
+                               "The wave button flickers an input."), page);
+    hint->setObjectName(QStringLiteral("muted"));
+    hint->setWordWrap(true);
+    v->addWidget(hint);
 
     m_inputsSummary = new QLabel(page);
     m_inputsSummary->setObjectName(QStringLiteral("muted"));

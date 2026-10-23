@@ -80,7 +80,8 @@ quint8  readbackCard(quint8 requestDest); // 17 -> 13, 18 -> 14
 enum class Cab { Sifa, Old };
 
 // One switch on the simulator. A plain input is one bit; a contact with NO
-// and NC feedbacks is two, with four states (00 01 10 11, written NO NC).
+// and NC feedbacks is two: Off = NO 0 NC 1 (at rest), On = NO 1 NC 0
+// (operated), and the faults both 0 and both 1 (written NO NC: 01 10 00 11).
 struct Input {
     QString name;          // "dmi1_sos" for a pair, "cab1_active" for a bit
     QString group;         // "DMI 1"
@@ -138,7 +139,8 @@ public:
     int  state(int i) const;                   // of `base`
     int  liveState(int i) const;               // of word()
     void setState(int i, int s);
-    void toggle(int i);                        // plain: invert; pair: next of 00 01 10 11
+    // Plain: invert. Pair: Off (01) <-> On (10); a fault (00 / 11) goes to Off.
+    void toggle(int i);
     static QString stateText(const Input &in, int s);   // "1", "01"
 
     bool flickering(int i) const;

@@ -11,6 +11,48 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-326"></a>
+## Session 326 — Cab I/O Simulator: NO/NC inputs switch On and Off like the rest; faults behind ⚠
+
+Abhinav: the `00 01 10 11` control on inputs with NO and NC feedbacks was
+confusing for a normal user. It is replaced:
+- **A NO/NC input is an Off/On switch**, the same as every other input.
+  - Off is the contact at rest (NO 0, NC 1); On is operated (NO 1, NC 0).
+  - The tile reads "On · NO 1 · NC 0", so the bits are still there for
+    whoever needs them.
+- **Faults are set from a ⚠ button** on the tile, or with **E**. Its menu
+  offers Off, On, "Fault: both 0" and "Fault: both 1".
+  - A faulted input is outlined and tinted in the warning colour, and its
+    text reads "Fault: both 0 · NO 0 · NC 0".
+  - Its switch knob sits in the middle, neither Off nor On.
+  - Clicking the switch clears the fault to Off.
+- Flicker on a NO/NC input switches it On and Off. On a faulted one it
+  alternates both 0 and both 1, as before.
+- A one-line hint above the inputs says all this.
+- Reset's tooltip and message say "every input Off, no faults".
+
+Keys: Space switches; F flickers; E opens the fault menu. The 0–3 keys
+are gone.
+
+**Files.** `cabio.{h,cpp}` (`InputBank::toggle` on a pair: Off ↔ On, and a
+fault goes to Off); `cabiosimwindow.cpp` (the tile).
+
+**Tests.** `session324` (now 68 checks): a NO/NC input switches On (NO 1, NC 0)
+and Off again; both faults are set directly; switching a faulted input puts
+it Off. `session325` is unchanged and still green, so the frames are
+byte-identical.
+
+**Gate (Linux):**
+- **Qt 6.4:** green. 359 suites / 9281 checks, 0 failed; 15 validators; menu
+  audit; smoke.
+- **Qt 5.15:** only the four `session134`/`session135` pixel checks that fail
+  on patch 323 here too (session 324). Everything else green.
+
+**Not tested:** the fault menu is a popup; it was not opened in a test. It
+sets the same states `setState()` does, which are tested.
+
+---
+
 <a id="session-325"></a>
 ## Session 325 — Cab I/O Simulator: checked against real VCC ↔ IOA frames; it answers readback requests too
 

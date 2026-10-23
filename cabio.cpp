@@ -294,7 +294,7 @@ void InputBank::setState(int i, int s)
 void InputBank::toggle(int i)
 {
     const Input &in = input(i);
-    setState(i, in.isPair() ? (state(i) + 1) % 4 : (state(i) ^ 1));
+    setState(i, in.isPair() ? (state(i) == 1 ? 2 : 1) : (state(i) ^ 1));
 }
 
 QString InputBank::stateText(const Input &in, int s)

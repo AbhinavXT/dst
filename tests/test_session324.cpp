@@ -176,11 +176,15 @@ TEST_SUITE(session324)
         CHECK(b.state(0) == 1 && b.word() == 0x5555u, "reset: every DMI contact at rest (NC 1), others 0");
         CHECK(InputBank::stateText(b.input(0), b.state(0)) == QLatin1String("01"), "a pair reads NO NC");
         b.toggle(0);
-        CHECK(b.state(0) == 2 && (b.word() & 3u) == 2u, "01 -> 10: NO 1 (bit 1), NC 0");
+        CHECK(b.state(0) == 2 && (b.word() & 3u) == 2u, "a contact switches On: NO 1 (bit 1), NC 0");
         b.toggle(0);
-        CHECK(b.state(0) == 3, "-> 11");
+        CHECK(b.state(0) == 1, "and Off again: NO 0, NC 1");
+        b.setState(0, 3);
+        CHECK(b.state(0) == 3 && (b.word() & 3u) == 3u, "the fault both 1 is set directly");
         b.toggle(0);
-        CHECK(b.state(0) == 0 && (b.word() & 3u) == 0u, "-> 00");
+        CHECK(b.state(0) == 1, "switching a faulted contact puts it Off");
+        b.setState(0, 0);
+        CHECK(b.state(0) == 0 && (b.word() & 3u) == 0u, "the fault both 0");
         b.setState(0, 1);
 
         const int cab1 = 8;                       // cab1_active, bit 23
