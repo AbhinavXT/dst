@@ -56,6 +56,7 @@ void LogModel::noteTypeGap(const LogEntry &e)
         const qint64 usual = sorted.at(sorted.size() / 2);
         e.typeGapUsualMs = usual;
         e.typeGapLate = gap > 2 * usual && gap > usual + kGapLateSlack;
+        if (e.typeGapLate) { ++m_lateGaps; m_lastLateGapMs = e.epochMs; }
     }
     st.recent.append(gap);
     if (st.recent.size() > kGapHistory) st.recent.removeFirst();
@@ -369,6 +370,8 @@ void LogModel::clear()
     m_entries.clear();
     m_newestMs = 0;
     m_typeGaps.clear();
+    m_lateGaps = 0;
+    m_lastLateGapMs = -1;
     endResetModel();
 }
 

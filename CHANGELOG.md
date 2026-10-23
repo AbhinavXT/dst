@@ -11,6 +11,86 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-337"></a>
+## Session 337 — "▼ N new rows": scrolling up pauses a following tab
+
+UI item 7: *"Follow live pill: while you scroll up during a live capture,
+a floating ▼ 312 new rows button appears; clicking it jumps back to the
+tail."* With Follow on, every batch (about 30 a second) scrolled the table
+back to the end, so a row a few screens up could not be read while
+traffic was arriving.
+
+**What the operator sees.**
+- With **Follow** ticked, scrolling up (wheel, scroll bar, a jump) pauses
+  following *for that tab*. The view stays where it is.
+- A button over the bottom edge of the rows counts what has arrived since:
+  **▼ 120 new rows**. Clicking it goes to the newest row and follows again;
+  so does scrolling back to the end by hand.
+- Follow stays ticked throughout: this is a pause, not the checkbox.
+  Unticking Follow hides the button.
+
+**Files.** `followpill.{h,cpp}` (new); `mainwindow.{h,cpp}` (each batch
+scrolls only a tab at its tail, else counts on the pill),
+`mainwindow_tabs.cpp` (a pill per tab).
+
+**Tests.** New `session337` (16 checks), the real MainWindow fed real rows
+of `replay/loco_1_1_27062026_170217.cap`: at the end, rows scroll in with
+no pill; scrolled up, the view stays and the pill counts the rows, over
+the bottom of the rows, Follow still ticked; more rows grow the count; a
+click returns to the end and following resumes; scrolling to the end by
+hand resumes too; Follow off hides it and adds none.
+
+**Gate (macOS):** green on Qt 5.15 and Qt 6.11: 369 suites / 9454 checks,
+0 failed; 15 validators; menu audit; smoke. Gated together with session
+336/337, which share files and went in as one commit.
+
+**Not tested:** the wheel itself (the scroll bar's value is set).
+
+---
+
+<a id="session-336"></a>
+## Session 336 — the tab on show, in one status-bar chip
+
+UI item 6: *"Live status strip: per source, frames/s, last frame's age,
+lost frames, frame-number drift, turning warn/fail."* Most of it was
+already there: the **Sources** panel has shown rate, silence and
+Live / Quiet / Offline per source since session 119, and the status bar
+shows the loco and station frame clocks and their gap, in colour, since
+session 81. But the Sources panel is closed on a first run (session 275).
+
+**What the operator sees.** A chip at the left of the status bar for the
+tab on show: **Loco 1 VCC · 12/s · 0.4 s ago · 3 gaps**.
+- Green while rows arrive; amber past Settings' quiet threshold
+  (10 s), red past the offline one (30 s), the same thresholds the tab
+  titles and Sources panel use.
+- **gaps**: how many times since the tab opened a kind of line came more
+  than twice its usual gap late (the Δt column's ▲, session 288): lines
+  that may be missing. A gap within the last minute of message time turns
+  the chip amber; older ones stay counted.
+- The tooltip says which threshold, and what a gap means.
+- Frame-number drift is not repeated here: the clocks beside it already
+  show it.
+
+**Files.** `tabhealth.{h,cpp}` (new: the words and the tone);
+`logmodel.{h,cpp}` (`lateGapCount`, `lastLateGapMs`, reset by Clear);
+`mainwindow.h`, `mainwindow_status.cpp`, `mainwindow_shell.cpp`
+(`refreshTabChip`, each second and on a tab change).
+
+**Tests.** New `session336` (12 checks): no tab, no chip; waiting; live
+in green; quiet in amber; offline in red with the reason; thresholds off;
+a recent gap amber, an old one only counted. On 2000 real rows of
+`replay/loco_1_1_27062026_170217.cap`, dropping 200 rows' ARP lines adds
+a ▲ gap to the run's own; Clear starts the count again.
+
+**Gate (macOS):** green on Qt 5.15 and Qt 6.11: 369 suites / 9454 checks,
+0 failed; 15 validators; menu audit; smoke. Gated together with session
+336/337, which share files and went in as one commit.
+
+**Not tested:** the rate against a live feed (it is the count's change
+over the tick, as in the Sources panel).
+
+---
+
 <a id="session-335"></a>
 ## Session 335 — "Why is this row coloured?" in sentences
 

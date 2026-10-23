@@ -224,6 +224,7 @@ void MainWindow::buildShell()
 
     connect(ui->tabWidget, &QTabWidget::currentChanged, this, [this](int) {
         refreshHeader();
+        refreshTabChip();
         // The newly shown tab's lanes were left dirty while it was hidden.
         auto it = m_tabs.find(currentTabKey());
         if (it != m_tabs.end() && it->lanes) it->lanes->refreshLater();

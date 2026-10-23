@@ -277,6 +277,7 @@ private:
         QWidget    *container = nullptr;
         QString     friendlyName;
         bool        scrollLock = false;
+        class FollowPill *pill = nullptr;   // session 337: "▼ N new rows"
         bool        visible    = true;
         qint64      lastSeenMs = 0;
     };
@@ -544,6 +545,13 @@ private:
 
     QLabel *m_lblStationClock = nullptr;
     QLabel *m_lblClockGap     = nullptr;
+    // Session 336: the tab on show, in one chip (tabhealth.h). Its rate
+    // comes from how the count moved since the last tick.
+    QLabel *m_lblTabHealth    = nullptr;
+    QString m_healthKey;
+    int     m_healthCount = 0;
+    qint64  m_healthAtMs  = 0;
+    void    refreshTabChip();
 
     // The equipment's clock, read out of FRAME_NUM, and how far this laptop
     // has drifted from it. Standing state, not an event, so it is a plain

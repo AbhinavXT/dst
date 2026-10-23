@@ -3,6 +3,7 @@
 //  Part of MainWindow: split out of mainwindow.cpp in session 89 so each
 //  concern can be read, and recompiled, on its own. No behaviour change.
 // =============================================================================
+#include "followpill.h"
 #include "mainwindow.h"
 #include <QSettings>
 #include "frameclock.h"
@@ -286,6 +287,10 @@ void MainWindow::buildOrShowTab(const QString &tabKey,
     tab.marks        = marks;
     tab.container    = container;
     tab.friendlyName = friendlyName;
+    // Session 337: scrolling up while following pauses this tab; the pill
+    // counts what arrives and takes the view back to the end.
+    tab.pill         = new FollowPill(view);
+    connect(tab.pill, &FollowPill::resumeRequested, view, &QTableView::scrollToBottom);
     tab.visible      = true;
     tab.lastSeenMs   = QDateTime::currentMSecsSinceEpoch();
     m_tabs[tabKey]      = tab;

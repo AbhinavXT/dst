@@ -186,6 +186,8 @@ SOURCES += \
     $$PWD/fieldcrumb.cpp \
     $$PWD/rowcard.cpp \
     $$PWD/rowwhy.cpp \
+    $$PWD/tabhealth.cpp \
+    $$PWD/followpill.cpp \
     $$PWD/shortcutsdialog.cpp \
     $$PWD/uicolors.cpp \
     $$PWD/programdir.cpp \
@@ -371,6 +373,8 @@ HEADERS += \
     $$PWD/fieldcrumb.h \
     $$PWD/rowcard.h \
     $$PWD/rowwhy.h \
+    $$PWD/tabhealth.h \
+    $$PWD/followpill.h \
     $$PWD/shortcutsdialog.h \
     $$PWD/sendguard.h \
     $$PWD/uicolors.h \

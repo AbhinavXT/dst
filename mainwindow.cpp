@@ -1,3 +1,4 @@
+#include "followpill.h"
 #include "rowwhy.h"
 #include "mainwindow.h"
 #include <QSettings>
@@ -839,7 +840,10 @@ void MainWindow::onEntriesAppended(QString tabKey, QVector<LogEntryPtr> entries)
     // explained, and closing it (Esc) hands the view back.
     const bool findHoldsView = it->findBar && it->findBar->holdsView();
     if (it->scrollLock && it->view && !findHoldsView) {
-        it->view->scrollToBottom();
+        // Session 337: unless the operator has scrolled up to read. Then the
+        // tab waits, and the pill says how much has arrived since.
+        if (!it->pill || it->pill->atTail()) it->view->scrollToBottom();
+        else it->pill->addPending(entries.size());
     }
 
     // Count update — once per batch. updateLogCount reads model->count
@@ -1166,6 +1170,7 @@ void MainWindow::on_cbScrollLock_stateChanged(int)
     if (it == m_tabs.end()) return;
     it->scrollLock = ui->cbScrollLock->isChecked();
     if (it->findBar) it->findBar->setScrollLockActive(it->scrollLock);
+    if (it->pill && !it->scrollLock) it->pill->resume();   // not following: nothing to resume
     // Turning follow back on should go to the end now rather than at the
     // next batch — unless Find is holding the view, in which case the hold
     // stands until the bar is closed.

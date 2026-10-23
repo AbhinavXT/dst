@@ -3,6 +3,7 @@
 //  Part of MainWindow: split out of mainwindow.cpp in session 89 so each
 //  concern can be read, and recompiled, on its own. No behaviour change.
 // =============================================================================
+#include "tabhealth.h"
 #include "mainwindow.h"
 #include "udpcommunication.h"
 #include <QSettings>
@@ -118,6 +119,9 @@
 // The status-bar widgets, left to right. Called once, from the constructor.
 void MainWindow::buildStatusBar()
 {
+    m_lblTabHealth = new QLabel(this);
+    m_lblTabHealth->setObjectName(QStringLiteral("tabHealthLabel"));
+    statusBar()->addPermanentWidget(m_lblTabHealth);
     m_lblBindStatus = new QLabel(QStringLiteral("Binding…"), this);
     m_lblQueueDepth = new QLabel(QStringLiteral("Queue: 0"), this);
     m_lblDropStatus = new QLabel(QStringLiteral("Drops: 0"), this);
@@ -423,6 +427,39 @@ void MainWindow::updateEmptyState()
     m_startPage->show();
 }
 
+void MainWindow::refreshTabChip()
+{
+    if (!m_lblTabHealth) return;
+    const QString key = currentTabKey();
+    auto it = m_tabs.constFind(key);
+    LogModel *model = m_dispatcher ? m_dispatcher->modelForKey(key) : nullptr;
+    if (it == m_tabs.constEnd() || !model) { m_lblTabHealth->clear(); m_lblTabHealth->hide(); return; }
+
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    TabHealth::Reading r;
+    r.name = it->friendlyName.isEmpty() ? key : it->friendlyName;
+    // A trimmed or cleared tab counts as no traffic, not negative traffic;
+    // a tab just switched to has no rate until its second tick.
+    if (key == m_healthKey && now > m_healthAtMs)
+        r.rate = qMax(0, model->count() - m_healthCount) * 1000.0 / double(now - m_healthAtMs);
+    m_healthKey = key; m_healthCount = model->count(); m_healthAtMs = now;
+    r.silentMs = it->lastSeenMs > 0 ? now - it->lastSeenMs : -1;
+    r.lateGaps = model->lateGapCount();
+    if (model->lastLateGapMs() >= 0 && model->count() > 0)
+        r.sinceLastGapMs = model->entryAt(model->count() - 1)->epochMs - model->lastLateGapMs();
+    r.warnSec = m_offlineWarnSec;
+    r.errSec = m_offlineErrSec;
+
+    const TabHealth::Shown s = TabHealth::describe(r);
+    m_lblTabHealth->setText(s.text);
+    m_lblTabHealth->setToolTip(s.tip);
+    m_lblTabHealth->setStyleSheet(s.tone == TabHealth::Tone::Fail ? UiColor::errorStyle()
+                                  : s.tone == TabHealth::Tone::Warn ? UiColor::warningStyle()
+                                  : s.tone == TabHealth::Tone::Ok   ? UiColor::okStyle()
+                                                                    : UiColor::mutedStyle());
+    m_lblTabHealth->show();
+}
+
 void MainWindow::onStatusTick()
 {
     // Resolve any implication whose window has closed. observe() does this
@@ -430,6 +467,7 @@ void MainWindow::onStatusTick()
     // stops would otherwise sit armed for ever and be reported as neither
     // answered nor unanswered.
     m_tests.expireArmed(QDateTime::currentMSecsSinceEpoch());
+    refreshTabChip();
 
     if (!m_receiver) return;
 

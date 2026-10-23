@@ -159,6 +159,11 @@ public:
     int restoreOlder(const QVector<LogEntryPtr> &older);
 
     int  capacity()    const { return m_capacity; }
+    // Session 336: ▲ gaps (a kind of line more than twice its usual gap
+    // late) since the model was made or cleared, and the newest one's
+    // message time (-1 = none). For the status bar's tab chip.
+    int    lateGapCount() const { return m_lateGaps; }
+    qint64 lastLateGapMs() const { return m_lastLateGapMs; }
     void setCapacity(int newCap);
 
 private:
@@ -182,6 +187,8 @@ private:
     struct TypeGapState { bool seen = false; qint64 lastMs = 0; QVector<qint64> recent; };
     QHash<QString, TypeGapState> m_typeGaps;
     void noteTypeGap(const LogEntry &e);
+    int    m_lateGaps = 0;
+    qint64 m_lastLateGapMs = -1;
 
     // Helpers for data().
     QString formatTime    (qint64 epochMs)  const;
