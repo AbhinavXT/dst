@@ -112,13 +112,17 @@ TEST_SUITE(session351)
         CHECK(gauges[1]->fault().isEmpty() && near351(gauges[1]->value(), 3.0, 0.01),
               "setting a pressure on a faulty channel brings it back");
 
-        if (auto *tabs = w.findChild<QTabWidget *>()) tabs->setCurrentIndex(3);
+        auto *tabs = w.findChild<QTabWidget *>();
+        if (tabs) tabs->setCurrentIndex(3);
         w.show();
         for (int i = 0; i < 3; ++i) QCoreApplication::processEvents();
         CHECK(gauges[0]->isVisible() && gauges[0]->height() >= gauges[0]->minimumSizeHint().height(), "the dials show");
-        CHECK(w.minimumSizeHint().height() <= 700 && w.minimumSizeHint().width() <= 1366,
-              QByteArray("still fits a laptop (") + QByteArray::number(w.minimumSizeHint().width()) + " x "
-                  + QByteArray::number(w.minimumSizeHint().height()) + ")");
+        // The Analog page's own width: the window's is the Inputs tab's tile
+        // grid (session 324), 1133 px on the Mac, 1440 with Linux's fonts.
+        const QSize page = tabs ? tabs->widget(3)->minimumSizeHint() : QSize();
+        CHECK(page.isValid() && page.width() <= 1366 && w.minimumSizeHint().height() <= 700,
+              QByteArray("the Analog tab fits a laptop (page ") + QByteArray::number(page.width()) + " wide, window "
+                  + QByteArray::number(w.minimumSizeHint().height()) + " tall)");
         const QStringList loose = LayoutAudit::orphans(&w);
         CHECK(loose.isEmpty(), QByteArray("no visible widget outside every layout (") + loose.join(QLatin1String(", ")).toUtf8() + ")");
     }

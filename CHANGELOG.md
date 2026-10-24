@@ -11,6 +11,29 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-354"></a>
+## Session 354 — Linux CI: session351 measures the Analog tab, not the window
+
+Patch 353's CI failed the same way (Linux, Qt 5: **1440** × 686), so the
+pressure boxes were not the cause. Measured on the Mac with the screenshot
+harness (`SHOT_WIDE`): the Cab I/O Simulator's minimum width comes from the
+**Inputs** tab (session 324's tile grid), 1133 px on the Mac and about 1440
+with Linux's fonts; the Analog tab is 758 px. The window had no size check
+before session 351, so this was there from session 324 on.
+
+`session351` now holds what 351 changed: the Analog page's own minimum width
+(≤ 1366) and the window's height (≤ 700).
+
+**Not fixed (not asked):** the window's minimum width is wider than a
+1366 px laptop on Linux, from the Inputs tab.
+
+**Files.** `tests/test_session351.cpp`.
+
+**Gate (Mac):** Qt 6 and Qt 5.15 both green: 381 suites / 9698 checks, 0
+failed; 15 validators; menu audit; smoke.
+
+---
+
 <a id="session-353"></a>
 ## Session 353 — Linux CI: the analog tab's width (session 351)
 
