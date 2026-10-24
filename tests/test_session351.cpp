@@ -87,7 +87,10 @@ TEST_SUITE(session351)
         CabIoSimWindow w(nullptr);
         w.setAttribute(Qt::WA_DeleteOnClose, false);
         for (int ch = 0; ch < kAnalogChannels; ++ch) { w.setAnalogScale(ch, 10); w.setAnalogMa(ch, 4); }
-        const QList<PressureGauge *> gauges = w.findChildren<PressureGauge *>();
+        // The Analog tab's; the Scenarios tab's BP/BC/MR mirrors (session 358) are named.
+        QList<PressureGauge *> gauges;
+        for (PressureGauge *g : w.findChildren<PressureGauge *>())
+            if (g->objectName() != QLatin1String("dashGauge")) gauges << g;
         CHECK(gauges.size() == kAnalogChannels, "a gauge for each of the six channels");
         if (gauges.size() != kAnalogChannels) return;
 

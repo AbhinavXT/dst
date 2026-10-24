@@ -11,6 +11,61 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-358"></a>
+## Session 358 — Cab I/O Simulator: the Scenarios tab as a brake dashboard
+
+Abhinav: *"Make the cab io simulator ui better looking and include ui
+enhancements like gauges etc. In the feedback scenerios when brake is applied
+the pressure should drop in the gauges too"*, then *"Shkuld work with all
+themes"*. Asked and answered: a brake dashboard, and the rules as cards.
+
+**What the operator sees.** The Scenarios tab opens with a **Brakes and
+pressures** card:
+- four brake lamps, **NB, FSB, EB, LE**, lit red while the VCC applies them
+  (dotted while no output data has come);
+- three dials, **BP, BC, MR**, that are the analog card's channels 1-3: when
+  a brake is applied BP drops and BC rises on them as the ramp runs. A green
+  wedge on each rim marks where the brake takes it. A dial can be dragged to
+  set the channel by hand, as on the Analog tab;
+- the per-brake values (No brake / NB / FSB / EB × BP / BC / MR), the
+  *Pressures follow the brakes* switch and the ramp rate, and the line saying
+  what is in force.
+
+The rules are **cards** now, one per rule: "When [Emergency brake applied]
+set [EB relay FB] to [10 On] else [01 Off] … holds · set once ✕". A card is
+**lit** (tinted, accent edge) while its condition holds. The value boxes
+have one width so the cards line up.
+
+**Every theme.** Colours are palette roles and `UiColor`: the target wedge
+is `ok()`, the lit edge `accent()`, the lamps `signalLamp("red")` with the
+session 328 rim, a lit card's fill and text the On tile's `tileFill` /
+`tileInk`, so High Contrast keeps 7:1. Checked in all eleven themes,
+colour-blind-safe on and off, and looked at in all eleven.
+
+A lit card carries its own style sheet: as a `[holds="true"]` property
+selector in the window's sheet, Qt 5 kept a lit card's labels in the
+previous theme's colour.
+
+**Files.** `pressuregauge.{h,cpp}` (`setTarget`: the wedge),
+`cabiosimwindow.{h,cpp}` (the card, `BrakeLamp`, `paintLamp` shared with the
+output lamps, rule cards), `tests/test_session358.cpp` (new),
+`tests/test_session351.cpp` (counts the Analog tab's six dials, not the
+Scenarios tab's three), `tests/tests.pro`.
+
+**Tests.** `session358` (23 checks): the gauge's target; three dials; with
+EB applied BP's mark at the EB value, after 1 s BP at 4.0 and BC at 1.0,
+landing on the EB values; the EB rule's card lit, NB's not; a drag on the
+BC dial sets BC; no marks when pressures are off; in every theme the wedge,
+lit edge and lamp reach 3:1 (7:1 High Contrast); a lit card's grey words
+take the tile ink and reach the text floor (Mocha, High Contrast).
+
+**Gate (Mac):** Qt 6 and Qt 5.15 both green: 385 suites / 9786 checks, 0
+failed; 15 validators; menu audit (186); smoke.
+
+**Not tested:** on Windows or Linux screens (CI runs the suites there).
+
+---
+
 <a id="session-357"></a>
 ## Session 357 — Cab I/O Simulator: brake pressures ramp on the analog card
 

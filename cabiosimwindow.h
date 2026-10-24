@@ -48,7 +48,7 @@ class SerialLink;
 class SerialManager;
 class StatusLine;
 
-namespace CabIoUi { class TileGrid; class InputTile; class LampTile; }
+namespace CabIoUi { class TileGrid; class InputTile; class LampTile; class BrakeLamp; }
 
 // The window's own colour decisions (session 328). Everything else it draws
 // is a palette role or a UiColor, which the contrast audit already holds in
@@ -318,7 +318,9 @@ private:
     qint64 m_modeAtMs = 0;
     QButtonGroup *m_rulesOnGroup = nullptr;
     QLabel      *m_modeLabel = nullptr;
-    QTableWidget *m_ruleTable = nullptr;
+    QVBoxLayout *m_ruleBox = nullptr;       // the rule cards (session 358)
+    class QScrollArea *m_ruleScroll = nullptr;
+    QVector<class QFrame *> m_ruleCards;
     // Brake pressures
     bool   m_brakesOn = true;
     int    m_brakeLevel = -1;
@@ -328,6 +330,8 @@ private:
     QDoubleSpinBox *m_rampRate = nullptr;
     QLabel         *m_brakeNow = nullptr;
     QTimer         *m_rampTimer = nullptr;
+    QVector<CabIoUi::BrakeLamp *> m_brakeLamps;              // NB FSB EB LE
+    class PressureGauge *m_dashGauges[CabIo::kBrakeChannels] = {};
 
     QComboBox   *m_crc = nullptr;
     QComboBox   *m_length = nullptr;

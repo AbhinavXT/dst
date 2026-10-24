@@ -27,6 +27,10 @@ public:
     // Shown instead of the value (e.g. "open loop"); empty = a reading.
     void   setFault(const QString &why);
     QString fault() const { return m_fault; }
+    // A mark on the rim where the value is heading (session 358: the brake
+    // pressure a ramp ends at); negative = none.
+    void   setTarget(double kgcm2);
+    double target() const { return m_target; }
 
     // The value under a point of the widget, snapped to 0.1; -1 off the dial.
     double valueAt(const QPointF &p) const;
@@ -52,6 +56,7 @@ private:
     QString m_fault;
     double  m_max   = 10.2;
     double  m_value = 0;
+    double  m_target = -1;
 };
 
 #endif  // PRESSUREGAUGE_H

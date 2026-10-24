@@ -41,6 +41,7 @@
 #include <QSet>
 #include <QSettings>
 #include <QSpinBox>
+#include <QStyle>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QTime>
@@ -144,6 +145,22 @@ QWidget *segmented(const QStringList &labels, QButtonGroup **group, QWidget *par
     g->button(0)->setChecked(true);
     *group = g;
     return w;
+}
+
+// A rule card lit while its condition holds: the On tile's tint, an accent
+// edge, and its text held to the tiles' floors (session 328). Its own style
+// sheet, not a property selector: Qt 5 kept a lit card's labels in the last
+// theme's colours that way.
+void styleRuleCard(QWidget *card)
+{
+    if (!card->property("holds").toBool()) { card->setStyleSheet(QString()); return; }
+    const QString accent = UiColor::accent().name();
+    card->setStyleSheet(QStringLiteral(
+        "QFrame#ruleCard { background: %1; border: 1px solid %2; border-left: 4px solid %2; border-radius: 9px; }"
+        "QLabel { color: %3; } QLabel#muted { color: %4; }")
+        .arg(CabIoColors::tileFill(CabIoColors::Tile::On).name(), accent,
+             CabIoColors::tileInk(QGuiApplication::palette().color(QPalette::Text), CabIoColors::Tile::On).name(),
+             CabIoColors::tileInk(UiColor::muted(), CabIoColors::Tile::On).name()));
 }
 
 QColor blend(const QColor &a, const QColor &b, double t)
@@ -473,6 +490,71 @@ private:
 };
 
 // One output: a lamp, its name, its state and how often it changed.
+// A signal lamp in `r`: lit with a glow, or an empty ring (dotted when not known).
+void paintLamp(QPainter &p, const QRectF &lamp, const QString &name, bool known, bool on)
+{
+    const QColor c = UiColor::signalLamp(name);
+    const double glowR = lamp.width() * 0.77;
+    if (known && on) {
+        QRadialGradient glow(lamp.center(), glowR);
+        QColor g = c; g.setAlpha(90);
+        QColor t = c; t.setAlpha(0);
+        glow.setColorAt(0.55, g);
+        glow.setColorAt(1.0, t);
+        p.setPen(Qt::NoPen);
+        p.setBrush(glow);
+        p.drawEllipse(lamp.center(), glowR, glowR);
+        QRadialGradient body(lamp.center() - QPointF(lamp.width() * 0.15, lamp.width() * 0.15), lamp.width() * 0.62);
+        body.setColorAt(0, c.lighter(150));
+        body.setColorAt(1, c);
+        p.setBrush(body);
+        // A rim the card can see: a yellow or white lamp on a light
+        // theme is otherwise a faint disc (session 328).
+        p.setPen(QPen(CabIoColors::lampRim(name), 1.5));
+        p.drawEllipse(lamp);
+    } else {
+        p.setBrush(QGuiApplication::palette().color(QPalette::Window));
+        QPen pen(UiColor::muted(), 1.5);
+        if (!known) pen.setStyle(Qt::DotLine);
+        p.setPen(pen);
+        p.drawEllipse(lamp);
+    }
+}
+
+// Session 358: a brake's lamp on the Scenarios tab, its name under it.
+class BrakeLamp : public QWidget
+{
+public:
+    BrakeLamp(const QString &name, QWidget *parent = nullptr) : QWidget(parent), m_name(name)
+    {
+        setAccessibleName(name);
+        setMinimumSize(56, 58);
+    }
+    QSize sizeHint() const override { return QSize(64, 62); }
+    void setValues(bool known, bool on)
+    {
+        if (known == m_known && on == m_on) return;
+        m_known = known; m_on = on;
+        setAccessibleDescription(on ? QStringLiteral("applied") : QStringLiteral("released"));
+        setToolTip(QStringLiteral("%1: %2").arg(m_name, !known ? QStringLiteral("no output data yet")
+                                                     : on ? QStringLiteral("applied") : QStringLiteral("released")));
+        update();
+    }
+protected:
+    void paintEvent(QPaintEvent *) override
+    {
+        QPainter p(this);
+        p.setRenderHint(QPainter::Antialiasing);
+        paintLamp(p, QRectF((width() - 28) / 2.0, 6, 28, 28), QStringLiteral("red"), m_known, m_on);
+        p.setPen(palette().color(QPalette::Text));
+        p.setFont(scaled(font(), 0.95, m_on ? QFont::Bold : QFont::Normal));
+        p.drawText(QRect(0, 38, width(), 20), Qt::AlignCenter, m_name);
+    }
+private:
+    QString m_name;
+    bool m_known = false, m_on = false;
+};
+
 class LampTile : public QWidget
 {
 public:
@@ -506,32 +588,7 @@ protected:
         p.setBrush(pal.color(QPalette::Base));
         p.drawRoundedRect(QRectF(rect()).adjusted(1, 1, -1, -1), 9, 9);
 
-        const QRectF lamp(16, (height() - 26) / 2.0, 26, 26);
-        const QColor c = UiColor::signalLamp(m_o.lamp);
-        if (m_known && m_on) {
-            QRadialGradient glow(lamp.center(), 20);
-            QColor g = c; g.setAlpha(90);
-            QColor t = c; t.setAlpha(0);
-            glow.setColorAt(0.55, g);
-            glow.setColorAt(1.0, t);
-            p.setPen(Qt::NoPen);
-            p.setBrush(glow);
-            p.drawEllipse(lamp.center(), 20, 20);
-            QRadialGradient body(lamp.center() - QPointF(4, 4), 16);
-            body.setColorAt(0, c.lighter(150));
-            body.setColorAt(1, c);
-            p.setBrush(body);
-            // A rim the card can see: a yellow or white lamp on a light
-            // theme is otherwise a faint disc (session 328).
-            p.setPen(QPen(CabIoColors::lampRim(m_o.lamp), 1.5));
-            p.drawEllipse(lamp);
-        } else {
-            p.setBrush(pal.color(QPalette::Window));
-            QPen pen(UiColor::muted(), 1.5);
-            if (!m_known) pen.setStyle(Qt::DotLine);
-            p.setPen(pen);
-            p.drawEllipse(lamp);
-        }
+        paintLamp(p, QRectF(16, (height() - 26) / 2.0, 26, 26), m_o.lamp, m_known, m_on);
 
         const int left = 56, w = width() - left - 12;
         p.setPen(pal.color(QPalette::Text));
@@ -566,6 +623,7 @@ private:
 
 }  // namespace CabIoUi
 
+using CabIoUi::BrakeLamp;
 using CabIoUi::InputTile;
 using CabIoUi::LampTile;
 using CabIoUi::TileGrid;
@@ -1097,6 +1155,14 @@ void CabIoSimWindow::refreshAnalog()
             r.gauge->setFault(p.status == PressureReading::Open ? tr("open loop") : tr("short"));
         }
         r.kg->setEnabled(p.status == PressureReading::Ok);
+        const int ch = int(&r - m_anRows.data());
+        if (ch < kBrakeChannels && m_dashGauges[ch]) {
+            PressureGauge *g = m_dashGauges[ch];
+            g->setMaximum(bar * 1.02);
+            if (p.status == PressureReading::Ok) g->setValue(p.kgcm2);
+            g->setFault(p.status == PressureReading::Ok ? QString()
+                        : p.status == PressureReading::Open ? tr("open loop") : tr("short"));
+        }
         r.reads->setText(t);
         r.reads->setStyleSheet(p.status == PressureReading::Ok ? QString() : UiColor::warningStyle());
     }
@@ -1371,8 +1437,12 @@ void CabIoSimWindow::restyle()
         "QLabel#headline { font-size: 14pt; font-weight: 600; }"
         "QLabel#mono, QLabel#bankWord { font-family: \"Consolas\", \"Menlo\", \"DejaVu Sans Mono\", monospace; color: %5; }"
         "QLabel#bankWord { color: %4; font-weight: 600; }"
-        "QFrame#bankRule { color: %1; }")
+        "QFrame#bankRule { color: %1; }"
+        "QFrame#card { background: %3; border: 1px solid %1; border-radius: 10px; }"
+        "QLabel#cardTitle { font-size: 13pt; font-weight: 600; }"
+        "QFrame#ruleCard { background: %3; border: 1px solid %1; border-radius: 9px; }")
         .arg(frame, accent, base, text, muted));
+    for (QFrame *card : m_ruleCards) styleRuleCard(card);
     for (Bank &b : m_banks)
         for (InputTile *t : b.tiles) t->update();
     for (LampTile *l : m_lamps) l->update();
@@ -1641,7 +1711,9 @@ QWidget *CabIoSimWindow::buildScenariosTab()
         m_rules << r;
         rebuildRules();
         rulesEdited();
-        m_ruleTable->scrollToBottom();
+        QTimer::singleShot(0, this, [this]() {
+            if (!m_ruleCards.isEmpty()) m_ruleScroll->ensureWidgetVisible(m_ruleCards.last());
+        });
     });
     row->addWidget(add);
     auto *more = new QPushButton(tr("More"), page);
@@ -1676,36 +1748,29 @@ QWidget *CabIoSimWindow::buildScenariosTab()
     row->addWidget(more);
     v->addLayout(row);
 
-    auto *hint = new QLabel(tr("When a rule's condition starts, its input is set to the first value; when it stops, to the "
-                               "second. An input you click in between stays as you set it until the condition changes again. "
-                               "Later rules win over earlier ones."), page);
-    hint->setObjectName(QStringLiteral("muted"));
-    hint->setWordWrap(true);
-    v->addWidget(hint);
-
-    m_ruleTable = new QTableWidget(0, 6, page);
-    m_ruleTable->setHorizontalHeaderLabels({ QString(), tr("When"), tr("Set input"), tr("To"), tr("Otherwise"), tr("Now") });
-    m_ruleTable->verticalHeader()->hide();
-    m_ruleTable->setSelectionMode(QAbstractItemView::NoSelection);
-    m_ruleTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
-    m_ruleTable->setFocusPolicy(Qt::NoFocus);
-    QHeaderView *hh = m_ruleTable->horizontalHeader();
-    hh->setSectionResizeMode(QHeaderView::ResizeToContents);
-    hh->setSectionResizeMode(5, QHeaderView::Stretch);
-    v->addWidget(m_ruleTable, 1);
-
-    // Brake pressures: a value per brake for BP, BC, MR, and the ramp rate.
+    // Session 358: the brakes and the pressures they set, as one card --
+    // the brake lamps, BP / BC / MR dials that move with the ramp (a mark
+    // where each is heading), and the values per brake.
+    auto *dash = new QFrame(page);
+    dash->setObjectName(QStringLiteral("card"));
+    auto *dv = new QVBoxLayout(dash);
+    dv->setContentsMargins(14, 10, 14, 10);
+    dv->setSpacing(6);
     row = new QHBoxLayout;
     row->setSpacing(8);
-    m_brakesOnBox = new QCheckBox(tr("Brake pressures follow the brakes"), page);
+    auto *title = new QLabel(tr("Brakes and pressures"), dash);
+    title->setObjectName(QStringLiteral("cardTitle"));
+    row->addWidget(title);
+    row->addSpacing(12);
+    m_brakesOnBox = new QCheckBox(tr("Pressures follow the brakes"), dash);
     m_brakesOnBox->setChecked(true);
-    m_brakesOnBox->setToolTip(tr("Ramp the analog card's BP, BC and MR to the values below for the strongest brake "
+    m_brakesOnBox->setToolTip(tr("Ramp the analog card's BP, BC and MR to the values set for the strongest brake "
                                  "the VCC applies (EB over FSB over NB)"));
     connect(m_brakesOnBox, &QCheckBox::toggled, this, [this](bool on) { setBrakePressuresOn(on); });
     row->addWidget(m_brakesOnBox);
     row->addStretch(1);
-    row->addWidget(new QLabel(tr("Ramp"), page));
-    m_rampRate = new QDoubleSpinBox(page);
+    row->addWidget(new QLabel(tr("Ramp"), dash));
+    m_rampRate = new QDoubleSpinBox(dash);
     m_rampRate->setRange(0.1, 20.0);
     m_rampRate->setDecimals(1);
     m_rampRate->setSingleStep(0.1);
@@ -1714,27 +1779,48 @@ QWidget *CabIoSimWindow::buildScenariosTab()
     m_rampRate->setToolTip(tr("How fast each pressure moves toward its new value"));
     connect(m_rampRate, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this]() { saveSettings(); });
     row->addWidget(m_rampRate);
-    v->addLayout(row);
+    dv->addLayout(row);
 
     row = new QHBoxLayout;
-    row->setSpacing(24);
-    auto *grid = new QGridLayout;
-    grid->setHorizontalSpacing(8);
-    grid->setVerticalSpacing(4);
+    row->setSpacing(14);
+    auto *lamps = new QGridLayout;
+    lamps->setSpacing(2);
+    const char *const lampNames[4] = { "NB", "FSB", "EB", "LE" };
+    for (int i = 0; i < 4; ++i) {
+        auto *lamp = new BrakeLamp(QString::fromLatin1(lampNames[i]), dash);
+        m_brakeLamps << lamp;
+        lamps->addWidget(lamp, i / 2, i % 2);
+    }
+    row->addLayout(lamps);
     for (int ch = 0; ch < kBrakeChannels; ++ch) {
-        auto *head = new QLabel(tr("%1, kg/cm\u00B2").arg(analogChannelName(ch)), page);
-        head->setObjectName(QStringLiteral("muted"));
+        auto *g = new PressureGauge(analogChannelName(ch), dash);
+        g->setObjectName(QStringLiteral("dashGauge"));
+        g->setMinimumSize(120, 120);
+        g->setToolTip(tr("%1, as the analog card sends it. Drag to set it by hand; the green mark is where "
+                         "the brake takes it.").arg(analogChannelName(ch)));
+        connect(g, &PressureGauge::valueEdited, this, [this, ch](double kg) { setAnalogPressure(ch, kg); });
+        m_dashGauges[ch] = g;
+        row->addWidget(g, 1);
+    }
+    auto *grid = new QGridLayout;
+    grid->setHorizontalSpacing(6);
+    grid->setVerticalSpacing(3);
+    for (int ch = 0; ch < kBrakeChannels; ++ch) {
+        auto *head = new QLabel(analogChannelName(ch), dash);
+        head->setObjectName(QStringLiteral("groupHeading"));
+        head->setAlignment(Qt::AlignCenter);
         grid->addWidget(head, 0, ch + 1);
     }
     for (int level = 0; level < kBrakeLevels; ++level) {
-        grid->addWidget(new QLabel(level == NoBrake ? tr("No brake") : tr("%1 applied").arg(brakeLevelName(level)), page),
-                        level + 1, 0);
+        grid->addWidget(new QLabel(level == NoBrake ? tr("No brake") : brakeLevelName(level), dash), level + 1, 0);
         for (int ch = 0; ch < kBrakeChannels; ++ch) {
-            auto *kg = new QDoubleSpinBox(page);
+            auto *kg = new QDoubleSpinBox(dash);
             kg->setRange(0.0, 16.32);
             kg->setDecimals(1);
             kg->setSingleStep(0.1);
             kg->setValue(defaultBrakePressure(level, ch));
+            kg->setToolTip(tr("%1 with %2, kg/cm\u00B2").arg(analogChannelName(ch),
+                                                             level == NoBrake ? tr("no brake") : brakeLevelName(level)));
             connect(kg, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this, level]() {
                 saveSettings();
                 if (level == m_brakeLevel) applyBrakeLevel(true);   // the pressure now in force moved
@@ -1743,12 +1829,32 @@ QWidget *CabIoSimWindow::buildScenariosTab()
             grid->addWidget(kg, level + 1, ch + 1);
         }
     }
+    auto *gridUnit = new QLabel(tr("kg/cm\u00B2"), dash);
+    gridUnit->setObjectName(QStringLiteral("muted"));
+    grid->addWidget(gridUnit, 0, 0);
     row->addLayout(grid);
-    m_brakeNow = new QLabel(page);
+    dv->addLayout(row);
+    m_brakeNow = new QLabel(dash);
     m_brakeNow->setWordWrap(true);
-    m_brakeNow->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-    row->addWidget(m_brakeNow, 1);
-    v->addLayout(row);
+    dv->addWidget(m_brakeNow);
+    v->addWidget(dash);
+
+    auto *hint = new QLabel(tr("Rules: when a condition starts, its input is set to the first value; when it stops, to the "
+                               "second. An input you click in between stays as you set it until the condition changes again. "
+                               "Later rules win over earlier ones. A lit rule's condition holds now."), page);
+    hint->setObjectName(QStringLiteral("muted"));
+    hint->setWordWrap(true);
+    v->addWidget(hint);
+
+    m_ruleScroll = new QScrollArea(page);
+    m_ruleScroll->setWidgetResizable(true);
+    m_ruleScroll->setFrameShape(QFrame::NoFrame);
+    auto *host = new QWidget(m_ruleScroll);
+    m_ruleBox = new QVBoxLayout(host);
+    m_ruleBox->setContentsMargins(0, 0, 8, 0);
+    m_ruleBox->setSpacing(6);
+    m_ruleScroll->setWidget(host);
+    v->addWidget(m_ruleScroll, 1);
     return page;
 }
 
@@ -1826,6 +1932,17 @@ void CabIoSimWindow::refreshBrakes()
         if (!analogSending()) t += tr(". Analog \u2192 VCC is not sending: the VCC does not see these yet.");
     }
     m_brakeNow->setText(t);
+
+    const char *const outputs[4] = { "normal_brake", "full_service_brake", "emergency_brake", "light_engine_brake" };
+    for (int i = 0; i < m_brakeLamps.size(); ++i) {
+        bool on = false;
+        for (const OutputBit &o : outputBits(m_cab))
+            if (o.name == QLatin1String(outputs[i])) on = outputActive(o, m_outWord);
+        m_brakeLamps[i]->setValues(m_outFrames > 0, on);
+    }
+    for (int ch = 0; ch < kBrakeChannels; ++ch)
+        if (m_dashGauges[ch])
+            m_dashGauges[ch]->setTarget(m_brakesOn && m_brakeLevel >= 0 ? brakePressure(m_brakeLevel, ch) : -1);
 }
 
 void CabIoSimWindow::loadRulesFor(Cab cab)
@@ -1907,27 +2024,51 @@ void CabIoSimWindow::applyRules()
 
 void CabIoSimWindow::rebuildRules()
 {
-    if (!m_ruleTable) return;
+    if (!m_ruleBox) return;
     // Rebuilt from a combo's own signal (a new input changes the value
-    // lists): the old widgets are deleted later, not under their caller.
-    m_ruleTable->setRowCount(0);
-    m_ruleTable->setRowCount(m_rules.size());
+    // lists): the old cards are deleted later, not under their caller.
+    while (QLayoutItem *it = m_ruleBox->takeAt(0)) {
+        if (QWidget *w = it->widget()) {
+            w->hide();
+            w->deleteLater();
+        }
+        delete it;
+    }
+    m_ruleCards.clear();
 
     // The style sheet's arrow padding is not in a combo's size hint.
     auto fit = [](QComboBox *c) { c->setMinimumWidth(c->sizeHint().width() + 20); };
     QVector<const Input *> inputs;
     for (const InputLayout *l : inputLayouts(m_cab))
         for (const Input &in : l->inputs) inputs << &in;
+    // One width for every card's value boxes, so the cards line up.
+    QComboBox probe;
+    probe.addItem(tr("00  fault"));
+    const int valueWidth = probe.sizeHint().width() + 20;
+    probe.addItem(tr("leave as is"));
+    const int otherWidth = probe.sizeHint().width() + 20;
 
     for (int i = 0; i < m_rules.size(); ++i) {
         const Rule &r = m_rules.at(i);
-        auto *on = new QCheckBox(m_ruleTable);
+        auto *card = new QFrame(m_ruleBox->parentWidget());
+        card->setObjectName(QStringLiteral("ruleCard"));
+        auto *h = new QHBoxLayout(card);
+        h->setContentsMargins(10, 6, 6, 6);
+        h->setSpacing(6);
+        auto word = [card](const QString &t) {
+            auto *l = new QLabel(t, card);
+            l->setObjectName(QStringLiteral("muted"));
+            return l;
+        };
+
+        auto *on = new QCheckBox(card);
         on->setChecked(r.on);
         on->setToolTip(tr("Use this rule"));
         connect(on, &QCheckBox::toggled, this, [this, i](bool v) { m_rules[i].on = v; m_ruleHeld[i] = -1; saveSettings(); applyRules(); });
-        m_ruleTable->setCellWidget(i, 0, on);
+        h->addWidget(on);
 
-        auto *when = new QComboBox(m_ruleTable);
+        h->addWidget(word(tr("When")));
+        auto *when = new QComboBox(card);
         for (const QString &k : whenKeys(m_cab)) when->addItem(whenText(k, m_cab), k);
         if (when->findData(r.when) < 0) when->addItem(whenText(r.when, m_cab), r.when);
         when->setCurrentIndex(when->findData(r.when));
@@ -1938,10 +2079,11 @@ void CabIoSimWindow::rebuildRules()
             applyRules();
         });
         fit(when);
-        m_ruleTable->setCellWidget(i, 1, when);
+        h->addWidget(when);
 
         const Input *in = nullptr;
-        auto *input = new QComboBox(m_ruleTable);
+        h->addWidget(word(tr("set")));
+        auto *input = new QComboBox(card);
         for (const Input *x : inputs) {
             input->addItem(QStringLiteral("%1 · %2").arg(displayName(x->name), x->group), x->name);
             if (x->name == r.input) in = x;
@@ -1953,7 +2095,7 @@ void CabIoSimWindow::rebuildRules()
             QTimer::singleShot(0, this, [this]() { rebuildRules(); rulesEdited(); });
         });
         fit(input);
-        m_ruleTable->setCellWidget(i, 2, input);
+        h->addWidget(input);
 
         // A pair: 10 On, 01 Off, and the two faults; a plain input 1 / 0.
         auto values = [in](QComboBox *c, bool leave) {
@@ -1968,8 +2110,10 @@ void CabIoSimWindow::rebuildRules()
                 c->addItem(QStringLiteral("0"), 0);
             }
         };
-        auto *to = new QComboBox(m_ruleTable);
+        h->addWidget(word(tr("to")));
+        auto *to = new QComboBox(card);
         values(to, false);
+        to->setFixedWidth(valueWidth);
         to->setCurrentIndex(qMax(0, to->findData(r.value)));
         connect(to, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, i, to]() {
             m_rules[i].value = to->currentData().toInt();
@@ -1977,10 +2121,12 @@ void CabIoSimWindow::rebuildRules()
             saveSettings();
             applyRules();
         });
-        m_ruleTable->setCellWidget(i, 3, to);
+        h->addWidget(to);
 
-        auto *other = new QComboBox(m_ruleTable);
+        h->addWidget(word(tr("else")));
+        auto *other = new QComboBox(card);
         values(other, true);
+        other->setFixedWidth(otherWidth);
         other->setCurrentIndex(qMax(0, other->findData(r.otherwise)));
         connect(other, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, i, other]() {
             m_rules[i].otherwise = other->currentData().toInt();
@@ -1988,16 +2134,13 @@ void CabIoSimWindow::rebuildRules()
             saveSettings();
             applyRules();
         });
-        m_ruleTable->setCellWidget(i, 4, other);
+        h->addWidget(other);
 
-        // "Now" and a delete button, in one cell.
-        auto *cell = new QWidget(m_ruleTable);
-        auto *h = new QHBoxLayout(cell);
-        h->setContentsMargins(6, 0, 2, 0);
-        auto *now = new QLabel(cell);
+        h->addSpacing(6);
+        auto *now = new QLabel(card);
         now->setObjectName(QStringLiteral("ruleNow"));
         h->addWidget(now, 1);
-        auto *del = new QToolButton(cell);
+        auto *del = new QToolButton(card);
         del->setText(QStringLiteral("✕"));
         del->setAutoRaise(true);
         del->setToolTip(tr("Delete this rule"));
@@ -2010,32 +2153,41 @@ void CabIoSimWindow::rebuildRules()
             });
         });
         h->addWidget(del);
-        m_ruleTable->setCellWidget(i, 5, cell);
+        m_ruleBox->addWidget(card);
+        m_ruleCards << card;
     }
+    m_ruleBox->addStretch(1);
     refreshRules();
 }
 
 void CabIoSimWindow::refreshRules()
 {
-    if (!m_ruleTable) return;
+    if (!m_ruleBox) return;
     const qint64 now = nowMs();
     m_modeLabel->setText(m_mode > 0
         ? tr("DMI mode: %1 (%2), %3").arg(modeShortName(m_mode), dmiModeName(m_mode), ago(m_modeAtMs, now))
         : tr("DMI mode: not known yet (no DMI frames)"));
-    for (int i = 0; i < m_rules.size() && i < m_ruleTable->rowCount(); ++i) {
-        QWidget *cell = m_ruleTable->cellWidget(i, 5);
-        auto *label = cell ? cell->findChild<QLabel *>(QStringLiteral("ruleNow")) : nullptr;
+    for (int i = 0; i < m_rules.size() && i < m_ruleCards.size(); ++i) {
+        QFrame *card = m_ruleCards.at(i);
+        auto *label = card->findChild<QLabel *>(QStringLiteral("ruleNow"));
         if (!label) continue;
         const Rule &r = m_rules.at(i);
         const int h = ruleHolds(r, m_cab, m_outWord, m_outFrames > 0, m_mode);
+        const bool active = m_rulesOn && r.on;
         QString t;
-        if (!m_rulesOn || !r.on)  t = tr("off");
-        else if (h < 0)           t = r.when.startsWith(QLatin1String("mode:")) ? tr("waiting for a DMI mode")
-                                                                                 : tr("waiting for output data");
-        else                      t = h ? tr("holds") : tr("does not hold");
+        if (!active)     t = tr("off");
+        else if (h < 0)  t = r.when.startsWith(QLatin1String("mode:")) ? tr("waiting for a DMI mode")
+                                                                       : tr("waiting for output data");
+        else             t = h ? tr("holds") : tr("does not hold");
         if (m_ruleFired.value(i)) t += tr(" · set %1").arg(m_ruleFired.at(i) == 1 ? tr("once") : tr("%1 times").arg(m_ruleFired.at(i)));
         label->setText(t);
-        label->setEnabled(m_rulesOn && r.on);
+        label->setEnabled(active);
+        // Lit while its condition holds.
+        const bool lit = active && h == 1;
+        if (card->property("holds").toBool() != lit) {
+            card->setProperty("holds", lit);
+            styleRuleCard(card);
+        }
     }
 }
 

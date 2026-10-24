@@ -6,6 +6,7 @@
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
+#include <QPolygonF>
 #include <QWheelEvent>
 
 #include <cmath>
@@ -51,6 +52,13 @@ void PressureGauge::setValue(double kgcm2)
 void PressureGauge::setFault(const QString &why)
 {
     m_fault = why;
+    update();
+}
+
+void PressureGauge::setTarget(double kgcm2)
+{
+    if (qFuzzyCompare(kgcm2 + 2, m_target + 2)) return;
+    m_target = kgcm2;
     update();
 }
 
@@ -180,6 +188,20 @@ void PressureGauge::paintEvent(QPaintEvent *)
     p.setFont(title);
     p.setPen(ink);
     p.drawText(QRectF(c.x() - rad * 0.6, c.y() + rad * 0.58, rad * 1.2, rad * 0.3), Qt::AlignCenter, m_title);
+
+    // The target: a wedge on the rim, pointing in.
+    if (!faulty && m_target >= 0) {
+        const double v = qMin(m_target, m_max);
+        const double a = (kStartDeg - kSpanDeg * v / m_max) * kPi / 180;
+        const QPointF tip = at(v, 0.82);
+        const QPointF side(-std::sin(a) * rad * 0.05, -std::cos(a) * rad * 0.05);
+        const QPointF outer = at(v, 0.97);
+        QPolygonF wedge;
+        wedge << tip << outer + side << outer - side;
+        p.setPen(Qt::NoPen);
+        p.setBrush(UiColor::ok());
+        p.drawPolygon(wedge);
+    }
 
     // The needle.
     const QColor needle = faulty ? UiColor::muted() : UiColor::error();
