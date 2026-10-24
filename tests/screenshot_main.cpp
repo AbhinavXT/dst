@@ -22,6 +22,7 @@
 #include "messagedispatcher.h"
 #include "biusim.h"
 #include "brakebenchwindow.h"
+#include "brakeplant.h"
 #ifdef DL_HAVE_SERIAL
 #include "cabiosimwindow.h"
 #include "serialconsolewindow.h"
@@ -54,6 +55,7 @@ static void clipAudit(QWidget *root, const QString &where)
     }
 }
 #include <QTabWidget>
+#include <QToolButton>
 #include <QSplitter>
 #include <cstdio>
 #include "packetmakerdialog.h"
@@ -154,6 +156,7 @@ int main(int argc, char **argv)
     const QString which = qEnvironmentVariable("SHOT_WINDOW");
     if (!which.isEmpty()) {
         for (Theme t : ThemeUtil::all()) {
+            const Theme shotTheme = t;
             if (!only.isEmpty() && !only.contains(ThemeUtil::toString(t))) continue;
             // SHOT_FROM=dark: the window is built in that theme and switched
             // to this one once shown (what a theme change leaves behind).
@@ -236,6 +239,28 @@ int main(int argc, char **argv)
                     if (i % 2) w->biu()->receive(QByteArray::fromHex("20070405"), vcc, 50001, *t);
                 }
                 w->setAnalogScale(2, 16);
+                // Session 362, SHOT_PRESET=1: two presets saved, one loaded
+                // (the button names it), and the Presets menu shot on its own.
+                if (qEnvironmentVariableIsSet("SHOT_PRESET")) {
+                    w->startClean();
+                    w->setPlantFault(BrakePlant::Bp, BrakePlant::Fault::Slow, 4);
+                    w->savePreset(QStringLiteral("BP slow \u00D74"));
+                    w->startClean();
+                    w->setPlantFault(BrakePlant::Bc, BrakePlant::Fault::Stuck, 0);
+                    w->setAnalogOffset(BrakePlant::Bp, -0.25);
+                    w->biu()->setValidMode(Biu::Mr, BiuSimulator::ValidMode::Invalid);
+                    w->biu()->setBitMode(1, Biu::StManualIsolate, BiuSimulator::BitMode::On);
+                    w->biu()->raiseFault(0x1004);
+                    w->biu()->setFrameOn(2, false);
+                    w->savePreset(QStringLiteral("EB, BC stuck at 1.0"));
+                    w->startClean();
+                    w->loadPreset(QStringLiteral("EB, BC stuck at 1.0"));
+                    if (auto *btn = w->findChild<QToolButton *>(QStringLiteral("benchPresets"))) {
+                        emit btn->menu()->aboutToShow();
+                        btn->menu()->adjustSize();
+                        btn->menu()->grab().save(QStringLiteral("%1/shot_benchpresets_menu_%2.png").arg(dir, ThemeUtil::toString(shotTheme)));
+                    }
+                }
                 w->flushLog();
                 if (auto *tabs = w->findChild<QTabWidget *>())
                     tabs->setCurrentIndex(qEnvironmentVariableIntValue("SHOT_TAB"));

@@ -11,6 +11,41 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-363"></a>
+## Session 363 — Brake Test Bench: "(changed)" only for what the operator moved
+
+Found in the screenshots Abhinav asked for: straight after loading a preset that
+isolates the BIU, the Presets button read "Preset: EB, BC stuck at 1.0 (changed)".
+Nobody had changed anything. The BIU had queued 0x1040 BIU ISOLATED by itself on
+its next tick, and the button compared the whole preset, code queues included.
+Codes also leave the queue as KAVACH acknowledges them, so any running test
+would have read as "changed".
+
+**What the operator sees.** "(changed)" appears only when something the operator
+sets differs from the loaded preset: a fault, a rate, an offset, a manual
+pressure, a validity mode, a forced bit, a frame off, silence. The code queues
+still load with the preset; they just don't count toward "changed".
+
+**Files.** `brakebenchwindow.cpp` (the comparison leaves out `faults` /
+`displays`); `tests/test_session362.cpp` (2 checks);
+`tests/screenshot_main.cpp` (`SHOT_PRESET=1`: two presets saved, one loaded,
+and the Presets menu shot as `shot_benchpresets_menu_<theme>.png`).
+
+**Tests.** `session362` (36 checks, 2 new): isolated, the BIU queues 0x1040 and
+the button does not say "(changed)"; a fault set by hand afterwards makes it say
+so. The first check is the bug as seen; it was not rerun against patch 362.
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4:** all green: 389 suites / 9926 checks, 0 failed; 15 validators;
+  menu audit; smoke.
+- **Qt 5.15.13:** validators, menu audit and smoke green; `dltests` 9926 checks,
+  4 failed: the window-size checks of sessions 134 and 135, as on unchanged
+  `main` in this container. `session362` passes.
+
+**Not tested:** Windows (CI runs it).
+
+---
+
 <a id="session-362"></a>
 ## Session 362 — Brake Test Bench: saved presets
 

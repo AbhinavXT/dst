@@ -1799,7 +1799,14 @@ void BrakeBenchWindow::refreshTop()
     const bool run = biuRunning();
     m_startBtn->setText(run ? tr("Stop BIU") : tr("Start BIU"));
     if (m_presetBtn) {
-        const bool changed = !m_activePreset.isEmpty() && currentPreset().toJson() != m_activeJson;
+        // The code queues move by themselves (acks, 0x1040 on isolation):
+        // only what the operator sets counts as a change.
+        auto settable = [](QJsonObject o) {
+            o.remove(QStringLiteral("faults"));
+            o.remove(QStringLiteral("displays"));
+            return o;
+        };
+        const bool changed = !m_activePreset.isEmpty() && settable(currentPreset().toJson()) != settable(m_activeJson);
         m_presetBtn->setText(m_activePreset.isEmpty() ? tr("Presets")
                              : changed ? tr("Preset: %1 (changed)").arg(m_activePreset)
                                        : tr("Preset: %1").arg(m_activePreset));

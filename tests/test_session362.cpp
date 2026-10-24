@@ -11,6 +11,7 @@
 #include "uistyle.h"
 
 #include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QMenu>
@@ -200,6 +201,25 @@ TEST_SUITE(session362)
         }
         w.deletePreset(QStringLiteral("BP slow"));
         CHECK(!BenchPreset::exists(QStringLiteral("BP slow")) && w.activePreset().isEmpty(), "deleted, and no longer named");
+
+        // "(changed)" is what the operator moved, not what the BIU queued by
+        // itself: isolated, it raises 0x1040 on its next tick.
+        auto uiTick = []() {
+            QElapsedTimer el;
+            el.start();
+            while (el.elapsed() < 400) QCoreApplication::processEvents(QEventLoop::AllEvents, 20);
+        };
+        w.loadPreset(QStringLiteral("EB, BC stuck"));
+        w.biu()->setRunning(true, t);
+        t += 300;
+        w.advance(0.3);
+        uiTick();
+        CHECK(w.biu()->faultQueue().contains(0x1040) && btn && !btn->text().contains(QLatin1String("changed")),
+              qPrintable(QStringLiteral("0x1040 queued by the BIU: not a change (%1)").arg(btn ? btn->text() : QString())));
+        w.setPlantFault(BrakePlant::Bp, BrakePlant::Fault::Leak, 0.5);
+        uiTick();
+        CHECK(btn && btn->text().contains(QLatin1String("(changed)")), "a fault set by hand: \"(changed)\"");
+        w.biu()->setRunning(false, t);
 
         // Reopening still starts clean, the presets kept.
         w.loadPreset(QStringLiteral("EB, BC stuck"));
