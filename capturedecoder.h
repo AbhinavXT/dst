@@ -68,9 +68,11 @@ enum class CapType {
                               // no header/CRC.
     Rdir,                     // @rdir READER_INFO: one RFID read and the
                               // directions after it, 5 B LE (session 194)
-    DlLog                     // @dllog LKAVACH -> LDLU log message: 21 B
+    DlLog,                    // @dllog LKAVACH -> LDLU log message: 21 B
                               // header, then the sub-log type's struct, LE,
                               // no CRC (session 267)
+    Lout                      // @lout the 16-bit output word the VCC sends
+                              // the output cards, 2 B LE (session 359)
 };
 
 enum class CapDir { Unknown = 0, In, Out };   // provisional per-type direction

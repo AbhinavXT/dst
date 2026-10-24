@@ -1,6 +1,7 @@
 #include "cabiosimwindow.h"
 
 #include "dmipanel.h"
+#include "capturedecoder.h"
 #include "serialmanager.h"
 #include "seriallink.h"
 #include "settings.h"
@@ -1474,6 +1475,35 @@ void CabIoSimWindow::observeDmiLine(const QString &line)
     if (st.valid) setLocoMode(st.mode);
 }
 
+void CabIoSimWindow::observeLoutLine(const QString &line)
+{
+    // shortcut: every loco's @lout lines drive the one cab, as observeDmiLine does.
+    const CaptureLine cap = CaptureDecoder::parseLine(line);
+    if (!cap.valid || cap.type != CapType::Lout || cap.bytes.size() != 2) return;
+    ++m_loutLines;
+    takeOutputWord(quint16(quint8(cap.bytes.at(0)) | quint8(cap.bytes.at(1)) << 8), nowMs());
+}
+
+// The lamps, the rules and the Brake Test Bench follow a new output word, from an
+// output data frame or an @lout line alike.
+void CabIoSimWindow::takeOutputWord(quint16 w, qint64 now)
+{
+    if (m_outFrames > 0) {
+        const quint16 changed = quint16(w ^ m_outWord);
+        for (int bit = 0; bit < 16; ++bit) {
+            if (!(changed & (1u << bit))) continue;
+            ++m_outChanges[bit];
+            m_outChangedAtMs[bit] = now;
+        }
+    }
+    m_outWord = w;
+    m_outAtMs = now;
+    ++m_outFrames;
+    refreshOutputs();
+    applyRules();
+    emit outputWordChanged(int(m_cab), w);
+}
+
 void CabIoSimWindow::setLocoMode(int mode)
 {
     m_modeAtMs = nowMs();
@@ -1941,20 +1971,7 @@ void CabIoSimWindow::onFrame(const Frame &f)
         // cards are sent the same word, and a difference is reported, not
         // drawn as changes.
         if (f.h.dest != m_outDest.firstKey()) return;
-        if (m_outFrames > 0) {
-            const quint16 changed = quint16(w ^ m_outWord);
-            for (int bit = 0; bit < 16; ++bit) {
-                if (!(changed & (1u << bit))) continue;
-                ++m_outChanges[bit];
-                m_outChangedAtMs[bit] = now;
-            }
-        }
-        m_outWord = w;
-        m_outAtMs = now;
-        ++m_outFrames;
-        refreshOutputs();
-        applyRules();
-        emit outputWordChanged(int(m_cab), w);
+        takeOutputWord(w, now);
         return;
     }
     if (f.isOutputRequest()) {
@@ -2066,7 +2083,7 @@ void CabIoSimWindow::refreshOutputs()
     if (!known) {
         m_outHeadline->setText(tr("Waiting for output data from the VCC"));
         m_outDetail->setText(tr("%1 \u2014 the frames the VCC sends to output cards 13 and 14 "
-                                "(CC CC \u2026 DD DD, message 0x2D).").arg(outputStructName(m_cab)));
+                                "(CC CC \u2026 DD DD, message 0x2D), or its @lout log lines.").arg(outputStructName(m_cab)));
         m_outBytes->clear();
     } else {
         const bool stale = now - m_outAtMs > 2000;
@@ -2080,6 +2097,7 @@ void CabIoSimWindow::refreshOutputs()
                        .arg(it.value().seq).arg(ago(it.value().atMs, now));
             words.insert(it.value().word);
         }
+        if (m_loutLines) per << tr("from the VCC log: %1").arg(count(m_loutLines, "@lout line", "@lout lines"));
         QString d = per.join(QStringLiteral("   \u00B7   "));
         if (words.size() > 1) d += tr("   \u2014 the output cards were sent different words; the lamps show %1.")
                                        .arg(unitName(m_outDest.firstKey()));

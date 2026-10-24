@@ -104,6 +104,10 @@ public:
     // The loco mode the rules see, from the DMI frames (@dmi_ lines).
     void observeDmiLine(const QString &line);
     void setLocoMode(int mode);
+    // The output word from the VCC's @lout log lines (session 364): taken
+    // as an output data frame is, so no output card link is needed.
+    void observeLoutLine(const QString &line);
+    int  loutLines() const { return m_loutLines; }
     int  locoMode() const { return m_mode; }
 
     // Bytes as if read from the port, and where writes go instead of a port
@@ -159,6 +163,7 @@ private:
     void applyRules();
     void rulesEdited();
     void loadRulesFor(CabIo::Cab cab);
+    void takeOutputWord(quint16 w, qint64 now);
     void rebuildReadback();
     void applyDefault(Bank &b) const;
     quint16 readbackWord(quint8 card, bool *known) const;
@@ -197,6 +202,7 @@ private:
 
     int m_requests = 0, m_requestsOther = 0, m_replies = 0;
     int m_outFrames = 0, m_outRequests = 0, m_otherFrames = 0;
+    int m_loutLines = 0;
     quint16 m_outWord = 0;
     qint64  m_outAtMs = 0;
     QMap<quint8, OutDest> m_outDest;

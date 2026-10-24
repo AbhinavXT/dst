@@ -797,11 +797,13 @@ void MainWindow::openCabIoSimulator()
 #ifdef DL_HAVE_SERIAL
     if (!m_cabIoSim) {
         auto *sim = new CabIoSimWindow(m_serial, this);
-        // Session 356: its rules read the loco mode from the DMI frames.
+        // Session 356: its rules read the loco mode from the DMI frames;
+        // session 359: the output word from @lout.
         connect(m_dispatcher, &MessageDispatcher::entryAppended, sim, [sim](const QString &, const LogEntryPtr &e) {
             if (e.isNull()) return;
             const QString line = e->text.trimmed();
             if (line.startsWith(QLatin1String("@dmi_"))) sim->observeDmiLine(line);
+            else if (line.startsWith(QLatin1String("@lout_"))) sim->observeLoutLine(line);
         });
         m_cabIoSim = sim;
         linkCabIoToBench();

@@ -11,6 +11,46 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-364"></a>
+## Session 364 — @lout: the output word the VCC sends the output cards
+
+Abhinav: *"add a lout message that will give you the 16 bkt output that vcc
+sends to output card"* (before the BIU message). Asked and answered: two
+bytes, low byte first; decoded in the log tabs, and the Cab I/O Simulator
+takes it as it takes an output data frame.
+
+**What the operator sees.**
+- `@lout_<loco>_<ctrl> <time> <seq> E1 03` lines get their own tab, decoded
+  bit by bit under the SIFA-extended `STRUCT_LOCO_OUTPUT` names
+  (`dmi_sos_red` … `emergency_brake`, `sifa_valve`, `spare`; the buzzers,
+  brakes and SIFA valve act on 0).
+- With the Cab I/O Simulator open, every `@lout` line sets its output word:
+  the Outputs lamps, the Scenarios feedback rules and the BP/BC/MR ramp
+  follow it, so no output card serial link is needed. The Outputs tab says
+  "from the VCC log: N @lout lines". A line that is not two bytes is ignored.
+
+**Files.** `schema/kavach.xml` (packet `LOUT`), `capturedecoder.{h,cpp}`
+(`CapType::Lout`), `cabiosimwindow.{h,cpp}` (`observeLoutLine`,
+`takeOutputWord` shared with the output data frame), `mainwindow_tools.cpp`.
+
+**Tests.** `session364` (13 checks): parse, direction, the real word 0x03E1
+decoded bit by bit, every SIFA output's bit under its name, the simulator
+taking it (EB applied, BP ramps, EB feedback rule fires, release).
+
+**Gate:** not run per patch any more (Abhinav: bundle commits, gate when
+pushing). `session364` passed on Qt 6.
+
+**Not tested:** a real `@lout` line (none captured yet). The decoder names
+the bits by the SIFA layout; an old-cab word decodes under those names (the
+simulator reads it by the cab it is set to).
+
+**Rebased onto 360-363** (built locally as 359, renumbered): the pressures
+live in the Brake Test Bench now, so an `@lout` word reaches them through
+`outputWordChanged`, as an output data frame does; `session364` checks them
+on a bench.
+
+---
+
 <a id="session-363"></a>
 ## Session 363 — Brake Test Bench: "(changed)" only for what the operator moved
 

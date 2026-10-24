@@ -2104,6 +2104,33 @@
   </packet>
 
   <!-- ===================================================================
+       @lout (session 359): the 16-bit STRUCT_LOCO_OUTPUT word the VCC sends
+       the output cards (CC CC ... 0x2D data_byte1, data_byte2), logged as two
+       bytes, low byte first (Abhinav). Named after the SIFA-extended layout
+       (cabio.cpp outputBits); the buzzers, brakes and SIFA valve act on 0.
+       The old cab's word uses other bits: the Cab I/O Simulator reads it by
+       the cab it is set to. NO REAL CAPTURE YET.
+       =================================================================== -->
+  <packet name="LOUT" match="captype==lout" wire="lsb-first" trailer_bytes="0">
+    <field name="dmi_sos_red"        bits="1"/>
+    <field name="dmi_sos_green"      bits="1"/>
+    <field name="dmi1_buzzer"        bits="1"/>
+    <field name="dmi2_buzzer"        bits="1"/>
+    <field name="horn1"              bits="1"/>
+    <field name="horn2"              bits="1"/>
+    <field name="traction_on_off"    bits="1"/>
+    <field name="pvef_disable"       bits="1"/>
+    <field name="nuteral_section"    bits="1"/>
+    <field name="fouling_mark"       bits="1"/>
+    <field name="light_engine_brake" bits="1"/>
+    <field name="full_service_brake" bits="1"/>
+    <field name="normal_brake"       bits="1"/>
+    <field name="emergency_brake"    bits="1"/>
+    <field name="sifa_valve"         bits="1"/>
+    <field name="spare"              bits="1"/>
+  </packet>
+
+  <!-- ===================================================================
        @sos / @sossrc / @sosev (session 184): the firmware's SoS state, as
        SOS_handoff/01_SOS_LOGGING_PACKETS.md asks LKAVACH to log it. Written
        byte by byte, little-endian, by SOS_LogPut*: no struct padding.

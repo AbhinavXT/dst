@@ -456,6 +456,7 @@ CapType typeFromToken(const QString &token)
     if (token == "sossrc")  return CapType::SosSrc;
     if (token == "sosev")   return CapType::SosEv;
     if (token == "rdir")    return CapType::Rdir;
+    if (token == "lout")    return CapType::Lout;
     if (token == "dllog" || token == "dl_log") return CapType::DlLog;
     if (token == "speed")   return CapType::Speed;
     if (token == "analog_top")    return CapType::AnalogTop;
@@ -507,6 +508,7 @@ const char *typeLabel(CapType t)
     case CapType::SosSrc:   return "sos source";
     case CapType::SosEv:    return "sos event";
     case CapType::Rdir:     return "reader direction";
+    case CapType::Lout:     return "lout";
     case CapType::DlLog:    return "dl log";
     case CapType::Speed:    return "speed";
     case CapType::AnalogTop:    return "analog top";
@@ -542,6 +544,7 @@ CapDir directionFor(CapType t)
     case CapType::SosSrc:
     case CapType::SosEv:    return CapDir::Out;   // the loco's own SoS state, logged out
     case CapType::Rdir:     return CapDir::Out;   // the loco's own reader directions
+    case CapType::Lout:     return CapDir::Out;   // VCC -> output cards
     case CapType::DlLog:    return CapDir::Out;   // LKAVACH -> LDLU, logged out
     case CapType::Speed:                          // tachometer pulses, sensed
     case CapType::AnalogTop:
@@ -1539,6 +1542,8 @@ QVector<FieldRow> describe(const CaptureLine &c, const QHash<int, qint64> *tagLo
     case CapType::SosEv:  r += schemaRows(b, QStringLiteral("sosev"),  nullptr, -1, rawValues); break;
     // @rdir READER_INFO (session 194): 5 B LE, no header/CRC.
     case CapType::Rdir:   r += schemaRows(b, QStringLiteral("rdir"),   nullptr, -1, rawValues); break;
+    // @lout (session 359): STRUCT_LOCO_OUTPUT, 2 B LE, no CRC.
+    case CapType::Lout:   r += schemaRows(b, QStringLiteral("lout"),   nullptr, -1, rawValues); break;
     // @dllog (session 267): the log message LKAVACH sends the LDLU. The
     // RFID-tag sub-type (abnormal 14) carries dl_tag_data, the @rfid frame
     // without its reader id byte: decoded by the RFID packet, as "tag.".
