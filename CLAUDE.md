@@ -113,6 +113,6 @@ The three features once queued here are all done:
 
 Before proposing a feature, search `CHANGELOG.md` for it. **Queued:** the
 Brake Test Bench follow-ups (real BIU frames, scenarios from test cases,
-replies to all 4 VCCs, saved presets) and the open BIU-firmware decisions:
+replies to all 4 VCCs and saved presets are done, 361-363) and the open BIU-firmware decisions:
 see `docs/BRAKE_BENCH_NEXT.md`. Confirm each new feature's scope with
 Abhinav before building it.
