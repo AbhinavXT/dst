@@ -76,10 +76,10 @@ TEST_SUITE(session83)
         CHECK(dmiSystemMessage(QStringLiteral("Head-On Collision with Loco"), raw, text)
                   == QLatin1String("Head On Collision with Loco 23456 in 0812 m"), "H: collision with loco id and distance");
         CHECK(dmiSystemMessage(QStringLiteral("Override Selected, Pass Signal"), raw, text)
-                  == QLatin1String("Override selected, Pass Signal in 45s"), "H: override countdown");
+                  == QLatin1String("Override selected, Pass Signal in 45 s"), "H: override countdown");
         CHECK(dmiSystemMessage(QStringLiteral("KAVACH Territory Entry"), raw, text) == QLatin1String("KAVACH Territory Entry"),
               "H: a message with no number is shown as it is");
-        CHECK(dmiContextMessage(QStringLiteral("FSB will be Applied in XX s"), raw, text) == QLatin1String("FSB will be applied in 8S"),
+        CHECK(dmiContextMessage(QStringLiteral("FSB will be Applied in XX s"), raw, text) == QLatin1String("FSB will be applied in 8s"),
               "I: FSB countdown");
         CHECK(dmiContextMessage(QStringLiteral("SOS - Station (This Loco)"), raw, text).contains(QLatin1String("1201")),
               "I: SOS names the station");

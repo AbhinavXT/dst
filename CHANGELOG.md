@@ -11,6 +11,92 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-352"></a>
+## Session 352 — the DMI window against SIF 0522 v1.2 (DMI functional tests)
+
+Abhinav: *"update the dmi so that it passes these testcases"*, with RDSO
+SIF 0522 v1.2, "Functional Test Cases for LP-OCIP (DMI) for KAVACH as per
+RDSO/SPN/196/2020 Ver.-4.0" (25 test cases, KAVACH_DMI_01–25). Each case was
+read against `dmipanel.cpp`. Asked and answered: `context_pressure` is
+hundredths of a kg/cm², one value; the other loco in "SOS – From Loco" is
+`collision_loco_id`; with no aspect D1 keeps the post (session 89, so 9.13
+stays a known difference); A3 reads "500 m", not "0500 m".
+
+**What changed (what the operator sees).**
+- **Region H (14.1–14.70)**: every alarm flag in the test cases' wording
+  ("Ack Loco Block stop, SOS Generates in 15 s", "Train Tripped, Select
+  P_Trp", "Loco/Train is in FM Zone, Normalize the Reverser", …); the brake
+  test messages carry the pressure ("Brakes Testing – Waiting for MR
+  5.12 kg/cm²"). A message wider than the region is drawn smaller instead of
+  being cut off (one line, B4.7.3 (c)).
+- **Region I (15.1–15.14)**: "SOS – Self Loco (Manual)" (no spaces in the
+  brackets), "SOS – From Loco 23456 (Manual)", "… (SOS to this Loco)",
+  "FSB will be applied in 8s".
+- **B9 (7.1–7.4)**: "LOC: 52.47 km" (was "LOC : 52.470 Km").
+- **A3 (3.11, 3.12)**: "500 m" (was "0500 m").
+- **F (17.3)**: train length 0 reads "TL Invalid".
+- **G (19.10)**: "Non-Leading Mode".
+- **B3 (4.33, 4.34)**: no permit, target or overspeed colours in Non-Leading
+  or Isolation mode; the needle still shows the speed.
+- **D1 disc (9.14)**: C / IB / G / A / AG at 18.67 px (was 16).
+- **No data (22.30)**: "Waiting for communication"; **frames stopped (1.11,
+  1.12)**: "Communication link failure" over the greyed panel (was "frame is
+  old").
+
+The schema's flag names are unchanged (`dmi_oracle.py` still validates them);
+only the panel's wording is.
+
+**Already as the test cases ask** (checked, no change): 1.9/1.10 black
+background, white text, D3 orange; 2.x loco id, DD-Mmm-YYYY, HH:MM:SS and
+their fonts; 3.3–3.10 the target bar, its scale and orange fill (2500 → 2000);
+4.1–4.31 the dial, 125 divisions, clamp at 250, digits on the hub, light-green
+permit and dark-green target rings, light orange over the permit; 5.x mode
+symbols (Isolation blank); 6.x brake symbols, blank with no brake; 7.5 B11;
+8.x the MA bar, light blue, its scale and "+++", "Mov. Authority", five digits;
+9.2–9.12 the lamps and discs; 9.15–9.21 D2 four digits; 10.x junction routes
+and stencil; 11.1–11.13 D3 directions; 12.x tag colours; 13.1–13.8 antenna,
+"RF", five bars; 14.71 alternation every 2 s; 17.x "TL 650 m"; 18.x DC two
+decimals (the VCC sends hundredths: 0.685562 arrives as 68); 19.x mode names;
+20.1–20.19 the soft-key labels.
+
+**Not done, and why:**
+- 4.32 red above the SB speed: the frame carries no SB speed; red is drawn
+  while the system brakes (as before).
+- 9.13 no aspect: the post stays (Abhinav's call).
+- 11.14: three D3 names are the decoder's shorter forms ("Adv-Str-cum-G-ID",
+  "Adv-Str-cum-IB-D", "Adv-Str-cum-G-D"; the test reads "…-Gate-ID",
+  "…-IB-DDist", "…-GD Gate-Dist"); "Semi-Auto" is 0x24, 0x17 reads
+  "Semi-Auto Lit".
+- 13.9 radio hole image at J1: the frame says a radio hole is approaching,
+  not that the loco is in one.
+- 14.38 / 14.46: the frame has no self-test failure code, nor which brake
+  failed the test.
+- 14.39/14.40: the bracketed required pressure is not in the frame.
+- 17.8/17.9: the 25 m train-length hysteresis is the DMI's own filtering;
+  this window shows each frame's value.
+- **DMI keys and screens** (20.3–20.22 key presses with CNFM, 21 CONFIG train
+  type screens, 22 INFO unit screen, 1.16–1.18): this window is a monitor of
+  the VCC's @dmi frames and sends nothing back.
+- **Hardware** (1.1–1.8, 1.13–1.15 display, 16 buzzer, 20.23/20.24 bezel
+  keys, 23 COM ports, 24 LEDs, 25 switches and logo).
+
+**Files.** `dmipanel.{h,cpp}`, `tests/test_session352.cpp` (new),
+`tests/test_session83.cpp`, `tests/test_session272.cpp`, `tests/tests.pro`.
+
+**Tests.** `session352` (14 checks), each naming its test case: all 70
+region H and 14 region I wordings against the PDF's Expected Output column;
+B9, F (650, 2047, 0), A3, G; 4.33/4.34 drawn (no light-green ring in
+Non-Leading or Isolation, one in Full Supervision); the two communication
+texts. `session83` / `session272` follow the new wording.
+
+**Gate (Mac):** Qt 6 and Qt 5.15 both green: 381 suites / 9698 checks, 0
+failed; 15 validators; menu audit; smoke.
+
+**Not tested:** on a real LP-OCIP side by side; fonts are Helvetica at the
+annexure's pixel sizes, not checked against a real panel's rendering.
+
+---
+
 <a id="session-351"></a>
 ## Session 351 — pressure gauges on the analog card
 

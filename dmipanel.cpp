@@ -10,6 +10,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFileDialog>
+#include <QFontMetricsF>
 #include <QGridLayout>
 #include <QScreen>
 #include <QScrollArea>
@@ -110,7 +111,7 @@ QString dmiModeName(int mode)
     case 8:  return QObject::tr("Post Trip Mode");
     case 9:  return QObject::tr("Reverse Mode");
     case 10: return QObject::tr("Shunt Mode");
-    case 11: return QObject::tr("Non Leading Mode");
+    case 11: return QObject::tr("Non-Leading Mode");
     case 12: return QObject::tr("System Failure Mode");
     case 13: return QObject::tr("Isolation Mode");
     default: return QString();
@@ -121,56 +122,134 @@ QString dmiSystemMessage(const QString &flag, const QHash<QString, qint64> &raw,
 {
     auto n = [&raw](const char *k) { return QString::number(raw.value(QLatin1String(k))); };
     auto d4 = [&raw](const char *k) { return QStringLiteral("%1").arg(raw.value(QLatin1String(k)), 4, 10, QLatin1Char('0')); };
-    // Region H wording (B4.6.7 (d), "Message to be displayed in LP-OCIP"),
-    // with each XX / YYYY from the field the frame carries for it.
+    // context_pressure in hundredths of a kg/cm^2 (Abhinav, session 352).
+    const QString bar = QString::number(raw.value(QStringLiteral("context_pressure")) / 100.0, 'f', 2);
+    // Session 352: region H in the words of RDSO SIF 0522 v1.2, KAVACH_DMI_14
+    // (Cl. B4.7.3 (d) (1)-(70), the Expected Output column), keyed by the
+    // schema's flag name; each XX / YYYY from the field the frame carries.
+    static const QHash<QString, QString> fixed{
+        { QStringLiteral("System Fault, Isolate or Restart KAVACH"), QStringLiteral("System Fault, Isolate or Restart KAVACH") },
+        { QStringLiteral("EB Bypassed (EB Cock Closed), No Traction"), QStringLiteral("Emergency EB Bypassed (EB Cock Closed), No Traction") },
+        { QStringLiteral("Train Tripped, Select P_Trip"), QStringLiteral("Train Tripped, Select P_Trp") },
+        { QStringLiteral("Brake Applied, Dead End Detected"), QStringLiteral("Brake Applied, Dead End Detected") },
+        { QStringLiteral("Standstill Protection, Brake Applied"), QStringLiteral("Standstill Protection, Brake Applied") },
+        { QStringLiteral("Rollback Protection, Brake Applied"), QStringLiteral("Rollback Protection, Brake Applied") },
+        { QStringLiteral("REV Movement Not Allowed, Use REV mode"), QStringLiteral("REV Movement Not Allowed, Use REV mode") },
+        { QStringLiteral("Stand By mode - CAB input not Active"), QStringLiteral("Stand By mode- CAB input is not Active") },
+        { QStringLiteral("Ack SR mode, KAVACH Territory"), QStringLiteral("Ack SR mode– KAVACH Territory Exit") },
+        { QStringLiteral("Ack SR mode, Station Radio Comm Fail"), QStringLiteral("Ack SR mode– Station Radio Comm Fail with Station") },
+        { QStringLiteral("Ack SR mode, No Track Profile Info"), QStringLiteral("Ack SR mode–No Track Profile Info") },
+        { QStringLiteral("Ack SR mode, Tags Missing"), QStringLiteral("Ack SR mode – Tags missing") },
+        { QStringLiteral("Ack SR mode, Direction Unknown"), QStringLiteral("Ack SR mode – Direction unknown") },
+        { QStringLiteral("Ack SR mode, GPS Fail"), QStringLiteral("Ack SR mode – GPS Fail") },
+        { QStringLiteral("Ack LS mode, Station Radio Comm Fail"), QStringLiteral("Ack LS mode – Station Radio Comm Fail with Station") },
+        { QStringLiteral("Ack SR mode, TSR Link Fail"), QStringLiteral("Ack SR mode – TSR Link Fail") },
+        { QStringLiteral("LS mode - Waiting for Station Radio Comm"), QStringLiteral("LS mode Waiting for Station Radio Comm with station") },
+        { QStringLiteral("LS mode - Waiting for Track Profile Info"), QStringLiteral("LS mode Waiting for Track Profile info") },
+        { QStringLiteral("Leading/Non-Leading Input Active"), QStringLiteral("Both Leading & Non-leading Inputs are Active") },
+        { QStringLiteral("Train Length Computation In Progress"), QStringLiteral("Train Length Computation in Progress") },
+        { QStringLiteral("Train Length Computation Aborted"), QStringLiteral("Train Length Computation Aborted") },
+        { QStringLiteral("KAVACH Territory Entry"), QStringLiteral("KAVACH Territory Entry") },
+        { QStringLiteral("System Self Test In Progress"), QStringLiteral("System Self-Test in progress") },
+        { QStringLiteral("System Self Test Success"), QStringLiteral("System Self-Test Success") },
+        // The frame carries no failure code for the "– xxxx".
+        { QStringLiteral("System Self Test Fail"), QStringLiteral("System Self-Test Fail") },
+        { QStringLiteral("Brakes Testing Success"), QStringLiteral("Brakes Testing Success") },
+        // Nor which brake failed (NSB, FSB or EB).
+        { QStringLiteral("Brakes Testing Fail"), QStringLiteral("Brakes Testing Fail") },
+        { QStringLiteral("Brakes Test Fail, Press Ack for Retesting"), QStringLiteral("Brakes Test Fail, Press ACK for Retesting Brakes") },
+        { QStringLiteral("Select Train Config, Press Config Button"), QStringLiteral("Select Train Configuration, Press 'CONFIG' Button") },
+        { QStringLiteral("Select Staff Responsible / Shunt mode"), QStringLiteral("Select Staff Responsible or Shunt Mode") },
+        { QStringLiteral("Ack OS mode"), QStringLiteral("ACK OS Mode") },
+        { QStringLiteral("Train in Fouling Zone, Normalize the REV"), QStringLiteral("Loco/Train is in FM Zone, Normalize the Reverser") },
+        { QStringLiteral("SR/SH mode - ETCS Territory Entry"), QStringLiteral("SR/SH Mode- ETCS–ETCS Territory Entry") },
+        { QStringLiteral("FS mode - ETCS Full Supervision mode"), QStringLiteral("FS mode ETCS- ETCS Full Supervision Mode") },
+        { QStringLiteral("Ack SR mode - ETCS Territory Exit"), QStringLiteral("ACK SR Mode – ETCS Territory Exit") },
+        { QStringLiteral("Ballise Default Telegram Received"), QStringLiteral("Ballise Default telegram received") },
+        { QStringLiteral("Waiting for Traction Command"), QStringLiteral("Waiting for Traction Command") },
+        { QStringLiteral("Traction Cut-off Command Fail"), QStringLiteral("Traction cut-off Command fail") },
+        { QStringLiteral("Fouling Mark Entry"), QStringLiteral("Fouling Mark Entry") },
+        { QStringLiteral("Fouling Mark Clear"), QStringLiteral("Fouling Mark Clear") },
+        { QStringLiteral("Braking System Malfunction"), QStringLiteral("Braking system malfunction") },
+        { QStringLiteral("No Forward Dir in REV mode"), QStringLiteral("No Forward Dir in REV Mode") },
+        { QStringLiteral("Ack SR mode - SR Authorized Received"), QStringLiteral("ACK SR Mode - SR Authorization Received") },
+        { QStringLiteral("Ack SR mode - Slip/Skid Detected"), QStringLiteral("ACK SR Mode - Slip/Skid Detected") },
+        { QStringLiteral("Ack SR mode - Foreign Tag Detected"), QStringLiteral("ACK SR mode- Foreign Tag Detected") },
+        { QStringLiteral("Ack SR mode - Odo Error Detected"), QStringLiteral("Ack for SR mode - Odo Error detected") },
+        { QStringLiteral("Brake Applied - Shunting Limit Exceed"), QStringLiteral("Brake Applied- Shunting limits exceeded") },
+        { QStringLiteral("Brake Applied - Station General SOS"), QStringLiteral("Brake Applied- Station General SoS") },
+        { QStringLiteral("Brake Applied - SPAD Detected"), QStringLiteral("Brake Applied-SPAD detected") },
+    };
+    const auto it = fixed.constFind(flag);
+    if (it != fixed.constEnd()) return it.value();
     if (flag.startsWith(QLatin1String("Ack Block Stop")))
-        return QObject::tr("Ack Block Stop, SOS Generates in %1 s").arg(n("ack_blockstop_sos_generate_time"));
+        return QObject::tr("Ack Loco Block stop, SOS Generates in %1 s").arg(n("ack_blockstop_sos_generate_time"));
     if (flag.startsWith(QLatin1String("Head-On Collision")))
         return QObject::tr("Head On Collision with Loco %1 in %2 m").arg(n("collision_loco_id"), d4("collision_loco_distance"));
     if (flag.startsWith(QLatin1String("Rear-End Collision")))
         return QObject::tr("Rear End Collision with Loco %1 in %2 m").arg(n("collision_loco_id"), d4("collision_loco_distance"));
     if (flag.startsWith(QLatin1String("Override Selected")))
-        return QObject::tr("Override selected, Pass Signal in %1s").arg(n("override_timeout"));
+        return QObject::tr("Override selected, Pass Signal in %1 s").arg(n("override_timeout"));
     if (flag.startsWith(QLatin1String("Reverse Mode Expires")))
         return QObject::tr("Reverse Mode Expires in %1m or %2s").arg(d4("expiry_reverse_distance"), n("expiry_reverse_mode"));
     if (flag == QLatin1String("Manned LC Gate") || flag == QLatin1String("Unmanned LC Gate"))
-        return QObject::tr("%1 %2 in %3m").arg(flag, text.value(QStringLiteral("lc.id")).section(QLatin1Char(' '), 0, 0),
-                                               d4("lc.distance"));
+        return QObject::tr("%1 %2 approaching in %3m").arg(flag, text.value(QStringLiteral("lc.id")).section(QLatin1Char(' '), 0, 0),
+                                                           d4("lc.distance"));
     if (flag.startsWith(QLatin1String("Turnout with Speed")))
-        return QObject::tr("TurnOut in %1m with Speed Limit %2kmph").arg(d4("target_distance"), n("to_speed"));
+        return QObject::tr("TurnOut in %1m with speed limit %2Kmph").arg(d4("target_distance"), n("to_speed"));
     if (flag.startsWith(QLatin1String("TSR with Speed")))
-        return QObject::tr("TSR in %1m with Speed Limit %2kmph").arg(d4("tsr_distance"), n("target_speed"));
+        return QObject::tr("TSR in %1m with speed limit %2Kmph").arg(d4("tsr_distance"), n("target_speed"));
     if (flag.startsWith(QLatin1String("PSR with Speed")))
-        return QObject::tr("PSR in %1m with Speed Limit %2kmph").arg(d4("target_distance"), n("target_speed"));
+        return QObject::tr("PSR in %1m with speed limit %2Kmph").arg(d4("target_distance"), n("target_speed"));
     if (flag == QLatin1String("End of Authority"))
-        return QObject::tr("End of Authority in %1m").arg(n("target_distance"));
+        return QObject::tr("End of Authority in %1m").arg(n("target_distance"));   // a real DMI's photo: "in 60m"
     if (flag.startsWith(QLatin1String("Approaching Radio Hole")))
-        return QObject::tr("Approaching Radio Hole in %1 m").arg(d4("track_condition_start_distance"));
+        return QObject::tr("Approaching Radio Hole in %1 m")
+            .arg(raw.value(QStringLiteral("track_condition_start_distance")), 5, 10, QLatin1Char('0'));
     if (flag.startsWith(QLatin1String("Neutral Section")))
         return QObject::tr("Neutral Section approaching in %1 m").arg(n("track_condition_start_distance"));
     if (flag.startsWith(QLatin1String("Train Length Computation Success")))
         return QObject::tr("Train Length Computation Success (%1m)").arg(d4("train_length"));
     if (flag.startsWith(QLatin1String("Train Length Computation Fail")))
         return QObject::tr("Train Length Computation Fail (%1m)").arg(d4("train_length"));
+    if (flag == QLatin1String("Brake Test - Waiting for MR"))
+        return QObject::tr("Brakes Testing – Waiting for MR %1 kg/cm²").arg(bar);
+    if (flag == QLatin1String("Brake Test - Waiting for BP"))
+        return QObject::tr("Brakes Testing – Waiting for BP %1 kg/cm²").arg(bar);
+    if (flag == QLatin1String("Brake Test - NSB Applied (BP)"))
+        return QObject::tr("Brakes Testing – NSB Applied, BP-%1kg/cm²").arg(bar);
+    if (flag == QLatin1String("Brake Test - FSB Applied (BP)"))
+        return QObject::tr("Brakes Testing – FSB Applied, BP-%1kg/cm²").arg(bar);
+    if (flag == QLatin1String("Brake Test - EB Applied (BP)"))
+        return QObject::tr("Brakes Testing – EB Applied, BP-%1kg/cm²").arg(bar);
+    if (flag == QLatin1String("Brake Test - LEB Applied (BC)"))
+        return QObject::tr("Brakes Testing – LEB Brake applied, BC %1 Kg/cm²").arg(bar);
     return flag;
 }
 
 QString dmiContextMessage(const QString &flag, const QHash<QString, qint64> &raw, const QHash<QString, QString> &text)
 {
     auto n = [&raw](const char *k) { return QString::number(raw.value(QLatin1String(k))); };
-    // Region I wording (B4.7 (d)).
+    // Region I in the words of SIF 0522 v1.2, KAVACH_DMI_15 (Cl. B4.8 (d)).
     if (flag.startsWith(QLatin1String("FSB will be")))
-        return QObject::tr("FSB will be applied in %1S").arg(n("fsb_applied_time"));
+        return QObject::tr("FSB will be applied in %1s").arg(n("fsb_applied_time"));
     if (flag.startsWith(QLatin1String("EB will be")))
-        return QObject::tr("EB will be applied in %1S").arg(n("eb_applied_time"));
-    if (flag == QLatin1String("SOS - Self Loco Manual"))       return QObject::tr("SOS – Self Loco ( Manual )");
-    if (flag == QLatin1String("SOS - Self Loco Stopped in Block Section")) return QObject::tr("SOS – Self Loco ( Stopped in Block section )");
-    if (flag == QLatin1String("SOS - Self Loco Train Parted")) return QObject::tr("SOS – Self Loco ( Train Parted )");
+        return QObject::tr("EB will be applied in %1s").arg(n("eb_applied_time"));
+    if (flag == QLatin1String("SOS - Self Loco Manual"))       return QObject::tr("SOS – Self Loco (Manual)");
+    if (flag == QLatin1String("SOS - Self Loco Stopped in Block Section")) return QObject::tr("SOS – Self Loco (Stopped in Block Section)");
+    if (flag == QLatin1String("SOS - Self Loco Train Parted")) return QObject::tr("SOS – Self Loco (Train Parted)");
+    // The other loco is named by collision_loco_id (Abhinav, session 352).
+    if (flag == QLatin1String("SOS - Other Loco Manual"))
+        return QObject::tr("SOS – From Loco %1 (Manual)").arg(n("collision_loco_id"));
+    if (flag == QLatin1String("SOS - Other Loco Stopped in Block Section"))
+        return QObject::tr("SOS – From Loco %1 (Stopped in Block Section)").arg(n("collision_loco_id"));
+    if (flag == QLatin1String("SOS - Other Loco Train Parted"))
+        return QObject::tr("SOS – From Loco %1 (Train Parted)").arg(n("collision_loco_id"));
     if (flag == QLatin1String("SOS - Station (All Locos)"))
-        return QObject::tr("SOS – From Station %1 ( SOS to All Locos )").arg(n("sos_station_id"));
+        return QObject::tr("SOS – From Station %1 (SOS to All Locos)").arg(n("sos_station_id"));
     // A loco-specific SoS names the station from DMI station_id, not sos_station_id.
     if (flag == QLatin1String("SOS - Station (This Loco)"))
-        return QObject::tr("SOS – From Station %1 ( SOS to This Loco )").arg(n("station_id"));
+        return QObject::tr("SOS – From Station %1 (SOS to this Loco)").arg(n("station_id"));
     if (flag == QLatin1String("Over Speed - Reduce Speed"))    return QObject::tr("Over Speed, Please Reduce Speed");
     if (flag == QLatin1String("Brake Applied - Speed Limit Exceeded")) return QObject::tr("Brake Applied, Speed Limit Exceeded");
     if (flag == QLatin1String("Train Type Selected")) {
@@ -179,12 +258,16 @@ QString dmiContextMessage(const QString &flag, const QHash<QString, qint64> &raw
         if (open >= 0) type = type.mid(open + 1).chopped(1).replace(QLatin1Char('_'), QLatin1Char(' '));
         return QObject::tr("%1 Train Type selected").arg(type);
     }
-    // "SOS - Other Loco …": the frame names no loco id for it; the wording
-    // stays without one rather than borrowing the collision loco's.
-    if (flag.startsWith(QLatin1String("SOS - Other Loco ")))
-        return QObject::tr("SOS – From Loco ( %1 )").arg(flag.mid(17));
     return flag;
 }
+
+// Session 352: single-region texts, as SIF 0522 v1.2 reads them.
+QString dmiLocationText(double km) { return QObject::tr("LOC: %1 km").arg(km, 0, 'f', 2); }
+QString dmiTrainLengthText(int m) { return m > 0 ? QObject::tr("TL %1 m").arg(m) : QObject::tr("TL Invalid"); }
+QString dmiTargetDistanceText(int m) { return QObject::tr("%1 m").arg(qBound(0, m, 9999)); }
+bool dmiSpeedColours(int mode) { return mode != 11 && mode != 13; }
+QString dmiNoDataText() { return QObject::tr("Waiting for communication"); }
+QString dmiStaleText() { return QObject::tr("Communication link failure"); }
 
 double dmiTargetScaleY(double m)
 {
@@ -399,7 +482,7 @@ void DmiView::paintEvent(QPaintEvent *)
     for (const QRectF &r : { kA, kB, kC, kD, kE, kF, kG, kH, kI, kJ, kL, kM }) p.drawRect(r);
 
     if (!s.valid) {
-        text(QRectF(0, 0, 800, 600), m_emptyText.isEmpty() ? tr("Waiting for @dmi from the selected loco") : m_emptyText,
+        text(QRectF(0, 0, 800, 600), m_emptyText.isEmpty() ? dmiNoDataText() : m_emptyText,
              24, false, c.lgy, Qt::AlignCenter);
         return;
     }
@@ -422,7 +505,7 @@ void DmiView::paintEvent(QPaintEvent *)
             const double top = dmiTargetScaleY(s.targetDistance);
             p.fillRect(QRectF(markX + 3, top, 24, 337 - top), m_stale ? c.lgy : c.lor);
         }
-        text(QRectF(kA.left(), 352, kA.width(), 26), QStringLiteral("%1 m").arg(qMin(s.targetDistance, 9999), 4, 10, QLatin1Char('0')),
+        text(QRectF(kA.left(), 352, kA.width(), 26), dmiTargetDistanceText(s.targetDistance),
              18.67, true, ink, Qt::AlignHCenter | Qt::AlignVCenter);
     }
 
@@ -441,15 +524,16 @@ void DmiView::paintEvent(QPaintEvent *)
         return path;
     };
     // B3 rings
-    const bool over = s.hasPermitted && s.speed > s.permitted;
+    const bool colours = dmiSpeedColours(s.mode);   // 4.33/4.34: none in Non-Leading, Isolation
+    const bool over = colours && s.hasPermitted && s.speed > s.permitted;
     const bool braking = s.brakeType >= 2 && s.brakeType <= 4;
     p.setPen(Qt::NoPen);
-    if (s.hasPermitted) {
+    if (colours && s.hasPermitted) {
         p.setBrush(m_stale ? c.lgy : c.lgr);
         p.drawPath(arcPath(0, s.permitted, kOuterR, kMidR));
         p.drawPath(arcPath(qMax(0, s.permitted - 2), s.permitted, kMidR, kInnerR));   // edge mark: one division
     }
-    if (s.hasTargetSpeed && s.hasPermitted && s.targetSpeed < s.permitted) {
+    if (colours && s.hasTargetSpeed && s.hasPermitted && s.targetSpeed < s.permitted) {
         p.setBrush(m_stale ? c.lgy : c.dgr);
         p.drawPath(arcPath(0, s.targetSpeed, kMidR, kInnerR));
     }
@@ -471,7 +555,7 @@ void DmiView::paintEvent(QPaintEvent *)
     // B1 pointer: white within the limit, yellow at it, light orange above,
     // red while the system brakes (B4.4.6, B4.10).
     QColor ptr = c.wht;
-    if (s.hasPermitted && s.speed == s.permitted) ptr = c.ylw;
+    if (colours && s.hasPermitted && s.speed == s.permitted) ptr = c.ylw;
     if (over) ptr = braking ? c.brd : c.lor;
     if (m_stale) ptr = c.lgy;
     {
@@ -512,7 +596,7 @@ void DmiView::paintEvent(QPaintEvent *)
         }
     }
     // B9 location
-    text(QRectF(kB.left() + 60, 346, 240, 30), tr("LOC : %1 Km").arg(s.locationKm, 0, 'f', 3), 18.67, true, ink, Qt::AlignCenter);
+    text(QRectF(kB.left() + 60, 346, 240, 30), dmiLocationText(s.locationKm), 18.67, true, ink, Qt::AlignCenter);
     // B10 mode symbol (55 x 35 at x 398, y 346)
     {
         const QRectF mr(398, 346, 55, 35);
@@ -622,7 +706,7 @@ void DmiView::paintEvent(QPaintEvent *)
         // The disc is white on the post in every theme (B4.6.4.1 (b)), like a lamp.
         p.setBrush(s.disc.isEmpty() ? QBrush(c.bg) : QBrush(UiColor::signalLamp(QStringLiteral("white"))));
         p.drawEllipse(discC, 15, 15);
-        if (!s.disc.isEmpty()) text(QRectF(discC.x() - 15, discC.y() - 15, 30, 30), s.disc, 16, false, QColor(0, 0, 0), Qt::AlignCenter);
+        if (!s.disc.isEmpty()) text(QRectF(discC.x() - 15, discC.y() - 15, 30, 30), s.disc, 18.67, false, QColor(0, 0, 0), Qt::AlignCenter);
         // junction route indicators (Table B.4), and the stencil
         if (s.route > 0) {
             static const QPointF pos[6] = { { 587, 24 }, { 580, 59 }, { 585, 85 }, { 706, 24 }, { 715, 59 }, { 710, 85 } };
@@ -645,17 +729,25 @@ void DmiView::paintEvent(QPaintEvent *)
 
     // ---- E F G ------------------------------------------------------------------------------------
     text(kE.adjusted(10, 0, -4, 0), s.dc, 18.67, false, ink, Qt::AlignHCenter | Qt::AlignVCenter);
-    text(kF.adjusted(10, 0, -4, 0), tr("TL %1 m").arg(s.trainLength), 18.67, false, ink, Qt::AlignHCenter | Qt::AlignVCenter);
+    text(kF.adjusted(10, 0, -4, 0), dmiTrainLengthText(s.trainLength), 18.67, false, ink, Qt::AlignHCenter | Qt::AlignVCenter);
     text(kG.adjusted(13, 0, -4, 0), s.modeText, 18.67, false, ink);
 
     // ---- H I: messages, alternating every 2 s when several ----------------------------------------
+    // One line each (B4.7.3 (c), B4.8 (c)): a message wider than the region at
+    // 24 / 22.67 px is drawn smaller rather than cut off.
+    const auto fitted = [&base](const QString &t, double px, double width) {
+        while (px > 12 && QFontMetricsF(pxFont(base, px, true)).horizontalAdvance(t) > width) px -= 0.5;
+        return px;
+    };
     if (!s.systemMessages.isEmpty()) {
         const QString msg = s.systemMessages.at(m_msgTick % s.systemMessages.size());
-        text(kH.adjusted(11, 0, -8, 0), msg, 24, true, ink);
+        const QRectF r = kH.adjusted(11, 0, -8, 0);
+        text(r, msg, fitted(msg, 24, r.width()), true, ink);
     }
     if (!s.contextMessages.isEmpty()) {
         const QString msg = s.contextMessages.at(m_msgTick % s.contextMessages.size());
-        text(kI.adjusted(11, 0, -8, 0), msg, 22.67, true, ink);
+        const QRectF r = kI.adjusted(11, 0, -8, 0);
+        text(r, msg, fitted(msg, 22.67, r.width()), true, ink);
     }
 
     // ---- J: radio ------------------------------------------------------------------------------------
@@ -726,7 +818,7 @@ void DmiView::paintEvent(QPaintEvent *)
         }
     }
     if (m_stale) {
-        text(QRectF(0, 0, 800, 22), tr("frame is old"), 14, true, c.lor, Qt::AlignHCenter | Qt::AlignTop);
+        text(QRectF(0, 0, 800, 22), dmiStaleText(), 14, true, c.lor, Qt::AlignHCenter | Qt::AlignTop);
     }
 }
 

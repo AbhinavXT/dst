@@ -132,6 +132,13 @@ double dmiMaScaleY(double metres);
 // Which lamps of the four (top YLW, GRN, YLW, bottom RED) an aspect lights.
 QVector<int> dmiLitLamps(int aspect);   // indices 0..3, top first
 QStringList dmiAssumptions();
+// Session 352: single-region texts and rules, as SIF 0522 v1.2 reads them.
+QString dmiLocationText(double km);      // B9  "LOC: 52.47 km"
+QString dmiTrainLengthText(int m);       // F   "TL 650 m"; 0 "TL Invalid"
+QString dmiTargetDistanceText(int m);    // A3  "500 m"
+bool    dmiSpeedColours(int mode);       // B3: none in Non-Leading (11) or Isolation (13)
+QString dmiNoDataText();                 // no frame yet
+QString dmiStaleText();                  // frames stopped
 
 // ---- colours ------------------------------------------------------------------
 struct DmiColours {

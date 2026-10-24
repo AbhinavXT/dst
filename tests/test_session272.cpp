@@ -20,10 +20,10 @@ TEST_SUITE(session272)
     {
         const QHash<QString, qint64> raw{ { "station_id", 4501 }, { "sos_station_id", 1201 } };
         CHECK(dmiContextMessage(QStringLiteral("SOS - Station (This Loco)"), raw, text)
-                  == QString::fromUtf8("SOS – From Station 4501 ( SOS to This Loco )"),
+                  == QString::fromUtf8("SOS – From Station 4501 (SOS to this Loco)"),
               "SOS to This Loco: the station is station_id");
         CHECK(dmiContextMessage(QStringLiteral("SOS - Station (All Locos)"), raw, text)
-                  == QString::fromUtf8("SOS – From Station 1201 ( SOS to All Locos )"),
+                  == QString::fromUtf8("SOS – From Station 1201 (SOS to All Locos)"),
               "SOS to All Locos: still sos_station_id");
     }
 
@@ -42,9 +42,9 @@ TEST_SUITE(session272)
             if (!raw.contains(QStringLiteral("station_id"))) continue;
             const QString want = QString::number(raw.value(QStringLiteral("station_id")));
             for (const QString &m : dmiStateFromLine(l).contextMessages) {
-                if (!m.contains(QLatin1String("SOS to This Loco"))) continue;
+                if (!m.contains(QLatin1String("SOS to this Loco"))) continue;
                 ++raised;
-                if (m == QString::fromUtf8("SOS – From Station %1 ( SOS to This Loco )").arg(want)) ++raisedRight;
+                if (m == QString::fromUtf8("SOS – From Station %1 (SOS to this Loco)").arg(want)) ++raisedRight;
                 if (raw.value(QStringLiteral("station_id")) != raw.value(QStringLiteral("sos_station_id"))) ++differ;
             }
             ++checked;
