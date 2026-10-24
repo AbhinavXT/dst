@@ -2,9 +2,7 @@
 
 #include "cabio.h"
 
-#ifdef DL_HAVE_SERIAL
-#include "cabiosimwindow.h"
-#endif
+#include "brakebenchwindow.h"
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
@@ -20,6 +18,8 @@
 //  VCC reads from them (Abhinav's Process_Analog_Card_Data_CAN and
 //  current_to_pressure). No real analog frame has been captured yet: the
 //  frame is checked against the firmware's struct, byte by byte.
+//  Session 360: the analog card moved to the Brake Test Bench; its checks
+//  follow it (the serial port it never used is no longer here to check).
 // =============================================================================
 
 using namespace CabIo;
@@ -70,13 +70,13 @@ TEST_SUITE(session346)
     CHECK(!parseAnalog(f.left(33), nullptr) && !parseAnalog(inputRequest(5, 1, wf), nullptr),
           "nothing else parses as an analog frame");
 
-#ifdef DL_HAVE_SERIAL
-    // ---- the window --------------------------------------------------------------------------
+    // ---- the window (the Brake Test Bench since session 360) ------------------------------------
     {
-        CabIoSimWindow w(nullptr);
-        // Session 350: analog frames go over UDP; the serial sink gets none.
-        QVector<QByteArray> serial, sent;
-        w.setWriteSink([&](const QByteArray &b) { serial << b; });
+        BrakeBenchWindow w(nullptr);
+        w.setAttribute(Qt::WA_DeleteOnClose, false);
+        w.setAnalogFollows(false);      // the channels as set here, not the bench's air
+        // Session 350: analog frames go over UDP.
+        QVector<QByteArray> sent;
         QUdpSocket rx;
         CHECK(rx.bind(QHostAddress(QHostAddress::LocalHost), 0), "fixture: a UDP receiver on localhost");
         w.setAnalogTarget(QStringLiteral("127.0.0.1"), rx.localPort());
@@ -101,7 +101,6 @@ TEST_SUITE(session346)
         w.sendAnalogNow();
         drain(2);
         CHECK(sent.size() == 2 && w.analogSent() == 2, "one datagram per ticked controller");
-        CHECK(serial.isEmpty(), "nothing on the serial port");
         CHECK(!sent.isEmpty() && sent[0].size() == 34, "each datagram is the bare 34-byte frame");
         Frame a, b;
         if (sent.size() == 2 && parseAnalog(sent[0], &a) && parseAnalog(sent[1], &b)) {
@@ -137,5 +136,4 @@ TEST_SUITE(session346)
         w.sendAnalogNow();
         CHECK(w.analogSent() == n, "no host: nothing sent, nothing counted");
     }
-#endif
 }

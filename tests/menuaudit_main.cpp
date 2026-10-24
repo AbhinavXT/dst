@@ -42,6 +42,10 @@
 #include <QDateTime>
 #include <QMouseEvent>
 #include "uicolors.h"
+#include "brakebenchwindow.h"
+#ifdef DL_HAVE_SERIAL
+#include "cabiosimwindow.h"
+#endif
 #include "framenumberwatch.h"
 #include "messagedispatcher.h"
 #include "packetmakerdialog.h"
@@ -645,6 +649,40 @@ int main(int argc, char **argv) {
         if (opened) opened->close();
     } else {
         CHECK(false, "Transmit > Cab I/O Simulator");
+    }
+    // Session 360: the Brake Test Bench, beside it; one window, and it hears
+    // the Cab I/O Simulator's output word when both are open.
+    if (QAction *bench = transmit ? findAction(transmit, "Brake Test Bench") : nullptr) {
+        bench->trigger();
+        bench->trigger();
+        int count = 0;
+        BrakeBenchWindow *opened = nullptr;
+        for (QWidget *top : QApplication::topLevelWidgets())
+            if (auto *b = qobject_cast<BrakeBenchWindow *>(top))
+                if (b->isVisible()) { ++count; opened = b; }
+        CHECK(count == 1, "Transmit > Brake Test Bench opens one window, raised again on a second trigger");
+#ifdef DL_HAVE_SERIAL
+        if (QAction *cabIo = findAction(transmit, "Cab I/O Simulator")) {
+            cabIo->trigger();
+            CabIoSimWindow *sim = nullptr;
+            for (QWidget *top : QApplication::topLevelWidgets())
+                if (auto *c = qobject_cast<CabIoSimWindow *>(top))
+                    if (c->isVisible()) sim = c;
+            if (sim && opened) {
+                sim->setWriteSink([](const QByteArray &) {});
+                sim->setCab(CabIo::Cab::Sifa);
+                sim->feedBytes(CabIo::outputData(13, 1, quint16(0x3C00 & ~(1u << 13)), CabIo::WireFormat()));
+                CHECK(opened->brakeLevelNow() == CabIo::EbApplied,
+                      "the bench hears the Cab I/O Simulator's output word (EB applied)");
+                sim->close();
+            } else {
+                CHECK(false, "the Cab I/O Simulator and the bench both open");
+            }
+        }
+#endif
+        if (opened) opened->close();
+    } else {
+        CHECK(false, "Transmit > Brake Test Bench");
     }
     // The point of the group: nothing that sends may sit outside it.
     CHECK(!findAction(tools, "Packet Maker") && !findAction(tools, "Field Sweep"),

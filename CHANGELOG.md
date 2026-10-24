@@ -11,6 +11,324 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-363"></a>
+## Session 363 — Brake Test Bench: "(changed)" only for what the operator moved
+
+Found in the screenshots Abhinav asked for: straight after loading a preset that
+isolates the BIU, the Presets button read "Preset: EB, BC stuck at 1.0 (changed)".
+Nobody had changed anything. The BIU had queued 0x1040 BIU ISOLATED by itself on
+its next tick, and the button compared the whole preset, code queues included.
+Codes also leave the queue as KAVACH acknowledges them, so any running test
+would have read as "changed".
+
+**What the operator sees.** "(changed)" appears only when something the operator
+sets differs from the loaded preset: a fault, a rate, an offset, a manual
+pressure, a validity mode, a forced bit, a frame off, silence. The code queues
+still load with the preset; they just don't count toward "changed".
+
+**Files.** `brakebenchwindow.cpp` (the comparison leaves out `faults` /
+`displays`); `tests/test_session362.cpp` (2 checks);
+`tests/screenshot_main.cpp` (`SHOT_PRESET=1`: two presets saved, one loaded,
+and the Presets menu shot as `shot_benchpresets_menu_<theme>.png`).
+
+**Tests.** `session362` (36 checks, 2 new): isolated, the BIU queues 0x1040 and
+the button does not say "(changed)"; a fault set by hand afterwards makes it say
+so. The first check is the bug as seen; it was not rerun against patch 362.
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4:** all green: 389 suites / 9926 checks, 0 failed; 15 validators;
+  menu audit; smoke.
+- **Qt 5.15.13:** validators, menu audit and smoke green; `dltests` 9926 checks,
+  4 failed: the window-size checks of sessions 134 and 135, as on unchanged
+  `main` in this container. `session362` passes.
+
+**Not tested:** Windows (CI runs it).
+
+---
+
+<a id="session-362"></a>
+## Session 362 — Brake Test Bench: saved presets
+
+Item 5 of `docs/BRAKE_BENCH_NEXT.md`: *"Save the bench's fault setup under a
+name and load it later: plant faults, rates, analog offsets, forced bits,
+manual pressures, validity modes, queued codes, frames off, silence ... Opening
+the window still starts clean; a preset is loaded only on request."*
+
+**What the operator sees.** A **Presets** button beside Start BIU:
+- **Save the fault setup as…** asks for a name, and asks before replacing one.
+- **Start clean** puts every fault, forced bit and queued code back to how the
+  window opens.
+- **Load:** one entry per saved preset; its tooltip lists what it sets. The
+  loaded one is ticked.
+- **Delete ▸** asks first.
+
+The button then reads "Preset: EB, BC stuck", and "(changed)" once anything is
+moved after loading. The status line says what was loaded: "BC stuck · BP
+manual 3.00 · 2 bits forced · fault 0x1004 queued · 0x420 off".
+- A preset holds exactly the listed items. Isolation is in it as the forced
+  manual-isolate bit. The network, the analog card's channels and the brake
+  relays' pressures are the bench's wiring and stay out of it, so a preset
+  loaded on another PC does not move them.
+- Loading replaces the whole setup: what was set before does not leak in.
+- Reopening the window still starts clean; the presets stay saved.
+- The rates are in a preset and are still the window's own saved setting, as
+  before. Loading a preset changes them, and they stay changed on reopen.
+
+**Storage.** `dlconsole.ini`, `brakebench/presets`: one JSON document, so a
+name may hold any character. Keys are readable (`"fault": "slow"`, bits as
+`"A1A0AAAA"`, codes as `"0x1004"`, frames by COB-ID). An unknown key is skipped
+and a missing one takes the default, so presets survive version changes. A code
+that is not a code is dropped.
+
+**Files.** `brakebenchpreset.{h,cpp}` (new: the data, JSON, the store,
+`differences`), `brakebenchwindow.{h,cpp}` (the button and menu,
+`currentPreset` / `applyPreset` / `savePreset` / `loadPreset` / `deletePreset` /
+`startClean`), `dlcore.pri`, `tests/test_session362.cpp` (new), `tests/tests.pro`.
+
+**Tests.** `session362` (34 checks):
+- the JSON round trip, field by field, and the readable keys;
+- a partial preset takes the defaults, an unknown key is skipped, bad codes are
+  dropped, and the "what differs" wording;
+- the store: names sorted, a slash in a name, load / remove;
+- the window:
+  - `currentPreset` reads what is set;
+  - Start clean restores the plant, the isolation, the codes and the frames;
+  - a loaded preset moves the model, not just the widgets, and shows in the
+    0x220 / 0x320 frames;
+  - an unknown name changes nothing, and a preset replaces rather than adds;
+  - the menu lists the presets, and the button names the loaded one;
+  - delete; reopening starts clean with the presets kept; no loose widgets.
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4:** all green: 389 suites / 9924 checks, 0 failed; 15 validators;
+  menu audit; smoke.
+- **Qt 5.15.13:** validators, menu audit and smoke green; `dltests` 9924 checks,
+  4 failed: the window-size checks of sessions 134 and 135, as on unchanged
+  `main` in this container. `session362` passes.
+
+**Not tested:** the Save / Delete dialogs by hand (they need an operator; the
+tests drive `savePreset` / `deletePreset`); Windows (CI runs it).
+
+---
+
+<a id="session-361"></a>
+## Session 361 — Brake Test Bench: the BIU answers all four VCCs
+
+Item 4 of `docs/BRAKE_BENCH_NEXT.md`, agreed with Abhinav: *"A loco has 4 VCCs.
+Only one sends the BIU command, but the BIU's frames (heartbeat, NMT, status)
+must reach all four so each keeps its state."* Until now the bench answered the
+sender of the last frame, or one fixed address.
+
+**What the operator sees.** Network ▸ Link: **Answer** is now *the sender* or
+*these VCCs*, and *these VCCs* takes a list (`192.168.25.16, 192.168.25.102,
+…`; `a.b.c.d:port` gives one VCC its own port). **Loco ▾** fills in a loco's
+four VCC controllers from the Firmware Flasher's address table (session 300):
+loco 1 is .16 .102 .103 .104, loco 2 .77 .105 .106 .107, loco 3 .87 .88 .96 .97.
+Loco 1's four are what the list starts with. Under the list, the bench says where
+each frame goes, one line per VCC with its name ("Loco 1 · VCC 1 controller 2"),
+and which one sends the command. In sender mode it says that the other VCCs
+hear nothing.
+- Each frame goes to every VCC on the list as its own datagram. The Frames tab
+  still has one row per frame, naming them all; the top bar says "answers 4 VCCs".
+- A command from an address that is not on the list is noted in the Frames tab
+  and under the list. That VCC is sent nothing, so it would read the BIU as lost.
+- A typo ("192.168.25", which `QHostAddress` alone would read as 192.168.0.25)
+  is marked in the field and said in the status line. The BIU keeps answering
+  the last good list. The text is saved as typed, to be fixed.
+- Saved settings carry over: the old single fixed address is a list of one.
+  The old default (.126) was the PC, not a VCC, so it is no longer offered.
+
+**Files.** `biusim.{h,cpp}` (`setReplyHosts`, `parseHosts`, `replyTargets`,
+`inReplyList`, `datagramsSent`, `setSendToSink` for tests; a frame sent to each
+target; the off-list note), `brakebenchwindow.{h,cpp}` (the list, Loco ▾, the
+per-VCC lines); `tests/test_session361.cpp` (new), `tests/tests.pro`;
+`tests/screenshot_main.cpp` (the bench answers loco 1's four, .102 commanding).
+
+**Tests.** `session361` (44 checks):
+- the list's syntax: separators, `:port`, short and out-of-range addresses, a
+  port of 0 or 65536, duplicates. A bad entry refuses the whole list and keeps
+  the old one;
+- on injected time, in 1 s each of the four gets 2 heartbeats, 4 of each status
+  frame and the NMT start; every frame goes to each, and to nobody else;
+- one log row per frame naming the four; a command from .77 (not listed) is
+  noted, one from a listed VCC is not;
+- sender mode as before: it answers the sender on 50001, not on the sender's
+  own source port;
+- over real sockets: two VCCs on localhost, only one commanding, and both get
+  the status frames;
+- the window: it starts in sender mode with loco 1 ready, lists the four by
+  controller and marks the commander. A typo is marked, saved and leaves the
+  four in place. An off-list commander is pointed out. The list comes back on
+  reopen. The Network tab fits 1366 px, with no loose widgets.
+
+The Network tab was checked in screenshots: Light, Mocha and High Contrast.
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4:** all green: 388 suites / 9890 checks, 0 failed; 15 validators;
+  menu audit; smoke.
+- **Qt 5.15.13:** validators, menu audit and smoke green; `dltests` 9890 checks,
+  4 failed: the window-size checks of sessions 134 and 135, the same as on
+  unchanged `main` in this container (session 360). `session361` passes.
+
+**Not tested:** against real VCCs (whether all four take the BIU's frames from
+one source, and whether the firmware reads the 0x710 heartbeat per VCC);
+Windows (CI runs it). The four addresses are the Firmware Flasher's controller
+table. That a loco's VCC application answers on those addresses is taken from
+session 300's note, not seen on a loco.
+
+---
+
+<a id="session-360"></a>
+## Session 360 — Brake Test Bench: a BIU simulator, the analog card and the brake pressures in one window
+
+Abhinav, after a review of the firmware's BIU interface (brake_pressure_interface_user.c):
+*"how to make a miniature biu simulator in dlconsole window to fully test the
+brake pressure logic in firmware"*. Answered: reply to the VCC on port 50001
+(it sends from .126 / .101 to 51234); *"Yes simulate all the packets that biu
+sends make everything configurable"*; heartbeat too; drive the analog card from
+it; *"the amount of stuff that analog card and biu and brake pressure has we
+need to separate it into a fully new window. Make sure the UI is great and in
+line with the rest of DLConsole and works on all themes."*
+
+**What the operator sees.** Tools ▸ Transmit ▸ **Brake Test Bench…**, beside
+the Cab I/O Simulator. **Start BIU** listens on UDP 51234 and answers as a Brake
+Interface Unit (RDSO MP.0.01.00.31 Rev.05, Annexure-1), one CAN frame per
+datagram as the firmware's gateway sends them (`[COB-ID lo][COB-ID hi][3 + n][n bytes]`).
+- **Bench.** BP, BC and MR as dials, with a mark where each is heading. They follow
+  the **BIU command** (KAVACH's A9 / SA9 when valid; emergency when KAVACH is lost;
+  released when isolated), the **brake relays**, or a **hand**. Each pressure has
+  its own apply and release rate and a fault: stuck, slow ×N, or leak /s. The
+  analog card can read off by an offset, to test the firmware's cross-check.
+  Also shown: KAVACH's last command (speed, A9, SA9, every discrete bit as a chip)
+  and what the BIU is doing (state, isolation, the codes in flight, the panel
+  test). Isolate and Silence switches are at hand.
+- **BIU → VCC.** Every field of the three status frames. The 0x220 pressures are
+  Auto (the bench) or Manual, each with its validity bit Auto / 1 / 0. The 0x320
+  frame carries the isolation counter (+1 on each isolation, raising 0x1040), and
+  fault and display codes from the spec's lists or typed in. They are queued and
+  held until KAVACH acknowledges them, and the acknowledgement time is shown.
+  All 18 named bits of the 0x420 discretes are Auto / 1 / 0, showing what goes
+  out. The status period and each frame can be switched on or off, and the
+  panel test's length and result are set here.
+- **Network.** The listen port, and the reply address (the sender, or a fixed
+  address) with its port (50001). The BIU heartbeat (0x710): on or off, its period
+  (500 ms), and the state it says. NMT: KAVACH is started automatically while it
+  is not operational, and Start, Stop, Pre-operational and both resets can be sent
+  by hand. A KAVACH timeout (1.5 s) leads to apply emergency (4 c), hold, or release.
+- **Analog → VCC** and **Brake relays**: moved here from the Cab I/O Simulator
+  (sessions 346-351, 357-358) unchanged, except that BP, BC and MR now follow
+  the bench's air. The relays follow the Cab I/O Simulator's output word through
+  MainWindow while both are open, and the analog frames use its wire format.
+  Settings move over on the first open.
+- **Frames.** Every BIU frame both ways and every analog frame. Each shows its
+  COB-ID and bytes, what it says, and what is wrong with it: COB-ID 0x181 instead
+  of 0x190, data while KAVACH says pre-operational, a short frame, A9 / SA9 marked
+  valid above 6.0 / 4.0, an ack with nothing in flight.
+
+The Cab I/O Simulator keeps Inputs, Outputs, Readback, Scenarios (rules) and
+Frames. It now fits 1366 × 768: session 355's laptop check, which failed in this
+container, passes. The per-brake starting values follow Annexure-4: NB 4.4 / 1.2
+and FSB 3.5 / 2.4 (they were 4.5 / 1.0 and 3.5 / 2.5).
+
+**Every theme.** Palette roles, `UiColor` and the shared simulator style sheet
+(`simwidgets.h`: segmented buttons, cards, chips, lamps), with `CabIoColors` moved
+there so the bench builds without Qt Serial Port. A lit chip is Base on accent,
+a plain one muted on Base: both checked against the text floor in all eleven
+themes, colour-blind-safe on and off. Light, Dark, Mocha and High Contrast were
+looked at.
+
+**Files.** `biuprotocol.{h,cpp}` (Annexure-1: COB-IDs, framing, command,
+status frames, codes, NMT), `biusim.{h,cpp}` (the BIU), `brakeplant.{h,cpp}`
+(the air), `simwidgets.{h,cpp}` (the shared look), `brakebenchwindow.{h,cpp}`
+(new); `cabiosimwindow.{h,cpp}` (analog card and brake card moved out;
+`outputWordChanged`, `wireFormatChanged`); `cabio.cpp` (starting values);
+`mainwindow.h`, `mainwindow_menus.cpp`, `mainwindow_tools.cpp` (the menu entry
+and the link); `dlcore.pri`; `tests/test_session360.cpp` (new);
+`tests/test_session346/351/357/358/359.cpp` (follow the move);
+`tests/menuaudit_main.cpp`; `tests/screenshot_main.cpp` (`SHOT_WINDOW=brakebench`).
+
+**Tests.** `session360` (89 checks):
+- the firmware's own NB datagram decoded byte by byte;
+- framing refusals, 0.05 kg/cm² per bit, the status frames' layout, and the spec's code lists;
+- the plant's rates and faults;
+- the BIU on injected time:
+  - boot-up, then heartbeat every 500 ms and status every 250 ms;
+  - NMT start until KAVACH is operational;
+  - FSB targets, references and auto bits; validity limits and forced bits;
+  - isolation counted with 0x1040 raised, acks and their latency, codes held without acks;
+  - the panel test passing and failing;
+  - KAVACH lost leading to emergency, hold or release;
+  - notes on bad frames; silence, and frames switched off;
+- a real UDP round trip on localhost;
+- the window:
+  - EB moving the air at its rates, with the analog card and 0x220 following;
+  - offset and stuck faults, and KAVACH lost driving BP to 0;
+  - every tab fits 1366 × 768, with no loose widgets;
+- the chip contrast in 22 theme variants.
+
+The moved checks are in sessions 346, 351, 357, 358 and 359, and the menu audit
+covers the new menu entry and the link to the Cab I/O Simulator.
+
+No BIU frame has been captured, so the bytes are worked from the spec's
+tables and the reviewed firmware's host test.
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4:** all green: 387 suites / 9846 checks, 0 failed; 15 validators;
+  menu audit; smoke.
+- **Qt 5.15.13:** validators, menu audit and smoke green; `dltests` 9846 checks,
+  4 failed. They are the window-size checks of sessions 134 and 135, which fail
+  the same way on unchanged `main` in this container, and pass on Qt 6 here and
+  in CI.
+
+**Not tested:** against a real BIU or the VCC firmware on target; Windows
+(CI runs it); a screen reader.
+
+---
+
+<a id="session-359"></a>
+## Session 359 — Cab I/O Simulator: review follow-ups on session 358
+
+Abhinav asked for a review of patch 358, then *"Fix"*. Three of its four
+nits; the fourth (looking up the brake outputs once per cab rather than on
+each refresh) is 4 × 16 string compares and stays as is.
+
+**What changed.**
+- **Brake lamps tell a screen reader the truth.** Before any output frame a
+  lamp's accessible description was "released" while its tooltip said "no
+  output data yet". Both now come from one place and say "no output data
+  yet" until data arrives, from the moment the lamp is built.
+- **`refreshAnalog` loops by index.** The dashboard dial for a row was found
+  by pointer arithmetic on the vector (`&r - m_anRows.data()`); it is now
+  the loop index. Same behaviour, nothing to go wrong if the loop changes.
+- **The lit card's edge is checked where it is drawn.** Session 358 held the
+  accent edge to the graphic floor on `Base`; a lit card's edge sits on the
+  On tile's tint, so that pair is now held too, in every theme.
+
+**What the operator sees.** Nothing new on screen. A screen reader on the
+Scenarios tab hears "no output data yet" for the brake lamps until the VCC
+sends output data.
+
+**Files.** `cabiosimwindow.cpp` (`BrakeLamp::describe`, object name
+`brakeLamp`; `refreshAnalog`), `tests/test_session359.cpp` (new),
+`tests/tests.pro`.
+
+**Tests.** `session359` (8 checks): the accent edge reaches 3:1 (7:1
+High Contrast) on `tileFill(On)` in all eleven themes, colour-blind-safe off
+and on; the EB lamp says "no output data yet" (accessible description and
+tooltip) before output data, and with EB applied in a real-layout SIFA
+output word EB says "applied" and NB "released".
+
+**Gate (Linux, Qt 5.15.13, cloud container):** 15 validators, menu audit,
+smoke green; `dltests` 386 suites / 9759 checks, `session359` ok, 7 failed:
+the window-size checks of sessions 134, 135, 351 and 355. The same 7 fail on
+unchanged `main` (patch 358) in this container, which CI passes: they measure
+this machine's fonts, not this patch.
+
+**Not tested:** Qt 6, the Mac, Windows (CI runs those); no screen reader
+was run.
+
+---
+
 <a id="session-358"></a>
 ## Session 358 — Cab I/O Simulator: the Scenarios tab as a brake dashboard
 

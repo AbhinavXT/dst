@@ -95,6 +95,7 @@
 #include "clockskewalarm.h"
 #include "dmipanel.h"
 #include "dmitimetravel.h"
+#include "brakebenchwindow.h"
 #ifdef DL_HAVE_SERIAL
 #include "cabiosimwindow.h"
 #include "serialconsolewindow.h"
@@ -803,10 +804,38 @@ void MainWindow::openCabIoSimulator()
             if (line.startsWith(QLatin1String("@dmi_"))) sim->observeDmiLine(line);
         });
         m_cabIoSim = sim;
+        linkCabIoToBench();
     }
     m_cabIoSim->show();
     m_cabIoSim->raise();
     m_cabIoSim->activateWindow();
+#endif
+}
+
+// Session 360: one bench; triggering it again raises it.
+void MainWindow::openBrakeBench()
+{
+    if (!m_brakeBench) {
+        m_brakeBench = new BrakeBenchWindow(this);
+        linkCabIoToBench();
+    }
+    m_brakeBench->show();
+    m_brakeBench->raise();
+    m_brakeBench->activateWindow();
+}
+
+// The bench's brake relays follow the Cab I/O Simulator's output word, and
+// its analog card the simulator's wire format, while both are open.
+void MainWindow::linkCabIoToBench()
+{
+#ifdef DL_HAVE_SERIAL
+    auto *sim = qobject_cast<CabIoSimWindow *>(m_cabIoSim.data());
+    auto *bench = qobject_cast<BrakeBenchWindow *>(m_brakeBench.data());
+    if (!sim || !bench) return;
+    connect(sim, &CabIoSimWindow::outputWordChanged, bench, &BrakeBenchWindow::observeOutputWord, Qt::UniqueConnection);
+    connect(sim, &CabIoSimWindow::wireFormatChanged, bench, &BrakeBenchWindow::setWireFormat, Qt::UniqueConnection);
+    bench->setWireFormat(sim->wireFormat());
+    if (sim->outputSeen()) bench->observeOutputWord(int(sim->cab()), sim->outputWord());
 #endif
 }
 

@@ -10,13 +10,12 @@
 //                    are answered (or the data is sent on a period).
 //    Outputs <- VCC  the output data the VCC sends to the output cards
 //                    (13 / 14), drawn as lamps by STRUCT_LOCO_OUTPUT's names.
-//    Analog -> VCC   the analog card (session 346): six 4-20 mA channels as
-//                    controllers 15 / 16 send them, with what the VCC reads.
-//                    Sent over UDP to a host and port (session 350), not on
-//                    the serial port.
 //    Scenarios       rules that set inputs from the output word and the DMI
 //                    mode: EB applied -> eb_relay_fb 10, ... (session 356).
 //    Frames          every frame both ways, and the wire format.
+//  The analog card (sessions 346-351) and the brake pressures (357, 358)
+//  moved to the Brake Test Bench (brakebenchwindow.h, session 360); this
+//  window tells it the output word and the wire format.
 //  SIFA-extended and old cab layouts both (cabio.h).
 //
 //  The port is one of SerialManager's, so it shows a status-bar chip and a
@@ -24,6 +23,7 @@
 //  are binary frames). Closing the window closes a port it opened.
 // =============================================================================
 #include "cabio.h"
+#include "simwidgets.h"
 
 #include <QHash>
 #include <QMap>
@@ -48,20 +48,9 @@ class SerialLink;
 class SerialManager;
 class StatusLine;
 
-namespace CabIoUi { class TileGrid; class InputTile; class LampTile; class BrakeLamp; }
+namespace CabIoUi { class TileGrid; class InputTile; class LampTile; }
 
-// The window's own colour decisions (session 328). Everything else it draws
-// is a palette role or a UiColor, which the contrast audit already holds in
-// every theme; these mix their own -- a tinted tile, a lamp's rim -- so they
-// are public for tests/test_session328.cpp to hold to the same floors.
-namespace CabIoColors {
-enum class Tile { Plain, On, Fault };
-double textFloor();                          // 7 : 1 in High Contrast, else 4.5 : 1
-double graphicFloor();                       // 7 : 1 in High Contrast, else 3 : 1
-QColor tileFill(Tile t);                     // Base, tinted for On and Fault
-QColor tileInk(const QColor &ink, Tile t);   // `ink`, held to textFloor() on tileFill(t)
-QColor lampRim(const QString &lamp);         // a lit lamp's outline, graphicFloor() on Base
-}
+// CabIoColors (session 328) lives in simwidgets.h since session 360.
 
 class CabIoSimWindow : public QWidget
 {
@@ -104,24 +93,6 @@ public:
     void resetInputsToDefault();
     void forgetInputDefault();
     bool hasInputDefault() const;
-    // Analog -> VCC (session 346): one set of six channels, sent as each
-    // ticked controller (15 top, 16 bottom) every period while sending is on.
-    void   setAnalogMa(int ch, double mA);
-    double analogMa(int ch) const;
-    void   setAnalogPressure(int ch, double kgcm2);   // sets the mA that reads as it
-    void   setAnalogScale(int ch, int bar);           // 10 or 16
-    int    analogScale(int ch) const;
-    void   setAnalogCards(const QVector<quint8> &ids);
-    QVector<quint8> analogCards() const;
-    void   setAnalogSending(bool on);
-    bool   analogSending() const;
-    void   setAnalogPeriodMs(int ms);
-    void   sendAnalogNow();
-    int    analogSent() const { return m_analogSent; }
-    // Session 350: where the analog frames go (UDP).
-    void    setAnalogTarget(const QString &host, quint16 port);
-    QString analogHost() const;
-    quint16 analogPort() const;
     void setWireFormat(const CabIo::WireFormat &wf);
     CabIo::WireFormat wireFormat() const { return m_wf; }
     // Scenarios (session 356): the cab's rules, saved per cab; on by default.
@@ -134,17 +105,6 @@ public:
     void observeDmiLine(const QString &line);
     void setLocoMode(int mode);
     int  locoMode() const { return m_mode; }
-    // Brake pressures (session 357): BP, BC, MR ramp to the values set for
-    // the strongest brake in the output word. On by default.
-    void   setBrakePressuresOn(bool on);
-    bool   brakePressuresOn() const { return m_brakesOn; }
-    void   setBrakePressure(int level, int ch, double kgcm2);
-    double brakePressure(int level, int ch) const;
-    void   setRampRate(double kgcm2PerS);
-    double rampRate() const;
-    int    brakeLevelNow() const { return m_brakeLevel; }    // -1: no output data yet
-    bool   ramping() const;
-    void   stepRamp(double seconds);                       // what the ramp timer does each tick
 
     // Bytes as if read from the port, and where writes go instead of a port
     // (tests; a sink also stands in when no port is open).
@@ -168,6 +128,11 @@ public:
     QString crcHint() const;     // what the last received frame's CRC matched
     QString nextReplyText() const;
 
+signals:
+    // Session 360: for the Brake Test Bench's brake relays and analog card.
+    void outputWordChanged(int cab, quint16 word);   // each output data frame, and a change of cab
+    void wireFormatChanged(const CabIo::WireFormat &wf);
+
 protected:
     void closeEvent(QCloseEvent *e) override;
 
@@ -188,16 +153,12 @@ private:
     QWidget *buildOutputsTab();
     QWidget *buildFramesTab();
     QWidget *buildReadbackTab();
-    QWidget *buildAnalogTab();
     QWidget *buildScenariosTab();
     void rebuildRules();
     void refreshRules();
     void applyRules();
     void rulesEdited();
     void loadRulesFor(CabIo::Cab cab);
-    void applyBrakeLevel(bool force);
-    void refreshBrakes();
-    void refreshAnalog();
     void rebuildReadback();
     void applyDefault(Bank &b) const;
     quint16 readbackWord(quint8 card, bool *known) const;
@@ -287,25 +248,6 @@ private:
     QLabel      *m_rbSummary = nullptr;
     QWidget     *m_rbTable = nullptr;
     QVector<RbRow> m_rbRows;
-    // Analog -> VCC
-    struct AnRow {
-        QDoubleSpinBox *mA = nullptr;
-        QDoubleSpinBox *kg = nullptr;          // under its gauge (session 351)
-        class PressureGauge *gauge = nullptr;
-        QComboBox *scale = nullptr;
-        QLabel *reads = nullptr;
-    };
-    QVector<AnRow> m_anRows;
-    QButtonGroup *m_anSendGroup = nullptr;
-    QSpinBox    *m_anPeriod = nullptr;
-    QVector<QPushButton *> m_anCardChips;
-    QLabel      *m_anSummary = nullptr;
-    QTimer      *m_anTimer = nullptr;
-    QLineEdit   *m_anHost = nullptr;
-    QSpinBox    *m_anPort = nullptr;
-    class UdpSender *m_anUdp = nullptr;
-    quint16 m_anSeq = 0;
-    int m_analogSent = 0;
     QPushButton *m_resetDefault = nullptr;
     QLabel      *m_outFooter = nullptr;
 
@@ -321,18 +263,6 @@ private:
     QVBoxLayout *m_ruleBox = nullptr;       // the rule cards (session 358)
     class QScrollArea *m_ruleScroll = nullptr;
     QVector<class QFrame *> m_ruleCards;
-    // Brake pressures
-    bool   m_brakesOn = true;
-    int    m_brakeLevel = -1;
-    double m_rampKg[CabIo::kBrakeChannels] = {};
-    QCheckBox      *m_brakesOnBox = nullptr;
-    QDoubleSpinBox *m_brakeKg[CabIo::kBrakeLevels][CabIo::kBrakeChannels] = {};
-    QDoubleSpinBox *m_rampRate = nullptr;
-    QLabel         *m_brakeNow = nullptr;
-    QTimer         *m_rampTimer = nullptr;
-    QVector<CabIoUi::BrakeLamp *> m_brakeLamps;              // NB FSB EB LE
-    class PressureGauge *m_dashGauges[CabIo::kBrakeChannels] = {};
-
     QComboBox   *m_crc = nullptr;
     QComboBox   *m_length = nullptr;
     QCheckBox   *m_echo = nullptr;

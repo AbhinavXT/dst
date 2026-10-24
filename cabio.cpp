@@ -922,11 +922,13 @@ QString brakeLevelName(int level)
 double defaultBrakePressure(int level, int ch)
 {
     // Starting values only; the operator sets their own (BP, BC, MR).
+    // Session 360: RDSO MP.0.01.00.31 Annexure-4, as the firmware's
+    // formation rows: NB a 0.6 drop with BC 1.2, FSB a 1.5 drop with BC 2.4.
     static const double kg[kBrakeLevels][kBrakeChannels] = {
         { 5.0, 0.0, 9.0 },     // released
-        { 4.5, 1.0, 9.0 },     // NB
-        { 3.5, 2.5, 9.0 },     // FSB
-        { 0.0, 3.5, 9.0 },     // EB
+        { 4.4, 1.2, 9.0 },     // NB
+        { 3.5, 2.4, 9.0 },     // FSB
+        { 0.0, 2.4, 9.0 },     // EB
     };
     return level >= 0 && level < kBrakeLevels && ch >= 0 && ch < kBrakeChannels ? kg[level][ch] : 0.0;
 }

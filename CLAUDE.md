@@ -111,6 +111,9 @@ The three features once queued here are all done:
 - **Two-loco view:** sessions 98, 132, 172, 186.
 - **Track diagram by absolute location:** sessions 99, 131, 207, 209.
 
-Before proposing a feature, search `CHANGELOG.md` for it. No feature is
-queued right now. Confirm each new feature's scope with Abhinav before
-building it.
+Before proposing a feature, search `CHANGELOG.md` for it. **Queued:** the
+Brake Test Bench follow-ups for the hardware session (real BIU frames,
+scenarios from test cases, recording the bench's traffic, verdicts; replies to
+all 4 VCCs and saved presets are done, 361-363) and the open BIU-firmware
+decisions: see `docs/BRAKE_BENCH_NEXT.md`. Confirm each new feature's scope with
+Abhinav before building it.

@@ -117,6 +117,12 @@ SOURCES += \
     $$PWD/iotimeline.cpp \
     $$PWD/iotimelinewindow.cpp \
     $$PWD/cabio.cpp \
+    $$PWD/biuprotocol.cpp \
+    $$PWD/biusim.cpp \
+    $$PWD/brakeplant.cpp \
+    $$PWD/simwidgets.cpp \
+    $$PWD/brakebenchwindow.cpp \
+    $$PWD/brakebenchpreset.cpp \
     $$PWD/runreportwindow.cpp \
     $$PWD/incidentreport.cpp \
     $$PWD/incidentreportdialog.cpp \
@@ -313,6 +319,12 @@ HEADERS += \
     $$PWD/iotimeline.h \
     $$PWD/iotimelinewindow.h \
     $$PWD/cabio.h \
+    $$PWD/biuprotocol.h \
+    $$PWD/biusim.h \
+    $$PWD/brakeplant.h \
+    $$PWD/simwidgets.h \
+    $$PWD/brakebenchwindow.h \
+    $$PWD/brakebenchpreset.h \
     $$PWD/runreportwindow.h \
     $$PWD/incidentreport.h \
     $$PWD/incidentreportdialog.h \

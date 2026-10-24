@@ -436,6 +436,7 @@ private:
     // place, and two windows would save over each other.
     QPointer<LocoConfigWindow>  m_locoConfig;
     QPointer<QWidget>           m_cabIoSim;     // session 324: the Cab I/O Simulator
+    QPointer<QWidget>           m_brakeBench;   // session 360: the Brake Test Bench
     MinimizedDock              *m_windowDock = nullptr;   // chips for minimised tool windows
     QMenu                      *m_recentMenu = nullptr;   // File ▸ Open Recent (session 287)
     class StatusPins           *m_statusPins = nullptr;   // live values pinned from the Loco Console
@@ -675,6 +676,8 @@ private:
     void refreshHeader();              // the log header's source name
     void openSerialTerminal(const QString &port = QString());   // mainwindow_tools.cpp
     void openCabIoSimulator();                                   // mainwindow_tools.cpp
+    void openBrakeBench();                                       // mainwindow_tools.cpp (session 360)
+    void linkCabIoToBench();                                     // the bench hears the output word
     void rebuildSerialChips();                                   // mainwindow_status.cpp
     void refreshSerialChips();                                   // tooltips and health, each second
     // Open saved serial profiles (all, or only the auto-open ones); a

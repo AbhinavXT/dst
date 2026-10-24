@@ -3,6 +3,8 @@
 #include "cabio.h"
 #include "settings.h"
 
+#include "brakebenchwindow.h"
+
 #ifdef DL_HAVE_SERIAL
 #include "cabiosimwindow.h"
 #endif
@@ -19,6 +21,12 @@
 //
 //  Real frame: the bench capture's output data 0x03E1 (every SIFA brake bit
 //  0: EB applied, and so the EB values), tests/fixtures/cabio_frames_20261023.txt.
+//
+//  Session 360: the pressures moved to the Brake Test Bench. Its "Brake
+//  relays" source follows the Cab I/O Simulator's output word, and the air
+//  moves at the bench's rates (1 kg/cm2 per second here, as the ramp was).
+//  A pressure set by hand no longer stands: the bench's air goes back to the
+//  brake's value, as a regulated brake pipe would.
 // =============================================================================
 
 namespace {
@@ -41,21 +49,24 @@ QByteArray realOutputData()
 void clearSaved()
 {
     QSettings s(Settings::iniPath(), QSettings::IniFormat);
-    s.beginGroup(QStringLiteral("cabio"));
-    for (const QString &k : s.childKeys())
-        if (k.startsWith(QLatin1String("brakeKg_")) || k.startsWith(QLatin1String("analog")) || k == QLatin1String("rampRate")
-            || k == QLatin1String("brakePressures") || k.startsWith(QLatin1String("rules_")) || k == QLatin1String("cab"))
-            s.remove(k);
+    for (const QString &group : { QStringLiteral("cabio"), QStringLiteral("brakebench") }) {
+        s.beginGroup(group);
+        for (const QString &k : s.childKeys())
+            if (k.startsWith(QLatin1String("brakeKg_")) || k.startsWith(QLatin1String("analog")) || k == QLatin1String("rampRate")
+                || k == QLatin1String("brakePressures") || k.startsWith(QLatin1String("rules_")) || k == QLatin1String("cab")
+                || k == QLatin1String("source") || k.startsWith(QLatin1String("apply_")) || k.startsWith(QLatin1String("release_")))
+                s.remove(k);
+        s.endGroup();
+    }
 }
 
 bool near(double a, double b) { return qAbs(a - b) < 0.02; }
 
-#ifdef DL_HAVE_SERIAL
-double kg(CabIoSimWindow &w, int ch)
+// What the analog card sends the VCC for a channel.
+double kg(BrakeBenchWindow &w, int ch)
 {
     return currentToPressure(w.analogMa(ch), w.analogScale(ch)).kgcm2;
 }
-#endif
 
 }  // namespace
 
@@ -76,63 +87,73 @@ TEST_SUITE(session357)
     CHECK(defaultBrakePressure(NoBrake, 0) == 5.0 && defaultBrakePressure(EbApplied, 0) == 0.0, "BP 5.0 released, 0 on EB");
 
 #ifdef DL_HAVE_SERIAL
-    // ---- the window -----------------------------------------------------------------------------
+    // ---- the bench, following the Cab I/O Simulator's output word -------------------------------
     clearSaved();
     {
-        CabIoSimWindow w(nullptr);
-        w.setWriteSink([](const QByteArray &) {});
-        w.setCab(Cab::Sifa);
-        CHECK(w.brakePressuresOn() && w.brakeLevelNow() == -1, "on, and no level before output data");
+        CabIoSimWindow sim(nullptr);
+        sim.setAttribute(Qt::WA_DeleteOnClose, false);
+        sim.setWriteSink([](const QByteArray &) {});
+        sim.setCab(Cab::Sifa);
+        BrakeBenchWindow w(nullptr);
+        w.setAttribute(Qt::WA_DeleteOnClose, false);
+        QObject::connect(&sim, &CabIoSimWindow::outputWordChanged, &w, &BrakeBenchWindow::observeOutputWord);
+        qint64 t = 1000;
+        w.setClock([&t]() { return t; });
+        w.setSource(BrakeBenchWindow::Source::Relays);
+        CHECK(w.analogFollows() && w.brakeLevelNow() == -1, "the analog card follows the bench; no level before output data");
         CHECK(near(kg(w, 0), 5.0) && near(kg(w, 1), 0.0) && near(kg(w, 2), 9.0), "opens at BP 5.0, BC 0, MR 9.0");
 
         w.setBrakePressure(FsbApplied, 0, 3.4);
         w.setBrakePressure(FsbApplied, 1, 2.0);
         w.setBrakePressure(FsbApplied, 2, 8.5);
-        w.setRampRate(1.0);
-        w.feedBytes(outputData(13, 1, quint16(apply(none, 11)), WireFormat()));
-        CHECK(w.brakeLevelNow() == FsbApplied && w.ramping(), "FSB applied: ramping");
-        w.stepRamp(0.5);
+        for (int ch = 0; ch < 3; ++ch) w.setRates(ch, 1.0, 1.0);
+        sim.feedBytes(outputData(13, 1, quint16(apply(none, 11)), WireFormat()));
+        CHECK(w.brakeLevelNow() == FsbApplied && near(w.plant().target(0), 3.4), "FSB applied: BP heads for 3.4");
+        w.advance(0.5);
         CHECK(near(kg(w, 0), 4.5) && near(kg(w, 1), 0.5) && near(kg(w, 2), 8.5), "after 0.5 s at 1/s: BP 4.5, BC 0.5, MR 8.5");
-        w.stepRamp(1.0);
+        w.advance(1.0);
         CHECK(near(kg(w, 0), 3.5) && near(kg(w, 1), 1.5), "after 1.5 s: BP 3.5, BC 1.5");
-        w.stepRamp(5.0);
-        CHECK(near(kg(w, 0), 3.4) && near(kg(w, 1), 2.0) && !w.ramping(), "lands on the FSB values and stops");
+        w.advance(5.0);
+        CHECK(near(kg(w, 0), 3.4) && near(kg(w, 1), 2.0) && w.plant().settled(0), "lands on the FSB values");
 
-        // The same brake again: a pressure set by hand stands.
-        w.setAnalogPressure(0, 4.0);
-        w.feedBytes(outputData(13, 2, quint16(apply(none, 11)), WireFormat()));
-        CHECK(!w.ramping() && near(kg(w, 0), 4.0), "same brake, next frame: the hand-set BP stands");
+        // A pressure moved by hand goes back to the brake's value at the rate.
+        w.plant().setValue(0, 4.0);
+        w.advance(0.3);
+        CHECK(near(kg(w, 0), 3.7), "BP moved to 4.0 by hand: back toward 3.4 at 1/s");
 
         // The real frame: EB.
-        w.feedBytes(realOutputData());
-        CHECK(w.brakeLevelNow() == EbApplied && w.ramping(), "real 0x03E1: EB, ramping");
-        w.stepRamp(10.0);
+        sim.feedBytes(realOutputData());
+        CHECK(w.brakeLevelNow() == EbApplied, "real 0x03E1: EB");
+        w.advance(10.0);
         CHECK(near(kg(w, 0), w.brakePressure(EbApplied, 0)) && near(kg(w, 1), w.brakePressure(EbApplied, 1)),
               "lands on the EB values");
 
-        // Editing the value in force re-ramps to it.
+        // Editing the value in force moves the air to it.
         w.setBrakePressure(EbApplied, 1, 3.0);
-        CHECK(w.ramping(), "EB's BC edited while EB applied: ramps again");
-        w.stepRamp(10.0);
-        CHECK(near(kg(w, 1), 3.0), "BC 3.0");
+        w.advance(10.0);
+        CHECK(near(kg(w, 1), 3.0), "EB's BC edited while EB applied: BC 3.0");
 
         // Released.
-        w.feedBytes(outputData(13, 3, none, WireFormat()));
-        w.stepRamp(10.0);
+        sim.feedBytes(outputData(13, 3, none, WireFormat()));
+        w.advance(10.0);
         CHECK(w.brakeLevelNow() == NoBrake && near(kg(w, 0), 5.0) && near(kg(w, 1), 0.0), "released: BP 5.0, BC 0");
 
-        // Off: frames move nothing.
-        w.setBrakePressuresOn(false);
-        w.feedBytes(outputData(13, 4, quint16(apply(none, 13)), WireFormat()));
-        CHECK(!w.ramping() && near(kg(w, 0), 5.0), "off: EB applied, BP stays 5.0");
-        w.setBrakePressuresOn(true);
-        CHECK(w.ramping() && w.brakeLevelNow() == EbApplied, "back on: ramps to what is applied now");
+        // Following the BIU instead: the relays move nothing.
+        w.setSource(BrakeBenchWindow::Source::Biu);
+        sim.feedBytes(outputData(13, 4, quint16(apply(none, 13)), WireFormat()));
+        w.advance(10.0);
+        CHECK(w.brakeLevelNow() == EbApplied && near(kg(w, 0), 5.0), "following the BIU: EB relay, BP stays 5.0");
+        w.setSource(BrakeBenchWindow::Source::Relays);
+        w.advance(10.0);
+        CHECK(near(kg(w, 0), w.brakePressure(EbApplied, 0)), "back on the relays: EB's BP");
         w.close();
     }
     {
-        CabIoSimWindow w(nullptr);
+        BrakeBenchWindow w(nullptr);
+        w.setAttribute(Qt::WA_DeleteOnClose, false);
         CHECK(near(w.brakePressure(FsbApplied, 0), 3.4) && near(w.brakePressure(FsbApplied, 2), 8.5)
-              && near(w.brakePressure(EbApplied, 1), 3.0), "the values come back when the window opens again");
+              && near(w.brakePressure(EbApplied, 1), 3.0) && w.source() == BrakeBenchWindow::Source::Relays,
+              "the values and the source come back when the bench opens again");
     }
     clearSaved();
 #endif
