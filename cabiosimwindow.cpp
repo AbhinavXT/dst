@@ -1850,7 +1850,7 @@ void CabIoSimWindow::write(const QByteArray &bytes)
     if (m_link && m_link->isOpen()) m_link->write(bytes);
     else if (m_sink) m_sink(bytes);
     Frame f;
-    if (parse(bytes, &f)) logFrame(true, f);
+    if (parse(bytes, &f) || parseAnalog(bytes, &f)) logFrame(true, f);
 }
 
 void CabIoSimWindow::feedBytes(const QByteArray &bytes)

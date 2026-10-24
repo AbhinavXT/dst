@@ -40,7 +40,9 @@
 //
 //  ANALOG CARD (Abhinav, session 346: the firmware's Process_Analog_Card_Data_CAN)
 //
-//      analog card -> VCC data      AF AF  header ch1..ch6  crc  FA FA  38 B
+//      analog card -> VCC data      header ch1..ch6 crc        34 B
+//
+//    No start or end pair (session 347): the bare struct, message_length 34.
 //
 //    src 15 (top) / 16 (bottom), dest 1, message 0xF1. Each channel is a
 //    uint32 sent big-endian (the VCC PP_HTONLs it). The VCC reads
@@ -221,7 +223,7 @@ struct Frame {
     bool isOutputData()   const { return sof == kOutputSof && h.msgId == kMsgVccOutputData && payload.size() == 2; }
     bool isOutputRequest() const { return sof == kOutputSof && h.msgId == kMsgVccOutputReq; }
     bool isReadback() const { return sof == kVccRxSof && h.msgId == kMsgOutputToVcc && payload.size() == kPins + 1; }
-    bool isAnalog() const { return sof == kVccRxSof && h.msgId == kMsgAnalogToVcc && payload.size() == 4 * kAnalogChannels; }
+    bool isAnalog() const { return h.msgId == kMsgAnalogToVcc && payload.size() == 4 * kAnalogChannels; }
     quint32 analogRaw(int ch) const;   // channel 0..5, as the VCC reads it (big-endian)
     QByteArray pins() const { return isReadback() ? payload.left(kPins) : QByteArray(); }
     quint32 inputWord() const;   // an input reply's input_data
@@ -288,7 +290,11 @@ struct PressureReading {
 };
 PressureReading currentToPressure(double mA, double fullScaleBar);
 QString analogChannelName(int ch);   // "BP", "BC", "MR", "Channel 4"...
+// header ch1..ch6 crc, no start or end pair; message_length follows wf.length.
 QByteArray analogData(quint8 src, quint16 seq, const QVector<quint32> &raw, const WireFormat &wf);
+// Exactly one analog frame (34 B, message 0xF1); false otherwise. The Scanner
+// finds framed messages only, so this is how the Frames log reads one.
+bool parseAnalog(const QByteArray &bytes, Frame *out);
 
 // The reply of the card `request` is addressed to: src and dest swapped,
 // seq_num echoed (or `ownSeq` when wf.echoSeq is off).

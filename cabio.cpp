@@ -433,7 +433,6 @@ static int knownSize(quint8 sof, quint8 msgId)
     if (sof == kOutputSof && msgId == kMsgVccOutputData) return fixed + 2;
     if (sof == kOutputSof && msgId == kMsgVccOutputReq)  return fixed;
     if (sof == kVccRxSof && msgId == kMsgOutputToVcc)    return fixed + kPins + 1;
-    if (sof == kVccRxSof && msgId == kMsgAnalogToVcc)    return fixed + 4 * kAnalogChannels;
     return 0;
 }
 
@@ -571,12 +570,44 @@ QByteArray analogData(quint8 src, quint16 seq, const QVector<quint32> &raw, cons
     h.dest = kVccId;
     h.msgId = kMsgAnalogToVcc;
     h.seq = seq;
-    QByteArray p;
+    const int payload = 4 * kAnalogChannels;
+    switch (wf.length) {
+    case LengthRule::WholeFrame:       h.length = quint8(kHeaderSize + payload + kCrcSize); break;
+    case LengthRule::HeaderAndPayload: h.length = quint8(kHeaderSize + payload); break;
+    case LengthRule::Payload:          h.length = quint8(payload); break;
+    }
+    QByteArray f;
+    f.append(char(h.length));
+    f.append(char(h.src));
+    f.append(char(h.dest));
+    f.append(char(h.msgId));
+    putLe(&f, h.seq, 2);
     for (int ch = 0; ch < kAnalogChannels; ++ch) {
         const quint32 v = raw.value(ch);
-        for (int i = 3; i >= 0; --i) p.append(char((v >> (8 * i)) & 0xFF));
+        for (int i = 3; i >= 0; --i) f.append(char((v >> (8 * i)) & 0xFF));
     }
-    return build(kVccRxSof, h, p, wf);
+    putLe(&f, crcOf(wf.crc, f), 4);
+    return f;
+}
+
+bool parseAnalog(const QByteArray &bytes, Frame *out)
+{
+    const int body = kHeaderSize + 4 * kAnalogChannels;
+    if (bytes.size() != body + kCrcSize || quint8(bytes.at(3)) != kMsgAnalogToVcc) return false;
+    Frame f;
+    f.raw = bytes;
+    f.known = true;
+    f.h.length = quint8(bytes.at(0));
+    f.h.src    = quint8(bytes.at(1));
+    f.h.dest   = quint8(bytes.at(2));
+    f.h.msgId  = quint8(bytes.at(3));
+    f.h.seq    = quint16(getLe(bytes, 4, 2));
+    f.payload  = bytes.mid(kHeaderSize, 4 * kAnalogChannels);
+    f.crc      = getLe(bytes, body, 4);
+    for (Crc c : allCrcs())
+        if (crcOf(c, bytes.left(body)) == f.crc) f.crcMatches << c;
+    if (out) *out = f;
+    return true;
 }
 
 QByteArray readbackPins(quint16 word)

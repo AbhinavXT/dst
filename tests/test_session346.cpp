@@ -13,7 +13,8 @@
 
 // =============================================================================
 //  Session 346 — the Cab I/O Simulator plays the analog card: six 4-20 mA
-//  channels as controller 15 (top) / 16 (bottom), message 0xF1, with what the
+//  channels as controller 15 (top) / 16 (bottom), message 0xF1 (no start or
+//  end pair since session 347), with what the
 //  VCC reads from them (Abhinav's Process_Analog_Card_Data_CAN and
 //  current_to_pressure). No real analog frame has been captured yet: the
 //  frame is checked against the firmware's struct, byte by byte.
@@ -49,25 +50,23 @@ TEST_SUITE(session346)
     const WireFormat wf;
     const QVector<quint32> raw{ 0x01020304u, 0, 0, 0, 0, 0xA0B0C0D0u };
     const QByteArray f = analogData(kAnalogTopId, 7, raw, wf);
-    CHECK(f.size() == 38, qPrintable(QStringLiteral("38 bytes (%1)").arg(f.size())));
-    CHECK(f.left(8) == QByteArray::fromHex("AFAF260F01F10700"),
-          qPrintable(QStringLiteral("AF AF, length 38, src 15, dest 1, 0xF1, seq 7 LE (%1)").arg(hex(f.left(8)))));
-    CHECK(f.mid(8, 4) == QByteArray::fromHex("01020304") && f.mid(28, 4) == QByteArray::fromHex("A0B0C0D0"),
+    CHECK(f.size() == 34, qPrintable(QStringLiteral("34 bytes, no start or end pair (%1)").arg(f.size())));
+    CHECK(f.left(6) == QByteArray::fromHex("220F01F10700"),
+          qPrintable(QStringLiteral("length 34, src 15, dest 1, 0xF1, seq 7 LE (%1)").arg(hex(f.left(6)))));
+    CHECK(f.mid(6, 4) == QByteArray::fromHex("01020304") && f.mid(26, 4) == QByteArray::fromHex("A0B0C0D0"),
           "channels big-endian (the VCC PP_HTONLs them)");
-    CHECK(f.right(2) == QByteArray::fromHex("FAFA"), "ends FA FA");
+    const quint32 crc = quint32(quint8(f.at(30))) | quint32(quint8(f.at(31))) << 8
+                        | quint32(quint8(f.at(32))) << 16 | quint32(quint8(f.at(33))) << 24;
+    CHECK(crc == crcOf(Crc::DmiJam, f.left(30)),
+          "JAMCRC over header and channels, little-endian, last");
     Frame got;
-    CHECK(parse(f, &got) && got.known && got.isAnalog(), "parses as a known analog frame");
+    CHECK(parseAnalog(f, &got) && got.known && got.isAnalog(), "parses as an analog frame");
     CHECK(got.analogRaw(0) == 0x01020304u && got.analogRaw(5) == 0xA0B0C0D0u, "and reads its channels back");
     CHECK(got.crcMatches.contains(Crc::DmiJam), "its CRC is the JAMCRC the other cards use");
     CHECK(unitName(kAnalogBottomId) == QLatin1String("analog bottom 16"), "16 is named");
 
-    // A payload holding FA FA is not cut short: the frame's size is known.
-    const QByteArray fa = analogData(kAnalogBottomId, 1, QVector<quint32>(6, 0xFAFAFAFAu), wf);
-    Scanner s;
-    QVector<Frame> frames;
-    for (char c : fa + fa) frames += s.feed(QByteArray(1, c));
-    CHECK(frames.size() == 2 && frames[0].isAnalog() && frames[1].analogRaw(3) == 0xFAFAFAFAu
-              && s.skippedBytes() == 0, "FA FA inside the channels: two whole frames, nothing skipped");
+    CHECK(!parseAnalog(f.left(33), nullptr) && !parseAnalog(inputRequest(5, 1, wf), nullptr),
+          "nothing else parses as an analog frame");
 
 #ifdef DL_HAVE_SERIAL
     // ---- the window --------------------------------------------------------------------------
@@ -87,7 +86,7 @@ TEST_SUITE(session346)
         w.sendAnalogNow();
         CHECK(sent.size() == 2 && w.analogSent() == 2, "one frame per ticked controller");
         Frame a, b;
-        if (sent.size() == 2 && parse(sent[0], &a) && parse(sent[1], &b)) {
+        if (sent.size() == 2 && parseAnalog(sent[0], &a) && parseAnalog(sent[1], &b)) {
             CHECK(a.h.src == 15 && b.h.src == 16 && a.h.dest == kVccId && b.h.seq == quint16(a.h.seq + 1),
                   "as 15 then 16, to the VCC, seq counting up");
             CHECK(near346(currentToPressure(analogMa(a.analogRaw(0)), 10).kgcm2, 5.0, 0.01),
@@ -111,7 +110,7 @@ TEST_SUITE(session346)
         w.setAnalogSending(false);
         CHECK(sent.size() >= 3, qPrintable(QStringLiteral("sends on its period (%1 in %2 ms)").arg(sent.size()).arg(t.elapsed())));
         Frame c;
-        CHECK(!sent.isEmpty() && parse(sent.first(), &c) && c.h.src == kAnalogBottomId, "as 16 only");
+        CHECK(!sent.isEmpty() && parseAnalog(sent.first(), &c) && c.h.src == kAnalogBottomId, "as 16 only");
         const int n = sent.size();
         QCoreApplication::processEvents(QEventLoop::AllEvents, 60);
         CHECK(sent.size() == n && !w.analogSending(), "and stops when Off");

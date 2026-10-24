@@ -11,6 +11,35 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-347"></a>
+## Session 347 — the analog frame without AF AF / FA FA
+
+Abhinav: *"remove AF AF and FA FA from the analog card frame"*.
+
+**What changed.** The Analog → VCC tab now sends the bare
+`STRUCT_ANALOG_SENSOR_DATA`: header (length **34**, src 15/16, dest 1, 0xF1,
+seq LE) + six uint32 big-endian + JAMCRC LE over header and channels.
+**34 bytes**, no start or end pair. The input, output and readback frames
+keep theirs.
+
+- The Frames log reads the simulator's own analog frames (`parseAnalog`).
+  The stream scanner still finds framed messages only, so an unframed
+  analog frame **from a real card on the line** is not picked out of the
+  received bytes.
+- The 38-byte known size for a framed analog message (session 346) is gone.
+
+**Files.** `cabio.{h,cpp}`, `cabiosimwindow.cpp`, `tests/test_session346.cpp`.
+
+**Tests.** `session346` (32 checks) now expects the 34-byte frame byte by
+byte, its CRC recomputed, and that nothing else parses as one.
+
+**Gate (Mac):** Qt 6 and Qt 5.15 both green: 377 suites / 9612 checks, 0
+failed; 15 validators; menu audit; smoke.
+
+**Not tested:** against a real VCC. No real analog frame has been captured.
+
+---
+
 <a id="session-346"></a>
 ## Session 346 — Cab I/O Simulator: the analog card
 
