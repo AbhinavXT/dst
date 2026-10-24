@@ -11,6 +11,49 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-357"></a>
+## Session 357 — Cab I/O Simulator: brake pressures ramp on the analog card
+
+Abhinav: *"Ramp, but make the values configurable from the ui for nb, fsb
+and eb for mr, bp and bc pressure inputs."* (part 2 of the brake work; part
+1's "mode FS → disable cab input" is parked by Abhinav: *"Leave 1 for now"*).
+
+**What the operator sees.** Under the rules on the Scenarios tab:
+**Brake pressures follow the brakes** (on by default), a **Ramp** rate
+(kg/cm² per s, 1.0 at first), and a grid of BP / BC / MR values for **No
+brake, NB applied, FSB applied, EB applied**. When the VCC's output word
+changes brake, the analog card's BP, BC and MR (channels 1-3) ramp from what
+they read now to that row's values; the gauges on the Analog tab follow. A
+line beside the grid says what is in force ("FSB applied, ramping: BP 4.2 →
+3.5, BC 1.3 → 2.5, MR 9.0") and warns when Analog → VCC is not sending.
+
+- The strongest brake wins: EB over FSB over NB. LE alone is "No brake" here.
+- Like the rules, it acts on a change of brake: a pressure dragged by hand
+  stays until the brake changes again. Editing the values of the brake in
+  force ramps to the new value at once.
+- Values, rate and the switch are remembered.
+- Starting values (to be set by the operator): no brake BP 5.0 BC 0 MR 9.0;
+  NB 4.5 / 1.0 / 9.0; FSB 3.5 / 2.5 / 9.0; EB 0 / 3.5 / 9.0.
+
+**Files.** `cabio.{h,cpp}` (`brakeLevel`, `defaultBrakePressure`,
+`rampToward`), `cabiosimwindow.{h,cpp}`, `tests/test_session357.cpp` (new),
+`tests/tests.pro`.
+
+**Tests.** `session357` (23 checks): brake level from the word (SIFA active
+low, old cab active high, FSB over NB, the real 0x03E1 is EB, LE alone none);
+the ramp step; in the window: FSB ramps BP 5.0 → 4.5 → 3.5 → 3.4 at 1/s and
+stops; a hand-set BP stands on the same brake; the real frame ramps to EB;
+editing EB's BC re-ramps; released; off moves nothing, on again ramps; the
+values come back on reopening.
+
+**Gate (Mac):** Qt 6 and Qt 5.15 both green: 384 suites / 9763 checks, 0
+failed; 15 validators; menu audit (186); smoke.
+
+**Not tested:** against a real VCC; the starting values are not from a
+loco (Abhinav set them configurable rather than fixed).
+
+---
+
 <a id="session-356"></a>
 ## Session 356 — Cab I/O Simulator: scenario rules (outputs and DMI mode set the feedbacks)
 

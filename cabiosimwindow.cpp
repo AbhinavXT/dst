@@ -619,6 +619,10 @@ CabIoSimWindow::CabIoSimWindow(SerialManager *serial, QWidget *parent)
         m_status->fail(tr("Analog over UDP: %1").arg(what));
     });
 
+    m_rampTimer = new QTimer(this);
+    m_rampTimer->setInterval(100);
+    connect(m_rampTimer, &QTimer::timeout, this, [this]() { stepRamp(m_rampTimer->interval() / 1000.0); });
+
     m_uiTimer = new QTimer(this);
     m_uiTimer->setInterval(250);
     connect(m_uiTimer, &QTimer::timeout, this, &CabIoSimWindow::onUiTick);
@@ -1386,6 +1390,9 @@ void CabIoSimWindow::setCab(Cab cab)
     rebuildOutputs();
     rebuildReadback();
     loadRulesFor(m_cab);
+    m_brakeLevel = -1;
+    m_rampTimer->stop();
+    applyBrakeLevel(false);
     saveSettings();
 }
 
@@ -1686,7 +1693,139 @@ QWidget *CabIoSimWindow::buildScenariosTab()
     hh->setSectionResizeMode(QHeaderView::ResizeToContents);
     hh->setSectionResizeMode(5, QHeaderView::Stretch);
     v->addWidget(m_ruleTable, 1);
+
+    // Brake pressures: a value per brake for BP, BC, MR, and the ramp rate.
+    row = new QHBoxLayout;
+    row->setSpacing(8);
+    m_brakesOnBox = new QCheckBox(tr("Brake pressures follow the brakes"), page);
+    m_brakesOnBox->setChecked(true);
+    m_brakesOnBox->setToolTip(tr("Ramp the analog card's BP, BC and MR to the values below for the strongest brake "
+                                 "the VCC applies (EB over FSB over NB)"));
+    connect(m_brakesOnBox, &QCheckBox::toggled, this, [this](bool on) { setBrakePressuresOn(on); });
+    row->addWidget(m_brakesOnBox);
+    row->addStretch(1);
+    row->addWidget(new QLabel(tr("Ramp"), page));
+    m_rampRate = new QDoubleSpinBox(page);
+    m_rampRate->setRange(0.1, 20.0);
+    m_rampRate->setDecimals(1);
+    m_rampRate->setSingleStep(0.1);
+    m_rampRate->setValue(1.0);
+    m_rampRate->setSuffix(tr(" kg/cm\u00B2 per s"));
+    m_rampRate->setToolTip(tr("How fast each pressure moves toward its new value"));
+    connect(m_rampRate, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this]() { saveSettings(); });
+    row->addWidget(m_rampRate);
+    v->addLayout(row);
+
+    row = new QHBoxLayout;
+    row->setSpacing(24);
+    auto *grid = new QGridLayout;
+    grid->setHorizontalSpacing(8);
+    grid->setVerticalSpacing(4);
+    for (int ch = 0; ch < kBrakeChannels; ++ch) {
+        auto *head = new QLabel(tr("%1, kg/cm\u00B2").arg(analogChannelName(ch)), page);
+        head->setObjectName(QStringLiteral("muted"));
+        grid->addWidget(head, 0, ch + 1);
+    }
+    for (int level = 0; level < kBrakeLevels; ++level) {
+        grid->addWidget(new QLabel(level == NoBrake ? tr("No brake") : tr("%1 applied").arg(brakeLevelName(level)), page),
+                        level + 1, 0);
+        for (int ch = 0; ch < kBrakeChannels; ++ch) {
+            auto *kg = new QDoubleSpinBox(page);
+            kg->setRange(0.0, 16.32);
+            kg->setDecimals(1);
+            kg->setSingleStep(0.1);
+            kg->setValue(defaultBrakePressure(level, ch));
+            connect(kg, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this, level]() {
+                saveSettings();
+                if (level == m_brakeLevel) applyBrakeLevel(true);   // the pressure now in force moved
+            });
+            m_brakeKg[level][ch] = kg;
+            grid->addWidget(kg, level + 1, ch + 1);
+        }
+    }
+    row->addLayout(grid);
+    m_brakeNow = new QLabel(page);
+    m_brakeNow->setWordWrap(true);
+    m_brakeNow->setAlignment(Qt::AlignLeft | Qt::AlignTop);
+    row->addWidget(m_brakeNow, 1);
+    v->addLayout(row);
     return page;
+}
+
+// ---- brake pressures ---------------------------------------------------------------------
+
+void CabIoSimWindow::setBrakePressuresOn(bool on)
+{
+    { const QSignalBlocker b(m_brakesOnBox); m_brakesOnBox->setChecked(on); }
+    m_brakesOn = on;
+    if (!on) m_rampTimer->stop();
+    saveSettings();
+    applyBrakeLevel(true);
+}
+
+void CabIoSimWindow::setBrakePressure(int level, int ch, double kgcm2)
+{
+    if (level >= 0 && level < kBrakeLevels && ch >= 0 && ch < kBrakeChannels) m_brakeKg[level][ch]->setValue(kgcm2);
+}
+
+double CabIoSimWindow::brakePressure(int level, int ch) const
+{
+    return level >= 0 && level < kBrakeLevels && ch >= 0 && ch < kBrakeChannels ? m_brakeKg[level][ch]->value() : 0.0;
+}
+
+void CabIoSimWindow::setRampRate(double kgcm2PerS) { m_rampRate->setValue(kgcm2PerS); }
+double CabIoSimWindow::rampRate() const { return m_rampRate->value(); }
+bool CabIoSimWindow::ramping() const { return m_rampTimer->isActive(); }
+
+// Like the rules, on a change of brake: a pressure dragged by hand in
+// between stays until the brake changes again.
+void CabIoSimWindow::applyBrakeLevel(bool force)
+{
+    if (!m_brakesOn || m_outFrames == 0) { refreshBrakes(); return; }
+    const int level = brakeLevel(m_cab, m_outWord);
+    if (level == m_brakeLevel && !force) return;
+    m_brakeLevel = level;
+    for (int ch = 0; ch < kBrakeChannels; ++ch) {
+        const PressureReading p = currentToPressure(analogMa(ch), analogScale(ch));
+        m_rampKg[ch] = p.status == PressureReading::Ok ? p.kgcm2 : brakePressure(level, ch);
+    }
+    m_rampTimer->start();
+    refreshBrakes();
+}
+
+void CabIoSimWindow::stepRamp(double seconds)
+{
+    if (m_brakeLevel < 0) { m_rampTimer->stop(); return; }
+    bool done = true;
+    for (int ch = 0; ch < kBrakeChannels; ++ch) {
+        const double target = brakePressure(m_brakeLevel, ch);
+        m_rampKg[ch] = rampToward(m_rampKg[ch], target, rampRate() * seconds);
+        setAnalogPressure(ch, m_rampKg[ch]);
+        done = done && m_rampKg[ch] == target;
+    }
+    if (done) m_rampTimer->stop();
+    refreshBrakes();
+}
+
+void CabIoSimWindow::refreshBrakes()
+{
+    if (!m_brakeNow) return;
+    QString t;
+    if (!m_brakesOn)          t = tr("Off: the pressures stay as set on the Analog tab.");
+    else if (m_brakeLevel < 0) t = tr("Waiting for output data from the VCC.");
+    else {
+        QStringList parts;
+        for (int ch = 0; ch < kBrakeChannels; ++ch) {
+            const double target = brakePressure(m_brakeLevel, ch);
+            parts << (ramping() && m_rampKg[ch] != target
+                          ? QStringLiteral("%1 %2 \u2192 %3").arg(analogChannelName(ch)).arg(m_rampKg[ch], 0, 'f', 1).arg(target, 0, 'f', 1)
+                          : QStringLiteral("%1 %2").arg(analogChannelName(ch)).arg(target, 0, 'f', 1));
+        }
+        t = (m_brakeLevel == NoBrake ? tr("No brake") : tr("%1 applied").arg(brakeLevelName(m_brakeLevel)))
+            + (ramping() ? tr(", ramping: ") : tr(": ")) + parts.join(QStringLiteral(", "));
+        if (!analogSending()) t += tr(". Analog \u2192 VCC is not sending: the VCC does not see these yet.");
+    }
+    m_brakeNow->setText(t);
 }
 
 void CabIoSimWindow::loadRulesFor(Cab cab)
@@ -1989,6 +2128,20 @@ void CabIoSimWindow::loadSettings()
     setAnalogCards(anIds);
     m_rulesOn = s.value(QStringLiteral("scenarios"), true).toBool();
     m_rulesOnGroup->button(m_rulesOn ? 1 : 0)->setChecked(true);
+    {
+        // Blocked: each value's own signal would save the half-loaded settings.
+        m_brakesOn = s.value(QStringLiteral("brakePressures"), true).toBool();
+        const QSignalBlocker b0(m_brakesOnBox), b1(m_rampRate);
+        m_brakesOnBox->setChecked(m_brakesOn);
+        m_rampRate->setValue(s.value(QStringLiteral("rampRate"), 1.0).toDouble());
+        for (int level = 0; level < kBrakeLevels; ++level)
+            for (int ch = 0; ch < kBrakeChannels; ++ch) {
+                const QSignalBlocker b(m_brakeKg[level][ch]);
+                m_brakeKg[level][ch]->setValue(
+                    s.value(QStringLiteral("brakeKg_%1_%2").arg(brakeLevelName(level), analogChannelName(ch)),
+                            defaultBrakePressure(level, ch)).toDouble());
+            }
+    }
     s.endGroup();
     loadRulesFor(m_cab);
     setWireFormat(wf);
@@ -2021,6 +2174,11 @@ void CabIoSimWindow::saveSettings() const
     for (quint8 id : analogCards()) anIds << QString::number(id);
     s.setValue(QStringLiteral("analogIds"), anIds.join(QLatin1Char(',')));
     s.setValue(QStringLiteral("scenarios"), m_rulesOn);
+    s.setValue(QStringLiteral("brakePressures"), m_brakesOn);
+    s.setValue(QStringLiteral("rampRate"), rampRate());
+    for (int level = 0; level < kBrakeLevels; ++level)
+        for (int ch = 0; ch < kBrakeChannels; ++ch)
+            s.setValue(QStringLiteral("brakeKg_%1_%2").arg(brakeLevelName(level), analogChannelName(ch)), brakePressure(level, ch));
     s.setValue(rulesKey(m_cab), QString::fromUtf8(rulesToJson(m_rules)));
     for (int bi = 0; bi < m_banks.size(); ++bi) {
         QStringList ids;
@@ -2279,6 +2437,7 @@ void CabIoSimWindow::onFrame(const Frame &f)
         ++m_outFrames;
         refreshOutputs();
         applyRules();
+        applyBrakeLevel(false);
         return;
     }
     if (f.isOutputRequest()) {
@@ -2439,6 +2598,7 @@ QString CabIoSimWindow::crcHint() const
 void CabIoSimWindow::onUiTick()
 {
     if (m_mode > 0) refreshRules();     // the mode's age
+    refreshBrakes();
     refreshPort();
     flushLog();
     // Ages and the "changed" highlight move on with time.

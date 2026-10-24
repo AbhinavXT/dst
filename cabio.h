@@ -347,6 +347,20 @@ QString modeShortName(int mode);                  // 4 -> "FS"
 QByteArray rulesToJson(const QVector<Rule> &rules);
 QVector<Rule> rulesFromJson(const QByteArray &json, bool *ok = nullptr);
 
+// ---- brake pressures (session 357) --------------------------------------------------
+//
+// Abhinav: "Ramp, but make the values configurable from the ui for nb, fsb
+// and eb for mr, bp and bc". The analog card's BP, BC and MR (channels 0-2)
+// ramp to the pressures set for the strongest brake applied.
+enum BrakeLevel { NoBrake, NbApplied, FsbApplied, EbApplied };
+constexpr int kBrakeLevels = 4;
+constexpr int kBrakeChannels = 3;                     // BP, BC, MR
+int     brakeLevel(Cab cab, quint16 word);            // the strongest applied: EB > FSB > NB
+QString brakeLevelName(int level);                    // "Released", "NB", "FSB", "EB"
+double  defaultBrakePressure(int level, int ch);      // kg/cm^2
+// `from` moved toward `to` by at most `maxStep`.
+double  rampToward(double from, double to, double maxStep);
+
 }  // namespace CabIo
 
 #endif  // CABIO_H

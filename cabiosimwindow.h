@@ -134,6 +134,17 @@ public:
     void observeDmiLine(const QString &line);
     void setLocoMode(int mode);
     int  locoMode() const { return m_mode; }
+    // Brake pressures (session 357): BP, BC, MR ramp to the values set for
+    // the strongest brake in the output word. On by default.
+    void   setBrakePressuresOn(bool on);
+    bool   brakePressuresOn() const { return m_brakesOn; }
+    void   setBrakePressure(int level, int ch, double kgcm2);
+    double brakePressure(int level, int ch) const;
+    void   setRampRate(double kgcm2PerS);
+    double rampRate() const;
+    int    brakeLevelNow() const { return m_brakeLevel; }    // -1: no output data yet
+    bool   ramping() const;
+    void   stepRamp(double seconds);                       // what the ramp timer does each tick
 
     // Bytes as if read from the port, and where writes go instead of a port
     // (tests; a sink also stands in when no port is open).
@@ -184,6 +195,8 @@ private:
     void applyRules();
     void rulesEdited();
     void loadRulesFor(CabIo::Cab cab);
+    void applyBrakeLevel(bool force);
+    void refreshBrakes();
     void refreshAnalog();
     void rebuildReadback();
     void applyDefault(Bank &b) const;
@@ -306,6 +319,15 @@ private:
     QButtonGroup *m_rulesOnGroup = nullptr;
     QLabel      *m_modeLabel = nullptr;
     QTableWidget *m_ruleTable = nullptr;
+    // Brake pressures
+    bool   m_brakesOn = true;
+    int    m_brakeLevel = -1;
+    double m_rampKg[CabIo::kBrakeChannels] = {};
+    QCheckBox      *m_brakesOnBox = nullptr;
+    QDoubleSpinBox *m_brakeKg[CabIo::kBrakeLevels][CabIo::kBrakeChannels] = {};
+    QDoubleSpinBox *m_rampRate = nullptr;
+    QLabel         *m_brakeNow = nullptr;
+    QTimer         *m_rampTimer = nullptr;
 
     QComboBox   *m_crc = nullptr;
     QComboBox   *m_length = nullptr;

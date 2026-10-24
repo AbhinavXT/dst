@@ -898,4 +898,43 @@ QVector<Rule> rulesFromJson(const QByteArray &json, bool *ok)
     return out;
 }
 
+// ---- brake pressures -----------------------------------------------------------------
+
+int brakeLevel(Cab cab, quint16 word)
+{
+    auto applied = [cab, word](const char *name) {
+        for (const OutputBit &o : outputBits(cab))
+            if (o.name == QLatin1String(name)) return outputActive(o, word);
+        return false;
+    };
+    if (applied("emergency_brake"))    return EbApplied;
+    if (applied("full_service_brake")) return FsbApplied;
+    if (applied("normal_brake"))       return NbApplied;
+    return NoBrake;
+}
+
+QString brakeLevelName(int level)
+{
+    static const char *const names[kBrakeLevels] = { "Released", "NB", "FSB", "EB" };
+    return level >= 0 && level < kBrakeLevels ? QString::fromLatin1(names[level]) : QString();
+}
+
+double defaultBrakePressure(int level, int ch)
+{
+    // Starting values only; the operator sets their own (BP, BC, MR).
+    static const double kg[kBrakeLevels][kBrakeChannels] = {
+        { 5.0, 0.0, 9.0 },     // released
+        { 4.5, 1.0, 9.0 },     // NB
+        { 3.5, 2.5, 9.0 },     // FSB
+        { 0.0, 3.5, 9.0 },     // EB
+    };
+    return level >= 0 && level < kBrakeLevels && ch >= 0 && ch < kBrakeChannels ? kg[level][ch] : 0.0;
+}
+
+double rampToward(double from, double to, double maxStep)
+{
+    if (qAbs(to - from) <= maxStep) return to;
+    return from + (to > from ? maxStep : -maxStep);
+}
+
 }  // namespace CabIo
