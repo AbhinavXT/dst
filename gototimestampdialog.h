@@ -77,6 +77,10 @@ Span spanOf(const QAbstractItemModel *view, const LogModel *src);
 int resolveRow(const QAbstractItemModel *view, const LogModel *src,
                qint64 targetMs, int mode);
 
+// "after:… before:…" for the filter box, in the zone the Time column shows.
+// The ribbon's range drag writes it, in the live window and the .dlr viewer.
+QString rangeQuery(qint64 fromMs, qint64 toMs);
+
 }  // namespace GotoTimestamp
 
 class GotoTimestampDialog : public QDialog

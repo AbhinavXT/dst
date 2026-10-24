@@ -5,6 +5,7 @@
 #include "bookmarks.h"
 #include "gototimestampdialog.h"
 #include "markerscrollbar.h"
+#include "timelineribbon.h"
 #include "findbar.h"
 #include "uicolors.h"
 #include "windowgeometry.h"
@@ -174,9 +175,24 @@ void SessionWindow::buildTab(const QString &tabKey, LogModel *model)
     auto *findBar = new FindBar(view);
     findBar->setContextLabel(m_names ? m_names->lookupByKey(tabKey) : tabKey);
 
+    // Session 348: the live window's density strip (by time) and severity
+    // marks on the scrollbar (by row). Click the strip to land on the
+    // nearest row; drag it to filter that span.
+    auto *ribbon = new TimelineRibbon;
+    ribbon->setModel(model);
+    auto *marks = new MarkerScrollBar;
+    marks->setModels(filterBar->proxyModel(), model);
+    view->setVerticalScrollBar(marks);
+    connect(ribbon, &TimelineRibbon::timeClicked, this,
+            [this, tabKey](qint64 ms) { jumpToTime(tabKey, ms); });
+    connect(ribbon, &TimelineRibbon::rangeSelected, filterBar, [filterBar](qint64 from, qint64 to) {
+        filterBar->setQuery(GotoTimestamp::rangeQuery(from, to));
+    });
+
     auto *layout = new QVBoxLayout;
     layout->setContentsMargins(0, 0, 0, 0);
     layout->setSpacing(2);
+    layout->addWidget(ribbon);
     layout->addWidget(filterBar);
     layout->addWidget(findBar);
     layout->addWidget(view, 1);
@@ -192,6 +208,8 @@ void SessionWindow::buildTab(const QString &tabKey, LogModel *model)
     ui.filterBar = filterBar;
     ui.model     = model;
     ui.findBar   = findBar;
+    ui.ribbon    = ribbon;
+    ui.marks     = marks;
     m_tabUi.insert(tabKey, ui);
 }
 
@@ -264,6 +282,9 @@ qint64 SessionWindow::loadFiles(const QStringList &paths)
         }
 
         if (!m_tabUi.contains(key)) buildTab(key, model);
+        const TabUi &ui = m_tabUi[key];
+        if (ui.ribbon) { ui.ribbon->refreshLater(); }
+        if (ui.marks)  { ui.marks->refreshLater(); }
     }
 
     // Re-apply stored bookmarks to what was just loaded. The flag lives on
@@ -335,6 +356,18 @@ void SessionWindow::buildToolsMenu()
     QAction *goTo = edit->addAction(tr("&Go to timestamp…"));
     goTo->setShortcut(QKeySequence("Ctrl+G"));
     connect(goTo, &QAction::triggered, this, &SessionWindow::onGotoTimestamp);
+
+    // Session 348: the live window's Back/Forward, over this window's jumps.
+    m_actBack = edit->addAction(tr("Bac&k"));
+    m_actBack->setShortcut(QKeySequence("Alt+Left"));
+    m_actBack->setToolTip(tr("Back to where you were before the last jump "
+                             "(Go to timestamp, next problem, a bookmark, the timeline)."));
+    m_actBack->setEnabled(false);
+    connect(m_actBack, &QAction::triggered, this, [this]() { navigate(true); });
+    m_actForward = edit->addAction(tr("For&ward"));
+    m_actForward->setShortcut(QKeySequence("Alt+Right"));
+    m_actForward->setEnabled(false);
+    connect(m_actForward, &QAction::triggered, this, [this]() { navigate(false); });
 
     edit->addSeparator();
 
@@ -445,10 +478,48 @@ void SessionWindow::jumpToProxyRow(int row)
     if (row < 0 || key.isEmpty() || !m_tabUi.contains(key)) { return; }
     QTableView *view = m_tabUi[key].view;
     if (!view || !view->model()) { return; }
+    if (!m_navReplaying) { m_nav.record(currentNavPoint()); }
+    m_actBack->setEnabled(m_nav.canBack());
+    m_actForward->setEnabled(m_nav.canForward());
     const QModelIndex landing = view->model()->index(row, LogModel::ColTime);
     view->setCurrentIndex(landing);
     view->scrollTo(landing, QAbstractItemView::PositionAtCenter);
     view->setFocus();
+}
+
+NavPoint SessionWindow::currentNavPoint() const
+{
+    const LogEntryPtr e = currentEntry();
+    return e ? NavPoint{ currentTabKey(), e->epochMs } : NavPoint{};
+}
+
+void SessionWindow::jumpToTime(const QString &tabKey, qint64 epochMs)
+{
+    const TabUi t = m_tabUi.value(tabKey);
+    if (!t.view || !t.model) { return; }
+    const int row = GotoTimestamp::resolveRow(t.view->model(), t.model, epochMs,
+                                              int(GotoTimestampDialog::Mode::Nearest));
+    if (row < 0) { return; }
+    // Recorded here, before the tab switch, so Back returns to the tab it left.
+    const bool replaying = m_navReplaying;
+    if (!replaying) { m_nav.record(currentNavPoint()); }
+    m_navReplaying = true;
+    m_tabs->setCurrentWidget(t.view->parentWidget());
+    jumpToProxyRow(row);
+    m_navReplaying = replaying;
+}
+
+void SessionWindow::navigate(bool back)
+{
+    const NavPoint to = back ? m_nav.back(currentNavPoint()) : m_nav.forward(currentNavPoint());
+    if (!to.isValid()) {
+        statusBar()->showMessage(back ? tr("Nothing to go back to.")
+                                      : tr("Nothing to go forward to."), 3000);
+        return;
+    }
+    m_navReplaying = true;
+    jumpToTime(to.tabKey, to.epochMs);
+    m_navReplaying = false;
 }
 
 void SessionWindow::stepProblem(int dir)
@@ -522,6 +593,8 @@ void SessionWindow::onToggleBookmark()
 
     const QModelIndex tl = t.model->index(src.row(), LogModel::ColTime);
     emit t.model->dataChanged(tl, tl, { Qt::DisplayRole });
+    if (t.marks)  { t.marks->refreshLater(); }
+    if (t.ribbon) { t.ribbon->refreshLater(); }
     statusBar()->showMessage(added ? tr("Bookmarked.") : tr("Bookmark removed."), 2000);
 }
 

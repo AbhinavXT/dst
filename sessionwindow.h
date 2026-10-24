@@ -41,6 +41,7 @@
 #include <QVector>
 
 #include "logentry.h"
+#include "navhistory.h"
 #include "theme.h"
 
 class ColorRules;
@@ -134,12 +135,18 @@ private:
         FilterBar  *filterBar = nullptr;
         LogModel   *model     = nullptr;
         FindBar    *findBar   = nullptr;
+        class TimelineRibbon  *ribbon = nullptr;   // session 348
+        class MarkerScrollBar *marks  = nullptr;
     };
 
     void buildToolsMenu();
     // Session 84: tell the DMI broker the cursor is at this row of tab `tabKey`.
     void offerDmiAt(const QString &tabKey, const QModelIndex &proxyIndex);
     void jumpToProxyRow(int row);     // select, centre, focus
+    // Session 348: the nearest row to `epochMs` in tab `tabKey`.
+    void jumpToTime(const QString &tabKey, qint64 epochMs);
+    NavPoint currentNavPoint() const;
+    void navigate(bool back);         // Alt+Left / Alt+Right
     void stepProblem(int dir);
     void stepBookmark(int dir);
 
@@ -162,6 +169,12 @@ private:
     QHash<QString, TabUi>     m_tabUi;
 
     QStringList m_warnings;
+
+    // Session 348: Back/Forward over this window's jumps, as the live window.
+    NavHistory m_nav;
+    bool       m_navReplaying = false;   // Back/Forward's own jump is not recorded
+    class QAction *m_actBack    = nullptr;
+    class QAction *m_actForward = nullptr;
 
     // Borrowed, not owned. Bookmarks set while reviewing a recording go into
     // the same store the live window uses, keyed by (tabKey, epochMs) — the

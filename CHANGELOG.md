@@ -11,6 +11,44 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-348"></a>
+## Session 348 — the .dlr viewer: timeline ribbon, marker scroll bar, Back/Forward
+
+Abhinav picked items 1–3 of the recorded-session list: the live window's
+ribbon, minimap and Back/Forward, in File ▸ Open recorded session….
+
+**What the operator sees.** In each tab of the recorded-session window:
+- a **timeline ribbon** over the table (message density by time, errors and
+  bookmarks). Click it to land on the nearest row; drag it to filter that
+  span: the filter box gets the same `after:… before:…` query the live
+  window writes, so it can be read, edited and cleared.
+- the **marker scroll bar**: error, warning and bookmark ticks where those
+  rows are in the (filtered) list.
+- **Edit ▸ Back / Forward** (Alt+Left / Alt+Right) over this window's jumps:
+  Go to timestamp, Next/Previous problem, bookmarks, the ribbon. Back
+  returns to the tab it left.
+
+The live window's `timeRangeQuery` moved to `GotoTimestamp::rangeQuery` so
+both windows write the same query.
+
+**Files.** `sessionwindow.{h,cpp}`, `gototimestampdialog.{h,cpp}`,
+`mainwindow.{h,cpp}`, `tests/test_session348.cpp`, `tests/tests.pro`.
+
+**Tests.** `session348` (20 checks), real frames from
+`replay/loco_1_1_27062026_140226.cap` written to two .dlr files: a ribbon and
+a marker bar per tab; a click between rows lands on the nearest; Back,
+Forward, Back past the first jump; a drag writes the query and narrows the
+table; the query's format; fits 1366×700; no orphans.
+
+**Gate (Mac):** Qt 6 and Qt 5.15 both green: 378 suites / 9632 checks, 0
+failed; 15 validators; menu audit; smoke.
+
+**Not tested:** clicks with a real mouse on the ribbon (the test emits its
+signals); the lane band was not added (the live window's lanes have their
+own settings and menu).
+
+---
+
 <a id="session-347"></a>
 ## Session 347 — the analog frame without AF AF / FA FA
 

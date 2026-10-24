@@ -204,8 +204,6 @@ private slots:
     void loadBuiltinTestCases();              // Tools → Test cases → Load built-in test cases
     // Turn a ribbon drag into a visible `after:… before:…` query.
     void applyTimeRangeFilter(const QString &tabKey, qint64 fromMs, qint64 toMs);
-    // "after:… before:…", in the zone the Time column shows.
-    QString timeRangeQuery(qint64 fromMs, qint64 toMs) const;
     // Session 339: Mission ▾ — every tab to one mission's span, or back.
     void focusMission(int index, qint64 fromMs, qint64 toMs);
     void unfocusMission();

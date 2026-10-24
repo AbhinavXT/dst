@@ -2,6 +2,7 @@
 #include <limits>
 #include <QSortFilterProxyModel>
 #include "logmodel.h"
+#include "settings.h"
 #include "uicolors.h"
 
 #include <QComboBox>
@@ -209,4 +210,14 @@ int GotoTimestamp::resolveRow(const QAbstractItemModel *view, const LogModel *sr
         }
     }
     return bestRow;
+}
+
+QString GotoTimestamp::rangeQuery(qint64 fromMs, qint64 toMs)
+{
+    const bool utc = Settings::showUtc();
+    auto stamp = [utc](qint64 ms) {
+        return (utc ? QDateTime::fromMSecsSinceEpoch(ms, Qt::UTC)
+                    : QDateTime::fromMSecsSinceEpoch(ms)).toString(Qt::ISODateWithMs);
+    };
+    return QStringLiteral("after:%1 before:%2").arg(stamp(fromMs), stamp(toMs));
 }
