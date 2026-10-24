@@ -11,6 +11,46 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-349"></a>
+## Session 349 — the .dlr viewer: Summary dock and quiet spans
+
+Abhinav picked items 4 and 5 of the recorded-session list (gaps in the
+recording; a session summary). Built as one dock because both come from one
+pass over each tab. Item 6 (open a .dlr in the main window's tabs) was
+dropped: `sessionwindow.h` explains why the live tabs must not hold an
+archive (they feed the disk writer).
+
+**What the operator sees.** A **Summary** dock beside Decoded fields and Raw
+bytes (Decoded fields stays in front). One entry per source, in tab order:
+records; Start, End, Length; Rate; Errors; Warnings; Longest gap; and
+**Quiet spans** — every step between two rows longer than
+**Quiet spans over N s** (5 s at first), each listed by when it went quiet.
+Double-click a span (or the longest gap) to land on the last row before
+the silence; Back returns.
+
+A step back in time (a clock change) is not counted as a gap. The status-bar
+line and its warnings are unchanged. The threshold is not remembered.
+
+**Files.** `sessionsummary.{h,cpp}` (new, in `dlcore.pri`),
+`sessionwindow.{h,cpp}`, `tests/test_session349.cpp`,
+`tests/test_session144.cpp` (the dock tab bar has three tabs now),
+`tests/tests.pro`.
+
+**Tests.** `session349` (23 checks), real frames from
+`replay/loco_1_1_27062026_140226.cap` with a 10 s hole cut into source 21:
+the computation (span, one gap edge to edge, longest 10.274 s, none over
+20 s, no gaps in 81); the dock (one entry per source, the span listed as
+"quiet 10.3 s", length "1:04", a double-click lands on the row before the
+silence, raising the threshold empties the list); fits 1366×700; no orphans.
+
+**Gate (Mac):** Qt 6 and Qt 5.15 both green: 379 suites / 9655 checks, 0
+failed; 15 validators; menu audit; smoke.
+
+**Not tested:** a real recording with a real outage; a recording over an
+hour (the h:mm:ss form is not checked).
+
+---
+
 <a id="session-348"></a>
 ## Session 348 — the .dlr viewer: timeline ribbon, marker scroll bar, Back/Forward
 

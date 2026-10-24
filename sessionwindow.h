@@ -147,6 +147,8 @@ private:
     void jumpToTime(const QString &tabKey, qint64 epochMs);
     NavPoint currentNavPoint() const;
     void navigate(bool back);         // Alt+Left / Alt+Right
+    // Session 349: the Summary dock, per source, with its quiet spans.
+    void rebuildSummary();
     void stepProblem(int dir);
     void stepBookmark(int dir);
 
@@ -164,6 +166,8 @@ private:
     RawBytesPanel *m_rawPanel   = nullptr;
     FieldInspector *m_fieldPanel = nullptr;
     QLabel        *m_lblSummary = nullptr;
+    class QTreeWidget *m_summary  = nullptr;   // session 349
+    class QSpinBox    *m_gapOver  = nullptr;   // quiet spans longer than this, s
 
     QHash<QString, LogModel*> m_models;
     QHash<QString, TabUi>     m_tabUi;

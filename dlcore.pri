@@ -206,6 +206,7 @@ SOURCES += \
     $$PWD/testcasepanel.cpp \
     $$PWD/stickymenu.cpp \
     $$PWD/sessionwindow.cpp \
+    $$PWD/sessionsummary.cpp \
     $$PWD/settingsdialog.cpp \
     $$PWD/udpcommunication.cpp
 
@@ -401,6 +402,7 @@ HEADERS += \
     $$PWD/testcasepanel.h \
     $$PWD/stickymenu.h \
     $$PWD/sessionwindow.h \
+    $$PWD/sessionsummary.h \
     $$PWD/settings.h \
     $$PWD/settingsdialog.h \
     $$PWD/theme.h \

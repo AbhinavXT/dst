@@ -129,8 +129,8 @@ TEST_SUITE(session144)
         for (QTabBar *bar : w.findChildren<QTabBar *>(QString(), Qt::FindDirectChildrenOnly)) {
             if (!bar->isVisible()) continue;
             ++bars;
-            CHECK(bar->count() == 2 && bar->tabText(bar->currentIndex()) == QLatin1String("Decoded fields"),
-                  "Decoded fields is in front, as in the live window; Raw bytes one tab away");
+            CHECK(bar->count() == 3 && bar->tabText(bar->currentIndex()) == QLatin1String("Decoded fields"),
+                  "Decoded fields is in front, as in the live window; Raw bytes and Summary (349) one tab away");
             const QFontMetrics fm(bar->font());
             for (int i = 0; i < bar->count(); ++i)
                 if (bar->tabRect(i).width() < fm.horizontalAdvance(bar->tabText(i)) + 10) elided << bar->tabText(i);

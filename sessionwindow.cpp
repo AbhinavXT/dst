@@ -20,6 +20,7 @@
 #include "fieldinspector.h"
 #include "rawbytespanel.h"
 #include "sessionreader.h"
+#include "sessionsummary.h"
 #include "settings.h"
 #include "decodeworkbench.h"
 #include "framediffwindow.h"
@@ -33,6 +34,10 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QSortFilterProxyModel>
+#include <QDateTime>
+#include <QHBoxLayout>
+#include <QSpinBox>
+#include <QTreeWidget>
 #include <QMenu>
 #include <QMenuBar>
 #include <QStatusBar>
@@ -111,6 +116,39 @@ SessionWindow::SessionWindow(const ColorRules *rules,
     // Decoded fields in front, as in the live window: what the frame says
     // first, its bytes one tab away.
     fieldDock->raise();
+
+    // Session 349: what the recording holds, per source, and where each
+    // went quiet. A quiet span is clicked to land on its last row.
+    auto *summaryPage = new QWidget(this);
+    auto *summaryLayout = new QVBoxLayout(summaryPage);
+    summaryLayout->setContentsMargins(4, 4, 4, 4);
+    auto *gapRow = new QHBoxLayout;
+    gapRow->addWidget(new QLabel(tr("Quiet spans over"), summaryPage));
+    m_gapOver = new QSpinBox(summaryPage);
+    m_gapOver->setRange(1, 3600);
+    m_gapOver->setValue(5);
+    m_gapOver->setSuffix(tr(" s"));
+    gapRow->addWidget(m_gapOver);
+    gapRow->addStretch(1);
+    summaryLayout->addLayout(gapRow);
+    m_summary = new QTreeWidget(summaryPage);
+    m_summary->setColumnCount(2);
+    m_summary->setHeaderLabels({ tr("Source"), tr("Value") });
+    m_summary->setRootIsDecorated(true);
+    summaryLayout->addWidget(m_summary, 1);
+    auto *summaryDock = new QDockWidget(tr("Summary"), this);
+    summaryDock->setObjectName(QStringLiteral("sessionSummaryDock"));
+    summaryDock->setWidget(summaryPage);
+    summaryDock->setAllowedAreas(Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
+    addDockWidget(Qt::RightDockWidgetArea, summaryDock);
+    tabifyDockWidget(fieldDock, summaryDock);
+    fieldDock->raise();
+    connect(m_gapOver, QOverload<int>::of(&QSpinBox::valueChanged), this, &SessionWindow::rebuildSummary);
+    connect(m_summary, &QTreeWidget::itemActivated, this, [this](QTreeWidgetItem *it) {
+        const QString key = it->data(0, Qt::UserRole).toString();
+        const qint64 ms = it->data(0, Qt::UserRole + 1).toLongLong();
+        if (!key.isEmpty() && ms > 0) { jumpToTime(key, ms); }
+    });
 
     connect(m_fieldPanel, &FieldInspector::byteRangeSelected,
             this, [this](int from, int to) {
@@ -299,6 +337,7 @@ qint64 SessionWindow::loadFiles(const QStringList &paths)
     }
 
     QApplication::restoreOverrideCursor();
+    rebuildSummary();
 
     QString summary = tr("%1 from %2")
                           .arg(countOf(grandTotal, "record", "records"),
@@ -485,6 +524,57 @@ void SessionWindow::jumpToProxyRow(int row)
     view->setCurrentIndex(landing);
     view->scrollTo(landing, QAbstractItemView::PositionAtCenter);
     view->setFocus();
+}
+
+void SessionWindow::rebuildSummary()
+{
+    if (!m_summary) { return; }
+    // "12.3 s", "4:05", "1:02:03".
+    const auto span = [](qint64 ms) {
+        if (ms < 60000) { return QStringLiteral("%1 s").arg(ms / 1000.0, 0, 'f', 1); }
+        const qint64 s = ms / 1000;
+        const QString ms_ = QStringLiteral("%1:%2").arg(s / 60 % 60, s >= 3600 ? 2 : 1, 10, QLatin1Char('0'))
+                                                   .arg(s % 60, 2, 10, QLatin1Char('0'));
+        return s >= 3600 ? QStringLiteral("%1:%2").arg(s / 3600).arg(ms_) : ms_;
+    };
+    const auto clock = [](qint64 ms) { return QDateTime::fromMSecsSinceEpoch(ms).toString(QStringLiteral("HH:mm:ss.zzz")); };
+    const auto row = [](QTreeWidgetItem *parent, const QString &a, const QString &b) {
+        return new QTreeWidgetItem(parent, { a, b });
+    };
+
+    m_summary->clear();
+    for (int i = 0; i < m_tabs->count(); ++i) {   // in tab order
+        QString key;
+        for (auto it = m_tabUi.constBegin(); it != m_tabUi.constEnd(); ++it)
+            if (it->view && m_tabs->widget(i)->isAncestorOf(it->view)) { key = it.key(); }
+        if (key.isEmpty()) { continue; }
+        const SessionSummary::Source s = SessionSummary::summarize(m_tabUi[key].model, m_gapOver->value() * 1000LL);
+        auto *top = new QTreeWidgetItem(m_summary, { m_tabs->tabText(i), countOf(s.records, "record", "records") });
+        if (s.firstMs > 0) {
+            const qint64 len = s.lastMs - s.firstMs;
+            row(top, tr("Start"), clock(s.firstMs));
+            row(top, tr("End"), clock(s.lastMs));
+            row(top, tr("Length"), span(len));
+            row(top, tr("Rate"), len > 0 ? tr("%1 /s").arg(s.records * 1000.0 / len, 0, 'f', 2) : QStringLiteral("—"));
+        }
+        row(top, tr("Errors"), QString::number(s.errors));
+        row(top, tr("Warnings"), QString::number(s.warnings));
+        if (s.longest.ms() > 0) {
+            QTreeWidgetItem *l = row(top, tr("Longest gap"), tr("%1 after %2").arg(span(s.longest.ms()), clock(s.longest.fromMs)));
+            l->setData(0, Qt::UserRole, key);
+            l->setData(0, Qt::UserRole + 1, s.longest.fromMs);
+        }
+        QTreeWidgetItem *quiet = row(top, tr("Quiet spans"), QString::number(s.gaps.size()));
+        if (!s.gaps.isEmpty()) { quiet->setForeground(1, UiColor::warning()); }
+        for (const SessionSummary::Gap &g : s.gaps) {
+            QTreeWidgetItem *it = row(quiet, clock(g.fromMs), tr("quiet %1").arg(span(g.ms())));
+            it->setToolTip(0, tr("Double-click: the last row before it went quiet."));
+            it->setData(0, Qt::UserRole, key);
+            it->setData(0, Qt::UserRole + 1, g.fromMs);
+        }
+        top->setExpanded(true);
+    }
+    m_summary->resizeColumnToContents(0);
 }
 
 NavPoint SessionWindow::currentNavPoint() const
