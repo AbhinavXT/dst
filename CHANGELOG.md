@@ -11,6 +11,40 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-350"></a>
+## Session 350 — the analog card sends over UDP
+
+Abhinav: *"Add udp sending to analog card instead of uart sending."* Asked
+and answered: UDP only, a host and port field; the same 34-byte frame.
+
+**What the operator sees.** The Analog → VCC tab of the Cab I/O Simulator has
+a **To (UDP) host / port** row (127.0.0.1 : 20000 at first; remembered).
+Send now and Send every N ms put each controller's frame in its own datagram:
+the bare 34-byte `STRUCT_ANALOG_SENSOR_DATA` of session 347, unchanged.
+Nothing analog goes on the serial port any more; the input, output and
+readback cards stay there. The summary says where it sends ("… to
+10.0.0.5:20000 (UDP)"). A host that does not resolve is said in the status
+line, and that frame is neither counted nor logged. Sent frames still show in
+the Frames tab.
+
+Sending goes through `UdpSender::sendOnce`, the one class that transmits UDP.
+
+**Files.** `cabiosimwindow.{h,cpp}`, `tests/test_session346.cpp`.
+
+**Tests.** `session346` (36 checks): its window part now receives on a real
+UDP socket on localhost: one datagram per ticked controller, each 34 bytes,
+nothing on the serial sink, sending on the period and stopping when Off, and
+no host means nothing sent.
+
+**Gate (Mac):** Qt 6 and Qt 5.15 both green: 379 suites / 9659 checks, 0
+failed; 15 validators; menu audit; smoke. (Qt 5 first caught
+`QUdpSocket::bind(QHostAddress::LocalHost, 0)` as ambiguous in the test.)
+
+**Not tested:** against a real VCC; the VCC's analog port is not known here
+(20000 is only a starting value).
+
+---
+
 <a id="session-349"></a>
 ## Session 349 — the .dlr viewer: Summary dock and quiet spans
 

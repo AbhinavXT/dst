@@ -8,6 +8,8 @@
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
+#include <QNetworkDatagram>
+#include <QUdpSocket>
 
 #include <cmath>
 
@@ -72,8 +74,21 @@ TEST_SUITE(session346)
     // ---- the window --------------------------------------------------------------------------
     {
         CabIoSimWindow w(nullptr);
-        QVector<QByteArray> sent;
-        w.setWriteSink([&](const QByteArray &b) { sent << b; });
+        // Session 350: analog frames go over UDP; the serial sink gets none.
+        QVector<QByteArray> serial, sent;
+        w.setWriteSink([&](const QByteArray &b) { serial << b; });
+        QUdpSocket rx;
+        CHECK(rx.bind(QHostAddress(QHostAddress::LocalHost), 0), "fixture: a UDP receiver on localhost");
+        w.setAnalogTarget(QStringLiteral("127.0.0.1"), rx.localPort());
+        const auto drain = [&](int want) {
+            QElapsedTimer t;
+            t.start();
+            while (sent.size() < want && t.elapsed() < 2000) {
+                QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+                rx.waitForReadyRead(10);
+                while (rx.hasPendingDatagrams()) sent << rx.receiveDatagram().data();
+            }
+        };
         w.setWireFormat(WireFormat());
         CHECK(!w.analogSending(), "opens Off");
         for (int ch = 0; ch < kAnalogChannels; ++ch) { w.setAnalogScale(ch, 10); w.setAnalogMa(ch, 4); }
@@ -84,7 +99,10 @@ TEST_SUITE(session346)
         w.setAnalogMa(1, 2.0);                           // an open loop on BC
         w.setAnalogCards({ kAnalogTopId, kAnalogBottomId });
         w.sendAnalogNow();
-        CHECK(sent.size() == 2 && w.analogSent() == 2, "one frame per ticked controller");
+        drain(2);
+        CHECK(sent.size() == 2 && w.analogSent() == 2, "one datagram per ticked controller");
+        CHECK(serial.isEmpty(), "nothing on the serial port");
+        CHECK(!sent.isEmpty() && sent[0].size() == 34, "each datagram is the bare 34-byte frame");
         Frame a, b;
         if (sent.size() == 2 && parseAnalog(sent[0], &a) && parseAnalog(sent[1], &b)) {
             CHECK(a.h.src == 15 && b.h.src == 16 && a.h.dest == kVccId && b.h.seq == quint16(a.h.seq + 1),
@@ -104,16 +122,20 @@ TEST_SUITE(session346)
         w.setAnalogCards({ kAnalogBottomId });
         w.setAnalogPeriodMs(20);
         w.setAnalogSending(true);
-        QElapsedTimer t;
-        t.start();
-        while (sent.size() < 3 && t.elapsed() < 2000) QCoreApplication::processEvents(QEventLoop::AllEvents, 10);
+        drain(3);
         w.setAnalogSending(false);
-        CHECK(sent.size() >= 3, qPrintable(QStringLiteral("sends on its period (%1 in %2 ms)").arg(sent.size()).arg(t.elapsed())));
+        CHECK(sent.size() >= 3, qPrintable(QStringLiteral("sends on its period (%1)").arg(sent.size())));
         Frame c;
         CHECK(!sent.isEmpty() && parseAnalog(sent.first(), &c) && c.h.src == kAnalogBottomId, "as 16 only");
-        const int n = sent.size();
         QCoreApplication::processEvents(QEventLoop::AllEvents, 60);
-        CHECK(sent.size() == n && !w.analogSending(), "and stops when Off");
+        while (rx.hasPendingDatagrams()) rx.receiveDatagram();
+        const int n = w.analogSent();
+        QCoreApplication::processEvents(QEventLoop::AllEvents, 60);
+        CHECK(w.analogSent() == n && !w.analogSending(), "and stops when Off");
+
+        w.setAnalogTarget(QString(), 20000);
+        w.sendAnalogNow();
+        CHECK(w.analogSent() == n, "no host: nothing sent, nothing counted");
     }
 #endif
 }

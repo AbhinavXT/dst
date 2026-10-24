@@ -4,6 +4,7 @@
 #include "seriallink.h"
 #include "settings.h"
 #include "statusline.h"
+#include "udpsender.h"
 #include "theme.h"
 #include "uicolors.h"
 #include "windowgeometry.h"
@@ -608,6 +609,10 @@ CabIoSimWindow::CabIoSimWindow(SerialManager *serial, QWidget *parent)
     m_anTimer->setTimerType(Qt::PreciseTimer);
     m_anTimer->setInterval(100);
     connect(m_anTimer, &QTimer::timeout, this, &CabIoSimWindow::sendAnalogNow);
+    m_anUdp = new UdpSender(this);
+    connect(m_anUdp, &UdpSender::error, this, [this](const QString &what) {
+        m_status->fail(tr("Analog over UDP: %1").arg(what));
+    });
 
     m_uiTimer = new QTimer(this);
     m_uiTimer->setInterval(250);
@@ -929,7 +934,7 @@ QWidget *CabIoSimWindow::buildAnalogTab()
     auto *row = new QHBoxLayout;
     row->setSpacing(8);
     row->addWidget(segmented({ tr("Off"), tr("Send every") }, &m_anSendGroup, page));
-    m_anSendGroup->button(1)->setToolTip(tr("Send the six channels as each ticked controller, unasked, every period. "
+    m_anSendGroup->button(1)->setToolTip(tr("Send the six channels over UDP as each ticked controller, unasked, every period. "
                                             "Leave Off while a real analog card is on the line."));
     connect(m_anSendGroup, &QButtonGroup::idClicked, this, [this](int id) { setAnalogSending(id == 1); });
     m_anPeriod = new QSpinBox(page);
@@ -961,6 +966,27 @@ QWidget *CabIoSimWindow::buildAnalogTab()
     }
     row->addStretch(1);
     v->addLayout(row);
+
+    // Session 350: the analog card's frames go over UDP, one datagram each.
+    auto *to = new QHBoxLayout;
+    to->setSpacing(8);
+    to->addWidget(new QLabel(tr("To (UDP)"), page));
+    m_anHost = new QLineEdit(QStringLiteral("127.0.0.1"), page);
+    m_anHost->setMaximumWidth(160);
+    m_anHost->setToolTip(tr("The VCC's address: a dotted quad or a host name"));
+    to->addWidget(m_anHost);
+    to->addWidget(new QLabel(tr("port"), page));
+    m_anPort = new QSpinBox(page);
+    m_anPort->setRange(1, 65535);
+    m_anPort->setValue(20000);
+    to->addWidget(m_anPort);
+    connect(m_anHost, &QLineEdit::textChanged, this, [this]() { refreshAnalog(); });
+    connect(m_anPort, QOverload<int>::of(&QSpinBox::valueChanged), this, [this]() { refreshAnalog(); });
+    auto *udpNote = new QLabel(tr("one 34-byte frame per datagram; the input and output cards stay on the serial port"), page);
+    udpNote->setObjectName(QStringLiteral("muted"));
+    to->addWidget(udpNote);
+    to->addStretch(1);
+    v->addLayout(to);
 
     auto *hint = new QLabel(tr("Set a channel's loop current, or the pressure it should read as. The VCC reads "
                                "raw / 2\u00B3\u00B9 \u00D7 75 mA (the firmware's 2500/33 is integer division), then "
@@ -1043,8 +1069,9 @@ void CabIoSimWindow::refreshAnalog()
         r.reads->setStyleSheet(p.status == PressureReading::Ok ? QString() : UiColor::warningStyle());
     }
     const QVector<quint8> cards = analogCards();
-    QString sum = analogSending() ? tr("Sending every %1 ms as %2.").arg(m_anTimer->interval())
+    QString sum = analogSending() ? tr("Sending every %1 ms as %2 to %3:%4 (UDP).").arg(m_anTimer->interval())
                                         .arg(cards.isEmpty() ? tr("no controller (tick 15 or 16)") : idRange(cards))
+                                        .arg(analogHost()).arg(analogPort())
                                   : tr("Off: nothing sent unasked.");
     sum += tr(" %1 sent.").arg(count(m_analogSent, "analog frame", "analog frames"));
     m_anSummary->setText(sum);
@@ -1627,6 +1654,8 @@ void CabIoSimWindow::loadSettings()
         if (ma.isValid()) setAnalogMa(ch, ma.toDouble()); else setAnalogPressure(ch, defaultKg[ch]);
     }
     setAnalogPeriodMs(s.value(QStringLiteral("analogPeriodMs"), 100).toInt());
+    setAnalogTarget(s.value(QStringLiteral("analogHost"), QStringLiteral("127.0.0.1")).toString(),
+                    quint16(s.value(QStringLiteral("analogPort"), 20000).toUInt()));
     QVector<quint8> anIds;
     for (const QString &id : s.value(QStringLiteral("analogIds"), QStringLiteral("15")).toString().split(QLatin1Char(','), Qt::SkipEmptyParts))
         anIds << quint8(id.toInt());
@@ -1656,6 +1685,8 @@ void CabIoSimWindow::saveSettings() const
         s.setValue(QStringLiteral("analogBar_%1").arg(ch + 1), analogScale(ch));
     }
     s.setValue(QStringLiteral("analogPeriodMs"), m_anPeriod->value());
+    s.setValue(QStringLiteral("analogHost"), analogHost());
+    s.setValue(QStringLiteral("analogPort"), analogPort());
     QStringList anIds;
     for (quint8 id : analogCards()) anIds << QString::number(id);
     s.setValue(QStringLiteral("analogIds"), anIds.join(QLatin1Char(',')));
@@ -1833,13 +1864,27 @@ void CabIoSimWindow::setAnalogPeriodMs(int ms)
     refreshAnalog();
 }
 
+void CabIoSimWindow::setAnalogTarget(const QString &host, quint16 port)
+{
+    m_anHost->setText(host);
+    m_anPort->setValue(port);
+}
+
+QString CabIoSimWindow::analogHost() const { return m_anHost->text().trimmed(); }
+quint16 CabIoSimWindow::analogPort() const { return quint16(m_anPort->value()); }
+
 void CabIoSimWindow::sendAnalogNow()
 {
     QVector<quint32> raw;
     for (int ch = 0; ch < kAnalogChannels; ++ch) raw << analogRawFor(analogMa(ch));
     for (quint8 id : analogCards()) {
-        write(analogData(id, m_anSeq++, raw, m_wf));
+        const QByteArray bytes = analogData(id, m_anSeq++, raw, m_wf);
+        // Session 350: over UDP, never the serial port. A failure is said
+        // by UdpSender::error and the frame is not counted or logged.
+        if (!m_anUdp->sendOnce(bytes, analogHost(), analogPort())) continue;
         ++m_analogSent;
+        Frame f;
+        if (parseAnalog(bytes, &f)) logFrame(true, f);
     }
 }
 

@@ -12,6 +12,8 @@
 //                    (13 / 14), drawn as lamps by STRUCT_LOCO_OUTPUT's names.
 //    Analog -> VCC   the analog card (session 346): six 4-20 mA channels as
 //                    controllers 15 / 16 send them, with what the VCC reads.
+//                    Sent over UDP to a host and port (session 350), not on
+//                    the serial port.
 //    Frames          every frame both ways, and the wire format.
 //  SIFA-extended and old cab layouts both (cabio.h).
 //
@@ -114,6 +116,10 @@ public:
     void   setAnalogPeriodMs(int ms);
     void   sendAnalogNow();
     int    analogSent() const { return m_analogSent; }
+    // Session 350: where the analog frames go (UDP).
+    void    setAnalogTarget(const QString &host, quint16 port);
+    QString analogHost() const;
+    quint16 analogPort() const;
     void setWireFormat(const CabIo::WireFormat &wf);
     CabIo::WireFormat wireFormat() const { return m_wf; }
 
@@ -263,6 +269,9 @@ private:
     QVector<QPushButton *> m_anCardChips;
     QLabel      *m_anSummary = nullptr;
     QTimer      *m_anTimer = nullptr;
+    QLineEdit   *m_anHost = nullptr;
+    QSpinBox    *m_anPort = nullptr;
+    class UdpSender *m_anUdp = nullptr;
     quint16 m_anSeq = 0;
     int m_analogSent = 0;
     QPushButton *m_resetDefault = nullptr;
