@@ -527,17 +527,17 @@ class BrakeLamp : public QWidget
 public:
     BrakeLamp(const QString &name, QWidget *parent = nullptr) : QWidget(parent), m_name(name)
     {
+        setObjectName(QStringLiteral("brakeLamp"));
         setAccessibleName(name);
         setMinimumSize(56, 58);
+        describe();
     }
     QSize sizeHint() const override { return QSize(64, 62); }
     void setValues(bool known, bool on)
     {
         if (known == m_known && on == m_on) return;
         m_known = known; m_on = on;
-        setAccessibleDescription(on ? QStringLiteral("applied") : QStringLiteral("released"));
-        setToolTip(QStringLiteral("%1: %2").arg(m_name, !known ? QStringLiteral("no output data yet")
-                                                     : on ? QStringLiteral("applied") : QStringLiteral("released")));
+        describe();
         update();
     }
 protected:
@@ -551,6 +551,14 @@ protected:
         p.drawText(QRect(0, 38, width(), 20), Qt::AlignCenter, m_name);
     }
 private:
+    // What a screen reader and the tooltip say: not "released" before any output data.
+    void describe()
+    {
+        const QString state = !m_known ? QStringLiteral("no output data yet")
+                            : m_on ? QStringLiteral("applied") : QStringLiteral("released");
+        setAccessibleDescription(state);
+        setToolTip(QStringLiteral("%1: %2").arg(m_name, state));
+    }
     QString m_name;
     bool m_known = false, m_on = false;
 };
@@ -1135,7 +1143,8 @@ QWidget *CabIoSimWindow::buildAnalogTab()
 void CabIoSimWindow::refreshAnalog()
 {
     if (m_anRows.isEmpty()) return;
-    for (AnRow &r : m_anRows) {
+    for (int ch = 0; ch < m_anRows.size(); ++ch) {
+        AnRow &r = m_anRows[ch];
         const quint32 raw = analogRawFor(r.mA->value());
         const double ma = CabIo::analogMa(raw);
         const int bar = r.scale->currentData().toInt();
@@ -1155,7 +1164,6 @@ void CabIoSimWindow::refreshAnalog()
             r.gauge->setFault(p.status == PressureReading::Open ? tr("open loop") : tr("short"));
         }
         r.kg->setEnabled(p.status == PressureReading::Ok);
-        const int ch = int(&r - m_anRows.data());
         if (ch < kBrakeChannels && m_dashGauges[ch]) {
             PressureGauge *g = m_dashGauges[ch];
             g->setMaximum(bar * 1.02);

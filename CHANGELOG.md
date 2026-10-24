@@ -11,6 +11,50 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-359"></a>
+## Session 359 — Cab I/O Simulator: review follow-ups on session 358
+
+Abhinav asked for a review of patch 358, then *"Fix"*. Three of its four
+nits; the fourth (looking up the brake outputs once per cab rather than on
+each refresh) is 4 × 16 string compares and stays as is.
+
+**What changed.**
+- **Brake lamps tell a screen reader the truth.** Before any output frame a
+  lamp's accessible description was "released" while its tooltip said "no
+  output data yet". Both now come from one place and say "no output data
+  yet" until data arrives, from the moment the lamp is built.
+- **`refreshAnalog` loops by index.** The dashboard dial for a row was found
+  by pointer arithmetic on the vector (`&r - m_anRows.data()`); it is now
+  the loop index. Same behaviour, nothing to go wrong if the loop changes.
+- **The lit card's edge is checked where it is drawn.** Session 358 held the
+  accent edge to the graphic floor on `Base`; a lit card's edge sits on the
+  On tile's tint, so that pair is now held too, in every theme.
+
+**What the operator sees.** Nothing new on screen. A screen reader on the
+Scenarios tab hears "no output data yet" for the brake lamps until the VCC
+sends output data.
+
+**Files.** `cabiosimwindow.cpp` (`BrakeLamp::describe`, object name
+`brakeLamp`; `refreshAnalog`), `tests/test_session359.cpp` (new),
+`tests/tests.pro`.
+
+**Tests.** `session359` (8 checks): the accent edge reaches 3:1 (7:1
+High Contrast) on `tileFill(On)` in all eleven themes, colour-blind-safe off
+and on; the EB lamp says "no output data yet" (accessible description and
+tooltip) before output data, and with EB applied in a real-layout SIFA
+output word EB says "applied" and NB "released".
+
+**Gate (Linux, Qt 5.15.13, cloud container):** 15 validators, menu audit,
+smoke green; `dltests` 386 suites / 9759 checks, `session359` ok, 7 failed:
+the window-size checks of sessions 134, 135, 351 and 355. The same 7 fail on
+unchanged `main` (patch 358) in this container, which CI passes: they measure
+this machine's fonts, not this patch.
+
+**Not tested:** Qt 6, the Mac, Windows (CI runs those); no screen reader
+was run.
+
+---
+
 <a id="session-358"></a>
 ## Session 358 — Cab I/O Simulator: the Scenarios tab as a brake dashboard
 
