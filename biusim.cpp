@@ -2,6 +2,7 @@
 
 #include <QDateTime>
 #include <QNetworkDatagram>
+#include <QRegularExpression>
 #include <QUdpSocket>
 
 using namespace Biu;
@@ -58,11 +59,88 @@ void BiuSimulator::readSocket()
     }
 }
 
-QString BiuSimulator::replyTarget() const
+bool BiuSimulator::parseHosts(const QString &text, QStringList *hosts, QString *why)
 {
-    const QString host = !m_replyHost.isEmpty() ? m_replyHost : (m_peerAddr.isNull() ? QString() : m_peerAddr.toString());
-    return host.isEmpty() ? QString() : QStringLiteral("%1:%2").arg(host).arg(m_replyPort);
+    // Strict dotted quads: QHostAddress alone takes "192.168.25" as
+    // 192.168.0.25 (inet_aton shorthand) and would answer the wrong machine.
+    static const QRegularExpression quad(QStringLiteral(
+        "^(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)(\\.(25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)){3}(:(\\d{1,5}))?$"));
+    QStringList out;
+    const QStringList tokens = text.split(QRegularExpression(QStringLiteral("[\\s,;]+")));
+    for (const QString &token : tokens) {
+        if (token.isEmpty()) continue;
+        const QRegularExpressionMatch m = quad.match(token);
+        const int port = m.hasMatch() && !m.captured(5).isEmpty() ? m.captured(5).toInt() : -1;
+        if (!m.hasMatch() || port == 0 || port > 65535) {
+            if (why) *why = tr("“%1” is not an IPv4 address (a.b.c.d, or a.b.c.d:port)").arg(token);
+            return false;
+        }
+        if (out.contains(token)) {
+            if (why) *why = tr("%1 is listed twice").arg(token);
+            return false;
+        }
+        out << token;
+    }
+    if (hosts) *hosts = out;
+    return true;
 }
+
+bool BiuSimulator::setReplyHosts(const QStringList &hosts, QString *why)
+{
+    QStringList checked;
+    if (!parseHosts(hosts.join(QLatin1Char(',')), &checked, why)) return false;
+    QVector<Dest> dests;
+    for (const QString &h : checked) {
+        const int colon = h.indexOf(QLatin1Char(':'));
+        Dest d;
+        d.addr = QHostAddress(colon < 0 ? h : h.left(colon));
+        if (colon >= 0) d.port = quint16(h.mid(colon + 1).toInt());
+        dests << d;
+    }
+    m_dests = dests;
+    m_warnedNoTarget = false;
+    emit changed();
+    return true;
+}
+
+void BiuSimulator::setReplyHost(const QString &host)
+{
+    if (!setReplyHosts(host.trimmed().isEmpty() ? QStringList() : QStringList{ host.trimmed() })) {
+        // Not an address: nowhere to send, said by send() as before.
+        m_dests = { Dest() };
+        emit changed();
+    }
+}
+
+QStringList BiuSimulator::replyHosts() const
+{
+    QStringList out;
+    for (const Dest &d : m_dests)
+        out << (d.port ? QStringLiteral("%1:%2").arg(d.addr.toString()).arg(d.port) : d.addr.toString());
+    return out;
+}
+
+bool BiuSimulator::inReplyList(const QString &host) const
+{
+    const QHostAddress a(host);
+    for (const Dest &d : m_dests)
+        if (d.addr == a) return true;
+    return false;
+}
+
+QStringList BiuSimulator::replyTargets() const
+{
+    QStringList out;
+    if (m_dests.isEmpty()) {
+        if (!m_peerAddr.isNull()) out << QStringLiteral("%1:%2").arg(m_peerAddr.toString()).arg(m_replyPort);
+        return out;
+    }
+    for (const Dest &d : m_dests)
+        if (!d.addr.isNull()) out << QStringLiteral("%1:%2").arg(d.addr.toString()).arg(d.port ? d.port : m_replyPort);
+    return out;
+}
+
+QString BiuSimulator::replyTarget() const { return replyTargets().join(QStringLiteral(", ")); }
 
 QString BiuSimulator::lastPeer() const
 {
@@ -77,27 +155,42 @@ void BiuSimulator::send(const Frame &f, qint64 nowMs, const QString &note)
     item.tx = true;
     item.frame = f;
     item.note = note;
-    if (m_sink) {
-        m_sink(datagram);
-        item.peer = replyTarget();
+    const QStringList to = replyTargets();
+    if (m_sink || m_sinkTo) {
+        // Tests: one call per datagram, as the socket would send them.
+        const QStringList each = to.isEmpty() ? QStringList{ QString() } : to;
+        for (const QString &target : each) {
+            if (m_sinkTo) m_sinkTo(datagram, target);
+            else          m_sink(datagram);
+            ++m_datagrams;
+        }
+        item.peer = to.join(QStringLiteral(", "));
     } else {
-        const QHostAddress addr = !m_replyHost.isEmpty() ? QHostAddress(m_replyHost) : m_peerAddr;
-        if (!m_sock || addr.isNull()) {
+        if (!m_sock || to.isEmpty()) {
             // Nowhere to send yet: said once, not every 250 ms.
             if (!m_warnedNoTarget) {
                 m_warnedNoTarget = true;
                 emit problem(!m_sock ? tr("Not listening: nothing is sent.")
                                      : tr("No VCC address yet: frames go out once the VCC sends one, "
-                                          "or set the VCC's address on the Network tab."));
+                                          "or set the VCCs' addresses on the Network tab."));
             }
             return;
         }
-        if (m_sock->writeDatagram(datagram, addr, m_replyPort) < 0) {
-            emit problem(tr("Send to %1:%2 failed: %3").arg(addr.toString()).arg(m_replyPort).arg(m_sock->errorString()));
-            return;
+        QStringList reached;
+        for (const QString &target : to) {
+            const int colon = target.lastIndexOf(QLatin1Char(':'));
+            const QHostAddress addr(target.left(colon));
+            const quint16 port = quint16(target.mid(colon + 1).toInt());
+            if (m_sock->writeDatagram(datagram, addr, port) < 0) {
+                emit problem(tr("Send to %1 failed: %2").arg(target, m_sock->errorString()));
+                continue;
+            }
+            ++m_datagrams;
+            reached << target;
         }
+        if (reached.isEmpty()) return;
         m_warnedNoTarget = false;
-        item.peer = QStringLiteral("%1:%2").arg(addr.toString()).arg(m_replyPort);
+        item.peer = reached.join(QStringLiteral(", "));
     }
     ++m_sent;
     emit logged(item);
@@ -205,6 +298,12 @@ void BiuSimulator::receive(const QByteArray &datagram, const QString &fromHost, 
             Command c;
             decodeCommand(f.data, &c);
             onCommand(c, f.data.size(), nowMs, &item.note);
+            // Session 361: the commanding VCC is one of the four; left off
+            // the list, it hears nothing back and reads the BIU as lost.
+            if (!m_dests.isEmpty() && !inReplyList(fromHost)) {
+                const QString off = tr("from %1, which is not in the reply list: it is sent nothing").arg(fromHost);
+                item.note = item.note.isEmpty() ? off : item.note + QStringLiteral("; ") + off;
+            }
         }
         break;
     case kCobNmt:

@@ -8,6 +8,7 @@
 #include "udpsender.h"
 #include "uicolors.h"
 #include "windowgeometry.h"
+#include "flasher/flashercore.h"
 
 #include <QButtonGroup>
 #include <QCheckBox>
@@ -21,6 +22,7 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMenu>
 #include <QPair>
 #include <QPushButton>
 #include <QScrollArea>
@@ -32,6 +34,7 @@
 #include <QTableWidget>
 #include <QTime>
 #include <QTimer>
+#include <QToolButton>
 #include <QVBoxLayout>
 
 #include <cmath>
@@ -677,23 +680,52 @@ QWidget *BrakeBenchWindow::buildNetworkTab()
     connect(m_listenPort, QOverload<int>::of(&QSpinBox::valueChanged), this, [this]() { saveSettings(); refreshTop(); });
     lg->addWidget(m_listenPort, 0, 1);
     lg->addWidget(new QLabel(tr("Answer"), link), 1, 0);
-    lg->addWidget(segmented({ tr("the sender"), tr("this address") }, &m_replyMode, link), 1, 1, 1, 2);
+    lg->addWidget(segmented({ tr("the sender"), tr("these VCCs") }, &m_replyMode, link), 1, 1, 1, 3);
     m_replyMode->button(0)->setToolTip(tr("The address the VCC's frames come from"));
+    m_replyMode->button(1)->setToolTip(tr("Every address listed: a loco's four VCCs all keep the BIU's state, "
+                                          "though only one sends the command"));
+    // Session 361: a list. One VCC sends the command; the BIU's frames must
+    // reach all four.
+    auto *hostRow = new QHBoxLayout;
+    hostRow->setSpacing(6);
     m_replyHost = new QLineEdit(link);
-    m_replyHost->setPlaceholderText(QStringLiteral("192.168.25.126"));
-    m_replyHost->setMaximumWidth(170);
-    lg->addWidget(m_replyHost, 2, 1);
-    lg->addWidget(new QLabel(tr("port"), link), 2, 2);
+    m_replyHost->setObjectName(QStringLiteral("biuReplyHosts"));
+    m_replyHost->setPlaceholderText(QStringLiteral("192.168.25.16, 192.168.25.102, …"));
+    m_replyHostTip = tr("The VCCs' addresses, separated by commas. a.b.c.d:port sets a port for one VCC only.\n"
+                        "192.168.25.126 and .101 are the PCs DLConsole runs on, not VCCs.");
+    m_replyHost->setToolTip(m_replyHostTip);
+    m_replyHost->setMinimumWidth(260);
+    hostRow->addWidget(m_replyHost, 1);
+    m_locoPick = new QToolButton(link);
+    m_locoPick->setObjectName(QStringLiteral("biuLocoPick"));
+    m_locoPick->setText(tr("Loco"));
+    m_locoPick->setPopupMode(QToolButton::InstantPopup);
+    m_locoPick->setToolTip(tr("A loco's four VCC controllers, from the Firmware Flasher's address table (session 300)"));
+    auto *locoMenu = new QMenu(m_locoPick);
+    for (int loco = 1; loco <= Flasher::locoCount(); ++loco) {
+        QStringList ips, octets;
+        for (const Flasher::LocoController &c : Flasher::locoControllers())
+            if (c.loco == loco) { ips << c.ip; octets << c.ip.mid(c.ip.lastIndexOf(QLatin1Char('.'))); }
+        locoMenu->addAction(tr("Loco %1: all 4 VCCs (%2)").arg(loco).arg(octets.join(QStringLiteral(" "))), this,
+                            [this, ips]() { setReplyTo(ips.join(QStringLiteral(", ")), quint16(m_replyPort->value())); });
+    }
+    m_locoPick->setMenu(locoMenu);
+    hostRow->addWidget(m_locoPick);
+    lg->addWidget(new QLabel(tr("VCCs"), link), 2, 0);
+    lg->addLayout(hostRow, 2, 1, 1, 4);
+    lg->addWidget(new QLabel(tr("on port"), link), 3, 0);
     m_replyPort = new QSpinBox(link);
     m_replyPort->setRange(1, 65535);
-    m_replyPort->setToolTip(tr("The VCC's port for the BIU's frames"));
-    lg->addWidget(m_replyPort, 2, 3);
+    m_replyPort->setToolTip(tr("The VCCs' port for the BIU's frames"));
+    lg->addWidget(m_replyPort, 3, 1);
+    m_replyList = muted(QString(), link);
+    m_replyList->setObjectName(QStringLiteral("biuReplyList"));
+    m_replyList->setWordWrap(true);
+    m_replyList->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    lg->addWidget(m_replyList, 4, 1, 1, 4);
     auto applyReply = [this]() {
-        const bool fixed = m_replyMode->checkedId() == 1;
-        m_replyHost->setEnabled(fixed);
-        m_biu->setReplyHost(fixed ? m_replyHost->text() : QString());
-        m_biu->setReplyPort(quint16(m_replyPort->value()));
-        saveSettings();
+        applyReplyHosts();
+        saveSettings();          // a typo is kept, marked, to be fixed
         refreshTop();
     };
     connect(m_replyMode, &QButtonGroup::idClicked, this, applyReply);
@@ -1051,11 +1083,10 @@ void BrakeBenchWindow::loadSettings()
     m_listenPort->setValue(s.value(QStringLiteral("listenPort"), 51234).toInt());
     const bool fixed = s.value(QStringLiteral("replyFixed"), false).toBool();
     m_replyMode->button(fixed ? 1 : 0)->setChecked(true);
-    m_replyHost->setText(s.value(QStringLiteral("replyHost"), QStringLiteral("192.168.25.126")).toString());
-    m_replyHost->setEnabled(fixed);
+    m_replyHost->setText(s.value(QStringLiteral("replyHost"), defaultReplyHosts()).toString());
+    m_replyHost->setCursorPosition(0);   // the first address, not the tail of the list
     m_replyPort->setValue(s.value(QStringLiteral("replyPort"), 50001).toInt());
-    m_biu->setReplyHost(fixed ? m_replyHost->text() : QString());
-    m_biu->setReplyPort(quint16(m_replyPort->value()));
+    applyReplyHosts();
     m_hbOn->setChecked(s.value(QStringLiteral("heartbeat"), true).toBool());
     m_hbPeriod->setValue(s.value(QStringLiteral("heartbeatMs"), 500).toInt());
     m_autoStart->setChecked(s.value(QStringLiteral("autoStart"), true).toBool());
@@ -1215,15 +1246,92 @@ bool BrakeBenchWindow::biuRunning() const { return m_biu->running(); }
 void BrakeBenchWindow::setListenPort(quint16 port) { m_listenPort->setValue(port); }
 quint16 BrakeBenchWindow::listenPort() const { return quint16(m_listenPort->value()); }
 
-void BrakeBenchWindow::setReplyTo(const QString &host, quint16 port)
+void BrakeBenchWindow::setReplyTo(const QString &hosts, quint16 port)
 {
-    m_replyMode->button(host.isEmpty() ? 0 : 1)->setChecked(true);
-    m_replyHost->setText(host);
-    m_replyHost->setEnabled(!host.isEmpty());
-    m_replyPort->setValue(port);
-    m_biu->setReplyHost(host);
-    m_biu->setReplyPort(port);
+    m_replyMode->button(hosts.trimmed().isEmpty() ? 0 : 1)->setChecked(true);
+    if (!hosts.trimmed().isEmpty()) {
+        m_replyHost->setText(hosts);
+        m_replyHost->setCursorPosition(0);
+    }
+    {
+        const QSignalBlocker block(m_replyPort);
+        m_replyPort->setValue(port);
+    }
+    applyReplyHosts();
     saveSettings();
+    refreshTop();
+}
+
+QString BrakeBenchWindow::replyListText()
+{
+    refreshReplyList();
+    return m_replyList ? m_replyList->text() : QString();
+}
+
+QString BrakeBenchWindow::defaultReplyHosts()
+{
+    // Loco 1's four VCC controllers (session 300's table): a starting point.
+    QStringList ips;
+    for (const Flasher::LocoController &c : Flasher::locoControllers())
+        if (c.loco == 1) ips << c.ip;
+    return ips.join(QStringLiteral(", "));
+}
+
+bool BrakeBenchWindow::applyReplyHosts()
+{
+    const bool fixed = m_replyMode->checkedId() == 1;
+    m_replyHost->setEnabled(fixed);
+    m_locoPick->setEnabled(fixed);
+    m_biu->setReplyPort(quint16(m_replyPort->value()));
+    QStringList hosts;
+    QString why;
+    bool ok = true;
+    if (fixed && !BiuSimulator::parseHosts(m_replyHost->text(), &hosts, &why)) {
+        ok = false;
+    } else if (fixed && hosts.isEmpty()) {
+        why = tr("No VCC address listed");
+        ok = false;
+    }
+    if (ok) m_biu->setReplyHosts(fixed ? hosts : QStringList());
+    m_replyHostError = ok ? QString() : why;
+    m_replyHost->setStyleSheet(ok ? QString()
+                                  : QStringLiteral("QLineEdit { color:%1; border:1px solid %1; border-radius:4px; }")
+                                        .arg(UiColor::error().name()));
+    m_replyHost->setToolTip(ok ? m_replyHostTip : why);
+    if (!ok && !m_loading) m_status->fail(tr("The BIU's reply list: %1. It still answers %2.")
+                                              .arg(why, m_biu->replyTarget().isEmpty() ? tr("nobody") : m_biu->replyTarget()));
+    refreshReplyList();
+    return ok;
+}
+
+void BrakeBenchWindow::refreshReplyList()
+{
+    if (!m_replyList) return;
+    if (!m_replyHostError.isEmpty()) {
+        m_replyList->setText(m_replyHostError);
+        m_replyList->setStyleSheet(UiColor::errorStyle());
+        return;
+    }
+    m_replyList->setStyleSheet(QString());
+    const QString commander = m_biu->hasCommand() ? m_biu->lastPeer().section(QLatin1Char(':'), 0, 0) : QString();
+    if (m_replyMode->checkedId() == 0) {
+        m_replyList->setText(tr("Each frame goes to whoever sent the last one, on port %1. The other VCCs of the loco hear nothing.")
+                                 .arg(m_replyPort->value()));
+        return;
+    }
+    QStringList lines;
+    for (const QString &target : m_biu->replyTargets()) {
+        const QString ip = target.section(QLatin1Char(':'), 0, 0);
+        QString line = target;
+        const Flasher::LocoController c = Flasher::locoControllerAt(ip);
+        if (c.loco) line += QStringLiteral("  ·  ") + c.name();
+        if (ip == commander) line += QStringLiteral("  ·  ") + tr("sends the command");
+        lines << line;
+    }
+    QString head = lines.size() == 1 ? tr("Each frame goes to 1 VCC:") : tr("Each frame goes to %1 VCCs, one datagram each:").arg(lines.size());
+    if (!commander.isEmpty() && !m_biu->inReplyList(commander))
+        lines << tr("The command comes from %1, which is not listed: it is sent nothing.").arg(commander);
+    m_replyList->setText(head + QLatin1Char('\n') + lines.join(QLatin1Char('\n')));
 }
 
 // ---- the air ---------------------------------------------------------------------------
@@ -1495,11 +1603,13 @@ void BrakeBenchWindow::onUiTick()
 void BrakeBenchWindow::refreshTop()
 {
     if (!m_startBtn) return;
+    refreshReplyList();
     const qint64 t = now();
     const bool run = biuRunning();
     m_startBtn->setText(run ? tr("Stop BIU") : tr("Start BIU"));
     if (run) {
-        const QString to = m_biu->replyTarget();
+        const QStringList targets = m_biu->replyTargets();
+        const QString to = targets.size() > 1 ? tr("%1 VCCs").arg(targets.size()) : targets.join(QString());
         m_runState->setText(QStringLiteral("\u25CF ") + tr("Running \u00B7 %1 \u00B7 answers %2")
                                 .arg(m_biu->isListening() ? tr("UDP %1").arg(m_biu->listenPort()) : tr("not listening"))
                                 .arg(to.isEmpty() ? tr("the VCC, once it sends") : to));

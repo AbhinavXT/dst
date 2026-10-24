@@ -67,15 +67,27 @@ public:
     void    close();
     bool    isListening() const;
     quint16 listenPort() const { return m_listenPort; }
-    // Where the BIU's frames go: `host` empty = whoever sent the last frame.
-    void    setReplyHost(const QString &host) { m_replyHost = host.trimmed(); }
-    QString replyHost() const { return m_replyHost; }
-    void    setReplyPort(quint16 port) { m_replyPort = port; }
-    quint16 replyPort() const { return m_replyPort; }
-    QString replyTarget() const;          // "192.168.25.126:50001", empty while unknown
-    QString lastPeer() const;             // who sent the last frame, "" if nobody
+    // Where the BIU's frames go: no hosts = whoever sent the last frame.
+    // Session 361: a list, each frame one datagram to every address on it. A
+    // loco has four VCCs; one sends the command, but all four keep their own
+    // BIU state, so all four must hear the heartbeat, NMT and status frames.
+    // "a.b.c.d", or "a.b.c.d:port" for a port other than replyPort().
+    bool        setReplyHosts(const QStringList &hosts, QString *why = nullptr);   // refused whole (and kept) on a bad entry
+    QStringList replyHosts() const;
+    void        setReplyHost(const QString &host);   // one address; empty = the sender
+    static bool parseHosts(const QString &text, QStringList *hosts, QString *why);   // "a, b; c" -> hosts
+    bool        inReplyList(const QString &host) const;   // false in sender mode
+    void        setReplyPort(quint16 port) { m_replyPort = port; }
+    quint16     replyPort() const { return m_replyPort; }
+    QStringList replyTargets() const;     // "192.168.25.16:50001" each; empty while unknown
+    QString     replyTarget() const;      // the same, joined by ", "
+    QString     lastPeer() const;         // who sent the last frame, "" if nobody
     using SendFn = std::function<void(const QByteArray &datagram)>;
     void    setSendSink(const SendFn &fn) { m_sink = fn; }
+    // For tests: each datagram with where it would go ("a.b.c.d:port", or ""
+    // while nobody is known). Takes the place of setSendSink.
+    using SendToFn = std::function<void(const QByteArray &datagram, const QString &to)>;
+    void    setSendToSink(const SendToFn &fn) { m_sinkTo = fn; }
     void    receive(const QByteArray &datagram, const QString &fromHost, quint16 fromPort, qint64 nowMs);
 
     // ---- running ----------------------------------------------------------------
@@ -158,6 +170,7 @@ public:
     int          commandCount() const { return m_commands; }
     double       commandPeriodMs() const;  // mean of the last few gaps; 0 if unknown
     int          framesSent() const { return m_sent; }
+    int          datagramsSent() const { return m_datagrams; }   // a frame to 4 VCCs is 4
     int          framesReceived() const { return m_received; }
     int          rejected() const { return m_rejected; }
 
@@ -176,11 +189,16 @@ private:
     // transport
     QUdpSocket  *m_sock = nullptr;
     quint16      m_listenPort = 0;
-    QString      m_replyHost;
+    struct Dest {
+        QHostAddress addr;
+        quint16      port = 0;   // 0: m_replyPort
+    };
+    QVector<Dest> m_dests;       // empty: the sender
     quint16      m_replyPort = 50001;
     QHostAddress m_peerAddr;
     quint16      m_peerPort = 0;
     SendFn       m_sink;
+    SendToFn     m_sinkTo;
     bool         m_warnedNoTarget = false;
 
     // running
@@ -224,7 +242,7 @@ private:
     qint64         m_cmdMs = 0;
     int            m_commands = 0;
     QVector<qint64> m_gaps;
-    int            m_sent = 0, m_received = 0, m_rejected = 0;
+    int            m_sent = 0, m_datagrams = 0, m_received = 0, m_rejected = 0;
 };
 
 #endif  // BIUSIM_H

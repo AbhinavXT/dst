@@ -48,6 +48,7 @@ class QSpinBox;
 class QTabWidget;
 class QTableWidget;
 class QTimer;
+class QToolButton;
 class StatusLine;
 class UdpSender;
 namespace SimUi { class SignalLamp; }
@@ -76,7 +77,10 @@ public:
     bool biuRunning() const;
     void setListenPort(quint16 port);
     quint16 listenPort() const;
-    void setReplyTo(const QString &host, quint16 port);   // host empty: the sender
+    // Session 361: `hosts` a list ("a, b, c, d", a.b.c.d:port for one VCC's
+    // own port), every frame to each; empty: the sender.
+    void setReplyTo(const QString &hosts, quint16 port);
+    QString replyListText();             // what the Network tab says the frames reach
 
     // ---- where the pressures go ----------------------------------------------------
     void   setSource(Source s);
@@ -133,6 +137,9 @@ private:
     void saveSettings() const;
     void onUiTick();
     void refreshTop();
+    bool applyReplyHosts();              // session 361: the list into the BIU; false (and said) when it is not one
+    void refreshReplyList();
+    static QString defaultReplyHosts();
     void refreshBench();
     void refreshStatusTab();
     void refreshAnalog();
@@ -202,7 +209,10 @@ private:
     // network
     QSpinBox      *m_listenPort = nullptr;
     QButtonGroup  *m_replyMode = nullptr;
-    QLineEdit     *m_replyHost = nullptr;
+    QLineEdit     *m_replyHost = nullptr;      // session 361: a list
+    QToolButton   *m_locoPick = nullptr;
+    QLabel        *m_replyList = nullptr;
+    QString        m_replyHostError, m_replyHostTip;
     QSpinBox      *m_replyPort = nullptr;
     QCheckBox     *m_hbOn = nullptr, *m_autoStart = nullptr;
     QSpinBox      *m_hbPeriod = nullptr, *m_kavachTimeout = nullptr;

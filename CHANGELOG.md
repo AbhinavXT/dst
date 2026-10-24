@@ -11,6 +11,73 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-361"></a>
+## Session 361 — Brake Test Bench: the BIU answers all four VCCs
+
+Item 4 of `docs/BRAKE_BENCH_NEXT.md`, agreed with Abhinav: *"A loco has 4 VCCs.
+Only one sends the BIU command, but the BIU's frames (heartbeat, NMT, status)
+must reach all four so each keeps its state."* Until now the bench answered the
+sender of the last frame, or one fixed address.
+
+**What the operator sees.** Network ▸ Link: **Answer** is now *the sender* or
+*these VCCs*, and *these VCCs* takes a list (`192.168.25.16, 192.168.25.102,
+…`; `a.b.c.d:port` gives one VCC its own port). **Loco ▾** fills in a loco's
+four VCC controllers from the Firmware Flasher's address table (session 300):
+loco 1 is .16 .102 .103 .104, loco 2 .77 .105 .106 .107, loco 3 .87 .88 .96 .97.
+Loco 1's four are what the list starts with. Under the list, the bench says where
+each frame goes, one line per VCC with its name ("Loco 1 · VCC 1 controller 2"),
+and which one sends the command. In sender mode it says that the other VCCs
+hear nothing.
+- Each frame goes to every VCC on the list as its own datagram. The Frames tab
+  still has one row per frame, naming them all; the top bar says "answers 4 VCCs".
+- A command from an address that is not on the list is noted in the Frames tab
+  and under the list. That VCC is sent nothing, so it would read the BIU as lost.
+- A typo ("192.168.25", which `QHostAddress` alone would read as 192.168.0.25)
+  is marked in the field and said in the status line. The BIU keeps answering
+  the last good list. The text is saved as typed, to be fixed.
+- Saved settings carry over: the old single fixed address is a list of one.
+  The old default (.126) was the PC, not a VCC, so it is no longer offered.
+
+**Files.** `biusim.{h,cpp}` (`setReplyHosts`, `parseHosts`, `replyTargets`,
+`inReplyList`, `datagramsSent`, `setSendToSink` for tests; a frame sent to each
+target; the off-list note), `brakebenchwindow.{h,cpp}` (the list, Loco ▾, the
+per-VCC lines); `tests/test_session361.cpp` (new), `tests/tests.pro`;
+`tests/screenshot_main.cpp` (the bench answers loco 1's four, .102 commanding).
+
+**Tests.** `session361` (44 checks):
+- the list's syntax: separators, `:port`, short and out-of-range addresses, a
+  port of 0 or 65536, duplicates. A bad entry refuses the whole list and keeps
+  the old one;
+- on injected time, in 1 s each of the four gets 2 heartbeats, 4 of each status
+  frame and the NMT start; every frame goes to each, and to nobody else;
+- one log row per frame naming the four; a command from .77 (not listed) is
+  noted, one from a listed VCC is not;
+- sender mode as before: it answers the sender on 50001, not on the sender's
+  own source port;
+- over real sockets: two VCCs on localhost, only one commanding, and both get
+  the status frames;
+- the window: it starts in sender mode with loco 1 ready, lists the four by
+  controller and marks the commander. A typo is marked, saved and leaves the
+  four in place. An off-list commander is pointed out. The list comes back on
+  reopen. The Network tab fits 1366 px, with no loose widgets.
+
+The Network tab was checked in screenshots: Light, Mocha and High Contrast.
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4:** all green: 388 suites / 9890 checks, 0 failed; 15 validators;
+  menu audit; smoke.
+- **Qt 5.15.13:** validators, menu audit and smoke green; `dltests` 9890 checks,
+  4 failed: the window-size checks of sessions 134 and 135, the same as on
+  unchanged `main` in this container (session 360). `session361` passes.
+
+**Not tested:** against real VCCs (whether all four take the BIU's frames from
+one source, and whether the firmware reads the 0x710 heartbeat per VCC);
+Windows (CI runs it). The four addresses are the Firmware Flasher's controller
+table. That a loco's VCC application answers on those addresses is taken from
+session 300's note, not seen on a loco.
+
+---
+
 <a id="session-360"></a>
 ## Session 360 — Brake Test Bench: a BIU simulator, the analog card and the brake pressures in one window
 

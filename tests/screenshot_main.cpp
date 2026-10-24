@@ -219,10 +219,11 @@ int main(int argc, char **argv)
                 qint64 *t = new qint64(1782558147000LL);
                 w->setClock([t]() { return *t; });
                 w->biu()->setSendSink([](const QByteArray &) {});
-                w->biu()->setReplyHost(QStringLiteral("192.168.25.126"));
+                // Session 361: answering loco 1's four VCCs; VCC 1 controller 2 commands.
+                w->setReplyTo(QStringLiteral("192.168.25.16, 192.168.25.102, 192.168.25.103, 192.168.25.104"), 50001);
                 w->biu()->setRunning(true, *t);
                 w->setSource(BrakeBenchWindow::Source::Biu);
-                const QString vcc = QStringLiteral("192.168.25.126");
+                const QString vcc = QStringLiteral("192.168.25.102");
                 w->biu()->receive(QByteArray::fromHex("2007047F"), vcc, 50001, *t);           // KAVACH pre-operational
                 w->advance(0.05);
                 w->biu()->receive(QByteArray::fromHex("20070405"), vcc, 50001, *t);           // started: operational

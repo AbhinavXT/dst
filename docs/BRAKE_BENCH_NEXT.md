@@ -30,13 +30,10 @@ sessions 360 and 359.
    what the bench injected, e.g. "malfunction flagged within t_apply".
    - Implement alongside the test cases.
    - Verdict language per CLAUDE.md: say what was observed.
-4. **Reply to all four VCCs.** A loco has 4 VCCs. Only one sends the BIU
-   command, but the BIU's frames (heartbeat, NMT, status) must reach all four
-   so each keeps its state.
-   - Today the bench answers only the sender of the last frame, or one fixed
-     address.
-   - Needed: a list of reply targets, the 4 VCC addresses, each on port 50001.
-   - .126 and .101 are the PCs DLConsole runs on, not VCCs.
+4. **Reply to all four VCCs.** Done in session 361: Network ▸ *these VCCs*
+   takes a list, Loco ▾ fills in a loco's four controllers (the Firmware
+   Flasher's table), and each frame goes to every VCC on the list. Still to
+   confirm on a loco: that the VCC application answers on those addresses.
 5. **Saved presets.** Save the bench's fault setup under a name and load it
    later: plant faults, rates, analog offsets, forced bits, manual pressures,
    validity modes, queued codes, frames off, silence.
