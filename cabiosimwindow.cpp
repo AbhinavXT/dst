@@ -733,8 +733,14 @@ QWidget *CabIoSimWindow::buildInputsTab()
     sendNowBtn->setToolTip(tr("Send each ticked id's data once, now"));
     connect(sendNowBtn, &QPushButton::clicked, this, &CabIoSimWindow::sendNow);
     row->addWidget(sendNowBtn);
+    row->addStretch(1);
+    v->addLayout(row);
 
-    row->addSpacing(16);
+    // Session 355: the inputs' own controls on a second row. On one row the
+    // tab was 1133 px wide on the Mac, about 1440 with Linux's fonts: wider
+    // than a 1366 px laptop.
+    row = new QHBoxLayout;
+    row->setSpacing(8);
     row->addWidget(new QLabel(tr("Flicker"), page));
     m_flicker = new QSpinBox(page);
     m_flicker->setRange(20, 5000);

@@ -11,6 +11,33 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-355"></a>
+## Session 355 — the Cab I/O Simulator fits a 1366 px laptop
+
+Abhinav: *"Yes fix"* (the width found in session 354).
+
+**What changed.** The Inputs tab's controls were one row: the send mode,
+period, Send now, Flicker, vic_health, Stop flicker, Default and Reset. That
+row made the whole window at least 1133 px wide on the Mac and about 1440 px
+with Linux's fonts. They are two rows now: sending (Answer VCC requests /
+Send every, period, Send now) on the first; the inputs (Flicker, vic_health,
+Stop flicker, Default, Reset) on the second. The window's minimum is the port
+bar's, 785 px on the Mac; its height does not change (the tabs need 552 px).
+
+**Files.** `cabiosimwindow.cpp`, `tests/test_session355.cpp` (new),
+`tests/tests.pro`.
+
+**Tests.** `session355` (4 checks): with the SIFA and the old cab layout, the
+window's minimum is within 1366 x 700, and no widget is outside a layout.
+
+**Gate (Mac):** Qt 6 and Qt 5.15 both green: 382 suites / 9702 checks, 0
+failed; 15 validators; menu audit; smoke.
+
+**Not tested:** on a real 1366 x 768 Linux screen (CI's Linux gate measures
+the minimum with Linux's fonts).
+
+---
+
 <a id="session-354"></a>
 ## Session 354 — Linux CI: session351 measures the Analog tab, not the window
 
