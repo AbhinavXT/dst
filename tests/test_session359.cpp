@@ -7,6 +7,7 @@
 
 #ifdef DL_HAVE_SERIAL
 #include "cabiosimwindow.h"
+#include "brakebenchwindow.h"
 #endif
 
 #include <QApplication>
@@ -58,10 +59,16 @@ TEST_SUITE(session359)
     }
     {
         CabIoSimWindow w(nullptr);
+        w.setAttribute(Qt::WA_DeleteOnClose, false);
         w.setWriteSink([](const QByteArray &) {});
         w.setCab(Cab::Sifa);
-        auto lamp = [&w](const QString &name) -> QWidget * {
-            for (QWidget *x : w.findChildren<QWidget *>())
+        // Session 360: the brake lamps are on the Brake Test Bench's Brake
+        // relays tab, lit by this window's output word.
+        BrakeBenchWindow bench(nullptr);
+        bench.setAttribute(Qt::WA_DeleteOnClose, false);
+        QObject::connect(&w, &CabIoSimWindow::outputWordChanged, &bench, &BrakeBenchWindow::observeOutputWord);
+        auto lamp = [&bench](const QString &name) -> QWidget * {
+            for (QWidget *x : bench.findChildren<QWidget *>())
                 if (x->objectName() == QLatin1String("brakeLamp") && x->accessibleName() == name) return x;
             return nullptr;
         };

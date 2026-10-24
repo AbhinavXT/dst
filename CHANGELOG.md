@@ -11,6 +11,113 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-360"></a>
+## Session 360 — Brake Test Bench: a BIU simulator, the analog card and the brake pressures in one window
+
+Abhinav, after a review of the firmware's BIU interface (brake_pressure_interface_user.c):
+*"how to make a miniature biu simulator in dlconsole window to fully test the
+brake pressure logic in firmware"*. Answered: reply to the VCC on port 50001
+(it sends from .126 / .101 to 51234); *"Yes simulate all the packets that biu
+sends make everything configurable"*; heartbeat too; drive the analog card from
+it; *"the amount of stuff that analog card and biu and brake pressure has we
+need to separate it into a fully new window. Make sure the UI is great and in
+line with the rest of DLConsole and works on all themes."*
+
+**What the operator sees.** Tools ▸ Transmit ▸ **Brake Test Bench…**, beside
+the Cab I/O Simulator. **Start BIU** listens on UDP 51234 and answers as a Brake
+Interface Unit (RDSO MP.0.01.00.31 Rev.05, Annexure-1), one CAN frame per
+datagram as the firmware's gateway sends them (`[COB-ID lo][COB-ID hi][3 + n][n bytes]`).
+- **Bench.** BP, BC and MR as dials, with a mark where each is heading. They follow
+  the **BIU command** (KAVACH's A9 / SA9 when valid; emergency when KAVACH is lost;
+  released when isolated), the **brake relays**, or a **hand**. Each pressure has
+  its own apply and release rate and a fault: stuck, slow ×N, or leak /s. The
+  analog card can read off by an offset, to test the firmware's cross-check.
+  Also shown: KAVACH's last command (speed, A9, SA9, every discrete bit as a chip)
+  and what the BIU is doing (state, isolation, the codes in flight, the panel
+  test). Isolate and Silence switches are at hand.
+- **BIU → VCC.** Every field of the three status frames. The 0x220 pressures are
+  Auto (the bench) or Manual, each with its validity bit Auto / 1 / 0. The 0x320
+  frame carries the isolation counter (+1 on each isolation, raising 0x1040), and
+  fault and display codes from the spec's lists or typed in. They are queued and
+  held until KAVACH acknowledges them, and the acknowledgement time is shown.
+  All 18 named bits of the 0x420 discretes are Auto / 1 / 0, showing what goes
+  out. The status period and each frame can be switched on or off, and the
+  panel test's length and result are set here.
+- **Network.** The listen port, and the reply address (the sender, or a fixed
+  address) with its port (50001). The BIU heartbeat (0x710): on or off, its period
+  (500 ms), and the state it says. NMT: KAVACH is started automatically while it
+  is not operational, and Start, Stop, Pre-operational and both resets can be sent
+  by hand. A KAVACH timeout (1.5 s) leads to apply emergency (4 c), hold, or release.
+- **Analog → VCC** and **Brake relays**: moved here from the Cab I/O Simulator
+  (sessions 346-351, 357-358) unchanged, except that BP, BC and MR now follow
+  the bench's air. The relays follow the Cab I/O Simulator's output word through
+  MainWindow while both are open, and the analog frames use its wire format.
+  Settings move over on the first open.
+- **Frames.** Every BIU frame both ways and every analog frame. Each shows its
+  COB-ID and bytes, what it says, and what is wrong with it: COB-ID 0x181 instead
+  of 0x190, data while KAVACH says pre-operational, a short frame, A9 / SA9 marked
+  valid above 6.0 / 4.0, an ack with nothing in flight.
+
+The Cab I/O Simulator keeps Inputs, Outputs, Readback, Scenarios (rules) and
+Frames. It now fits 1366 × 768: session 355's laptop check, which failed in this
+container, passes. The per-brake starting values follow Annexure-4: NB 4.4 / 1.2
+and FSB 3.5 / 2.4 (they were 4.5 / 1.0 and 3.5 / 2.5).
+
+**Every theme.** Palette roles, `UiColor` and the shared simulator style sheet
+(`simwidgets.h`: segmented buttons, cards, chips, lamps), with `CabIoColors` moved
+there so the bench builds without Qt Serial Port. A lit chip is Base on accent,
+a plain one muted on Base: both checked against the text floor in all eleven
+themes, colour-blind-safe on and off. Light, Dark, Mocha and High Contrast were
+looked at.
+
+**Files.** `biuprotocol.{h,cpp}` (Annexure-1: COB-IDs, framing, command,
+status frames, codes, NMT), `biusim.{h,cpp}` (the BIU), `brakeplant.{h,cpp}`
+(the air), `simwidgets.{h,cpp}` (the shared look), `brakebenchwindow.{h,cpp}`
+(new); `cabiosimwindow.{h,cpp}` (analog card and brake card moved out;
+`outputWordChanged`, `wireFormatChanged`); `cabio.cpp` (starting values);
+`mainwindow.h`, `mainwindow_menus.cpp`, `mainwindow_tools.cpp` (the menu entry
+and the link); `dlcore.pri`; `tests/test_session360.cpp` (new);
+`tests/test_session346/351/357/358/359.cpp` (follow the move);
+`tests/menuaudit_main.cpp`; `tests/screenshot_main.cpp` (`SHOT_WINDOW=brakebench`).
+
+**Tests.** `session360` (89 checks):
+- the firmware's own NB datagram decoded byte by byte;
+- framing refusals, 0.05 kg/cm² per bit, the status frames' layout, and the spec's code lists;
+- the plant's rates and faults;
+- the BIU on injected time:
+  - boot-up, then heartbeat every 500 ms and status every 250 ms;
+  - NMT start until KAVACH is operational;
+  - FSB targets, references and auto bits; validity limits and forced bits;
+  - isolation counted with 0x1040 raised, acks and their latency, codes held without acks;
+  - the panel test passing and failing;
+  - KAVACH lost leading to emergency, hold or release;
+  - notes on bad frames; silence, and frames switched off;
+- a real UDP round trip on localhost;
+- the window:
+  - EB moving the air at its rates, with the analog card and 0x220 following;
+  - offset and stuck faults, and KAVACH lost driving BP to 0;
+  - every tab fits 1366 × 768, with no loose widgets;
+- the chip contrast in 22 theme variants.
+
+The moved checks are in sessions 346, 351, 357, 358 and 359, and the menu audit
+covers the new menu entry and the link to the Cab I/O Simulator.
+
+No BIU frame has been captured, so the bytes are worked from the spec's
+tables and the reviewed firmware's host test.
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4:** all green: 387 suites / 9846 checks, 0 failed; 15 validators;
+  menu audit; smoke.
+- **Qt 5.15.13:** validators, menu audit and smoke green; `dltests` 9846 checks,
+  4 failed. They are the window-size checks of sessions 134 and 135, which fail
+  the same way on unchanged `main` in this container, and pass on Qt 6 here and
+  in CI.
+
+**Not tested:** against a real BIU or the VCC firmware on target; Windows
+(CI runs it); a screen reader.
+
+---
+
 <a id="session-359"></a>
 ## Session 359 — Cab I/O Simulator: review follow-ups on session 358
 

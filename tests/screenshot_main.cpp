@@ -20,6 +20,8 @@
 #include "shortcutsdialog.h"
 #include <memory>
 #include "messagedispatcher.h"
+#include "biusim.h"
+#include "brakebenchwindow.h"
 #ifdef DL_HAVE_SERIAL
 #include "cabiosimwindow.h"
 #include "serialconsolewindow.h"
@@ -171,7 +173,7 @@ int main(int argc, char **argv)
             }
             // Session 324: the Cab I/O Simulator mid-run. Set 1 as a real
             // @dip1 reads, two inputs flickering, the VCC's requests answered
-            // and its output data lit. SHOT_TAB=1/2/3/4/5: Outputs / Readback / Analog / Scenarios / Frames.
+            // and its output data lit. SHOT_TAB=1/2/3/4: Outputs / Readback / Scenarios / Frames.
             if (which == QLatin1String("cabio")) {
                 auto *w = new CabIoSimWindow(nullptr);
                 w->setWriteSink([](const QByteArray &) {});
@@ -198,9 +200,6 @@ int main(int argc, char **argv)
                 // Readback answering on, one pin Manual (fault bit clear).
                 w->setAnswerReadback(true);
                 w->readbackSim()->setManual(13, 0x13);
-                // SHOT_TAB=3, Analog: BC on an open loop, MR on a 16 bar sensor (session 351).
-                w->setAnalogMa(1, 2.0);
-                w->setAnalogScale(2, 16);
                 w->feedBytes(CabIo::outputRequest(17, 2, CabIo::WireFormat()));
                 w->tickFlicker();
                 w->flushLog();
@@ -210,6 +209,38 @@ int main(int argc, char **argv)
                 win = w;
             }
 #endif
+            // Session 360: the Brake Test Bench mid-test. The BIU running on a
+            // sink (no socket), KAVACH operational and sending an FSB command
+            // (A9 3.5 / SA9 2.4, the bytes the firmware sends), a fault code
+            // in flight, the air on its way. SHOT_TAB=0..5: Bench / BIU -> VCC /
+            // Network / Analog / Brake relays / Frames.
+            if (which == QLatin1String("brakebench")) {
+                auto *w = new BrakeBenchWindow(nullptr);
+                qint64 *t = new qint64(1782558147000LL);
+                w->setClock([t]() { return *t; });
+                w->biu()->setSendSink([](const QByteArray &) {});
+                w->biu()->setReplyHost(QStringLiteral("192.168.25.126"));
+                w->biu()->setRunning(true, *t);
+                w->setSource(BrakeBenchWindow::Source::Biu);
+                const QString vcc = QStringLiteral("192.168.25.126");
+                w->biu()->receive(QByteArray::fromHex("2007047F"), vcc, 50001, *t);           // KAVACH pre-operational
+                w->advance(0.05);
+                w->biu()->receive(QByteArray::fromHex("20070405"), vcc, 50001, *t);           // started: operational
+                w->biu()->raiseFault(0x1004);
+                for (int i = 0; i < 24; ++i) {
+                    *t += 250;
+                    // 0x190: 10.00 m/s, healthy + speed valid, A9 / SA9 valid, A9 70 (3.5), SA9 48 (2.4).
+                    w->biu()->receive(QByteArray::fromHex("90010BE803120C46300000"), vcc, 50001, *t);
+                    w->advance(0.25);
+                    if (i % 2) w->biu()->receive(QByteArray::fromHex("20070405"), vcc, 50001, *t);
+                }
+                w->setAnalogScale(2, 16);
+                w->flushLog();
+                if (auto *tabs = w->findChild<QTabWidget *>())
+                    tabs->setCurrentIndex(qEnvironmentVariableIntValue("SHOT_TAB"));
+                w->resize(1280, 820);
+                win = w;
+            }
             if (which == QLatin1String("search")) {
                 qint64 ms = 1782558147000LL;
                 for (int i = 0; i < lines.size(); ++i)
@@ -1223,6 +1254,7 @@ int main(int argc, char **argv)
                                || which == QLatin1String("sessionkey") || which == QLatin1String("gototime");
             if (which == QLatin1String("session")) win->resize(1200, 700);   // its own default
             else if (which == QLatin1String("cabio")) win->resize(1240, 860);
+            else if (which == QLatin1String("brakebench")) win->resize(1280, 820);
             else if (small) {
                 const QStringList wh = qEnvironmentVariable("SHOT_SIZE").split(QLatin1Char('x'));
                 if (wh.size() == 2) win->resize(wh.at(0).toInt(), wh.at(1).toInt());

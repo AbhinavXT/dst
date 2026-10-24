@@ -5,6 +5,7 @@
 #include "settings.h"
 #include "theme.h"
 #include "uicolors.h"
+#include "brakebenchwindow.h"
 
 #ifdef DL_HAVE_SERIAL
 #include "cabiosimwindow.h"
@@ -39,6 +40,8 @@ void clearSaved()
             || k == QLatin1String("brakePressures") || k.startsWith(QLatin1String("rules_")) || k == QLatin1String("cab")
             || k == QLatin1String("scenarios"))
             s.remove(k);
+    s.endGroup();
+    s.remove(QStringLiteral("brakebench"));
 }
 
 }  // namespace
@@ -114,16 +117,28 @@ TEST_SUITE(session358)
     clearSaved();
     {
         CabIoSimWindow w(nullptr);
+        w.setAttribute(Qt::WA_DeleteOnClose, false);
         w.setWriteSink([](const QByteArray &) {});
         w.setCab(Cab::Sifa);
         w.flushLog();
+        // Session 360: the dials moved to the Brake Test Bench, which follows
+        // this window's output word when its source is the brake relays.
+        BrakeBenchWindow bench(nullptr);
+        bench.setAttribute(Qt::WA_DeleteOnClose, false);
+        QObject::connect(&w, &CabIoSimWindow::outputWordChanged, &bench, &BrakeBenchWindow::observeOutputWord);
+        qint64 t = 1000;
+        bench.setClock([&t]() { return t; });
+        bench.setSource(BrakeBenchWindow::Source::Relays);
+        for (int ch = 0; ch < 3; ++ch) bench.setRates(ch, 1.0, 1.0);
+        bench.advance(0);
 
         QVector<PressureGauge *> dash;
-        for (PressureGauge *g : w.findChildren<PressureGauge *>())
-            if (g->objectName() == QLatin1String("dashGauge")) dash << g;
-        CHECK(dash.size() == 3, "three dials on the Scenarios tab: BP, BC, MR");
+        for (PressureGauge *g : bench.findChildren<PressureGauge *>())
+            if (g->objectName() == QLatin1String("benchGauge")) dash << g;
+        CHECK(dash.size() == 3, "three dials on the bench: BP, BC, MR");
         if (dash.size() != 3) return;
-        CHECK(qAbs(dash[0]->value() - 5.0) < 0.02 && dash[0]->target() < 0, "BP reads 5.0, no target before output data");
+        CHECK(qAbs(dash[0]->value() - 5.0) < 0.02 && qAbs(dash[0]->target() - 5.0) < 0.02,
+              "BP reads 5.0 and is heading nowhere else before output data");
 
         QVector<QFrame *> cards;
         for (QFrame *f : w.findChildren<QFrame *>())
@@ -133,12 +148,13 @@ TEST_SUITE(session358)
         // EB applied (SIFA: bit 13 = 0, the others released).
         const quint16 eb = quint16(0x3C00 & ~(1u << 13));
         w.feedBytes(outputData(13, 1, eb, WireFormat()));
-        CHECK(dash[0]->target() == w.brakePressure(EbApplied, 0), "BP's mark at the EB value");
-        w.stepRamp(1.0);
+        bench.advance(0);
+        CHECK(dash[0]->target() == bench.brakePressure(EbApplied, 0), "BP's mark at the EB value");
+        bench.advance(1.0);
         CHECK(dash[0]->value() < 4.1 && dash[0]->value() > 3.9, "after 1 s the BP dial has dropped to 4.0");
         CHECK(dash[1]->value() > 0.9 && dash[1]->value() < 1.1, "and the BC dial has risen to 1.0");
-        w.stepRamp(10.0);
-        CHECK(qAbs(dash[0]->value() - w.brakePressure(EbApplied, 0)) < 0.02, "BP dial lands on the EB value");
+        bench.advance(10.0);
+        CHECK(qAbs(dash[0]->value() - bench.brakePressure(EbApplied, 0)) < 0.02, "BP dial lands on the EB value");
 
         // The EB rule's card is lit, the NB rule's is not.
         int ebCard = -1, nbCard = -1;
@@ -155,13 +171,13 @@ TEST_SUITE(session358)
             CHECK(!cards[nbCard]->property("holds").toBool(), "NB released: the NB rule's card is not");
         }
 
-        // A drag on the dashboard dial sets the channel, as on the Analog tab.
+        // A drag on a bench dial moves the air, and the analog card with it.
         emit dash[1]->valueEdited(2.0);
-        CHECK(qAbs(currentToPressure(w.analogMa(1), w.analogScale(1)).kgcm2 - 2.0) < 0.02, "dragging the BC dial sets BC 2.0");
+        CHECK(qAbs(currentToPressure(bench.analogMa(1), bench.analogScale(1)).kgcm2 - 2.0) < 0.02, "dragging the BC dial sets BC 2.0");
 
-        w.setBrakePressuresOn(false);
-        CHECK(dash[0]->target() < 0, "pressures off: no target marks");
-        w.setBrakePressuresOn(true);
+        bench.setSource(BrakeBenchWindow::Source::Manual);
+        bench.advance(0);
+        CHECK(dash[0]->target() < 0, "manual: no target marks");
     }
     clearSaved();
 #endif

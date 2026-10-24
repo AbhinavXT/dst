@@ -4,9 +4,8 @@
 #include "serialmanager.h"
 #include "seriallink.h"
 #include "settings.h"
-#include "pressuregauge.h"
+#include "simwidgets.h"
 #include "statusline.h"
-#include "udpsender.h"
 #include "theme.h"
 #include "uicolors.h"
 #include "windowgeometry.h"
@@ -124,28 +123,7 @@ protected:
     }
 };
 
-// A row of buttons that read as one control: [ A | B | C ].
-QWidget *segmented(const QStringList &labels, QButtonGroup **group, QWidget *parent)
-{
-    auto *w = new QWidget(parent);
-    w->setObjectName(QStringLiteral("segmented"));
-    auto *h = new QHBoxLayout(w);
-    h->setContentsMargins(0, 0, 0, 0);
-    h->setSpacing(0);
-    auto *g = new QButtonGroup(w);
-    g->setExclusive(true);
-    for (int i = 0; i < labels.size(); ++i) {
-        auto *b = new QPushButton(labels.at(i), w);
-        b->setCheckable(true);
-        b->setCursor(Qt::PointingHandCursor);
-        b->setProperty("seg", i == 0 ? "first" : (i == labels.size() - 1 ? "last" : "mid"));
-        g->addButton(b, i);
-        h->addWidget(b);
-    }
-    g->button(0)->setChecked(true);
-    *group = g;
-    return w;
-}
+using SimUi::segmented;
 
 // A rule card lit while its condition holds: the On tile's tint, an accent
 // edge, and its text held to the tiles' floors (session 328). Its own style
@@ -163,48 +141,7 @@ void styleRuleCard(QWidget *card)
              CabIoColors::tileInk(UiColor::muted(), CabIoColors::Tile::On).name()));
 }
 
-QColor blend(const QColor &a, const QColor &b, double t)
-{
-    return QColor::fromRgbF(a.redF() + (b.redF() - a.redF()) * t,
-                            a.greenF() + (b.greenF() - a.greenF()) * t,
-                            a.blueF() + (b.blueF() - a.blueF()) * t);
-}
-
 }  // namespace
-
-// =============================================================================
-//  Colours
-// =============================================================================
-namespace CabIoColors {
-
-static bool highContrast() { return UiColor::activeTheme() == int(Theme::HighContrast); }
-
-double textFloor()    { return highContrast() ? 7.0 : 4.5; }
-double graphicFloor() { return highContrast() ? 7.0 : 3.0; }
-
-QColor tileFill(Tile t)
-{
-    const QColor base = QGuiApplication::palette().color(QPalette::Base);
-    switch (t) {
-    case Tile::On:    return blend(base, UiColor::accent(), 0.08);
-    case Tile::Fault: return blend(base, UiColor::warning(), 0.10);
-    case Tile::Plain: break;
-    }
-    return base;
-}
-
-QColor tileInk(const QColor &ink, Tile t)
-{
-    return UiColor::withContrast(ink, tileFill(t), textFloor());
-}
-
-QColor lampRim(const QString &lamp)
-{
-    const QColor base = QGuiApplication::palette().color(QPalette::Base);
-    return UiColor::withContrast(UiColor::signalLamp(lamp).darker(140), base, graphicFloor());
-}
-
-}  // namespace CabIoColors
 
 using CabIoColors::Tile;
 
@@ -490,78 +427,7 @@ private:
 };
 
 // One output: a lamp, its name, its state and how often it changed.
-// A signal lamp in `r`: lit with a glow, or an empty ring (dotted when not known).
-void paintLamp(QPainter &p, const QRectF &lamp, const QString &name, bool known, bool on)
-{
-    const QColor c = UiColor::signalLamp(name);
-    const double glowR = lamp.width() * 0.77;
-    if (known && on) {
-        QRadialGradient glow(lamp.center(), glowR);
-        QColor g = c; g.setAlpha(90);
-        QColor t = c; t.setAlpha(0);
-        glow.setColorAt(0.55, g);
-        glow.setColorAt(1.0, t);
-        p.setPen(Qt::NoPen);
-        p.setBrush(glow);
-        p.drawEllipse(lamp.center(), glowR, glowR);
-        QRadialGradient body(lamp.center() - QPointF(lamp.width() * 0.15, lamp.width() * 0.15), lamp.width() * 0.62);
-        body.setColorAt(0, c.lighter(150));
-        body.setColorAt(1, c);
-        p.setBrush(body);
-        // A rim the card can see: a yellow or white lamp on a light
-        // theme is otherwise a faint disc (session 328).
-        p.setPen(QPen(CabIoColors::lampRim(name), 1.5));
-        p.drawEllipse(lamp);
-    } else {
-        p.setBrush(QGuiApplication::palette().color(QPalette::Window));
-        QPen pen(UiColor::muted(), 1.5);
-        if (!known) pen.setStyle(Qt::DotLine);
-        p.setPen(pen);
-        p.drawEllipse(lamp);
-    }
-}
-
-// Session 358: a brake's lamp on the Scenarios tab, its name under it.
-class BrakeLamp : public QWidget
-{
-public:
-    BrakeLamp(const QString &name, QWidget *parent = nullptr) : QWidget(parent), m_name(name)
-    {
-        setObjectName(QStringLiteral("brakeLamp"));
-        setAccessibleName(name);
-        setMinimumSize(56, 58);
-        describe();
-    }
-    QSize sizeHint() const override { return QSize(64, 62); }
-    void setValues(bool known, bool on)
-    {
-        if (known == m_known && on == m_on) return;
-        m_known = known; m_on = on;
-        describe();
-        update();
-    }
-protected:
-    void paintEvent(QPaintEvent *) override
-    {
-        QPainter p(this);
-        p.setRenderHint(QPainter::Antialiasing);
-        paintLamp(p, QRectF((width() - 28) / 2.0, 6, 28, 28), QStringLiteral("red"), m_known, m_on);
-        p.setPen(palette().color(QPalette::Text));
-        p.setFont(scaled(font(), 0.95, m_on ? QFont::Bold : QFont::Normal));
-        p.drawText(QRect(0, 38, width(), 20), Qt::AlignCenter, m_name);
-    }
-private:
-    // What a screen reader and the tooltip say: not "released" before any output data.
-    void describe()
-    {
-        const QString state = !m_known ? QStringLiteral("no output data yet")
-                            : m_on ? QStringLiteral("applied") : QStringLiteral("released");
-        setAccessibleDescription(state);
-        setToolTip(QStringLiteral("%1: %2").arg(m_name, state));
-    }
-    QString m_name;
-    bool m_known = false, m_on = false;
-};
+using SimUi::paintLamp;
 
 class LampTile : public QWidget
 {
@@ -631,7 +497,6 @@ private:
 
 }  // namespace CabIoUi
 
-using CabIoUi::BrakeLamp;
 using CabIoUi::InputTile;
 using CabIoUi::LampTile;
 using CabIoUi::TileGrid;
@@ -658,7 +523,6 @@ CabIoSimWindow::CabIoSimWindow(SerialManager *serial, QWidget *parent)
     m_tabs->addTab(buildInputsTab(),  tr("Inputs \u2192 VCC"));
     m_tabs->addTab(buildOutputsTab(), tr("Outputs \u2190 VCC"));
     m_tabs->addTab(buildReadbackTab(), tr("Readback \u2192 VCC"));
-    m_tabs->addTab(buildAnalogTab(),  tr("Analog \u2192 VCC"));
     m_tabs->addTab(buildScenariosTab(), tr("Scenarios"));
     m_tabs->addTab(buildFramesTab(),  tr("Frames"));
     root->addWidget(m_tabs, 1);
@@ -675,19 +539,6 @@ CabIoSimWindow::CabIoSimWindow(SerialManager *serial, QWidget *parent)
     m_periodTimer = new QTimer(this);
     m_periodTimer->setTimerType(Qt::PreciseTimer);
     connect(m_periodTimer, &QTimer::timeout, this, &CabIoSimWindow::onPeriodic);
-
-    m_anTimer = new QTimer(this);
-    m_anTimer->setTimerType(Qt::PreciseTimer);
-    m_anTimer->setInterval(100);
-    connect(m_anTimer, &QTimer::timeout, this, &CabIoSimWindow::sendAnalogNow);
-    m_anUdp = new UdpSender(this);
-    connect(m_anUdp, &UdpSender::error, this, [this](const QString &what) {
-        m_status->fail(tr("Analog over UDP: %1").arg(what));
-    });
-
-    m_rampTimer = new QTimer(this);
-    m_rampTimer->setInterval(100);
-    connect(m_rampTimer, &QTimer::timeout, this, [this]() { stepRamp(m_rampTimer->interval() / 1000.0); });
 
     m_uiTimer = new QTimer(this);
     m_uiTimer->setInterval(250);
@@ -1005,185 +856,6 @@ QWidget *CabIoSimWindow::buildReadbackTab()
     return page;
 }
 
-QWidget *CabIoSimWindow::buildAnalogTab()
-{
-    auto *page = new QWidget(this);
-    auto *v = new QVBoxLayout(page);
-    v->setContentsMargins(0, 10, 0, 0);
-    v->setSpacing(8);
-
-    auto *row = new QHBoxLayout;
-    row->setSpacing(8);
-    row->addWidget(segmented({ tr("Off"), tr("Send every") }, &m_anSendGroup, page));
-    m_anSendGroup->button(1)->setToolTip(tr("Send the six channels over UDP as each ticked controller, unasked, every period. "
-                                            "Leave Off while a real analog card is on the line."));
-    connect(m_anSendGroup, &QButtonGroup::idClicked, this, [this](int id) { setAnalogSending(id == 1); });
-    m_anPeriod = new QSpinBox(page);
-    m_anPeriod->setRange(10, 10000);
-    m_anPeriod->setSingleStep(10);
-    m_anPeriod->setValue(100);
-    m_anPeriod->setSuffix(tr(" ms"));
-    connect(m_anPeriod, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int ms) { setAnalogPeriodMs(ms); });
-    row->addWidget(m_anPeriod);
-    auto *once = new QPushButton(tr("Send now"), page);
-    once->setToolTip(tr("Send the six channels once, as each ticked controller"));
-    connect(once, &QPushButton::clicked, this, &CabIoSimWindow::sendAnalogNow);
-    row->addWidget(once);
-    row->addSpacing(12);
-    auto *as = new QLabel(tr("as"), page);
-    as->setObjectName(QStringLiteral("muted"));
-    row->addWidget(as);
-    for (quint8 id : { kAnalogTopId, kAnalogBottomId }) {
-        auto *chip = new QPushButton(id == kAnalogTopId ? tr("15 top") : tr("16 bottom"), page);
-        chip->setObjectName(QStringLiteral("idChip"));
-        chip->setCheckable(true);
-        chip->setChecked(id == kAnalogTopId);
-        chip->setCursor(Qt::PointingHandCursor);
-        chip->setProperty("cardId", int(id));
-        chip->setToolTip(tr("Send as analog controller %1 (src_id %1)").arg(id));
-        connect(chip, &QPushButton::toggled, this, [this]() { refreshAnalog(); });
-        m_anCardChips << chip;
-        row->addWidget(chip);
-    }
-    row->addStretch(1);
-    v->addLayout(row);
-
-    // Session 350: the analog card's frames go over UDP, one datagram each.
-    auto *to = new QHBoxLayout;
-    to->setSpacing(8);
-    to->addWidget(new QLabel(tr("To (UDP)"), page));
-    m_anHost = new QLineEdit(QStringLiteral("127.0.0.1"), page);
-    m_anHost->setMaximumWidth(160);
-    m_anHost->setToolTip(tr("The VCC's address: a dotted quad or a host name"));
-    to->addWidget(m_anHost);
-    to->addWidget(new QLabel(tr("port"), page));
-    m_anPort = new QSpinBox(page);
-    m_anPort->setRange(1, 65535);
-    m_anPort->setValue(20000);
-    to->addWidget(m_anPort);
-    connect(m_anHost, &QLineEdit::textChanged, this, [this]() { refreshAnalog(); });
-    connect(m_anPort, QOverload<int>::of(&QSpinBox::valueChanged), this, [this]() { refreshAnalog(); });
-    auto *udpNote = new QLabel(tr("one 34-byte frame per datagram; the input and output cards stay on the serial port"), page);
-    udpNote->setObjectName(QStringLiteral("muted"));
-    to->addWidget(udpNote);
-    to->addStretch(1);
-    v->addLayout(to);
-
-    auto *hint = new QLabel(tr("Set a channel's loop current, or the pressure it should read as. The VCC reads "
-                               "raw / 2\u00B3\u00B9 \u00D7 75 mA (the firmware's 2500/33 is integer division), then "
-                               "4\u201320 mA across the sensor's full scale \u00D7 1.02 in kg/cm\u00B2. Below 3.5 mA it is an "
-                               "open loop, above 20.5 mA a short: no pressure."), page);
-    hint->setObjectName(QStringLiteral("muted"));
-    hint->setWordWrap(true);
-    v->addWidget(hint);
-
-    // Session 351: a dial per channel, its pressure box under it. Drag the
-    // dial or type the pressure: either sets the current that reads as it.
-    auto *dials = new QHBoxLayout;
-    dials->setSpacing(8);
-    auto *grid = new QGridLayout;
-    grid->setHorizontalSpacing(10);
-    grid->setVerticalSpacing(6);
-    const QStringList heads{ tr("Channel"), tr("Current"), tr("Sensor"), tr("The VCC reads") };
-    for (int c = 0; c < heads.size(); ++c) {
-        auto *h = new QLabel(heads.at(c).toUpper(), page);
-        h->setObjectName(QStringLiteral("groupHeading"));
-        grid->addWidget(h, 0, c);
-    }
-    for (int ch = 0; ch < kAnalogChannels; ++ch) {
-        AnRow r;
-        grid->addWidget(new QLabel(QStringLiteral("%1 <span style=\"%2\">\u00B7 channel%3_data</span>")
-                                       .arg(analogChannelName(ch), UiColor::mutedStyle()).arg(ch + 1), page),
-                        ch + 1, 0);
-        r.mA = new QDoubleSpinBox(page);
-        r.mA->setRange(0, 25);
-        r.mA->setDecimals(3);
-        r.mA->setSingleStep(0.1);
-        r.mA->setSuffix(tr(" mA"));
-        r.mA->setValue(4);
-        connect(r.mA, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this]() { refreshAnalog(); });
-        grid->addWidget(r.mA, ch + 1, 1);
-        r.kg = new QDoubleSpinBox(page);
-        r.kg->setRange(0, 16.32);
-        r.kg->setDecimals(2);
-        r.kg->setSingleStep(0.1);
-        r.kg->setSuffix(tr(" kg/cm\u00B2"));
-        r.kg->setToolTip(tr("Sets the current that reads as this pressure"));
-        connect(r.kg, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
-                [this, ch](double kg) { setAnalogPressure(ch, kg); });
-        // As narrow as its dial: six boxes sized to "16.32 kg/cm\u00B2" made the
-        // window 1440 px wide with Linux's fonts (session 351, CI).
-        r.kg->setMinimumWidth(80);
-        r.gauge = new PressureGauge(analogChannelName(ch), page);
-        connect(r.gauge, &PressureGauge::valueEdited, this, [this, ch](double kg) { setAnalogPressure(ch, kg); });
-        auto *dial = new QVBoxLayout;
-        dial->setSpacing(4);
-        dial->addWidget(r.gauge, 1);
-        dial->addWidget(r.kg);
-        dials->addLayout(dial, 1);
-        r.scale = new QComboBox(page);
-        r.scale->addItem(tr("10 bar"), 10);
-        r.scale->addItem(tr("16 bar"), 16);
-        connect(r.scale, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() { refreshAnalog(); });
-        grid->addWidget(r.scale, ch + 1, 2);
-        r.reads = new QLabel(page);
-        r.reads->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        grid->addWidget(r.reads, ch + 1, 3);
-        m_anRows << r;
-    }
-    grid->setColumnStretch(3, 1);
-    v->addLayout(dials, 1);
-    v->addLayout(grid);
-    m_anSummary = new QLabel(page);
-    m_anSummary->setWordWrap(true);
-    v->addWidget(m_anSummary);
-    return page;
-}
-
-void CabIoSimWindow::refreshAnalog()
-{
-    if (m_anRows.isEmpty()) return;
-    for (int ch = 0; ch < m_anRows.size(); ++ch) {
-        AnRow &r = m_anRows[ch];
-        const quint32 raw = analogRawFor(r.mA->value());
-        const double ma = CabIo::analogMa(raw);
-        const int bar = r.scale->currentData().toInt();
-        const PressureReading p = currentToPressure(ma, bar);
-        { const QSignalBlocker block(r.kg); r.kg->setMaximum(bar * 1.02); }
-        QString t = QStringLiteral("%1 \u2192 %2 mA \u2192 ").arg(hex32(raw)).arg(ma, 0, 'f', 3);
-        r.gauge->setMaximum(bar * 1.02);
-        if (p.status == PressureReading::Ok) {
-            t += tr("%1 kg/cm\u00B2 (%2 kPa)").arg(p.kgcm2, 0, 'f', 2).arg(p.kgcm2 * 98.0665, 0, 'f', 0);
-            const QSignalBlocker block(r.kg);
-            r.kg->setValue(p.kgcm2);
-            r.gauge->setValue(p.kgcm2);
-            r.gauge->setFault(QString());
-        } else {
-            t += p.status == PressureReading::Open ? tr("open loop (< 3.5 mA): no pressure")
-                                                   : tr("short (> 20.5 mA): no pressure");
-            r.gauge->setFault(p.status == PressureReading::Open ? tr("open loop") : tr("short"));
-        }
-        r.kg->setEnabled(p.status == PressureReading::Ok);
-        if (ch < kBrakeChannels && m_dashGauges[ch]) {
-            PressureGauge *g = m_dashGauges[ch];
-            g->setMaximum(bar * 1.02);
-            if (p.status == PressureReading::Ok) g->setValue(p.kgcm2);
-            g->setFault(p.status == PressureReading::Ok ? QString()
-                        : p.status == PressureReading::Open ? tr("open loop") : tr("short"));
-        }
-        r.reads->setText(t);
-        r.reads->setStyleSheet(p.status == PressureReading::Ok ? QString() : UiColor::warningStyle());
-    }
-    const QVector<quint8> cards = analogCards();
-    QString sum = analogSending() ? tr("Sending every %1 ms as %2 to %3:%4 (UDP).").arg(m_anTimer->interval())
-                                        .arg(cards.isEmpty() ? tr("no controller (tick 15 or 16)") : idRange(cards))
-                                        .arg(analogHost()).arg(analogPort())
-                                  : tr("Off: nothing sent unasked.");
-    sum += tr(" %1 sent.").arg(count(m_analogSent, "analog frame", "analog frames"));
-    m_anSummary->setText(sum);
-    m_anSummary->setStyleSheet(analogSending() ? QString() : UiColor::mutedStyle());
-}
-
 // One row per pin, named by the cab's STRUCT_LOCO_OUTPUT.
 void CabIoSimWindow::rebuildReadback()
 {
@@ -1327,6 +999,7 @@ QWidget *CabIoSimWindow::buildFramesTab()
         m_wf.crc = Crc(m_crc->currentData().toInt());
         refreshInputs();
         onUiTick();
+        emit wireFormatChanged(m_wf);
     });
     form->addRow(tr("CRC"), m_crc);
     m_length = new QComboBox(box);
@@ -1335,11 +1008,12 @@ QWidget *CabIoSimWindow::buildFramesTab()
     connect(m_length, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int) {
         m_wf.length = LengthRule(m_length->currentData().toInt());
         refreshInputs();
+        emit wireFormatChanged(m_wf);
     });
     form->addRow(tr("message_length counts"), m_length);
     m_echo = new QCheckBox(tr("A reply carries its request's seq_num"), box);
     m_echo->setChecked(true);
-    connect(m_echo, &QCheckBox::toggled, this, [this](bool on) { m_wf.echoSeq = on; refreshInputs(); });
+    connect(m_echo, &QCheckBox::toggled, this, [this](bool on) { m_wf.echoSeq = on; refreshInputs(); emit wireFormatChanged(m_wf); });
     form->addRow(tr("seq_num"), m_echo);
     auto *crcRow = new QHBoxLayout;
     m_crcNote = new QLabel(box);
@@ -1423,33 +1097,15 @@ void CabIoSimWindow::restyle()
 {
     const QPalette pal = palette();
     const QString frame  = UiColor::frame().name();
-    const QString accent = UiColor::accent().name();
-    const QString base   = pal.color(QPalette::Base).name();
     const QString text   = pal.color(QPalette::Text).name();
-    const QString muted  = UiColor::muted().name();
-    setStyleSheet(QStringLiteral(
-        "QWidget#segmented QPushButton { border: 1px solid %1; padding: 5px 14px; background: %3; color: %4; border-radius: 0px; }"
-        "QWidget#segmented QPushButton[seg=\"mid\"], QWidget#segmented QPushButton[seg=\"last\"] { border-left: none; }"
-        "QWidget#segmented QPushButton[seg=\"first\"] { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }"
-        "QWidget#segmented QPushButton[seg=\"last\"] { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }"
-        "QWidget#segmented QPushButton:checked { background: %2; color: %3; border-color: %2; font-weight: 600; }"
-        "QPushButton#primary { background: %2; color: %3; border: 1px solid %2; border-radius: 6px; padding: 5px 18px; font-weight: 600; }"
-        "QPushButton#primary:disabled { background: %3; color: %5; border-color: %1; }"
-        "QPushButton#idChip { border: 1px solid %1; border-radius: 11px; padding: 2px 10px; background: %3; color: %4; }"
-        "QPushButton#idChip:checked { background: %2; color: %3; border-color: %2; font-weight: 600; }"
-        "QPushButton#idChip:disabled { color: %5; }"
-        "QPushButton#idChip:checked:disabled { background: %5; color: %3; border-color: %5; }"
-        "QLabel#muted { color: %5; }"
-        "QLabel#groupHeading { color: %5; font-weight: 600; letter-spacing: 1px; }"
+    const QString base   = pal.color(QPalette::Base).name();
+    // The simulators' shared rules (simwidgets.h), then this window's own.
+    setStyleSheet(SimUi::baseStyleSheet() + QStringLiteral(
         "QLabel#bankTitle { font-size: 15pt; font-weight: 600; }"
-        "QLabel#headline { font-size: 14pt; font-weight: 600; }"
-        "QLabel#mono, QLabel#bankWord { font-family: \"Consolas\", \"Menlo\", \"DejaVu Sans Mono\", monospace; color: %5; }"
-        "QLabel#bankWord { color: %4; font-weight: 600; }"
+        "QLabel#bankWord { font-family: \"Consolas\", \"Menlo\", \"DejaVu Sans Mono\", monospace; color: %2; font-weight: 600; }"
         "QFrame#bankRule { color: %1; }"
-        "QFrame#card { background: %3; border: 1px solid %1; border-radius: 10px; }"
-        "QLabel#cardTitle { font-size: 13pt; font-weight: 600; }"
         "QFrame#ruleCard { background: %3; border: 1px solid %1; border-radius: 9px; }")
-        .arg(frame, accent, base, text, muted));
+        .arg(frame, text, base));
     for (QFrame *card : m_ruleCards) styleRuleCard(card);
     for (Bank &b : m_banks)
         for (InputTile *t : b.tiles) t->update();
@@ -1468,10 +1124,8 @@ void CabIoSimWindow::setCab(Cab cab)
     rebuildOutputs();
     rebuildReadback();
     loadRulesFor(m_cab);
-    m_brakeLevel = -1;
-    m_rampTimer->stop();
-    applyBrakeLevel(false);
     saveSettings();
+    if (m_outFrames > 0) emit outputWordChanged(int(m_cab), m_outWord);
 }
 
 void CabIoSimWindow::rebuildInputs()
@@ -1756,97 +1410,6 @@ QWidget *CabIoSimWindow::buildScenariosTab()
     row->addWidget(more);
     v->addLayout(row);
 
-    // Session 358: the brakes and the pressures they set, as one card --
-    // the brake lamps, BP / BC / MR dials that move with the ramp (a mark
-    // where each is heading), and the values per brake.
-    auto *dash = new QFrame(page);
-    dash->setObjectName(QStringLiteral("card"));
-    auto *dv = new QVBoxLayout(dash);
-    dv->setContentsMargins(14, 10, 14, 10);
-    dv->setSpacing(6);
-    row = new QHBoxLayout;
-    row->setSpacing(8);
-    auto *title = new QLabel(tr("Brakes and pressures"), dash);
-    title->setObjectName(QStringLiteral("cardTitle"));
-    row->addWidget(title);
-    row->addSpacing(12);
-    m_brakesOnBox = new QCheckBox(tr("Pressures follow the brakes"), dash);
-    m_brakesOnBox->setChecked(true);
-    m_brakesOnBox->setToolTip(tr("Ramp the analog card's BP, BC and MR to the values set for the strongest brake "
-                                 "the VCC applies (EB over FSB over NB)"));
-    connect(m_brakesOnBox, &QCheckBox::toggled, this, [this](bool on) { setBrakePressuresOn(on); });
-    row->addWidget(m_brakesOnBox);
-    row->addStretch(1);
-    row->addWidget(new QLabel(tr("Ramp"), dash));
-    m_rampRate = new QDoubleSpinBox(dash);
-    m_rampRate->setRange(0.1, 20.0);
-    m_rampRate->setDecimals(1);
-    m_rampRate->setSingleStep(0.1);
-    m_rampRate->setValue(1.0);
-    m_rampRate->setSuffix(tr(" kg/cm\u00B2 per s"));
-    m_rampRate->setToolTip(tr("How fast each pressure moves toward its new value"));
-    connect(m_rampRate, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this]() { saveSettings(); });
-    row->addWidget(m_rampRate);
-    dv->addLayout(row);
-
-    row = new QHBoxLayout;
-    row->setSpacing(14);
-    auto *lamps = new QGridLayout;
-    lamps->setSpacing(2);
-    const char *const lampNames[4] = { "NB", "FSB", "EB", "LE" };
-    for (int i = 0; i < 4; ++i) {
-        auto *lamp = new BrakeLamp(QString::fromLatin1(lampNames[i]), dash);
-        m_brakeLamps << lamp;
-        lamps->addWidget(lamp, i / 2, i % 2);
-    }
-    row->addLayout(lamps);
-    for (int ch = 0; ch < kBrakeChannels; ++ch) {
-        auto *g = new PressureGauge(analogChannelName(ch), dash);
-        g->setObjectName(QStringLiteral("dashGauge"));
-        g->setMinimumSize(120, 120);
-        g->setToolTip(tr("%1, as the analog card sends it. Drag to set it by hand; the green mark is where "
-                         "the brake takes it.").arg(analogChannelName(ch)));
-        connect(g, &PressureGauge::valueEdited, this, [this, ch](double kg) { setAnalogPressure(ch, kg); });
-        m_dashGauges[ch] = g;
-        row->addWidget(g, 1);
-    }
-    auto *grid = new QGridLayout;
-    grid->setHorizontalSpacing(6);
-    grid->setVerticalSpacing(3);
-    for (int ch = 0; ch < kBrakeChannels; ++ch) {
-        auto *head = new QLabel(analogChannelName(ch), dash);
-        head->setObjectName(QStringLiteral("groupHeading"));
-        head->setAlignment(Qt::AlignCenter);
-        grid->addWidget(head, 0, ch + 1);
-    }
-    for (int level = 0; level < kBrakeLevels; ++level) {
-        grid->addWidget(new QLabel(level == NoBrake ? tr("No brake") : brakeLevelName(level), dash), level + 1, 0);
-        for (int ch = 0; ch < kBrakeChannels; ++ch) {
-            auto *kg = new QDoubleSpinBox(dash);
-            kg->setRange(0.0, 16.32);
-            kg->setDecimals(1);
-            kg->setSingleStep(0.1);
-            kg->setValue(defaultBrakePressure(level, ch));
-            kg->setToolTip(tr("%1 with %2, kg/cm\u00B2").arg(analogChannelName(ch),
-                                                             level == NoBrake ? tr("no brake") : brakeLevelName(level)));
-            connect(kg, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this, level]() {
-                saveSettings();
-                if (level == m_brakeLevel) applyBrakeLevel(true);   // the pressure now in force moved
-            });
-            m_brakeKg[level][ch] = kg;
-            grid->addWidget(kg, level + 1, ch + 1);
-        }
-    }
-    auto *gridUnit = new QLabel(tr("kg/cm\u00B2"), dash);
-    gridUnit->setObjectName(QStringLiteral("muted"));
-    grid->addWidget(gridUnit, 0, 0);
-    row->addLayout(grid);
-    dv->addLayout(row);
-    m_brakeNow = new QLabel(dash);
-    m_brakeNow->setWordWrap(true);
-    dv->addWidget(m_brakeNow);
-    v->addWidget(dash);
-
     auto *hint = new QLabel(tr("Rules: when a condition starts, its input is set to the first value; when it stops, to the "
                                "second. An input you click in between stays as you set it until the condition changes again. "
                                "Later rules win over earlier ones. A lit rule's condition holds now."), page);
@@ -1864,93 +1427,6 @@ QWidget *CabIoSimWindow::buildScenariosTab()
     m_ruleScroll->setWidget(host);
     v->addWidget(m_ruleScroll, 1);
     return page;
-}
-
-// ---- brake pressures ---------------------------------------------------------------------
-
-void CabIoSimWindow::setBrakePressuresOn(bool on)
-{
-    { const QSignalBlocker b(m_brakesOnBox); m_brakesOnBox->setChecked(on); }
-    m_brakesOn = on;
-    if (!on) m_rampTimer->stop();
-    saveSettings();
-    applyBrakeLevel(true);
-}
-
-void CabIoSimWindow::setBrakePressure(int level, int ch, double kgcm2)
-{
-    if (level >= 0 && level < kBrakeLevels && ch >= 0 && ch < kBrakeChannels) m_brakeKg[level][ch]->setValue(kgcm2);
-}
-
-double CabIoSimWindow::brakePressure(int level, int ch) const
-{
-    return level >= 0 && level < kBrakeLevels && ch >= 0 && ch < kBrakeChannels ? m_brakeKg[level][ch]->value() : 0.0;
-}
-
-void CabIoSimWindow::setRampRate(double kgcm2PerS) { m_rampRate->setValue(kgcm2PerS); }
-double CabIoSimWindow::rampRate() const { return m_rampRate->value(); }
-bool CabIoSimWindow::ramping() const { return m_rampTimer->isActive(); }
-
-// Like the rules, on a change of brake: a pressure dragged by hand in
-// between stays until the brake changes again.
-void CabIoSimWindow::applyBrakeLevel(bool force)
-{
-    if (!m_brakesOn || m_outFrames == 0) { refreshBrakes(); return; }
-    const int level = brakeLevel(m_cab, m_outWord);
-    if (level == m_brakeLevel && !force) return;
-    m_brakeLevel = level;
-    for (int ch = 0; ch < kBrakeChannels; ++ch) {
-        const PressureReading p = currentToPressure(analogMa(ch), analogScale(ch));
-        m_rampKg[ch] = p.status == PressureReading::Ok ? p.kgcm2 : brakePressure(level, ch);
-    }
-    m_rampTimer->start();
-    refreshBrakes();
-}
-
-void CabIoSimWindow::stepRamp(double seconds)
-{
-    if (m_brakeLevel < 0) { m_rampTimer->stop(); return; }
-    bool done = true;
-    for (int ch = 0; ch < kBrakeChannels; ++ch) {
-        const double target = brakePressure(m_brakeLevel, ch);
-        m_rampKg[ch] = rampToward(m_rampKg[ch], target, rampRate() * seconds);
-        setAnalogPressure(ch, m_rampKg[ch]);
-        done = done && m_rampKg[ch] == target;
-    }
-    if (done) m_rampTimer->stop();
-    refreshBrakes();
-}
-
-void CabIoSimWindow::refreshBrakes()
-{
-    if (!m_brakeNow) return;
-    QString t;
-    if (!m_brakesOn)          t = tr("Off: the pressures stay as set on the Analog tab.");
-    else if (m_brakeLevel < 0) t = tr("Waiting for output data from the VCC.");
-    else {
-        QStringList parts;
-        for (int ch = 0; ch < kBrakeChannels; ++ch) {
-            const double target = brakePressure(m_brakeLevel, ch);
-            parts << (ramping() && m_rampKg[ch] != target
-                          ? QStringLiteral("%1 %2 \u2192 %3").arg(analogChannelName(ch)).arg(m_rampKg[ch], 0, 'f', 1).arg(target, 0, 'f', 1)
-                          : QStringLiteral("%1 %2").arg(analogChannelName(ch)).arg(target, 0, 'f', 1));
-        }
-        t = (m_brakeLevel == NoBrake ? tr("No brake") : tr("%1 applied").arg(brakeLevelName(m_brakeLevel)))
-            + (ramping() ? tr(", ramping: ") : tr(": ")) + parts.join(QStringLiteral(", "));
-        if (!analogSending()) t += tr(". Analog \u2192 VCC is not sending: the VCC does not see these yet.");
-    }
-    m_brakeNow->setText(t);
-
-    const char *const outputs[4] = { "normal_brake", "full_service_brake", "emergency_brake", "light_engine_brake" };
-    for (int i = 0; i < m_brakeLamps.size(); ++i) {
-        bool on = false;
-        for (const OutputBit &o : outputBits(m_cab))
-            if (o.name == QLatin1String(outputs[i])) on = outputActive(o, m_outWord);
-        m_brakeLamps[i]->setValues(m_outFrames > 0, on);
-    }
-    for (int ch = 0; ch < kBrakeChannels; ++ch)
-        if (m_dashGauges[ch])
-            m_dashGauges[ch]->setTarget(m_brakesOn && m_brakeLevel >= 0 ? brakePressure(m_brakeLevel, ch) : -1);
 }
 
 void CabIoSimWindow::loadRulesFor(Cab cab)
@@ -2251,6 +1727,7 @@ void CabIoSimWindow::setWireFormat(const WireFormat &wf)
     { const QSignalBlocker b(m_length); m_length->setCurrentIndex(m_length->findData(int(wf.length))); }
     { const QSignalBlocker b(m_echo);   m_echo->setChecked(wf.echoSeq); }
     refreshInputs();
+    emit wireFormatChanged(wf);
 }
 
 void CabIoSimWindow::loadSettings()
@@ -2272,36 +1749,10 @@ void CabIoSimWindow::loadSettings()
     wf.crc = Crc(s.value(QStringLiteral("crc"), int(wf.crc)).toInt());
     wf.length = LengthRule(s.value(QStringLiteral("length"), int(wf.length)).toInt());
     wf.echoSeq = s.value(QStringLiteral("echoSeq"), true).toBool();
-    // No brake by default: BP 5.0, BC 0, MR 9.0 kg/cm^2, the rest 4 mA.
-    static const double defaultKg[kAnalogChannels] = { 5.0, 0, 9.0, 0, 0, 0 };
-    for (int ch = 0; ch < kAnalogChannels; ++ch) {
-        setAnalogScale(ch, s.value(QStringLiteral("analogBar_%1").arg(ch + 1), 10).toInt());
-        const QVariant ma = s.value(QStringLiteral("analogMa_%1").arg(ch + 1));
-        if (ma.isValid()) setAnalogMa(ch, ma.toDouble()); else setAnalogPressure(ch, defaultKg[ch]);
-    }
-    setAnalogPeriodMs(s.value(QStringLiteral("analogPeriodMs"), 100).toInt());
-    setAnalogTarget(s.value(QStringLiteral("analogHost"), QStringLiteral("127.0.0.1")).toString(),
-                    quint16(s.value(QStringLiteral("analogPort"), 20000).toUInt()));
-    QVector<quint8> anIds;
-    for (const QString &id : s.value(QStringLiteral("analogIds"), QStringLiteral("15")).toString().split(QLatin1Char(','), Qt::SkipEmptyParts))
-        anIds << quint8(id.toInt());
-    setAnalogCards(anIds);
+    // The analog card and the brake pressures moved to the Brake Test Bench
+    // (session 360), which reads their keys here on its first open.
     m_rulesOn = s.value(QStringLiteral("scenarios"), true).toBool();
     m_rulesOnGroup->button(m_rulesOn ? 1 : 0)->setChecked(true);
-    {
-        // Blocked: each value's own signal would save the half-loaded settings.
-        m_brakesOn = s.value(QStringLiteral("brakePressures"), true).toBool();
-        const QSignalBlocker b0(m_brakesOnBox), b1(m_rampRate);
-        m_brakesOnBox->setChecked(m_brakesOn);
-        m_rampRate->setValue(s.value(QStringLiteral("rampRate"), 1.0).toDouble());
-        for (int level = 0; level < kBrakeLevels; ++level)
-            for (int ch = 0; ch < kBrakeChannels; ++ch) {
-                const QSignalBlocker b(m_brakeKg[level][ch]);
-                m_brakeKg[level][ch]->setValue(
-                    s.value(QStringLiteral("brakeKg_%1_%2").arg(brakeLevelName(level), analogChannelName(ch)),
-                            defaultBrakePressure(level, ch)).toDouble());
-            }
-    }
     s.endGroup();
     loadRulesFor(m_cab);
     setWireFormat(wf);
@@ -2323,22 +1774,7 @@ void CabIoSimWindow::saveSettings() const
     s.setValue(QStringLiteral("crc"), int(m_wf.crc));
     s.setValue(QStringLiteral("length"), int(m_wf.length));
     s.setValue(QStringLiteral("echoSeq"), m_wf.echoSeq);
-    for (int ch = 0; ch < m_anRows.size(); ++ch) {
-        s.setValue(QStringLiteral("analogMa_%1").arg(ch + 1), analogMa(ch));
-        s.setValue(QStringLiteral("analogBar_%1").arg(ch + 1), analogScale(ch));
-    }
-    s.setValue(QStringLiteral("analogPeriodMs"), m_anPeriod->value());
-    s.setValue(QStringLiteral("analogHost"), analogHost());
-    s.setValue(QStringLiteral("analogPort"), analogPort());
-    QStringList anIds;
-    for (quint8 id : analogCards()) anIds << QString::number(id);
-    s.setValue(QStringLiteral("analogIds"), anIds.join(QLatin1Char(',')));
     s.setValue(QStringLiteral("scenarios"), m_rulesOn);
-    s.setValue(QStringLiteral("brakePressures"), m_brakesOn);
-    s.setValue(QStringLiteral("rampRate"), rampRate());
-    for (int level = 0; level < kBrakeLevels; ++level)
-        for (int ch = 0; ch < kBrakeChannels; ++ch)
-            s.setValue(QStringLiteral("brakeKg_%1_%2").arg(brakeLevelName(level), analogChannelName(ch)), brakePressure(level, ch));
     s.setValue(rulesKey(m_cab), QString::fromUtf8(rulesToJson(m_rules)));
     for (int bi = 0; bi < m_banks.size(); ++bi) {
         QStringList ids;
@@ -2459,85 +1895,6 @@ void CabIoSimWindow::refreshPort()
                            : QString());
 }
 
-// ---- analog -------------------------------------------------------------------------------
-
-void CabIoSimWindow::setAnalogMa(int ch, double mA) { if (ch >= 0 && ch < m_anRows.size()) m_anRows[ch].mA->setValue(mA); }
-double CabIoSimWindow::analogMa(int ch) const { return m_anRows.value(ch).mA ? m_anRows.at(ch).mA->value() : 0; }
-
-void CabIoSimWindow::setAnalogPressure(int ch, double kgcm2)
-{
-    if (ch < 0 || ch >= m_anRows.size()) return;
-    setAnalogMa(ch, 4.0 + 16.0 * kgcm2 / (analogScale(ch) * 1.02));
-}
-
-void CabIoSimWindow::setAnalogScale(int ch, int bar)
-{
-    if (ch < 0 || ch >= m_anRows.size()) return;
-    m_anRows[ch].scale->setCurrentIndex(qMax(0, m_anRows[ch].scale->findData(bar)));
-}
-
-int CabIoSimWindow::analogScale(int ch) const
-{
-    return m_anRows.value(ch).scale ? m_anRows.at(ch).scale->currentData().toInt() : 10;
-}
-
-void CabIoSimWindow::setAnalogCards(const QVector<quint8> &ids)
-{
-    for (QPushButton *c : m_anCardChips) {
-        const QSignalBlocker b(c);
-        c->setChecked(ids.contains(quint8(c->property("cardId").toInt())));
-    }
-    refreshAnalog();
-}
-
-QVector<quint8> CabIoSimWindow::analogCards() const
-{
-    QVector<quint8> ids;
-    for (QPushButton *c : m_anCardChips)
-        if (c->isChecked()) ids << quint8(c->property("cardId").toInt());
-    return ids;
-}
-
-void CabIoSimWindow::setAnalogSending(bool on)
-{
-    { const QSignalBlocker b(m_anSendGroup); m_anSendGroup->button(on ? 1 : 0)->setChecked(true); }
-    if (on) m_anTimer->start(); else m_anTimer->stop();
-    refreshAnalog();
-}
-
-bool CabIoSimWindow::analogSending() const { return m_anTimer->isActive(); }
-
-void CabIoSimWindow::setAnalogPeriodMs(int ms)
-{
-    { const QSignalBlocker b(m_anPeriod); m_anPeriod->setValue(ms); }
-    m_anTimer->setInterval(ms);
-    refreshAnalog();
-}
-
-void CabIoSimWindow::setAnalogTarget(const QString &host, quint16 port)
-{
-    m_anHost->setText(host);
-    m_anPort->setValue(port);
-}
-
-QString CabIoSimWindow::analogHost() const { return m_anHost->text().trimmed(); }
-quint16 CabIoSimWindow::analogPort() const { return quint16(m_anPort->value()); }
-
-void CabIoSimWindow::sendAnalogNow()
-{
-    QVector<quint32> raw;
-    for (int ch = 0; ch < kAnalogChannels; ++ch) raw << analogRawFor(analogMa(ch));
-    for (quint8 id : analogCards()) {
-        const QByteArray bytes = analogData(id, m_anSeq++, raw, m_wf);
-        // Session 350: over UDP, never the serial port. A failure is said
-        // by UdpSender::error and the frame is not counted or logged.
-        if (!m_anUdp->sendOnce(bytes, analogHost(), analogPort())) continue;
-        ++m_analogSent;
-        Frame f;
-        if (parseAnalog(bytes, &f)) logFrame(true, f);
-    }
-}
-
 // ---- traffic -------------------------------------------------------------------------------
 
 void CabIoSimWindow::write(const QByteArray &bytes)
@@ -2597,7 +1954,7 @@ void CabIoSimWindow::onFrame(const Frame &f)
         ++m_outFrames;
         refreshOutputs();
         applyRules();
-        applyBrakeLevel(false);
+        emit outputWordChanged(int(m_cab), w);
         return;
     }
     if (f.isOutputRequest()) {
@@ -2758,7 +2115,6 @@ QString CabIoSimWindow::crcHint() const
 void CabIoSimWindow::onUiTick()
 {
     if (m_mode > 0) refreshRules();     // the mode's age
-    refreshBrakes();
     refreshPort();
     flushLog();
     // Ages and the "changed" highlight move on with time.

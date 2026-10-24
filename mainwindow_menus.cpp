@@ -759,6 +759,14 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     actCabIoSim->setToolTip(tr("Not available: this DLConsole was built without Qt's Serial Port module."));
 #endif
 
+    // Session 360: the BIU, the analog card and the brake pressures, for
+    // testing the VCC's brake logic. Over UDP, so with or without serial.
+    QAction *actBrakeBench = transmitMenu->addAction(tr("&Brake Test Bench…"));
+    actBrakeBench->setObjectName(QStringLiteral("actBrakeBench"));
+    actBrakeBench->setToolTip(tr("Stand in for the BIU (CAN over UDP: heartbeat, NMT, status frames, faults) and the "
+                                 "analog card's BP / BC / MR, with the pressures moving as the brakes ask"));
+    connect(actBrakeBench, &QAction::triggered, this, &MainWindow::openBrakeBench);
+
     // With the schema commands, not with the transmitting tools: it answers
     // a question about the schema, and the loop it belongs to is edit
     // kavach.xml → reload → validate against real traffic.

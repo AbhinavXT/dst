@@ -6,14 +6,13 @@
 #include "theme.h"
 #include "uistyle.h"
 
-#ifdef DL_HAVE_SERIAL
-#include "cabiosimwindow.h"
-#endif
+#include "brakebenchwindow.h"
 
 #include <QCoreApplication>
 #include <QDoubleSpinBox>
 #include <QKeyEvent>
 #include <QMouseEvent>
+#include <QScrollArea>
 #include <QSignalSpy>
 #include <QTabWidget>
 
@@ -23,6 +22,7 @@
 //  Session 351 — the analog card's pressure gauges: a dial per channel in
 //  the Cab I/O Simulator's Analog tab. Drag the dial or type under it; either
 //  sets the current the VCC reads as that pressure.
+//  Session 360: the Analog tab moved to the Brake Test Bench; so do its checks.
 // =============================================================================
 
 using namespace CabIo;
@@ -81,16 +81,16 @@ TEST_SUITE(session351)
         CHECK(!g.accessibleName().isEmpty() && g.focusPolicy() == Qt::StrongFocus, "named and reachable by keyboard");
     }
 
-#ifdef DL_HAVE_SERIAL
-    // ---- in the window -----------------------------------------------------------
+    // ---- in the window (the Brake Test Bench since session 360) -----------------------
     {
-        CabIoSimWindow w(nullptr);
+        BrakeBenchWindow w(nullptr);
         w.setAttribute(Qt::WA_DeleteOnClose, false);
+        w.setAnalogFollows(false);      // the channels as set here, not the bench's air
         for (int ch = 0; ch < kAnalogChannels; ++ch) { w.setAnalogScale(ch, 10); w.setAnalogMa(ch, 4); }
-        // The Analog tab's; the Scenarios tab's BP/BC/MR mirrors (session 358) are named.
+        // The Analog tab's; the Bench tab's BP / BC / MR dials are named.
         QList<PressureGauge *> gauges;
         for (PressureGauge *g : w.findChildren<PressureGauge *>())
-            if (g->objectName() != QLatin1String("dashGauge")) gauges << g;
+            if (g->objectName() != QLatin1String("benchGauge")) gauges << g;
         CHECK(gauges.size() == kAnalogChannels, "a gauge for each of the six channels");
         if (gauges.size() != kAnalogChannels) return;
 
@@ -120,14 +120,13 @@ TEST_SUITE(session351)
         w.show();
         for (int i = 0; i < 3; ++i) QCoreApplication::processEvents();
         CHECK(gauges[0]->isVisible() && gauges[0]->height() >= gauges[0]->minimumSizeHint().height(), "the dials show");
-        // The Analog page's own width: the window's is the Inputs tab's tile
-        // grid (session 324), 1133 px on the Mac, 1440 with Linux's fonts.
-        const QSize page = tabs ? tabs->widget(3)->minimumSizeHint() : QSize();
+        // The Analog page's own width (inside its scroll area).
+        auto *scroll = tabs ? qobject_cast<QScrollArea *>(tabs->widget(3)) : nullptr;
+        const QSize page = scroll && scroll->widget() ? scroll->widget()->minimumSizeHint() : QSize();
         CHECK(page.isValid() && page.width() <= 1366 && w.minimumSizeHint().height() <= 700,
               QByteArray("the Analog tab fits a laptop (page ") + QByteArray::number(page.width()) + " wide, window "
                   + QByteArray::number(w.minimumSizeHint().height()) + " tall)");
         const QStringList loose = LayoutAudit::orphans(&w);
         CHECK(loose.isEmpty(), QByteArray("no visible widget outside every layout (") + loose.join(QLatin1String(", ")).toUtf8() + ")");
     }
-#endif
 }
