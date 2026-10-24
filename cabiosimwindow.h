@@ -259,7 +259,8 @@ private:
     // Analog -> VCC
     struct AnRow {
         QDoubleSpinBox *mA = nullptr;
-        QDoubleSpinBox *kg = nullptr;
+        QDoubleSpinBox *kg = nullptr;          // under its gauge (session 351)
+        class PressureGauge *gauge = nullptr;
         QComboBox *scale = nullptr;
         QLabel *reads = nullptr;
     };

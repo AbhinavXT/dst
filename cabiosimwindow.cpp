@@ -3,6 +3,7 @@
 #include "serialmanager.h"
 #include "seriallink.h"
 #include "settings.h"
+#include "pressuregauge.h"
 #include "statusline.h"
 #include "udpsender.h"
 #include "theme.h"
@@ -996,10 +997,14 @@ QWidget *CabIoSimWindow::buildAnalogTab()
     hint->setWordWrap(true);
     v->addWidget(hint);
 
+    // Session 351: a dial per channel, its pressure box under it. Drag the
+    // dial or type the pressure: either sets the current that reads as it.
+    auto *dials = new QHBoxLayout;
+    dials->setSpacing(8);
     auto *grid = new QGridLayout;
     grid->setHorizontalSpacing(10);
     grid->setVerticalSpacing(6);
-    const QStringList heads{ tr("Channel"), tr("Current"), tr("Pressure"), tr("Sensor"), tr("The VCC reads") };
+    const QStringList heads{ tr("Channel"), tr("Current"), tr("Sensor"), tr("The VCC reads") };
     for (int c = 0; c < heads.size(); ++c) {
         auto *h = new QLabel(heads.at(c).toUpper(), page);
         h->setObjectName(QStringLiteral("groupHeading"));
@@ -1026,23 +1031,29 @@ QWidget *CabIoSimWindow::buildAnalogTab()
         r.kg->setToolTip(tr("Sets the current that reads as this pressure"));
         connect(r.kg, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
                 [this, ch](double kg) { setAnalogPressure(ch, kg); });
-        grid->addWidget(r.kg, ch + 1, 2);
+        r.gauge = new PressureGauge(analogChannelName(ch), page);
+        connect(r.gauge, &PressureGauge::valueEdited, this, [this, ch](double kg) { setAnalogPressure(ch, kg); });
+        auto *dial = new QVBoxLayout;
+        dial->setSpacing(4);
+        dial->addWidget(r.gauge, 1);
+        dial->addWidget(r.kg);
+        dials->addLayout(dial, 1);
         r.scale = new QComboBox(page);
         r.scale->addItem(tr("10 bar"), 10);
         r.scale->addItem(tr("16 bar"), 16);
         connect(r.scale, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() { refreshAnalog(); });
-        grid->addWidget(r.scale, ch + 1, 3);
+        grid->addWidget(r.scale, ch + 1, 2);
         r.reads = new QLabel(page);
         r.reads->setTextInteractionFlags(Qt::TextSelectableByMouse);
-        grid->addWidget(r.reads, ch + 1, 4);
+        grid->addWidget(r.reads, ch + 1, 3);
         m_anRows << r;
     }
-    grid->setColumnStretch(4, 1);
+    grid->setColumnStretch(3, 1);
+    v->addLayout(dials, 1);
     v->addLayout(grid);
     m_anSummary = new QLabel(page);
     m_anSummary->setWordWrap(true);
     v->addWidget(m_anSummary);
-    v->addStretch(1);
     return page;
 }
 
@@ -1056,13 +1067,17 @@ void CabIoSimWindow::refreshAnalog()
         const PressureReading p = currentToPressure(ma, bar);
         { const QSignalBlocker block(r.kg); r.kg->setMaximum(bar * 1.02); }
         QString t = QStringLiteral("%1 \u2192 %2 mA \u2192 ").arg(hex32(raw)).arg(ma, 0, 'f', 3);
+        r.gauge->setMaximum(bar * 1.02);
         if (p.status == PressureReading::Ok) {
             t += tr("%1 kg/cm\u00B2 (%2 kPa)").arg(p.kgcm2, 0, 'f', 2).arg(p.kgcm2 * 98.0665, 0, 'f', 0);
             const QSignalBlocker block(r.kg);
             r.kg->setValue(p.kgcm2);
+            r.gauge->setValue(p.kgcm2);
+            r.gauge->setFault(QString());
         } else {
             t += p.status == PressureReading::Open ? tr("open loop (< 3.5 mA): no pressure")
                                                    : tr("short (> 20.5 mA): no pressure");
+            r.gauge->setFault(p.status == PressureReading::Open ? tr("open loop") : tr("short"));
         }
         r.kg->setEnabled(p.status == PressureReading::Ok);
         r.reads->setText(t);

@@ -207,6 +207,7 @@ SOURCES += \
     $$PWD/stickymenu.cpp \
     $$PWD/sessionwindow.cpp \
     $$PWD/sessionsummary.cpp \
+    $$PWD/pressuregauge.cpp \
     $$PWD/settingsdialog.cpp \
     $$PWD/udpcommunication.cpp
 
@@ -403,6 +404,7 @@ HEADERS += \
     $$PWD/stickymenu.h \
     $$PWD/sessionwindow.h \
     $$PWD/sessionsummary.h \
+    $$PWD/pressuregauge.h \
     $$PWD/settings.h \
     $$PWD/settingsdialog.h \
     $$PWD/theme.h \

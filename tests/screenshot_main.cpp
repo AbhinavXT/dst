@@ -171,7 +171,7 @@ int main(int argc, char **argv)
             }
             // Session 324: the Cab I/O Simulator mid-run. Set 1 as a real
             // @dip1 reads, two inputs flickering, the VCC's requests answered
-            // and its output data lit. SHOT_TAB=1/2/3: Outputs / Readback / Frames.
+            // and its output data lit. SHOT_TAB=1/2/3/4: Outputs / Readback / Analog / Frames.
             if (which == QLatin1String("cabio")) {
                 auto *w = new CabIoSimWindow(nullptr);
                 w->setWriteSink([](const QByteArray &) {});
@@ -198,6 +198,9 @@ int main(int argc, char **argv)
                 // Readback answering on, one pin Manual (fault bit clear).
                 w->setAnswerReadback(true);
                 w->readbackSim()->setManual(13, 0x13);
+                // SHOT_TAB=3, Analog: BC on an open loop, MR on a 16 bar sensor (session 351).
+                w->setAnalogMa(1, 2.0);
+                w->setAnalogScale(2, 16);
                 w->feedBytes(CabIo::outputRequest(17, 2, CabIo::WireFormat()));
                 w->tickFlicker();
                 w->flushLog();

@@ -11,6 +11,49 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-351"></a>
+## Session 351 — pressure gauges on the analog card
+
+Abhinav: *"can we add pressure gauges to the ui to make it better, also
+pressure gauges can set the pressure too"*. Asked and answered: all six
+channels; drag the dial and type the value.
+
+**What the operator sees.** The Analog → VCC tab has a row of six round
+dials (BP, BC, MR, Channel 4–6) above the table, each with its pressure box
+under it (the table's Pressure column moved there). A dial reads 0 to the
+sensor's full scale × 1.02 kg/cm² over 270°, numbered every 1 (every 2 on a
+16 bar sensor), with the reading under the hub and the channel's name in the
+gap at the bottom.
+- **Click or drag** on a dial to set its pressure (0.1 steps); the wheel and
+  arrow keys nudge by 0.1, Page Up/Down by 1, Home/End go to 0 / full scale.
+  Either way the current is set so the VCC reads that pressure, as typing did.
+- The dial shows what the VCC reads, not what was asked: an open loop
+  (< 3.5 mA) or short (> 20.5 mA) says so in amber with the needle parked;
+  setting a pressure brings the channel back.
+- The 10/16 bar choice rescales its dial.
+
+Colours are palette roles and `UiColor` (accent arc, error needle, warning
+fault text), so every theme holds its contrast floors.
+
+**Files.** `pressuregauge.{h,cpp}` (new, in `dlcore.pri`),
+`cabiosimwindow.{h,cpp}`, `tests/screenshot_main.cpp` (SHOT_TAB=3 shows BC
+open and MR on 16 bar), `tests/test_session351.cpp`, `tests/tests.pro`.
+
+**Tests.** `session351` (25 checks): the dial's angle → value (both ends,
+the top, the gap, outside), 0.1 snapping, click / Up / Page Down / End,
+clamping and no edit past full scale; in the window: six gauges, a drag sets
+the mA (5.0 → 11.843 mA), typing moves the dial, 16 bar rescales it, open
+loop / short shown and cleared; fits 1366×700; no orphans.
+
+**Gate (Mac):** Qt 6 and Qt 5.15 both green: 380 suites / 9684 checks, 0
+failed; 15 validators; menu audit; smoke. (The first run caught the window's
+minimum at 1313 x 711 on Qt 5; a dial's minimum is 90 px now, not 120.)
+
+**Not tested:** a drag with a real mouse (the test sends press events and
+the edit signal).
+
+---
+
 <a id="session-350"></a>
 ## Session 350 — the analog card sends over UDP
 
