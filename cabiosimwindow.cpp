@@ -1031,6 +1031,9 @@ QWidget *CabIoSimWindow::buildAnalogTab()
         r.kg->setToolTip(tr("Sets the current that reads as this pressure"));
         connect(r.kg, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this,
                 [this, ch](double kg) { setAnalogPressure(ch, kg); });
+        // As narrow as its dial: six boxes sized to "16.32 kg/cm\u00B2" made the
+        // window 1440 px wide with Linux's fonts (session 351, CI).
+        r.kg->setMinimumWidth(80);
         r.gauge = new PressureGauge(analogChannelName(ch), page);
         connect(r.gauge, &PressureGauge::valueEdited, this, [this, ch](double kg) { setAnalogPressure(ch, kg); });
         auto *dial = new QVBoxLayout;

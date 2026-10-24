@@ -11,6 +11,27 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-353"></a>
+## Session 353 — Linux CI: the analog tab's width (session 351)
+
+CI's Linux (Qt 5) gate failed `session351`: the Cab I/O Simulator's minimum
+came to **1440 × 696** there (Mac passed). The six pressure boxes under the
+dials each asked for the width of "16.32 kg/cm²" in Linux's wider font. Each
+box now has an explicit 80 px minimum, as narrow as its dial, and a dial's
+minimum is 80 px (was 90) for room under the 700 px height. At a normal
+window size nothing changes: the dials and boxes share the width.
+
+Patch 352 failed CI only through this suite; it is released with this one.
+
+**Files.** `cabiosimwindow.cpp`, `pressuregauge.cpp`.
+
+**Tests.** `session351` unchanged (it holds ≤ 1366 × 700 on every platform).
+
+**Gate (Mac):** Qt 6 and Qt 5.15 both green: 381 suites / 9698 checks, 0
+failed; 15 validators; menu audit; smoke.
+
+---
+
 <a id="session-352"></a>
 ## Session 352 — the DMI window against SIF 0522 v1.2 (DMI functional tests)
 

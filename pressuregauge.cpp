@@ -55,7 +55,7 @@ void PressureGauge::setFault(const QString &why)
 }
 
 QSize PressureGauge::sizeHint() const { return { 170, 170 }; }
-QSize PressureGauge::minimumSizeHint() const { return { 90, 90 }; }
+QSize PressureGauge::minimumSizeHint() const { return { 80, 80 }; }
 
 QRectF PressureGauge::dialRect() const
 {
