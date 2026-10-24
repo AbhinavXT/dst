@@ -323,6 +323,30 @@ private:
 // "AA AA 0E 01 05 15 07 00 ..."
 QString hex(const QByteArray &b);
 
+// ---- scenarios (session 356) --------------------------------------------------------
+//
+// Abhinav: "when output has eb applied the input should change the eb no nc
+// feedback from 01 to 10 ... When any brake applied traction cutoff then its
+// feedback should change". A rule sets one input while its condition holds,
+// and (optionally) another value when it stops holding. It acts on a change
+// of its condition, not on every frame, so a click in between stands until
+// the condition changes again.
+struct Rule {
+    bool    on = true;
+    QString when;           // "out:<output name>" (acting), "anybrake", "mode:<dmiLocoMode>"
+    QString input;          // an input's name
+    int     value = 0;      // while `when` holds: plain 0/1, a pair (NO << 1) | NC
+    int     otherwise = -1; // when it stops: the same, or -1 to leave the input as it is
+};
+QVector<Rule> defaultRules(Cab cab);
+// 1 holds, 0 does not, -1 not known yet (no output word, no DMI mode).
+int ruleHolds(const Rule &r, Cab cab, quint16 word, bool wordKnown, int mode);
+QString whenText(const QString &when, Cab cab);   // "Emergency brake applied", "Mode is FS"
+QStringList whenKeys(Cab cab);                    // every condition a rule can have
+QString modeShortName(int mode);                  // 4 -> "FS"
+QByteArray rulesToJson(const QVector<Rule> &rules);
+QVector<Rule> rulesFromJson(const QByteArray &json, bool *ok = nullptr);
+
 }  // namespace CabIo
 
 #endif  // CABIO_H

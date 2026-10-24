@@ -2,6 +2,9 @@
 
 #include "capturedecoder.h"
 
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QSet>
 
 namespace CabIo {
@@ -773,6 +776,126 @@ QString hex(const QByteArray &b)
         s += QStringLiteral("%1").arg(quint8(b.at(i)), 2, 16, QLatin1Char('0')).toUpper();
     }
     return s;
+}
+
+// ---- scenarios ---------------------------------------------------------------------
+
+namespace {
+
+Rule rule(const char *when, const char *input, int value, int otherwise)
+{
+    Rule r;
+    r.when = QString::fromLatin1(when);
+    r.input = QString::fromLatin1(input);
+    r.value = value;
+    r.otherwise = otherwise;
+    return r;
+}
+
+bool isBrake(const OutputBit &o) { return o.name.endsWith(QLatin1String("_brake")); }
+
+}  // namespace
+
+QVector<Rule> defaultRules(Cab cab)
+{
+    // A pair reads 10 operated, 01 at rest; a plain feedback 1 / 0.
+    if (cab == Cab::Old)
+        return {
+            rule("out:emergency_brake",    "eb_command_fdbk",  1, 0),
+            rule("out:emergency_brake",    "eb_pressure_fdbk", 1, 0),
+            rule("out:full_service_brake", "fsb_command_fdbk", 1, 0),
+            rule("out:full_service_brake", "fsb_pressure_fdbk", 1, 0),
+            rule("out:normal_brake",       "nb_command_fdbk",  1, 0),
+            rule("out:normal_brake",       "nb_pressure_fdbk", 1, 0),
+        };
+    return {
+        rule("out:emergency_brake",    "eb_relay_fb",  2, 1),
+        rule("out:full_service_brake", "fsb_relay_fb", 2, 1),
+        rule("out:normal_brake",       "nb_relay_fb",  2, 1),
+        rule("out:light_engine_brake", "le_relay_fb",  2, 1),
+        // Abhinav: traction_cutoff_fb is 1 while any brake is applied.
+        rule("anybrake",               "traction_cutoff_fb", 1, 0),
+        rule("out:pvef_disable",       "pvef_disabled_fb", 1, 0),
+        rule("out:nuteral_section",    "neutral_section_fb", 1, 0),
+        rule("out:fouling_mark",       "fouling_mark_entry_fb", 1, 0),
+        rule("out:sifa_valve",         "sifa_valve_fb", 2, 1),
+    };
+}
+
+int ruleHolds(const Rule &r, Cab cab, quint16 word, bool wordKnown, int mode)
+{
+    if (r.when.startsWith(QLatin1String("mode:")))
+        return mode <= 0 ? -1 : int(r.when.mid(5).toInt() == mode);
+    if (!wordKnown) return -1;
+    const bool any = r.when == QLatin1String("anybrake");
+    const QString name = r.when.mid(4);
+    for (const OutputBit &o : outputBits(cab)) {
+        if (any ? !isBrake(o) : o.name != name) continue;
+        if (outputActive(o, word)) return 1;
+        if (!any) return 0;
+    }
+    return any ? 0 : -1;    // an output this cab does not have: never known
+}
+
+QString modeShortName(int mode)
+{
+    static const char *const names[] = { "?", "SB", "SR", "LS", "FS", "OV", "OS", "TR", "PT", "RV", "SH", "NL", "SF", "IS" };
+    return mode >= 0 && mode <= 13 ? QString::fromLatin1(names[mode]) : QString::number(mode);
+}
+
+QString whenText(const QString &when, Cab cab)
+{
+    if (when == QLatin1String("anybrake")) return QStringLiteral("Any brake applied");
+    if (when.startsWith(QLatin1String("mode:")))
+        return QStringLiteral("Mode is %1").arg(modeShortName(when.mid(5).toInt()));
+    const QString name = when.mid(4);
+    for (const OutputBit &o : outputBits(cab))
+        if (o.name == name) return displayName(name) + QLatin1Char(' ') + o.activeWord.toLower();
+    return displayName(name) + QStringLiteral(" (not in this cab)");
+}
+
+QStringList whenKeys(Cab cab)
+{
+    QStringList k;
+    for (const OutputBit &o : outputBits(cab))
+        if (!o.name.startsWith(QLatin1String("spare"))) k << QStringLiteral("out:") + o.name;
+    k << QStringLiteral("anybrake");
+    for (int m = 1; m <= 13; ++m) k << QStringLiteral("mode:%1").arg(m);
+    return k;
+}
+
+QByteArray rulesToJson(const QVector<Rule> &rules)
+{
+    QJsonArray a;
+    for (const Rule &r : rules) {
+        QJsonObject o;
+        o.insert(QStringLiteral("on"), r.on);
+        o.insert(QStringLiteral("when"), r.when);
+        o.insert(QStringLiteral("input"), r.input);
+        o.insert(QStringLiteral("value"), r.value);
+        o.insert(QStringLiteral("otherwise"), r.otherwise);
+        a.append(o);
+    }
+    return QJsonDocument(a).toJson(QJsonDocument::Indented);
+}
+
+QVector<Rule> rulesFromJson(const QByteArray &json, bool *ok)
+{
+    QVector<Rule> out;
+    const QJsonDocument d = QJsonDocument::fromJson(json);
+    if (ok) *ok = d.isArray();
+    for (const QJsonValue &v : d.array()) {
+        const QJsonObject o = v.toObject();
+        Rule r;
+        r.on = o.value(QStringLiteral("on")).toBool(true);
+        r.when = o.value(QStringLiteral("when")).toString();
+        r.input = o.value(QStringLiteral("input")).toString();
+        r.value = qBound(0, o.value(QStringLiteral("value")).toInt(), 3);
+        r.otherwise = qBound(-1, o.value(QStringLiteral("otherwise")).toInt(-1), 3);
+        if (r.when.isEmpty() || r.input.isEmpty()) { if (ok) *ok = false; continue; }
+        out << r;
+    }
+    return out;
 }
 
 }  // namespace CabIo

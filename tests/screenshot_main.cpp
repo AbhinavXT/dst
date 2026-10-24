@@ -171,7 +171,7 @@ int main(int argc, char **argv)
             }
             // Session 324: the Cab I/O Simulator mid-run. Set 1 as a real
             // @dip1 reads, two inputs flickering, the VCC's requests answered
-            // and its output data lit. SHOT_TAB=1/2/3/4: Outputs / Readback / Analog / Frames.
+            // and its output data lit. SHOT_TAB=1/2/3/4/5: Outputs / Readback / Analog / Scenarios / Frames.
             if (which == QLatin1String("cabio")) {
                 auto *w = new CabIoSimWindow(nullptr);
                 w->setWriteSink([](const QByteArray &) {});

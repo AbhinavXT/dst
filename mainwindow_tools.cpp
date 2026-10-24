@@ -794,7 +794,16 @@ void MainWindow::openSerialTerminal(const QString &port)
 void MainWindow::openCabIoSimulator()
 {
 #ifdef DL_HAVE_SERIAL
-    if (!m_cabIoSim) m_cabIoSim = new CabIoSimWindow(m_serial, this);
+    if (!m_cabIoSim) {
+        auto *sim = new CabIoSimWindow(m_serial, this);
+        // Session 356: its rules read the loco mode from the DMI frames.
+        connect(m_dispatcher, &MessageDispatcher::entryAppended, sim, [sim](const QString &, const LogEntryPtr &e) {
+            if (e.isNull()) return;
+            const QString line = e->text.trimmed();
+            if (line.startsWith(QLatin1String("@dmi_"))) sim->observeDmiLine(line);
+        });
+        m_cabIoSim = sim;
+    }
     m_cabIoSim->show();
     m_cabIoSim->raise();
     m_cabIoSim->activateWindow();

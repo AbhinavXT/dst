@@ -11,6 +11,67 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-356"></a>
+## Session 356 — Cab I/O Simulator: scenario rules (outputs and DMI mode set the feedbacks)
+
+Abhinav: *"allow user to make customized scenerios, like when mode fs then
+disable cab input. ... when output has eb applied the input should change
+the eb no nc feedback from 01 to 10, same for fsb and nb. When any brake
+applied traction cuttoff then its feedback shkuld change, we need to this
+for all feedbacks mapped to output card"*, then *"Set part 1, make the ui
+simple and good"*. Asked and answered: the mode comes from the DMI frames;
+the full set of built-in feedback rules; `traction_cutoff_fb` is 1 while any
+brake is applied.
+
+**What the operator sees.** A **Scenarios** tab in the Cab I/O Simulator
+(between Analog and Frames): an Off / Rules on switch, the DMI mode as last
+heard ("DMI mode: FS (Full Supervision Mode), 0.4 s ago"), and a table, one
+rule per row: **When** (an output acting, *Any brake applied*, or *Mode is
+SB…IS*), **Set input** (any input of the cab), **To**, **Otherwise** (a
+value or *leave as is*), and **Now** ("holds · set 3 times"), with ✕ to
+delete. *Add rule* adds one; *More* restores the built-in rules, opens or
+saves a rules file (`.json`). Rules are kept per cab and come back when the
+window opens.
+
+A rule acts when its condition changes, not on every frame: a feedback you
+click in between stays as you set it until the condition changes again.
+Later rules win over earlier ones.
+
+**Built-in rules.** SIFA cab: EB / FSB / NB / LE applied → its relay FB 10
+(else 01); any brake → `traction_cutoff_fb` 1 (else 0); PVEF disable,
+neutral section, fouling mark energised → their FBs 1 (else 0); SIFA valve
+open → `sifa_valve_fb` 10 (else 01). Old cab: EB / FSB / NB → its command
+and pressure FBs 1 (else 0).
+
+The mode is read from every `@dmi_` line the console receives (any loco).
+
+**Files.** `cabio.{h,cpp}` (rules, conditions, JSON), `cabiosimwindow.{h,cpp}`
+(the tab), `mainwindow_tools.cpp` (DMI lines to the simulator),
+`tests/test_session356.cpp` (new), `tests/tests.pro`,
+`tests/screenshot_main.cpp` (SHOT_TAB=4 is Scenarios, 5 Frames).
+
+**Tests.** `session356` (38 checks): the rules against the bench capture's
+real output data 0x03E1 (every SIFA brake applied) set EB/FSB/NB/LE relay FB
+10, traction cut-off 1, PVEF / neutral / fouling 1, SIFA valve FB 10; a
+released word puts them back; NB alone; a clicked FB stands on the same
+frame; rules off change nothing and on again re-sync; a "Mode is FS" rule
+with *leave as is*; the mode from a real replay DMI frame; JSON round trip;
+saved per cab; old-cab rules.
+
+**Gate (Mac):** Qt 6 and Qt 5.15 both green: 383 suites / 9740 checks, 0
+failed; 15 validators; menu audit (186); smoke. (Qt 5 first caught a
+missing `<QSet>` include in the new test.)
+
+**Not built yet (asked, waiting for numbers):** brake → BP/BC/MR pressures
+on the analog card; BIU message pressures onto the analog card. No built-in
+"Mode is FS" rule: what "disable cab input" means on the wire is still to
+be answered (it can be added as a rule by hand).
+
+**Not tested:** against a real VCC; with DMI frames from two locos at once
+(the last one heard sets the mode).
+
+---
+
 <a id="session-355"></a>
 ## Session 355 — the Cab I/O Simulator fits a 1366 px laptop
 

@@ -14,6 +14,8 @@
 //                    controllers 15 / 16 send them, with what the VCC reads.
 //                    Sent over UDP to a host and port (session 350), not on
 //                    the serial port.
+//    Scenarios       rules that set inputs from the output word and the DMI
+//                    mode: EB applied -> eb_relay_fb 10, ... (session 356).
 //    Frames          every frame both ways, and the wire format.
 //  SIFA-extended and old cab layouts both (cabio.h).
 //
@@ -122,6 +124,16 @@ public:
     quint16 analogPort() const;
     void setWireFormat(const CabIo::WireFormat &wf);
     CabIo::WireFormat wireFormat() const { return m_wf; }
+    // Scenarios (session 356): the cab's rules, saved per cab; on by default.
+    QVector<CabIo::Rule> rules() const { return m_rules; }
+    void setRules(const QVector<CabIo::Rule> &rules);
+    void setScenariosOn(bool on);
+    bool scenariosOn() const { return m_rulesOn; }
+    int  ruleFired(int i) const { return m_ruleFired.value(i); }
+    // The loco mode the rules see, from the DMI frames (@dmi_ lines).
+    void observeDmiLine(const QString &line);
+    void setLocoMode(int mode);
+    int  locoMode() const { return m_mode; }
 
     // Bytes as if read from the port, and where writes go instead of a port
     // (tests; a sink also stands in when no port is open).
@@ -166,6 +178,12 @@ private:
     QWidget *buildFramesTab();
     QWidget *buildReadbackTab();
     QWidget *buildAnalogTab();
+    QWidget *buildScenariosTab();
+    void rebuildRules();
+    void refreshRules();
+    void applyRules();
+    void rulesEdited();
+    void loadRulesFor(CabIo::Cab cab);
     void refreshAnalog();
     void rebuildReadback();
     void applyDefault(Bank &b) const;
@@ -277,6 +295,17 @@ private:
     int m_analogSent = 0;
     QPushButton *m_resetDefault = nullptr;
     QLabel      *m_outFooter = nullptr;
+
+    // Scenarios
+    QVector<CabIo::Rule> m_rules;
+    QVector<int> m_ruleHeld;                // the condition last seen: 1, 0, -1 not yet
+    QVector<int> m_ruleFired;               // how often each rule set its input
+    bool   m_rulesOn = true;
+    int    m_mode = 0;                      // dmiLocoMode, 0 not known
+    qint64 m_modeAtMs = 0;
+    QButtonGroup *m_rulesOnGroup = nullptr;
+    QLabel      *m_modeLabel = nullptr;
+    QTableWidget *m_ruleTable = nullptr;
 
     QComboBox   *m_crc = nullptr;
     QComboBox   *m_length = nullptr;

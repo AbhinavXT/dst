@@ -1,5 +1,6 @@
 #include "cabiosimwindow.h"
 
+#include "dmipanel.h"
 #include "serialmanager.h"
 #include "seriallink.h"
 #include "settings.h"
@@ -16,6 +17,8 @@
 #include <QComboBox>
 #include <QDateTime>
 #include <QDoubleSpinBox>
+#include <QFile>
+#include <QFileDialog>
 #include <QFontDatabase>
 #include <QFormLayout>
 #include <QGuiApplication>
@@ -590,6 +593,7 @@ CabIoSimWindow::CabIoSimWindow(SerialManager *serial, QWidget *parent)
     m_tabs->addTab(buildOutputsTab(), tr("Outputs \u2190 VCC"));
     m_tabs->addTab(buildReadbackTab(), tr("Readback \u2192 VCC"));
     m_tabs->addTab(buildAnalogTab(),  tr("Analog \u2192 VCC"));
+    m_tabs->addTab(buildScenariosTab(), tr("Scenarios"));
     m_tabs->addTab(buildFramesTab(),  tr("Frames"));
     root->addWidget(m_tabs, 1);
 
@@ -1381,6 +1385,7 @@ void CabIoSimWindow::setCab(Cab cab)
     rebuildInputs();
     rebuildOutputs();
     rebuildReadback();
+    loadRulesFor(m_cab);
     saveSettings();
 }
 
@@ -1597,6 +1602,304 @@ void CabIoSimWindow::setReadbackHealth(quint8 h)
     refreshReadback();
 }
 
+// ---- scenarios ------------------------------------------------------------------------------
+
+static QString rulesKey(Cab cab) { return cab == Cab::Old ? QStringLiteral("rules_old") : QStringLiteral("rules_sifa"); }
+
+QWidget *CabIoSimWindow::buildScenariosTab()
+{
+    auto *page = new QWidget(this);
+    auto *v = new QVBoxLayout(page);
+    v->setContentsMargins(0, 10, 0, 0);
+    v->setSpacing(8);
+
+    auto *row = new QHBoxLayout;
+    row->setSpacing(8);
+    row->addWidget(segmented({ tr("Off"), tr("Rules on") }, &m_rulesOnGroup, page));
+    m_rulesOnGroup->button(1)->setChecked(true);
+    m_rulesOnGroup->button(1)->setToolTip(tr("Let the rules below set the inputs as the VCC's outputs and the DMI mode change"));
+    connect(m_rulesOnGroup, &QButtonGroup::idClicked, this, [this](int id) { setScenariosOn(id == 1); });
+    row->addSpacing(12);
+    m_modeLabel = new QLabel(page);
+    m_modeLabel->setObjectName(QStringLiteral("muted"));
+    row->addWidget(m_modeLabel);
+    row->addStretch(1);
+    auto *add = new QPushButton(tr("Add rule"), page);
+    add->setToolTip(tr("A new rule at the end of the list"));
+    connect(add, &QPushButton::clicked, this, [this]() {
+        Rule r;
+        const QStringList keys = whenKeys(m_cab);
+        r.when = keys.value(0);
+        if (!m_banks.isEmpty() && m_banks.first().bank.count()) r.input = m_banks.first().bank.input(0).name;
+        m_rules << r;
+        rebuildRules();
+        rulesEdited();
+        m_ruleTable->scrollToBottom();
+    });
+    row->addWidget(add);
+    auto *more = new QPushButton(tr("More"), page);
+    auto *menu = new QMenu(more);
+    menu->addAction(tr("Restore the built-in rules"), this, [this]() {
+        setRules(defaultRules(m_cab));
+        m_status->say(tr("Built-in rules for this cab restored."));
+    });
+    menu->addSeparator();
+    menu->addAction(tr("Open rules…"), this, [this]() {
+        const QString path = QFileDialog::getOpenFileName(this, tr("Open rules"), QString(), tr("Rules (*.json)"));
+        if (path.isEmpty()) return;
+        QFile f(path);
+        bool ok = f.open(QIODevice::ReadOnly);
+        const QVector<Rule> r = ok ? rulesFromJson(f.readAll(), &ok) : QVector<Rule>();
+        if (!ok) { m_status->fail(tr("Not a rules file: %1").arg(path)); return; }
+        setRules(r);
+        m_status->ok(tr("%1 opened from %2.").arg(count(r.size(), "rule", "rules"), path));
+    });
+    menu->addAction(tr("Save rules as…"), this, [this]() {
+        const QString path = QFileDialog::getSaveFileName(this, tr("Save rules"), QStringLiteral("cab_rules.json"),
+                                                          tr("Rules (*.json)"));
+        if (path.isEmpty()) return;
+        QFile f(path);
+        if (!f.open(QIODevice::WriteOnly) || f.write(rulesToJson(m_rules)) < 0) {
+            m_status->fail(tr("Could not write %1").arg(path));
+            return;
+        }
+        m_status->ok(tr("Rules saved to %1.").arg(path));
+    });
+    more->setMenu(menu);
+    row->addWidget(more);
+    v->addLayout(row);
+
+    auto *hint = new QLabel(tr("When a rule's condition starts, its input is set to the first value; when it stops, to the "
+                               "second. An input you click in between stays as you set it until the condition changes again. "
+                               "Later rules win over earlier ones."), page);
+    hint->setObjectName(QStringLiteral("muted"));
+    hint->setWordWrap(true);
+    v->addWidget(hint);
+
+    m_ruleTable = new QTableWidget(0, 6, page);
+    m_ruleTable->setHorizontalHeaderLabels({ QString(), tr("When"), tr("Set input"), tr("To"), tr("Otherwise"), tr("Now") });
+    m_ruleTable->verticalHeader()->hide();
+    m_ruleTable->setSelectionMode(QAbstractItemView::NoSelection);
+    m_ruleTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_ruleTable->setFocusPolicy(Qt::NoFocus);
+    QHeaderView *hh = m_ruleTable->horizontalHeader();
+    hh->setSectionResizeMode(QHeaderView::ResizeToContents);
+    hh->setSectionResizeMode(5, QHeaderView::Stretch);
+    v->addWidget(m_ruleTable, 1);
+    return page;
+}
+
+void CabIoSimWindow::loadRulesFor(Cab cab)
+{
+    QSettings s(Settings::iniPath(), QSettings::IniFormat);
+    const QString key = QStringLiteral("cabio/") + rulesKey(cab);
+    bool ok = false;
+    const QVector<Rule> r = s.contains(key) ? rulesFromJson(s.value(key).toString().toUtf8(), &ok) : QVector<Rule>();
+    // Not setRules(): loading saves nothing (loadSettings is still part-way).
+    m_rules = ok ? r : defaultRules(cab);
+    m_ruleHeld = QVector<int>(m_rules.size(), -1);
+    m_ruleFired = QVector<int>(m_rules.size(), 0);
+    rebuildRules();
+    applyRules();
+}
+
+void CabIoSimWindow::setRules(const QVector<Rule> &rules)
+{
+    m_rules = rules;
+    rebuildRules();
+    rulesEdited();
+}
+
+void CabIoSimWindow::setScenariosOn(bool on)
+{
+    if (m_rulesOnGroup) m_rulesOnGroup->button(on ? 1 : 0)->setChecked(true);
+    m_rulesOn = on;
+    m_ruleHeld.fill(-1);      // back on: each rule sets its input from what holds now
+    saveSettings();
+    applyRules();
+}
+
+void CabIoSimWindow::rulesEdited()
+{
+    m_ruleHeld = QVector<int>(m_rules.size(), -1);
+    m_ruleFired = QVector<int>(m_rules.size(), 0);
+    saveSettings();
+    applyRules();
+}
+
+void CabIoSimWindow::observeDmiLine(const QString &line)
+{
+    // shortcut: every loco's DMI frames set the one mode; pick a loco when two are on the bench.
+    const DmiState st = dmiStateFromLine(line);
+    if (st.valid) setLocoMode(st.mode);
+}
+
+void CabIoSimWindow::setLocoMode(int mode)
+{
+    m_modeAtMs = nowMs();
+    if (mode == m_mode) return;
+    m_mode = mode;
+    applyRules();
+}
+
+void CabIoSimWindow::applyRules()
+{
+    if (!m_rulesOn || m_ruleHeld.size() != m_rules.size()) { refreshRules(); return; }
+    bool changed = false;
+    for (int i = 0; i < m_rules.size(); ++i) {
+        const Rule &r = m_rules.at(i);
+        if (!r.on) continue;
+        const int h = ruleHolds(r, m_cab, m_outWord, m_outFrames > 0, m_mode);
+        if (h < 0 || h == m_ruleHeld.at(i)) continue;
+        m_ruleHeld[i] = h;
+        const int value = h ? r.value : r.otherwise;
+        if (value < 0) continue;
+        for (Bank &b : m_banks)
+            for (int k = 0; k < b.bank.count(); ++k) {
+                if (b.bank.input(k).name != r.input || b.bank.state(k) == value) continue;
+                b.bank.setState(k, value);
+                changed = true;
+            }
+        ++m_ruleFired[i];
+    }
+    if (changed) refreshInputs();
+    refreshRules();
+}
+
+void CabIoSimWindow::rebuildRules()
+{
+    if (!m_ruleTable) return;
+    // Rebuilt from a combo's own signal (a new input changes the value
+    // lists): the old widgets are deleted later, not under their caller.
+    m_ruleTable->setRowCount(0);
+    m_ruleTable->setRowCount(m_rules.size());
+
+    // The style sheet's arrow padding is not in a combo's size hint.
+    auto fit = [](QComboBox *c) { c->setMinimumWidth(c->sizeHint().width() + 20); };
+    QVector<const Input *> inputs;
+    for (const InputLayout *l : inputLayouts(m_cab))
+        for (const Input &in : l->inputs) inputs << &in;
+
+    for (int i = 0; i < m_rules.size(); ++i) {
+        const Rule &r = m_rules.at(i);
+        auto *on = new QCheckBox(m_ruleTable);
+        on->setChecked(r.on);
+        on->setToolTip(tr("Use this rule"));
+        connect(on, &QCheckBox::toggled, this, [this, i](bool v) { m_rules[i].on = v; m_ruleHeld[i] = -1; saveSettings(); applyRules(); });
+        m_ruleTable->setCellWidget(i, 0, on);
+
+        auto *when = new QComboBox(m_ruleTable);
+        for (const QString &k : whenKeys(m_cab)) when->addItem(whenText(k, m_cab), k);
+        if (when->findData(r.when) < 0) when->addItem(whenText(r.when, m_cab), r.when);
+        when->setCurrentIndex(when->findData(r.when));
+        connect(when, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, i, when]() {
+            m_rules[i].when = when->currentData().toString();
+            m_ruleHeld[i] = -1;
+            saveSettings();
+            applyRules();
+        });
+        fit(when);
+        m_ruleTable->setCellWidget(i, 1, when);
+
+        const Input *in = nullptr;
+        auto *input = new QComboBox(m_ruleTable);
+        for (const Input *x : inputs) {
+            input->addItem(QStringLiteral("%1 · %2").arg(displayName(x->name), x->group), x->name);
+            if (x->name == r.input) in = x;
+        }
+        if (!in) input->addItem(tr("%1 (not in this cab)").arg(r.input), r.input);
+        input->setCurrentIndex(input->findData(r.input));
+        connect(input, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, i, input]() {
+            m_rules[i].input = input->currentData().toString();
+            QTimer::singleShot(0, this, [this]() { rebuildRules(); rulesEdited(); });
+        });
+        fit(input);
+        m_ruleTable->setCellWidget(i, 2, input);
+
+        // A pair: 10 On, 01 Off, and the two faults; a plain input 1 / 0.
+        auto values = [in](QComboBox *c, bool leave) {
+            if (leave) c->addItem(tr("leave as is"), -1);
+            if (in && in->isPair()) {
+                c->addItem(tr("10  On"), 2);
+                c->addItem(tr("01  Off"), 1);
+                c->addItem(tr("00  fault"), 0);
+                c->addItem(tr("11  fault"), 3);
+            } else {
+                c->addItem(QStringLiteral("1"), 1);
+                c->addItem(QStringLiteral("0"), 0);
+            }
+        };
+        auto *to = new QComboBox(m_ruleTable);
+        values(to, false);
+        to->setCurrentIndex(qMax(0, to->findData(r.value)));
+        connect(to, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, i, to]() {
+            m_rules[i].value = to->currentData().toInt();
+            m_ruleHeld[i] = -1;
+            saveSettings();
+            applyRules();
+        });
+        m_ruleTable->setCellWidget(i, 3, to);
+
+        auto *other = new QComboBox(m_ruleTable);
+        values(other, true);
+        other->setCurrentIndex(qMax(0, other->findData(r.otherwise)));
+        connect(other, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, i, other]() {
+            m_rules[i].otherwise = other->currentData().toInt();
+            m_ruleHeld[i] = -1;
+            saveSettings();
+            applyRules();
+        });
+        m_ruleTable->setCellWidget(i, 4, other);
+
+        // "Now" and a delete button, in one cell.
+        auto *cell = new QWidget(m_ruleTable);
+        auto *h = new QHBoxLayout(cell);
+        h->setContentsMargins(6, 0, 2, 0);
+        auto *now = new QLabel(cell);
+        now->setObjectName(QStringLiteral("ruleNow"));
+        h->addWidget(now, 1);
+        auto *del = new QToolButton(cell);
+        del->setText(QStringLiteral("✕"));
+        del->setAutoRaise(true);
+        del->setToolTip(tr("Delete this rule"));
+        connect(del, &QToolButton::clicked, this, [this, i]() {
+            QTimer::singleShot(0, this, [this, i]() {
+                if (i >= m_rules.size()) return;
+                m_rules.remove(i);
+                rebuildRules();
+                rulesEdited();
+            });
+        });
+        h->addWidget(del);
+        m_ruleTable->setCellWidget(i, 5, cell);
+    }
+    refreshRules();
+}
+
+void CabIoSimWindow::refreshRules()
+{
+    if (!m_ruleTable) return;
+    const qint64 now = nowMs();
+    m_modeLabel->setText(m_mode > 0
+        ? tr("DMI mode: %1 (%2), %3").arg(modeShortName(m_mode), dmiModeName(m_mode), ago(m_modeAtMs, now))
+        : tr("DMI mode: not known yet (no DMI frames)"));
+    for (int i = 0; i < m_rules.size() && i < m_ruleTable->rowCount(); ++i) {
+        QWidget *cell = m_ruleTable->cellWidget(i, 5);
+        auto *label = cell ? cell->findChild<QLabel *>(QStringLiteral("ruleNow")) : nullptr;
+        if (!label) continue;
+        const Rule &r = m_rules.at(i);
+        const int h = ruleHolds(r, m_cab, m_outWord, m_outFrames > 0, m_mode);
+        QString t;
+        if (!m_rulesOn || !r.on)  t = tr("off");
+        else if (h < 0)           t = r.when.startsWith(QLatin1String("mode:")) ? tr("waiting for a DMI mode")
+                                                                                 : tr("waiting for output data");
+        else                      t = h ? tr("holds") : tr("does not hold");
+        if (m_ruleFired.value(i)) t += tr(" · set %1").arg(m_ruleFired.at(i) == 1 ? tr("once") : tr("%1 times").arg(m_ruleFired.at(i)));
+        label->setText(t);
+        label->setEnabled(m_rulesOn && r.on);
+    }
+}
+
 // ---- input defaults ----------------------------------------------------------------------
 
 static QString defaultKey(const InputLayout *l) { return QStringLiteral("cabio/default_") + l->key; }
@@ -1684,7 +1987,10 @@ void CabIoSimWindow::loadSettings()
     for (const QString &id : s.value(QStringLiteral("analogIds"), QStringLiteral("15")).toString().split(QLatin1Char(','), Qt::SkipEmptyParts))
         anIds << quint8(id.toInt());
     setAnalogCards(anIds);
+    m_rulesOn = s.value(QStringLiteral("scenarios"), true).toBool();
+    m_rulesOnGroup->button(m_rulesOn ? 1 : 0)->setChecked(true);
     s.endGroup();
+    loadRulesFor(m_cab);
     setWireFormat(wf);
     // Always start answering: a window that opened sending unasked would
     // surprise whoever opens it next.
@@ -1714,6 +2020,8 @@ void CabIoSimWindow::saveSettings() const
     QStringList anIds;
     for (quint8 id : analogCards()) anIds << QString::number(id);
     s.setValue(QStringLiteral("analogIds"), anIds.join(QLatin1Char(',')));
+    s.setValue(QStringLiteral("scenarios"), m_rulesOn);
+    s.setValue(rulesKey(m_cab), QString::fromUtf8(rulesToJson(m_rules)));
     for (int bi = 0; bi < m_banks.size(); ++bi) {
         QStringList ids;
         for (quint8 id : bankIds(bi)) ids << QString::number(id);
@@ -1970,6 +2278,7 @@ void CabIoSimWindow::onFrame(const Frame &f)
         m_outAtMs = now;
         ++m_outFrames;
         refreshOutputs();
+        applyRules();
         return;
     }
     if (f.isOutputRequest()) {
@@ -2129,6 +2438,7 @@ QString CabIoSimWindow::crcHint() const
 
 void CabIoSimWindow::onUiTick()
 {
+    if (m_mode > 0) refreshRules();     // the mode's age
     refreshPort();
     flushLog();
     // Ages and the "changed" highlight move on with time.
