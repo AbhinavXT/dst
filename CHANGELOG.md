@@ -11,6 +11,71 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-362"></a>
+## Session 362 — Brake Test Bench: saved presets
+
+Item 5 of `docs/BRAKE_BENCH_NEXT.md`: *"Save the bench's fault setup under a
+name and load it later: plant faults, rates, analog offsets, forced bits,
+manual pressures, validity modes, queued codes, frames off, silence ... Opening
+the window still starts clean; a preset is loaded only on request."*
+
+**What the operator sees.** A **Presets** button beside Start BIU:
+- **Save the fault setup as…** asks for a name, and asks before replacing one.
+- **Start clean** puts every fault, forced bit and queued code back to how the
+  window opens.
+- **Load:** one entry per saved preset; its tooltip lists what it sets. The
+  loaded one is ticked.
+- **Delete ▸** asks first.
+
+The button then reads "Preset: EB, BC stuck", and "(changed)" once anything is
+moved after loading. The status line says what was loaded: "BC stuck · BP
+manual 3.00 · 2 bits forced · fault 0x1004 queued · 0x420 off".
+- A preset holds exactly the listed items. Isolation is in it as the forced
+  manual-isolate bit. The network, the analog card's channels and the brake
+  relays' pressures are the bench's wiring and stay out of it, so a preset
+  loaded on another PC does not move them.
+- Loading replaces the whole setup: what was set before does not leak in.
+- Reopening the window still starts clean; the presets stay saved.
+- The rates are in a preset and are still the window's own saved setting, as
+  before. Loading a preset changes them, and they stay changed on reopen.
+
+**Storage.** `dlconsole.ini`, `brakebench/presets`: one JSON document, so a
+name may hold any character. Keys are readable (`"fault": "slow"`, bits as
+`"A1A0AAAA"`, codes as `"0x1004"`, frames by COB-ID). An unknown key is skipped
+and a missing one takes the default, so presets survive version changes. A code
+that is not a code is dropped.
+
+**Files.** `brakebenchpreset.{h,cpp}` (new: the data, JSON, the store,
+`differences`), `brakebenchwindow.{h,cpp}` (the button and menu,
+`currentPreset` / `applyPreset` / `savePreset` / `loadPreset` / `deletePreset` /
+`startClean`), `dlcore.pri`, `tests/test_session362.cpp` (new), `tests/tests.pro`.
+
+**Tests.** `session362` (34 checks):
+- the JSON round trip, field by field, and the readable keys;
+- a partial preset takes the defaults, an unknown key is skipped, bad codes are
+  dropped, and the "what differs" wording;
+- the store: names sorted, a slash in a name, load / remove;
+- the window:
+  - `currentPreset` reads what is set;
+  - Start clean restores the plant, the isolation, the codes and the frames;
+  - a loaded preset moves the model, not just the widgets, and shows in the
+    0x220 / 0x320 frames;
+  - an unknown name changes nothing, and a preset replaces rather than adds;
+  - the menu lists the presets, and the button names the loaded one;
+  - delete; reopening starts clean with the presets kept; no loose widgets.
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4:** all green: 389 suites / 9924 checks, 0 failed; 15 validators;
+  menu audit; smoke.
+- **Qt 5.15.13:** validators, menu audit and smoke green; `dltests` 9924 checks,
+  4 failed: the window-size checks of sessions 134 and 135, as on unchanged
+  `main` in this container. `session362` passes.
+
+**Not tested:** the Save / Delete dialogs by hand (they need an operator; the
+tests drive `savePreset` / `deletePreset`); Windows (CI runs it).
+
+---
+
 <a id="session-361"></a>
 ## Session 361 — Brake Test Bench: the BIU answers all four VCCs
 

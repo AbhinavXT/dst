@@ -122,6 +122,7 @@ SOURCES += \
     $$PWD/brakeplant.cpp \
     $$PWD/simwidgets.cpp \
     $$PWD/brakebenchwindow.cpp \
+    $$PWD/brakebenchpreset.cpp \
     $$PWD/runreportwindow.cpp \
     $$PWD/incidentreport.cpp \
     $$PWD/incidentreportdialog.cpp \
@@ -323,6 +324,7 @@ HEADERS += \
     $$PWD/brakeplant.h \
     $$PWD/simwidgets.h \
     $$PWD/brakebenchwindow.h \
+    $$PWD/brakebenchpreset.h \
     $$PWD/runreportwindow.h \
     $$PWD/incidentreport.h \
     $$PWD/incidentreportdialog.h \

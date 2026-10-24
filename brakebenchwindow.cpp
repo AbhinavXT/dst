@@ -1,6 +1,7 @@
 #include "brakebenchwindow.h"
 
 #include "biusim.h"
+#include "brakebenchpreset.h"
 #include "pressuregauge.h"
 #include "settings.h"
 #include "simwidgets.h"
@@ -20,8 +21,10 @@
 #include <QGridLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
+#include <QInputDialog>
 #include <QLabel>
 #include <QLineEdit>
+#include <QMessageBox>
 #include <QMenu>
 #include <QPair>
 #include <QPushButton>
@@ -181,6 +184,7 @@ BrakeBenchWindow::BrakeBenchWindow(QWidget *parent)
     m_uiTimer->start();
 
     loadSettings();
+    m_clean = currentPreset();
     restyle();
     UiColor::onThemeChange(this, [this]() { restyle(); });
     onUiTick();
@@ -251,6 +255,18 @@ QWidget *BrakeBenchWindow::buildTopBar()
                               "status frames. Leave stopped while a real BIU is on the line."));
     connect(m_startBtn, &QPushButton::clicked, this, [this]() { if (biuRunning()) stopBiu(); else startBiu(); });
     h->addWidget(m_startBtn);
+    // Session 362: the fault setup saved under a name, loaded on request.
+    m_presetBtn = new QToolButton(bar);
+    m_presetBtn->setObjectName(QStringLiteral("benchPresets"));
+    m_presetBtn->setText(tr("Presets"));
+    m_presetBtn->setPopupMode(QToolButton::InstantPopup);
+    m_presetBtn->setToolTip(tr("Save the fault setup under a name, or load one: plant faults and rates, analog offsets, "
+                               "manual pressures, validity, forced bits, queued codes, frames off, silence.\n"
+                               "The network, the analog card and the brake relays are not part of it."));
+    auto *presetMenu = new QMenu(m_presetBtn);
+    connect(presetMenu, &QMenu::aboutToShow, this, &BrakeBenchWindow::buildPresetMenu);
+    m_presetBtn->setMenu(presetMenu);
+    h->addWidget(m_presetBtn);
     m_runState = new QLabel(bar);
     h->addWidget(m_runState);
     h->addStretch(1);
@@ -1334,6 +1350,181 @@ void BrakeBenchWindow::refreshReplyList()
     m_replyList->setText(head + QLatin1Char('\n') + lines.join(QLatin1Char('\n')));
 }
 
+// ---- saved presets (session 362) ------------------------------------------------------------
+
+BenchPreset BrakeBenchWindow::currentPreset() const
+{
+    BenchPreset p;
+    for (int ch = 0; ch < BrakePlant::kChannels; ++ch) {
+        BenchPreset::Air &a = p.air[ch];
+        a.apply = m_apply[ch]->value();
+        a.release = m_release[ch]->value();
+        a.fault = int(m_plant.fault(ch));
+        a.param = m_faultParam[ch]->value();
+        a.offset = m_analogOffset[ch];
+    }
+    for (int id = 0; id < Biu::kPressures; ++id) {
+        BenchPreset::Pressure &q = p.pressure[id];
+        q.manual = m_biu->pressureManual(id);
+        q.kg = m_biu->pressureManualValue(id);
+        q.valid = int(m_biu->validMode(id));
+    }
+    for (int byte = 1; byte <= 3; ++byte)
+        for (int bit = 0; bit < 8; ++bit) p.bits[byte - 1][bit] = int(m_biu->bitMode(byte, bit));
+    p.faults = m_biu->faultQueue();
+    p.displays = m_biu->displayQueue();
+    for (int i = 0; i < 3; ++i) p.frameOn[i] = m_biu->frameOn(i);
+    p.silent = m_biu->silent();
+    return p;
+}
+
+// Through the widgets, so what the tabs show is what the bench does: each
+// control's own handler moves the model, as a click would.
+void BrakeBenchWindow::applyPreset(const BenchPreset &p)
+{
+    for (int ch = 0; ch < BrakePlant::kChannels; ++ch) {
+        const BenchPreset::Air &a = p.air[ch];
+        m_apply[ch]->setValue(a.apply);
+        m_release[ch]->setValue(a.release);
+        setPlantFault(ch, BrakePlant::Fault(qBound(0, a.fault, 3)), a.param);
+        setAnalogOffset(ch, a.offset);
+    }
+    for (int id = 0; id < Biu::kPressures; ++id) {
+        const BenchPreset::Pressure &q = p.pressure[id];
+        if (m_pManual[id]) m_pManual[id]->setValue(q.kg);
+        if (m_pMode[id]) m_pMode[id]->button(q.manual ? 1 : 0)->click();
+        else m_biu->setPressureManual(id, q.manual, q.kg);
+        if (m_pValid[id]) m_pValid[id]->button(qBound(0, q.valid, 2))->click();
+        else m_biu->setValidMode(id, BiuSimulator::ValidMode(qBound(0, q.valid, 2)));
+    }
+    for (int byte = 1; byte <= 3; ++byte)
+        for (int bit = 0; bit < 8; ++bit) {
+            const int m = qBound(0, p.bits[byte - 1][bit], 2);
+            if (QButtonGroup *g = m_bitMode[byte - 1][bit]) g->button(m)->click();
+            else m_biu->setBitMode(byte, bit, BiuSimulator::BitMode(m));
+        }
+    m_biu->clearFaults();
+    m_biu->clearDisplays();
+    for (quint16 c : p.faults) m_biu->raiseFault(c);
+    for (quint16 c : p.displays) m_biu->raiseDisplay(c);
+    for (int i = 0; i < 3; ++i) m_frameOn[i]->setChecked(p.frameOn[i]);
+    m_silentBox->setChecked(p.silent);
+    // And the model itself: a widget set to the value it already shows says
+    // nothing, and the model may have been moved without it (the tests do).
+    for (int ch = 0; ch < BrakePlant::kChannels; ++ch) {
+        m_plant.setRates(ch, p.air[ch].apply, p.air[ch].release);
+        m_plant.setFault(ch, BrakePlant::Fault(qBound(0, p.air[ch].fault, 3)), p.air[ch].param);
+        m_analogOffset[ch] = p.air[ch].offset;
+    }
+    for (int id = 0; id < Biu::kPressures; ++id) {
+        m_biu->setPressureManual(id, p.pressure[id].manual, p.pressure[id].kg);
+        m_biu->setValidMode(id, BiuSimulator::ValidMode(qBound(0, p.pressure[id].valid, 2)));
+    }
+    for (int byte = 1; byte <= 3; ++byte)
+        for (int bit = 0; bit < 8; ++bit) m_biu->setBitMode(byte, bit, BiuSimulator::BitMode(qBound(0, p.bits[byte - 1][bit], 2)));
+    for (int i = 0; i < 3; ++i) m_biu->setFrameOn(i, p.frameOn[i]);
+    m_biu->setSilent(p.silent);
+    {
+        const QSignalBlocker b(m_isolateBox);
+        m_isolateBox->setChecked(p.bits[0][Biu::StManualIsolate] == int(BiuSimulator::BitMode::On));
+    }
+    applyTargets();
+    refreshStatusTab();
+    refreshTop();
+}
+
+bool BrakeBenchWindow::savePreset(const QString &name)
+{
+    const QString n = name.trimmed();
+    if (n.isEmpty()) {
+        m_status->fail(tr("A preset needs a name."));
+        return false;
+    }
+    const BenchPreset p = currentPreset();
+    BenchPreset::save(n, p);
+    m_activePreset = n;
+    m_activeJson = p.toJson();
+    const QStringList diff = p.differences(m_clean);
+    m_status->ok(diff.isEmpty() ? tr("Saved preset “%1”: nothing set, the bench as it opens.").arg(n)
+                                : tr("Saved preset “%1”: %2.").arg(n, diff.join(QStringLiteral(" · "))));
+    refreshTop();
+    return true;
+}
+
+bool BrakeBenchWindow::loadPreset(const QString &name)
+{
+    BenchPreset p;
+    if (!BenchPreset::load(name, m_clean, &p)) {
+        m_status->fail(tr("No preset called “%1”.").arg(name));
+        return false;
+    }
+    applyPreset(p);
+    m_activePreset = name;
+    m_activeJson = currentPreset().toJson();
+    const QStringList diff = p.differences(m_clean);
+    m_status->ok(diff.isEmpty() ? tr("Loaded preset “%1”: nothing set, the bench as it opens.").arg(name)
+                                : tr("Loaded preset “%1”: %2.").arg(name, diff.join(QStringLiteral(" · "))));
+    refreshTop();
+    return true;
+}
+
+void BrakeBenchWindow::deletePreset(const QString &name)
+{
+    BenchPreset::remove(name);
+    if (m_activePreset == name) m_activePreset.clear();
+    m_status->say(tr("Deleted preset “%1”.").arg(name));
+    refreshTop();
+}
+
+void BrakeBenchWindow::startClean()
+{
+    applyPreset(m_clean);
+    m_activePreset.clear();
+    m_status->say(tr("Fault setup cleared: the bench as it opens."));
+    refreshTop();
+}
+
+void BrakeBenchWindow::buildPresetMenu()
+{
+    QMenu *menu = m_presetBtn->menu();
+    menu->clear();
+    menu->setToolTipsVisible(true);
+    menu->addAction(tr("Save the fault setup as…"), this, [this]() {
+        bool ok = false;
+        const QString name = QInputDialog::getText(this, tr("Save preset"),
+                                                   tr("Name for this fault setup (e.g. “BC stuck at 1.0”):"),
+                                                   QLineEdit::Normal, m_activePreset, &ok).trimmed();
+        if (!ok || name.isEmpty()) return;
+        if (BenchPreset::exists(name)
+            && QMessageBox::question(this, tr("Save preset"), tr("Replace the preset “%1”?").arg(name))
+                   != QMessageBox::Yes)
+            return;
+        savePreset(name);
+    });
+    menu->addAction(tr("Start clean"), this, &BrakeBenchWindow::startClean)
+        ->setToolTip(tr("Every fault, forced bit and queued code back to how the window opens"));
+    const QStringList names = BenchPreset::names();
+    menu->addSection(names.isEmpty() ? tr("No presets saved") : tr("Load"));
+    for (const QString &n : names) {
+        QAction *a = menu->addAction(n, this, [this, n]() { loadPreset(n); });
+        BenchPreset p;
+        BenchPreset::load(n, m_clean, &p);
+        const QStringList diff = p.differences(m_clean);
+        a->setToolTip(diff.isEmpty() ? tr("Nothing set") : diff.join(QLatin1Char('\n')));
+        a->setCheckable(true);
+        a->setChecked(n == m_activePreset);
+    }
+    if (!names.isEmpty()) {
+        QMenu *del = menu->addMenu(tr("Delete"));
+        for (const QString &n : names)
+            del->addAction(n, this, [this, n]() {
+                if (QMessageBox::question(this, tr("Delete preset"), tr("Delete the preset “%1”?").arg(n))
+                    == QMessageBox::Yes)
+                    deletePreset(n);
+            });
+    }
+}
+
 // ---- the air ---------------------------------------------------------------------------
 
 void BrakeBenchWindow::setSource(Source s)
@@ -1607,6 +1798,12 @@ void BrakeBenchWindow::refreshTop()
     const qint64 t = now();
     const bool run = biuRunning();
     m_startBtn->setText(run ? tr("Stop BIU") : tr("Start BIU"));
+    if (m_presetBtn) {
+        const bool changed = !m_activePreset.isEmpty() && currentPreset().toJson() != m_activeJson;
+        m_presetBtn->setText(m_activePreset.isEmpty() ? tr("Presets")
+                             : changed ? tr("Preset: %1 (changed)").arg(m_activePreset)
+                                       : tr("Preset: %1").arg(m_activePreset));
+    }
     if (run) {
         const QStringList targets = m_biu->replyTargets();
         const QString to = targets.size() > 1 ? tr("%1 VCCs").arg(targets.size()) : targets.join(QString());

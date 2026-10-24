@@ -25,6 +25,7 @@
 //  The BIU's protocol is biuprotocol.h, its behaviour biusim.h, the air
 //  brakeplant.h.
 // =============================================================================
+#include "brakebenchpreset.h"
 #include "brakeplant.h"
 #include "cabio.h"
 
@@ -118,6 +119,16 @@ public:
     // Analog frames sent, for tests without a socket.
     void   setAnalogSink(const std::function<void(const QByteArray &)> &fn) { m_analogSink = fn; }
 
+    // ---- saved presets (session 362): the fault setup under a name ------------------
+    BenchPreset currentPreset() const;   // what the bench is set to now
+    BenchPreset cleanPreset() const { return m_clean; }   // as it opened
+    void applyPreset(const BenchPreset &p);
+    bool savePreset(const QString &name);         // false (and said) for an empty name
+    bool loadPreset(const QString &name);         // false (and said) when there is none
+    void deletePreset(const QString &name);
+    void startClean();                            // the fault setup as the window opens
+    QString activePreset() const { return m_activePreset; }   // "" until one is loaded or saved
+
     void flushLog();                    // the Frames tab's pending rows, now
     int  logRows() const;
 
@@ -133,6 +144,7 @@ private:
     QWidget *buildRelaysTab();
     QWidget *buildFramesTab();
     void restyle();
+    void buildPresetMenu();
     void loadSettings();
     void saveSettings() const;
     void onUiTick();
@@ -164,6 +176,10 @@ private:
 
     // top bar
     QPushButton *m_startBtn = nullptr;
+    QToolButton *m_presetBtn = nullptr;   // session 362
+    BenchPreset  m_clean;
+    QString      m_activePreset;
+    QJsonObject  m_activeJson;            // as loaded or saved: a change since is marked
     QLabel      *m_runState = nullptr;
     QLabel      *m_kavachChip = nullptr;
     QLabel      *m_cmdChip = nullptr;

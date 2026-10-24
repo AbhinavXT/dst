@@ -34,11 +34,8 @@ sessions 360 and 359.
    takes a list, Loco ▾ fills in a loco's four controllers (the Firmware
    Flasher's table), and each frame goes to every VCC on the list. Still to
    confirm on a loco: that the VCC application answers on those addresses.
-5. **Saved presets.** Save the bench's fault setup under a name and load it
-   later: plant faults, rates, analog offsets, forced bits, manual pressures,
-   validity modes, queued codes, frames off, silence.
-   - Today these reset when the window reopens, on purpose.
-   - Opening the window still starts clean; a preset is loaded only on request.
+5. **Saved presets.** Done in session 362: Presets ▸ Save / Load / Start clean /
+   Delete, stored in dlconsole.ini; opening the window still starts clean.
 6. **DPCS/DPWCS and TSS nodes:** not simulated. Leave for now.
 7. **Windows:** Abhinav tests it himself.
 
