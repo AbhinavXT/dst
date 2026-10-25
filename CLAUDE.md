@@ -32,7 +32,9 @@ has the commits. Read the top few CHANGELOG sections before starting.
   after a push: `gh run list`, `gh run view <id> --log-failed`. Windows-only
   traps it has caught: GCC `__attribute__`, `class`/`struct` mismatches
   (MSVC mangles them differently: now an error on clang/GCC), non-UTF-8
-  source reading (`/utf-8`), file names Windows forbids, greedy `\x` escapes.
+  source reading (`/utf-8`), file names Windows forbids, greedy `\x` escapes,
+  `QVector<T>({ a })` / `({ a, b })` (MSVC: the size constructors; write
+  `QVector<T>{ … }`, in parentheses inside `CHECK`).
   Windows tests run on the native platform (offscreen draws no text there).
 - **Qt 6 is gated too** (CI job `linux-qt6`, since patch 127). Locally:
   `QMAKE=/opt/homebrew/opt/qtbase/bin/qmake VERIFY_OUT=$PWD/build-verify-qt6 ./verify.sh`.

@@ -11,6 +11,43 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-364"></a>
+## Session 364 — CI: session362's code lists on MSVC
+
+`main` went red on the Windows job after patches 361-363 merged: two checks
+of `session362` failed, "queued codes, in order" and "a code that is not one
+is dropped". Linux and Qt 6 were green.
+
+**Cause: the test, not the preset.** Both checks compared against
+`QVector<quint16>({ 0x1004 })` and `QVector<quint16>({ 0x1004, 0x1040 })`.
+MSVC 2019 reads those as the size constructors: `QVector(int size)` (4100
+zeros) and `QVector(int size, const T &value)` (4100 copies of 0x1040). GCC
+and clang take the initializer list. The JSON round-trip check in the same
+block passed on Windows, which shows the preset itself read the codes back
+right. The three-element `QVector<quint16>({ 560, 598, 8 })` in session194
+matches no size constructor, so it was never hit.
+
+**Fix.** `QVector<quint16>{ … }`, which is always the list. Inside `CHECK` it
+goes in parentheses, because the macro would split the braces' comma.
+CLAUDE.md's list of Windows traps names it.
+
+**Files.** `tests/test_session362.cpp`, `CLAUDE.md`.
+
+**Not tested here.** MSVC: the container has none. CI's Windows job is the
+check.
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4** (`qmake6`): all green: 390 suites / 9949 checks, 0 failed; 15
+  validators; menu audit; smoke. Run on the tree of patches 364 and 365
+  together.
+- **Qt 5.15.13:** the changed suites green (`session362` 36, `session365` 23).
+  `session134` and `session135` fail 4 pixel-size checks in this container
+  on Qt 5 (Firmware Flasher minimum size, Packet Maker send bar). They
+  failed the same way before any change, and CI passes them on Linux and
+  Windows: this container's Qt 5 fonts, not the code.
+
+---
+
 <a id="session-363"></a>
 ## Session 363 — Brake Test Bench: "(changed)" only for what the operator moved
 
