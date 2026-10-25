@@ -32,6 +32,14 @@
 #include "incidentreportdialog.h"
 #include "incidentreportwindow.h"
 #include "radiochartdialog.h"
+#include "configfiles.h"
+#include "testassertions.h"
+#include "testcaseboard.h"
+#include "testcasepanel.h"
+#include <QFileDialog>
+#include <QSaveFile>
+#include <QProgressDialog>
+#include <algorithm>
 #include "faulttimelinewindow.h"
 #include "iotimelinewindow.h"
 #include "odometrywindow.h"
@@ -184,6 +192,143 @@ SessionWindow::SessionWindow(const ColorRules *rules,
     statusBar()->addWidget(m_lblSummary);
 
     buildPlaybackBar();   // session 371
+    buildTestCasesUi();   // session 373
+}
+
+// ---------------------------------------------------------------------------
+//  Session 373 — the test cases over a recording
+//
+//  Live, the engine sees every entry of every source as it arrives and marks
+//  each case OBSERVED / NOT ANSWERED (sessions 305, 306). A recording from
+//  the site is the same traffic: the same engine runs over all its tabs,
+//  merged in time order, so the reviewer sees which clauses the run
+//  exercised without the site having had the cases loaded.
+// ---------------------------------------------------------------------------
+
+void SessionWindow::buildTestCasesUi()
+{
+    m_tests = new TestAssertionEngine(this);
+    m_testBoard = new TestCaseBoard(m_tests, this);
+    m_testPanel = new TestCasePanel(m_testBoard, this);
+    connect(m_testPanel, &TestCasePanel::jumpRequested, this,
+            [this](const QString &tabKey, qint64 ms) { jumpToTime(tabKey, ms); });
+    m_testDock = new QDockWidget(tr("Test cases"), this);
+    m_testDock->setObjectName(QStringLiteral("sessionTestCasesDock"));
+    m_testDock->setWidget(m_testPanel);
+    m_testDock->setAllowedAreas(Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
+    addDockWidget(Qt::RightDockWidgetArea, m_testDock);
+    m_testDock->hide();   // shown, and tabbed with the panels, once there are cases
+
+    auto *menu = menuBar()->addMenu(tr("Test &cases"));
+    QAction *a = menu->addAction(tr("Run the &built-in test cases over this recording"));
+    a->setObjectName(QStringLiteral("sessionTestCasesBuiltin"));
+    connect(a, &QAction::triggered, this, [this]() {
+        QFile f(builtinConfigPath(ConfigKind::TestCases));
+        if (f.open(QIODevice::ReadOnly)) setTestCases(f.readAll());
+    });
+    a = menu->addAction(tr("Run test cases from a &file…"));
+    a->setObjectName(QStringLiteral("sessionTestCasesFile"));
+    connect(a, &QAction::triggered, this, [this]() {
+        const QString path = QFileDialog::getOpenFileName(this, tr("Test cases"), QString(),
+                                                          tr("Test cases (*.json);;All files (*)"));
+        QFile f(path);
+        if (!path.isEmpty() && f.open(QIODevice::ReadOnly)) setTestCases(f.readAll());
+    });
+    menu->addSeparator();
+    a = menu->addAction(tr("&Show results"));
+    connect(a, &QAction::triggered, this, [this]() { m_testDock->show(); m_testDock->raise(); });
+    a = menu->addAction(tr("&Save observation report…"));
+    a->setObjectName(QStringLiteral("sessionTestCasesReport"));
+    connect(a, &QAction::triggered, this, [this]() {
+        if (m_tests->assertions().isEmpty()) {
+            statusBar()->showMessage(tr("No test cases have been run over this recording."), 4000);
+            return;
+        }
+        const QString path = QFileDialog::getSaveFileName(this, tr("Save observation report"),
+                                                          QDir::home().filePath(QStringLiteral("observations_recording.html")),
+                                                          tr("HTML (*.html)"));
+        if (path.isEmpty()) return;
+        QSaveFile f(path);
+        if (f.open(QIODevice::WriteOnly) && f.write(testReportHtml().toUtf8()) >= 0 && f.commit())
+            statusBar()->showMessage(tr("Saved %1").arg(QFileInfo(path).fileName()), 4000);
+        else
+            statusBar()->showMessage(tr("Not saved: %1").arg(f.errorString()), 6000);
+    });
+}
+
+void SessionWindow::setTestCases(const QByteArray &json)
+{
+    QString err;
+    if (!m_tests->loadFromJson(json, &err)) {
+        statusBar()->showMessage(tr("The test cases did not load: %1").arg(err), 6000);
+        return;
+    }
+    runTestCases();
+}
+
+void SessionWindow::runTestCases()
+{
+    m_tests->resetObservations();
+    if (m_tests->assertions().isEmpty()) {
+        m_testBoard->poll();
+        m_testDock->hide();
+        return;
+    }
+    // Every tab, merged by time: the engine sees the recording as it saw
+    // the traffic live, whichever source each frame came from.
+    QVector<LogEntryPtr> all;
+    for (LogModel *m : qAsConst(m_models))
+        for (int r = 0; r < m->count(); ++r)
+            if (LogEntryPtr e = m->entryAt(r)) all.append(e);
+    std::stable_sort(all.begin(), all.end(),
+                     [](const LogEntryPtr &a, const LogEntryPtr &b) { return a->epochMs < b->epochMs; });
+    // The engine decodes a frame for each case that asks about it: about a
+    // millisecond a row with the 101 built-in cases. An hour of recording is
+    // a minute or more, so it runs with a progress dialog and can be
+    // stopped; the results then stand up to where it stopped, and say so.
+    QProgressDialog progress(tr("Running %1 test case(s) over %2 rows…").arg(m_tests->assertions().size()).arg(all.size()),
+                             tr("Stop"), 0, all.size(), this);
+    progress.setWindowTitle(tr("Test cases"));
+    progress.setMinimumDuration(1500);
+    progress.setWindowModality(Qt::WindowModal);
+    int done = 0;
+    for (const LogEntryPtr &e : qAsConst(all)) {
+        m_tests->observe(e);
+        if (++done % 250 == 0) {
+            progress.setValue(done);
+            if (progress.wasCanceled()) break;
+        }
+    }
+    progress.setValue(all.size());
+    const bool stopped = done < all.size();
+    // A precondition near the end: resolved by the last moment run, as the
+    // live timer resolves it by the clock.
+    if (done > 0) m_tests->expireArmed(all.at(done - 1)->epochMs);
+    m_testBoard->poll();
+    // Tabbed with the decoded fields the first time it has something to
+    // show: a hidden dock still takes a tab in that bar.
+    if (!m_testDock->property("tabbed").toBool()) {
+        for (QDockWidget *d : findChildren<QDockWidget *>())
+            if (d->objectName() == QLatin1String("sessionFieldDock")) tabifyDockWidget(d, m_testDock);
+        m_testDock->setProperty("tabbed", true);
+    }
+    m_testDock->show();
+    m_testDock->raise();
+    if (stopped)
+        statusBar()->showMessage(tr("Test cases stopped at %1 (%2 of %3 rows): %4")
+                                     .arg(QDateTime::fromMSecsSinceEpoch(all.at(done - 1)->epochMs).toString(QStringLiteral("HH:mm:ss")))
+                                     .arg(done).arg(all.size()).arg(m_testBoard->summary()));
+    else
+        statusBar()->showMessage(tr("Test cases over the recording: %1").arg(m_testBoard->summary()), 8000);
+}
+
+QString SessionWindow::testReportHtml() const
+{
+    qint64 last = 0;
+    for (LogModel *m : m_models)
+        if (m->count()) last = qMax(last, m->entryAt(m->count() - 1)->epochMs);
+    return m_tests->buildReportHtml(tr("KAVACH test observations — recording %1").arg(m_loadedNames.join(QStringLiteral(", "))),
+                                    last);
 }
 
 // ---------------------------------------------------------------------------
@@ -555,6 +700,7 @@ qint64 SessionWindow::loadFiles(const QStringList &paths)
         QVector<LogEntryPtr> batch;
         batch.reserve(kChunk);
 
+        m_loadedNames << QFileInfo(path).fileName();
         LoadedFile loaded;
         loaded.path = path;
         loaded.tabKey = key;
@@ -664,6 +810,9 @@ qint64 SessionWindow::loadFiles(const QStringList &paths)
     } else {
         setWindowTitle(tr("Recorded session — %1 files").arg(paths.size()));
     }
+
+    // Session 373: the test cases, over everything now loaded.
+    if (!m_tests->assertions().isEmpty()) runTestCases();
 
     // Session 369: say what came in from the notes files, and what did not.
     const int fromFiles = m_merge.added + m_merge.filled;

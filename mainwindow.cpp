@@ -3009,6 +3009,8 @@ void MainWindow::openSessionAt(const QString &filePath, qint64 epochMs)
     win->setFrameWatch(m_frameWatch);
     win->setSessionKeys(m_sessionKeys);
     win->setBookmarkStore(&m_bookmarks);
+    // Session 373: the test cases loaded here run over the recording too.
+    if (!m_tests.assertions().isEmpty()) win->setTestCases(m_tests.sourceJson());
     const qint64 n = win->loadFiles({ filePath });
     win->show();
 
@@ -3041,6 +3043,8 @@ qint64 MainWindow::openSessionFiles(const QStringList &paths)
     // The same store the live tabs use: a row bookmarked while reviewing a
     // recording is the same row bookmarked live.
     win->setBookmarkStore(&m_bookmarks);
+    // Session 373: the test cases loaded here run over the recording too.
+    if (!m_tests.assertions().isEmpty()) win->setTestCases(m_tests.sourceJson());
     const qint64 n = win->loadFiles(paths);
 
     if (n == 0) {
@@ -3122,6 +3126,8 @@ bool MainWindow::openReviewPack(const QString &zipPath)
     win->setFrameWatch(m_frameWatch);
     win->setSessionKeys(m_sessionKeys);
     win->setBookmarkStore(&m_bookmarks);
+    // Session 373: the test cases loaded here run over the recording too.
+    if (!m_tests.assertions().isEmpty()) win->setTestCases(m_tests.sourceJson());
     win->setReviewPack(pack);
     const qint64 n = win->loadFiles(pack.dlrs);
     win->show();

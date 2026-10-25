@@ -147,6 +147,16 @@ public:
                             Odometry, FaultTimeline, CabIo, TrackDiagram };
     QWidget *openReviewTool(ReviewTool tool);
 
+    // Session 373: the test cases (the live window's, or the built-in set,
+    // or a file) run over every tab of the recording, in time order, by an
+    // engine of this window's own. The results are in a Test cases dock, as
+    // live; a double-click lands on the evidence row. Setting cases again
+    // runs them again; an empty array clears them.
+    void setTestCases(const QByteArray &json);
+    const class TestAssertionEngine *testEngine() const { return m_tests; }
+    class TestCaseBoard *testBoard() const { return m_testBoard; }
+    QString testReportHtml() const;
+
 protected:
     // Remember size/position for the next opening.
     void closeEvent(QCloseEvent *event) override;
@@ -210,6 +220,8 @@ private:
     void writeSidecars(const QString &tabKey);
     void buildPlaybackBar();                  // session 371
     void updatePlaybackUi();
+    void runTestCases();                      // session 373
+    void buildTestCasesUi();
     void refreshMarks(const QString &tabKey, int sourceRow);
 
     // The tab the operator is looking at, and what is selected in it.
@@ -253,6 +265,13 @@ private:
     qint64           m_clock = 0;        // the recording's time being played
     QString          m_playTab;          // the tab it plays
     int              m_playRow = -1;     // the proxy row it last put the cursor on
+
+    // Session 373: test cases over the recording.
+    class TestAssertionEngine *m_tests = nullptr;
+    class TestCaseBoard       *m_testBoard = nullptr;
+    class TestCasePanel       *m_testPanel = nullptr;
+    class QDockWidget         *m_testDock = nullptr;
+    QStringList                m_loadedNames;   // the files, for the report's title
 
     // Session 348: Back/Forward over this window's jumps, as the live window.
     NavHistory m_nav;

@@ -10,6 +10,75 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-373"></a>
+## Session 373 — the test cases over a recording
+
+Item 2 of the second remote-review list (session 372). Live, the test-case
+engine marks every loaded case OBSERVED / NOT ANSWERED / not observed as the
+traffic arrives (sessions 305, 306). A recording from the site was never run
+through it, so the reviewer could not see which SIF clauses the run
+exercised unless the site happened to have the cases loaded.
+
+**What the operator sees** in the recorded-session window (and a review
+pack):
+- **The cases loaded in the live window run over the recording** when it
+  opens: every tab, merged in time order, as the engine saw the traffic
+  live. A **Test cases** dock comes up in front (it joins the panel tabs then, not before) with the same table as live
+  (Case, Clause, State, At, Source, Evidence; the section filter). A
+  double-click lands on the evidence row in the recording.
+- **A Test cases menu**: *Run the built-in test cases over this recording*,
+  *Run test cases from a file…*, *Show results*, *Save observation report…*
+  (the live report, titled "KAVACH test observations — recording <files>").
+  Loading other cases runs them again.
+- **NOT ANSWERED near the end**: a precondition whose window outlasts the
+  recording is resolved by the recording's last moment, as the live timer
+  resolves it by the clock.
+- **It can be stopped.** The engine decodes a frame for each case that asks
+  about it: about 1 ms a row with the 101 built-in cases (session 306's
+  suite takes 18 s over these captures). Over 1.5 s a progress dialog
+  shows, with **Stop**; the results then stand up to where it stopped, and
+  the status bar says where (*"Test cases stopped at 14:03:11 (2500 of 9000
+  rows): …"*).
+
+The states are the engine's words, never Pass / Fail. The site's own
+verdicts are the test run in the pack (session 370).
+
+**Files.** `testassertions.{h,cpp}` (`sourceJson`: the JSON last loaded);
+`sessionwindow.{h,cpp}` (the engine, board, dock and menu; `setTestCases`,
+`runTestCases`, `testReportHtml`); `mainwindow.cpp` (the live window's cases
+go to each recording window it opens: Open recorded session, Open Recent,
+Archive search, review packs); `tests/test_session373.cpp`, `tests/tests.pro`.
+
+**Tests.** New `session373` (16 checks) on the real 2026-10-08 run
+`replay/2026-10-08/loco_1_1_08102026_105200.cap` (sessions 305, 306), written
+as a .dlr. Checked: the window's own engine with the 101 cases; its counts
+are the live engine's over the same rows, with OBSERVED and NOT ANSWERED
+cases both; case by case, the same state from the same frame; an OBSERVED
+case's evidence on tab 1_1; the dock, one row per case; a double-click
+lands on the evidence frame; the report names the case and the recording;
+an empty set clears; setting the cases again gives the same result; with no
+cases the dock is not on show and the menu offers the built-in set.
+
+**Not tested.** Stop in the progress dialog (the loop's stop is a
+`wasCanceled()` check every 250 rows). The file dialogs.
+
+**Worth doing later.** The engine itself: a per-frame decode shared by the
+cases would make it many times faster, live too. It is not changed here.
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4** (`qmake6`): all green: 395 suites / 10057 checks, 0 failed; 15
+  validators; menu audit; smoke. (The first run failed 7 checks: the new
+  suite left `fieldmap.json` loaded in the process-wide `FieldCatalog`, and
+  `assertions` reads `RADIO1_LINK_FAIL` without it; and the hidden Test cases
+  dock took a fourth tab beside the decoded fields, which `session144`
+  counts. Both fixed: the suite puts the catalog back, and the dock joins
+  the tabs the first time it has results.)
+- **Qt 5.15.13:** builds; `session373`, `session144` and `assertions` green.
+  The 4 pixel checks of `session134`/`session135` fail in this container on
+  Qt 5 as before any change (see session 367).
+
+---
+
 <a id="session-372"></a>
 ## Session 372 — the Monitor tools on a recording
 
