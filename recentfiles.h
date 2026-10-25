@@ -15,7 +15,7 @@
 
 namespace RecentFiles {
 
-enum class Kind { Unknown, Session, Capture, TagRoute };
+enum class Kind { Unknown, Session, Capture, TagRoute, ReviewPack };
 
 constexpr int kMax = 10;
 

@@ -32,6 +32,7 @@ Kind kindOf(const QString &path)
     if (lower.endsWith(QLatin1String(".dlr"))) return Kind::Session;
     if (lower.endsWith(QLatin1String(".cap"))) return Kind::Capture;
     if (lower.endsWith(QLatin1String(".tagroute.xml"))) return Kind::TagRoute;
+    if (lower.endsWith(QLatin1String(".zip"))) return Kind::ReviewPack;   // session 367
     return Kind::Unknown;
 }
 
@@ -41,6 +42,7 @@ QString kindName(Kind k)
     case Kind::Session:  return QStringLiteral("Recorded session");
     case Kind::Capture:  return QStringLiteral("Capture (replay)");
     case Kind::TagRoute: return QStringLiteral("Tag route");
+    case Kind::ReviewPack: return QStringLiteral("Review pack");
     case Kind::Unknown:  break;
     }
     return QStringLiteral("Unknown");

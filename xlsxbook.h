@@ -21,6 +21,8 @@
 // =============================================================================
 
 #include <QByteArray>
+#include <QHash>
+#include <QPair>
 #include <QString>
 #include <QVariant>
 #include <QVector>
@@ -48,6 +50,11 @@ bool writeFile(const QString &path, const QVector<Sheet> &sheets, QString *err =
 QByteArray inflate(const QByteArray &raw, bool *ok);
 quint32 crc32(const QByteArray &data);   // the zip / PNG CRC-32
 QString columnName(int index);           // 0 -> "A", 26 -> "AA"
+
+// Session 367: the zip itself, for the review pack. Stored entries out;
+// stored and deflated in. Empty, with *err, when not a readable zip.
+QByteArray zipFiles(const QVector<QPair<QString, QByteArray>> &files);
+QHash<QString, QByteArray> unzipFiles(const QByteArray &zip, QString *err = nullptr);
 
 }  // namespace XlsxBook
 

@@ -32,11 +32,17 @@
 #include "incidentreportdialog.h"
 #include "incidentreportwindow.h"
 #include "radiochartdialog.h"
+#include "testcatalogwindow.h"
+#include <QDesktopServices>
+#include <QPushButton>
+#include <QUrl>
 
 #include <QCloseEvent>
 #include <QApplication>
 #include <QDockWidget>
+#include <QDir>
 #include <QFileInfo>
+#include <QJsonObject>
 #include <QHeaderView>
 #include <QLabel>
 #include <QSortFilterProxyModel>
@@ -168,6 +174,96 @@ SessionWindow::SessionWindow(const ColorRules *rules,
 }
 
 SessionWindow::~SessionWindow() = default;
+
+void SessionWindow::setReviewPack(const ReviewPack::Opened &pack)
+{
+    const QJsonObject &m = pack.manifest;
+    auto *page = new QWidget(this);
+    auto *lay = new QVBoxLayout(page);
+    lay->setContentsMargins(6, 6, 6, 6);
+
+    const QString what = m.value(QStringLiteral("what_to_look_at")).toString();
+    auto *whatLabel = new QLabel(page);
+    whatLabel->setObjectName(QStringLiteral("reviewPackWhat"));
+    whatLabel->setWordWrap(true);
+    whatLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    whatLabel->setText(what.isEmpty() ? tr("The site gave no note on what to look at.")
+                                      : tr("<b>What to look at:</b> %1").arg(what.toHtmlEscaped()));
+    lay->addWidget(whatLabel);
+
+    // Who, where, when, with what: the README's lines.
+    QStringList rows;
+    auto row = [&rows](const QString &label, const QString &value) {
+        if (!value.isEmpty()) rows << QStringLiteral("<tr><td>%1</td><td>%2</td></tr>").arg(label, value.toHtmlEscaped());
+    };
+    row(tr("Site"), m.value(QStringLiteral("site")).toString());
+    row(tr("Tester"), m.value(QStringLiteral("tester")).toString());
+    row(tr("Loco"), m.value(QStringLiteral("loco")).toString());
+    row(tr("Made"), m.value(QStringLiteral("created")).toString());
+    const QJsonObject span = m.value(QStringLiteral("span")).toObject();
+    row(tr("Span"), span.value(QStringLiteral("from")).toString().isEmpty()
+                        ? tr("everything in the tabs sent")
+                        : span.value(QStringLiteral("from")).toString() + QStringLiteral(" → ")
+                              + span.value(QStringLiteral("to")).toString());
+    const QJsonObject prog = m.value(QStringLiteral("program")).toObject();
+    row(tr("Program"), QStringLiteral("%1, Qt %2, %3")
+                           .arg(QStringLiteral("%1 %2").arg(prog.value(QStringLiteral("name")).toString(),
+                                                            prog.value(QStringLiteral("version")).toString()).trimmed(),
+                                prog.value(QStringLiteral("qt")).toString(), prog.value(QStringLiteral("os")).toString()));
+    // The schema: the same bytes as the one decoding here, or not. A
+    // different one is said, not swapped in: which schema decodes is the
+    // reader's choice (File ▸ Schema).
+    if (!pack.schemaPath.isEmpty()) {
+        QFile theirs(pack.schemaPath), ours(Settings::schemaPath().isEmpty() ? QStringLiteral(":/schema/kavach.xml")
+                                                                             : Settings::schemaPath());
+        const bool same = theirs.open(QIODevice::ReadOnly) && ours.open(QIODevice::ReadOnly) && theirs.readAll() == ours.readAll();
+        row(tr("kavach.xml"), same ? tr("the same as the one decoding here")
+                                   : tr("DIFFERENT from the one decoding here: %1").arg(QDir::toNativeSeparators(pack.schemaPath)));
+    }
+    auto *details = new QLabel(QStringLiteral("<table cellspacing=\"4\">%1</table>").arg(rows.join(QString())), page);
+    details->setObjectName(QStringLiteral("reviewPackDetails"));
+    details->setWordWrap(true);
+    details->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    lay->addWidget(details);
+    if (!pack.damaged.isEmpty()) {
+        auto *bad = new QLabel(tr("Damaged in the pack, not opened: %1").arg(pack.damaged.join(QStringLiteral(", "))), page);
+        bad->setWordWrap(true);
+        bad->setStyleSheet(UiColor::warningStyle());
+        lay->addWidget(bad);
+    }
+
+    auto *buttons = new QHBoxLayout;
+    if (!pack.testRunPath.isEmpty()) {
+        auto *run = new QPushButton(tr("Open its test run…"), page);
+        run->setObjectName(QStringLiteral("reviewPackRun"));
+        run->setToolTip(QDir::toNativeSeparators(pack.testRunPath));
+        connect(run, &QPushButton::clicked, this, [this, path = pack.testRunPath]() {
+            auto *w = new TestCatalogWindow(this);
+            w->reopenLast();
+            w->openRun(path);
+            w->show();
+            w->raise();
+        });
+        buttons->addWidget(run);
+    }
+    auto *folder = new QPushButton(tr("Show the files"), page);
+    folder->setToolTip(QDir::toNativeSeparators(pack.dir));
+    connect(folder, &QPushButton::clicked, this, [dir = pack.dir]() { QDesktopServices::openUrl(QUrl::fromLocalFile(dir)); });
+    buttons->addWidget(folder);
+    buttons->addStretch(1);
+    lay->addLayout(buttons);
+    lay->addStretch(1);
+
+    auto *dock = new QDockWidget(tr("Review pack"), this);
+    dock->setObjectName(QStringLiteral("sessionReviewPackDock"));
+    dock->setWidget(page);
+    dock->setAllowedAreas(Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
+    addDockWidget(Qt::RightDockWidgetArea, dock);
+    for (QDockWidget *d : findChildren<QDockWidget *>())
+        if (d->objectName() == QLatin1String("sessionFieldDock")) tabifyDockWidget(d, dock);
+    dock->raise();   // in front: the site's own words first
+    m_packTitle = m.value(QStringLiteral("site")).toString();
+}
 
 LogModel *SessionWindow::modelForKey(const QString &tabKey)
 {
@@ -388,7 +484,9 @@ qint64 SessionWindow::loadFiles(const QStringList &paths)
     }
     m_lblSummary->setText(summary);
 
-    if (paths.size() == 1) {
+    if (!m_packTitle.isEmpty()) {
+        setWindowTitle(tr("Review pack — %1").arg(m_packTitle));
+    } else if (paths.size() == 1) {
         setWindowTitle(tr("Recorded session — %1")
                            .arg(QFileInfo(paths.first()).fileName()));
     } else {

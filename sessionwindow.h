@@ -43,6 +43,7 @@
 #include "logentry.h"
 #include "navhistory.h"
 #include "notessidecar.h"
+#include "reviewpack.h"
 #include "theme.h"
 
 class ColorRules;
@@ -118,6 +119,11 @@ public:
     // Session 366: what the last loadFiles() took from the notes files
     // beside the recordings (x.notes.json next to x.dlr).
     NotesSidecar::Merge lastMerge() const { return m_merge; }
+
+    // Session 367: this window shows a review pack. A "Review pack" panel,
+    // in front: what to look at, who sent it from where, the schema it was
+    // decoded with there (same as here, or not), its test run.
+    void setReviewPack(const ReviewPack::Opened &pack);
 
 protected:
     // Remember size/position for the next opening.
@@ -209,6 +215,7 @@ private:
     struct LoadedFile { QString path, tabKey; qint64 firstMs = 0, lastMs = 0; };
     QVector<LoadedFile> m_files;
     NotesSidecar::Merge m_merge;
+    QString m_packTitle;   // session 367: the pack's site, for the title
 
     // Session 348: Back/Forward over this window's jumps, as the live window.
     NavHistory m_nav;

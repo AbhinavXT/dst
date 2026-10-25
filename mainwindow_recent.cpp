@@ -34,16 +34,17 @@ QStringList localFiles(const QMimeData *mime)
 QStringList MainWindow::openFiles(const QStringList &paths)
 {
     using RecentFiles::Kind;
-    QStringList sessions, captures, routes, refused;
+    QStringList sessions, captures, routes, packs, refused;
     for (const QString &p : paths) {
         const Kind k = RecentFiles::kindOf(p);
         if (k == Kind::Unknown || !QFileInfo(p).isFile()) {
             refused << p;
             continue;
         }
-        (k == Kind::Session ? sessions : k == Kind::Capture ? captures : routes) << p;
+        (k == Kind::Session ? sessions : k == Kind::Capture ? captures : k == Kind::ReviewPack ? packs : routes) << p;
     }
 
+    for (const QString &p : packs) openReviewPack(p);   // session 367
     if (!sessions.isEmpty()) openSessionFiles(sessions);
     if (!captures.isEmpty()) {
         // As the Loco Console's Open replay does: one window, the captures

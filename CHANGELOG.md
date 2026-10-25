@@ -11,6 +11,97 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-367"></a>
+## Session 367 — the review pack: what the test site saw, in one file
+
+Item 2 of the remote-review list (session 365). Testing happens at the site
+and the review somewhere else. What arrived was whatever someone remembered
+to attach: a .dlr without its notes, a screenshot, a time typed in a chat.
+The reviewer decoded with another kavach.xml and could not see the test
+run's verdicts.
+
+**At the site: File ▸ Export review pack…**
+- **Site, Tester, Loco** (remembered for the next pack) and **What to look
+  at**: the site's own words, which the reviewer reads first.
+- **Tabs**: every tab with rows, the one in view first. A tab with no raw
+  frames is greyed out, with why (nothing to put in a .dlr).
+- **Span**: *Everything in the chosen tabs*, or *From / To* (seeded on the
+  last 10 minutes).
+- **The test run** open in the Test Case Catalog, ticked when there is one.
+- As the choices change it says what that is: *"1512 frames from 2 tab(s),
+  2 note(s), the test run — about 1.6 MB before compression."* **Export…**
+  writes `ReviewPack_<site>_<date>_<time>.zip` and says what went in.
+
+**What is in the .zip**: `manifest.json` (who, where, what, the span, the
+program, Qt and OS, and every file with its size and CRC-32); `README.txt`
+(the same, for someone without the program, what-to-look-at first, and "it
+makes no pass/fail judgement"); `captures/<tab>.dlr` and
+`captures/<tab>.notes.json` (session 366) per tab; `testrun/<run>.testrun.json`;
+`config/kavach.xml` (the one decoding at the site, built in or chosen);
+`config/` colour rules, friendly names and field map as resolved (session
+271). Entries are deflated: on the test fixture a 345 kB .dlr goes to 30 kB.
+Python's `zipfile` and Info-ZIP `unzip -t` read it with no errors.
+
+**Where the review happens: File ▸ Open review pack…** (also Open Recent
+and dropping the .zip on the window). It is unpacked beside itself
+(`Pack.zip` → `Pack_files/`) and opens in a recorded-session window, titled
+*"Review pack — <site>"*:
+- every capture, with the site's notes on their rows (session 366), and all
+  the review tools (session 365);
+- a **Review pack** panel in front: *What to look at*, then site, tester,
+  loco, when, span, program; whether its **kavach.xml is the same as the one
+  decoding here**, or *DIFFERENT* with its path (said, not swapped in: the
+  reader chooses the schema); **Open its test run…** (the Test Case Catalog
+  on that run); **Show the files**.
+- a file whose size or CRC-32 does not match the manifest is named
+  (*"DAMAGED, not opened"*) and left out. It is not read as evidence.
+
+**Safety.** Only `manifest.json`, `README.txt` and files one level down in
+`captures/`, `testrun/` and `config/` are written. A name with `..`, a drive
+or a leading slash is never written. A zip that is not a pack is refused
+by name. More than 1.5 GB of frames is refused, with the way out (a shorter
+span, fewer tabs): the zip has no zip64.
+
+**Not done.** Reopening a pack unpacks it again over `Pack_files/`. Notes
+made while reviewing are still in the reviewer's own bookmarks and come back
+on the rows, but the notes file beside the unpacked .dlr starts over from
+the site's.
+
+**Files.** `reviewpack.{h,cpp}`, `reviewpackdialog.{h,cpp}` (new, in
+`dlcore.pri`); `xlsxbook.{h,cpp}` (`zipFiles`, `unzipFiles`: the zip it
+already had, made public); `sessionwindow.{h,cpp}` (`setReviewPack`, the
+panel, the title); `mainwindow.{h,cpp}`, `mainwindow_menus.cpp`,
+`mainwindow_recent.cpp`, `recentfiles.{h,cpp}` (File ▸ Export / Open review
+pack, `.zip` in Open Recent and drops); `tests/test_session367.cpp`,
+`tests/tests.pro`.
+
+**Tests.** New `session367` (31 checks) on real frames, 14:02-14:05 of
+`replay/loco_1_1_27062026_140226.cap` in two tabs, with three bookmarks (one
+outside the span) and a test run. Checked: file names; the frames in the span
+and the two notes inside it; the nine files, in order; deflated smaller than
+its parts; read back by the plain unzip; the manifest's who / what / program;
+every file's size and CRC-32; README.txt; the kavach.xml byte for byte; the
+default folder; opened: two captures, the run and the schema found, the
+summary line; the unpacked .dlr frame for frame, byte for byte and to the
+millisecond; the viewer loads it, takes the two notes and shows what to look
+at; refused with no frames in the span (and no file); a zip that is not a
+pack; a pack with `../evil.txt` (not written) and a capture whose CRC is
+wrong (named, not opened, the other one is); the dialog's choices are the
+pack's input, its count line, Export writes and says so, who and where are
+remembered (and the shared INI is put back).
+
+**Not tested.** The file dialogs and the menu entries' clicks themselves.
+The Test Case Catalog opened from the panel.
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4** (`qmake6`): all green: 392 suites / 10005 checks, 0 failed; 15
+  validators; menu audit; smoke.
+- **Qt 5.15.13:** builds; `session365`-`session367` green. The 4 pixel
+  checks of `session134`/`session135` fail in this container on Qt 5 as
+  before any change (see session 364).
+
+---
+
 <a id="session-366"></a>
 ## Session 366 — notes beside the capture: `x.notes.json` next to `x.dlr`
 

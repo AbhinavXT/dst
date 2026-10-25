@@ -160,6 +160,8 @@ SOURCES += \
     $$PWD/rawbytespanel.cpp \
     $$PWD/bookmarks.cpp \
     $$PWD/notessidecar.cpp \
+    $$PWD/reviewpack.cpp \
+    $$PWD/reviewpackdialog.cpp \
     $$PWD/archivesearch.cpp \
     $$PWD/commandpalette.cpp \
     $$PWD/archivesearchwindow.cpp \
@@ -363,6 +365,8 @@ HEADERS += \
     $$PWD/rawbytespanel.h \
     $$PWD/bookmarks.h \
     $$PWD/notessidecar.h \
+    $$PWD/reviewpack.h \
+    $$PWD/reviewpackdialog.h \
     $$PWD/archivesearch.h \
     $$PWD/commandpalette.h \
     $$PWD/archivesearchwindow.h \
