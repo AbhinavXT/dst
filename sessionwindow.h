@@ -157,6 +157,10 @@ public:
     class TestCaseBoard *testBoard() const { return m_testBoard; }
     QString testReportHtml() const;
 
+    // Session 374: this recording as run A of a Compare two runs window; run
+    // B is chosen there. Null when nothing is loaded.
+    class RunCompareWindow *compareWithAnotherRun();
+
 protected:
     // Remember size/position for the next opening.
     void closeEvent(QCloseEvent *event) override;

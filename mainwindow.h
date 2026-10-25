@@ -158,6 +158,7 @@ private slots:
     void onActionExportReviewPack();
     void onActionOpenReviewPack();
     bool openReviewPack(const QString &zipPath);
+    void onActionCompareRuns();   // session 374
     void onActionSearchAll();     // Edit → Search all sources… (Ctrl+Shift+A)
     void onActionSearchArchive(); // Edit → Search recorded sessions…
     // Open one .dlr in a session viewer.

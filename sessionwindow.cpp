@@ -32,6 +32,7 @@
 #include "incidentreportdialog.h"
 #include "incidentreportwindow.h"
 #include "radiochartdialog.h"
+#include "runcomparewindow.h"
 #include "configfiles.h"
 #include "testassertions.h"
 #include "testcaseboard.h"
@@ -945,6 +946,12 @@ void SessionWindow::buildToolsMenu()
     }
     tools->addSeparator();
 
+    // Session 374: this run beside another one.
+    a = tools->addAction(tr("Compare with another r&un…"));
+    a->setObjectName(QStringLiteral("sessionCompareRuns"));
+    a->setToolTip(tr("This recording and another run of the same scenario, played in step, the DMIs side by side"));
+    connect(a, &QAction::triggered, this, [this]() { compareWithAnotherRun(); });
+
     // Session 368: the incident pack, over a recording sent from the site.
     a = tools->addAction(tr("&Incident report…"));
     a->setObjectName(QStringLiteral("sessionIncidentReport"));
@@ -1535,6 +1542,26 @@ QWidget *SessionWindow::openReviewTool(ReviewTool tool)
         w->show();
         w->raise();
     }
+    return w;
+}
+
+RunCompareWindow *SessionWindow::compareWithAnotherRun()
+{
+    QStringList paths;
+    for (const LoadedFile &f : qAsConst(m_files)) paths << f.path;
+    if (paths.isEmpty()) {
+        statusBar()->showMessage(tr("No recording loaded."), 3000);
+        return nullptr;
+    }
+    auto *w = new RunCompareWindow(m_rules, this);
+    QString err;
+    if (!w->loadRun(RunCompareWindow::A, paths, &err)) {
+        delete w;
+        statusBar()->showMessage(err, 6000);
+        return nullptr;
+    }
+    w->show();
+    w->raise();
     return w;
 }
 
