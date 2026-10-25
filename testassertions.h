@@ -229,6 +229,9 @@ public:
     void resetObservations();
 
     const QVector<TestAssertion> &assertions() const { return m_asserts; }
+    // Session 370: the JSON last loaded, so a recording window can run the
+    // same cases over its own rows. Empty before any load.
+    QByteArray sourceJson() const { return m_json; }
     int observedCount() const;
 
     // Session 306: bumped whenever any case's state changes (a step reached,
@@ -259,6 +262,7 @@ signals:
 
 private:
     QVector<TestAssertion> m_asserts;
+    QByteArray m_json;
     quint64 m_generation = 0;
 };
 
