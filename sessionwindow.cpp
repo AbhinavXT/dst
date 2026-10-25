@@ -36,6 +36,10 @@
 #include <QDesktopServices>
 #include <QPushButton>
 #include <QUrl>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QTimer>
+#include <QToolBar>
 
 #include <QCloseEvent>
 #include <QApplication>
@@ -171,6 +175,167 @@ SessionWindow::SessionWindow(const ColorRules *rules,
 
     m_lblSummary = new QLabel(tr("No session loaded"), this);
     statusBar()->addWidget(m_lblSummary);
+
+    buildPlaybackBar();   // session 371
+}
+
+// ---------------------------------------------------------------------------
+//  Session 371 — Play
+//
+//  A recording is read with its DMI beside it. The GIF clip (session 262)
+//  shows a minute or two; a test of half an hour is watched, paused,
+//  rewound. Play moves the cursor through the tab in time: the DMI window
+//  and the Live Loco Console already follow the cursor (session 84/169), so
+//  they play too, from every loaded tab, not only the one on show.
+// ---------------------------------------------------------------------------
+
+namespace {
+constexpr int    kPlayTickMs = 100;
+constexpr qint64 kQuietMs    = 3000;   // a step longer than this is skipped, as the clip shortens it
+}  // namespace
+
+void SessionWindow::buildPlaybackBar()
+{
+    m_playBar = addToolBar(tr("Playback"));
+    m_playBar->setObjectName(QStringLiteral("playbackBar"));
+    m_playBar->setMovable(false);
+
+    m_actPlay = m_playBar->addAction(tr("▶ Play"));
+    m_actPlay->setObjectName(QStringLiteral("playbackPlay"));
+    m_actPlay->setShortcut(QKeySequence(QStringLiteral("F5")));
+    m_actPlay->setToolTip(tr("Play the recording from the selected row: the cursor moves in time, "
+                             "and the DMI follows it (F5 plays and pauses)"));
+    connect(m_actPlay, &QAction::triggered, this, [this]() { m_playing ? stopPlayback() : startPlayback(); });
+
+    m_speed = new QComboBox(m_playBar);
+    m_speed->setObjectName(QStringLiteral("playbackSpeed"));
+    for (int x : { 1, 2, 4, 8, 16 }) m_speed->addItem(tr("%1×").arg(x), x);
+    m_speed->setToolTip(tr("How much faster than it happened"));
+    m_playBar->addWidget(m_speed);
+
+    m_skipQuiet = new QCheckBox(tr("Skip quiet spans"), m_playBar);
+    m_skipQuiet->setObjectName(QStringLiteral("playbackSkipQuiet"));
+    m_skipQuiet->setChecked(true);
+    m_skipQuiet->setToolTip(tr("When nothing was recorded for more than 3 s, go straight to the next row"));
+    m_playBar->addWidget(m_skipQuiet);
+
+    QAction *dmi = m_playBar->addAction(tr("DMI"));
+    dmi->setObjectName(QStringLiteral("playbackDmi"));
+    dmi->setToolTip(tr("Open the DMI window, following the cursor"));
+    connect(dmi, &QAction::triggered, this, [this]() {
+        const QString key = currentTabKey();
+        if (m_tabUi.contains(key) && m_tabUi[key].view) offerDmiAt(key, m_tabUi[key].view->currentIndex());
+        DmiWindow::showFollowing(this, nullptr);
+    });
+
+    m_playClock = new QLabel(m_playBar);
+    m_playClock->setObjectName(QStringLiteral("playbackClock"));
+    m_playBar->addSeparator();
+    m_playBar->addWidget(m_playClock);
+
+    m_playTimer = new QTimer(this);
+    m_playTimer->setInterval(kPlayTickMs);
+    connect(m_playTimer, &QTimer::timeout, this, [this]() {
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        const qint64 wall = now - m_playWallMs;
+        m_playWallMs = now;
+        advancePlayback(wall);
+    });
+    updatePlaybackUi();
+}
+
+void SessionWindow::setPlaybackSpeed(int times)
+{
+    const int i = m_speed->findData(times);
+    if (i >= 0) m_speed->setCurrentIndex(i);
+    updatePlaybackUi();
+}
+
+void SessionWindow::setSkipQuiet(bool on) { m_skipQuiet->setChecked(on); }
+
+void SessionWindow::updatePlaybackUi()
+{
+    m_actPlay->setText(m_playing ? tr("❚❚ Pause") : tr("▶ Play"));
+    m_playClock->setText(m_clock > 0 ? QStringLiteral("%1 · %2")
+                                           .arg(QDateTime::fromMSecsSinceEpoch(m_clock).toString(QStringLiteral("HH:mm:ss")),
+                                                m_speed->currentText())
+                                     : QString());
+}
+
+void SessionWindow::startPlayback()
+{
+    const QString key = currentTabKey();
+    const TabUi ui = m_tabUi.value(key);
+    auto *proxy = ui.view ? qobject_cast<QSortFilterProxyModel *>(ui.view->model()) : nullptr;
+    if (!proxy || proxy->rowCount() == 0) {
+        statusBar()->showMessage(tr("Nothing to play in this tab."), 3000);
+        return;
+    }
+    int row = ui.view->currentIndex().isValid() ? ui.view->currentIndex().row() : 0;
+    if (row >= proxy->rowCount() - 1) row = 0;   // at the end: from the start again
+    ui.view->setCurrentIndex(proxy->index(row, qMax(0, ui.view->currentIndex().column())));
+    m_playTab = key;
+    m_playRow = row;
+    m_clock = ui.model->entryAt(proxy->mapToSource(proxy->index(row, 0)).row())->epochMs;
+    m_playing = true;
+    m_playWallMs = QDateTime::currentMSecsSinceEpoch();
+    m_playTimer->start();
+    updatePlaybackUi();
+}
+
+void SessionWindow::stopPlayback()
+{
+    m_playing = false;
+    if (m_playTimer) m_playTimer->stop();
+    updatePlaybackUi();
+}
+
+void SessionWindow::advancePlayback(qint64 wallMs)
+{
+    if (!m_playing) return;
+    const QString key = currentTabKey();
+    const TabUi ui = m_tabUi.value(key);
+    auto *proxy = ui.view ? qobject_cast<QSortFilterProxyModel *>(ui.view->model()) : nullptr;
+    if (!proxy || proxy->rowCount() == 0) { stopPlayback(); return; }
+    auto timeAt = [&](int r) { return ui.model->entryAt(proxy->mapToSource(proxy->index(r, 0)).row())->epochMs; };
+    const int rows = proxy->rowCount();
+
+    int r = ui.view->currentIndex().isValid() ? ui.view->currentIndex().row() : -1;
+    if (key != m_playTab) {
+        // Another tab brought forward: play it from the same moment.
+        m_playTab = key;
+        r = -1;
+        while (r + 1 < rows && timeAt(r + 1) <= m_clock) ++r;
+    } else if (r != m_playRow && r >= 0) {
+        m_clock = timeAt(r);   // the operator moved the cursor: play from there
+    }
+    m_clock += wallMs * qMax(1, m_speed->currentData().toInt());
+
+    while (r + 1 < rows && timeAt(r + 1) <= m_clock) ++r;
+    if (r + 1 < rows && m_skipQuiet->isChecked() && r >= 0) {
+        const qint64 quiet = timeAt(r + 1) - timeAt(r);
+        if (quiet > kQuietMs && m_clock - timeAt(r) >= kQuietMs) {
+            m_clock = timeAt(r + 1);
+            while (r + 1 < rows && timeAt(r + 1) <= m_clock) ++r;
+            statusBar()->showMessage(tr("Nothing recorded for %1 s: skipped to %2")
+                                         .arg((quiet + 500) / 1000)
+                                         .arg(QDateTime::fromMSecsSinceEpoch(m_clock).toString(QStringLiteral("HH:mm:ss"))),
+                                     4000);
+        }
+    }
+    if (r >= 0 && r != ui.view->currentIndex().row()) {
+        ui.view->setCurrentIndex(proxy->index(r, qMax(0, ui.view->currentIndex().column())));
+        ui.view->scrollTo(ui.view->currentIndex(), QAbstractItemView::EnsureVisible);
+    }
+    m_playRow = r;
+    if (r == rows - 1) {
+        stopPlayback();
+        statusBar()->showMessage(tr("End of the recording (%1)").arg(QDateTime::fromMSecsSinceEpoch(timeAt(r))
+                                                                        .toString(QStringLiteral("HH:mm:ss"))),
+                                 5000);
+        return;
+    }
+    updatePlaybackUi();
 }
 
 SessionWindow::~SessionWindow() = default;

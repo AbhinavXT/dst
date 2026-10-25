@@ -125,6 +125,20 @@ public:
     // decoded with there (same as here, or not), its test run.
     void setReviewPack(const ReviewPack::Opened &pack);
 
+    // Session 371: Play. The cursor walks the tab on show in time, at the
+    // chosen speed, and everything that follows the cursor plays with it:
+    // the DMI window, the Live Loco Console, the decoded fields. A quiet
+    // span over 3 s is skipped (and said) unless that is switched off.
+    // Moving the cursor while playing moves the clock there.
+    void startPlayback();
+    void stopPlayback();
+    bool isPlaying() const { return m_playing; }
+    void setPlaybackSpeed(int times);          // 1, 2, 4, 8, 16
+    void setSkipQuiet(bool on);
+    // One step of `wallMs` of real time (the timer's, or a test's).
+    void advancePlayback(qint64 wallMs);
+    qint64 playbackClock() const { return m_clock; }
+
 protected:
     // Remember size/position for the next opening.
     void closeEvent(QCloseEvent *event) override;
@@ -186,6 +200,8 @@ private:
     QString tabName(const QString &tabKey) const;
     // Session 369: rewrite the notes file beside each recording of `tabKey`.
     void writeSidecars(const QString &tabKey);
+    void buildPlaybackBar();                  // session 371
+    void updatePlaybackUi();
     void refreshMarks(const QString &tabKey, int sourceRow);
 
     // The tab the operator is looking at, and what is selected in it.
@@ -216,6 +232,19 @@ private:
     QVector<LoadedFile> m_files;
     NotesSidecar::Merge m_merge;
     QString m_packTitle;   // session 370: the pack's site, for the title
+
+    // Session 371: playback.
+    class QToolBar  *m_playBar = nullptr;
+    class QAction   *m_actPlay = nullptr;
+    class QComboBox *m_speed = nullptr;
+    class QCheckBox *m_skipQuiet = nullptr;
+    QLabel          *m_playClock = nullptr;
+    class QTimer    *m_playTimer = nullptr;
+    qint64           m_playWallMs = 0;   // when the timer last ticked (ms since epoch)
+    bool             m_playing = false;
+    qint64           m_clock = 0;        // the recording's time being played
+    QString          m_playTab;          // the tab it plays
+    int              m_playRow = -1;     // the proxy row it last put the cursor on
 
     // Session 348: Back/Forward over this window's jumps, as the live window.
     NavHistory m_nav;
