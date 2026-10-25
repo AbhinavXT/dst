@@ -112,6 +112,9 @@ The three features once queued here are all done:
   Tools ▸ Monitor ▸ Reports ▸ Incident report….
 - **Two-loco view:** sessions 98, 132, 172, 186.
 - **Track diagram by absolute location:** sessions 99, 131, 207, 209.
+- **Remote review** (testing at the site, review elsewhere): the review tools
+  in the .dlr viewer (365), notes beside the capture (366), the review pack
+  (367), Play with the DMI (368). How-to: `docs/REMOTE_REVIEW.md`.
 
 Before proposing a feature, search `CHANGELOG.md` for it. **Queued:** the
 Brake Test Bench follow-ups for the hardware session (real BIU frames,
