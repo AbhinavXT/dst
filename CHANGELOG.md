@@ -10,6 +10,71 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-369"></a>
+## Session 369 — notes beside the capture: `x.notes.json` next to `x.dlr`
+
+Item 4 of the remote-review list (session 368), and the part session 343
+left undone: *"notes saved next to each capture file."* Bookmarks and their
+notes lived only in `bookmarks.json` beside the INI, on the machine where
+they were made. A recording sent from the site arrived without "EB felt
+late here".
+
+**What the operator sees.**
+- **Save** (the log header's Save) also writes `<name>.notes.json` beside the
+  `.log` and `.dlr`, when the tab has notes in the saved span: the marks with
+  their notes and the start of each row. Indented JSON with a `time` per
+  mark, so it can be read without the program.
+- **Opening a .dlr** (File ▸ Open recorded session…, Open Recent, a drop)
+  reads the notes file beside it into the bookmark store. The marks show on
+  their rows, in F2 / Shift+F2, on the ribbon and the marker bar, and in the
+  incident pack. The status bar says what came in: *"From the notes beside
+  the recording: 2 marks"*.
+- **Nobody's words are overwritten.** A mark the reader has without a note
+  takes the file's note. A mark whose note differs keeps the reader's, and
+  the status bar adds *"1 note differs from your own, kept"*.
+- **A note made in the viewer goes back into the file.** Add note…, Edit
+  note… and Ctrl+B rewrite the notes file beside each recording of that tab
+  (its marks inside that file's span). When the last mark goes, the file
+  goes too, so it cannot bring back notes that were taken off. If the folder
+  is read-only, the note stays in the store and the status bar says it was
+  not written beside the file.
+
+**Not done.** The live recorder's rotating `.dlr` files in the log folder get
+no notes file; their notes go out in the review pack (session 370). A note
+added after Save is not in that save's notes file.
+
+**Files.** `notessidecar.{h,cpp}` (new, in `dlcore.pri`): `pathFor`,
+`marksIn`, `write`, `read`, `mergeInto`. `sessionwindow.{h,cpp}`: each loaded
+file's tab and span, the merge on load, `writeSidecars`, `lastMerge`.
+`mainwindow.cpp`: Save writes the notes file. `tests/test_session369.cpp`,
+`tests/tests.pro`.
+
+**Tests.** New `session369` (25 checks). The file: `x.dlr` and `x.log` share
+`x.notes.json`; only the tab's marks inside the span, in time order; it
+names its format and capture; read back with tab, time, note and row text;
+no file means no marks; another JSON is refused, with why; no marks removes
+the file. The merge: 2 added, 1 filled in, 1 differing (kept), and a second
+merge changes nothing. The viewer, on 300 real lines of
+`replay/loco_1_1_27062026_151052.cap` written as a .dlr: the site's two notes
+come in, their rows are marked (a row of another second is not; the times
+are whole seconds, and a mark is on its moment), and the status bar says so.
+The reviewer's note goes into the file in time order. Ctrl+B off takes the
+mark out of the file too. Opened again with a differing note of the
+reader's: the reader's is kept, counted, and said.
+
+**Not tested.** Save's notes file through the live window (MainWindow's
+Save runs on a worker thread; the suite covers `marksIn` and `write`, which
+it calls).
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4** (`qmake6`): all green: 391 suites / 9974 checks, 0 failed; 15
+  validators; menu audit; smoke.
+- **Qt 5.15.13:** builds; `session368` and `session369` green. The 4 pixel
+  checks of `session134`/`session135` fail in this container on Qt 5 as
+  before any change (see session 367).
+
+---
+
 <a id="session-368"></a>
 ## Session 368 — the .dlr viewer: DMI clip, radio chart, notes and the incident pack
 

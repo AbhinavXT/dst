@@ -37,6 +37,7 @@
 #include "savedata.h"
 #include "sessionfile.h"
 #include "sessionwindow.h"
+#include "notessidecar.h"
 #include "settings.h"
 #include "sourcerowdelegate.h"
 #include "settingsdialog.h"
@@ -1237,9 +1238,29 @@ void MainWindow::on_pbSaveBtn_clicked()
         kvId  = static_cast<quint16>(currentKey.mid(us + 1).toInt());
     }
 
-    auto *worker = new SaveData(filepath, friendly, model->snapshot(),
+    const QVector<LogEntryPtr> snapshot = model->snapshot();
+    auto *worker = new SaveData(filepath, friendly, snapshot,
                                 srcId, kvId, Settings::saveIncludesRaw());
     connect(worker, &SaveData::saveFinished, this, &MainWindow::onSaveFinished);
+    // Session 369: the tab's notes in the saved span, beside the .log and
+    // .dlr (x.notes.json), so the files carry them wherever they are sent.
+    // Taken now, with the snapshot: a note made after Save is not in it.
+    qint64 firstMs = 0, lastMs = 0;
+    for (const LogEntryPtr &e : snapshot) {
+        if (!e) continue;
+        if (!firstMs || e->epochMs < firstMs) firstMs = e->epochMs;
+        lastMs = qMax(lastMs, e->epochMs);
+    }
+    if (firstMs) {
+        const QVector<Bookmark> marks = NotesSidecar::marksIn(m_bookmarks.all(), currentKey, firstMs, lastMs);
+        if (!marks.isEmpty()) {
+            connect(worker, &SaveData::saveFinished, this, [this, marks](const QString &logPath, const QString &, int) {
+                QString err;
+                if (!NotesSidecar::write(logPath, marks, &err))
+                    notify(NoteLevel::Warning, tr("Saved, but the notes were not written beside it"), err);
+            });
+        }
+    }
     connect(worker, &SaveData::saveFailed,   this, &MainWindow::onSaveFailed);
     connect(worker, &QThread::finished, worker, &QObject::deleteLater);
     worker->start();
