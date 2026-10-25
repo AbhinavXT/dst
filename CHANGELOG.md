@@ -11,6 +11,82 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-371"></a>
+## Session 371 — two runs played in step, the DMIs side by side
+
+Item 3 of the second remote-review list (session 369). The same scenario is
+run more than once: two runs at the site, or before and after a firmware
+change. The Two-loco view (98, 132, 172) shows two locos of one live session.
+Nothing played two recordings together.
+
+**What the operator sees.** **File ▸ Compare two runs…**, or **Tools ▸
+Compare with another run…** in a recorded-session window (that recording is
+run A). A window with two DMIs side by side:
+- **Run A / Run B**, each with **Open…**: one or more .dlr files of one run,
+  or a review pack (session 367). Each side has its **Loco** (the same as the
+  other run's when it has it) and **T+0 at**: the moment of that run the
+  clock calls T+0, by default its loco's first DMI frame, and editable.
+- **Align at** the first DMI frame, the first FSB or EB, or the first change
+  of mode, then **Align**: both T+0s at that moment. A run without one is
+  named and its start left alone (*"Run B (loco 1_1) has no FSB or EB: its
+  start is left as it was."*).
+- **▶ Play / ❚❚ Pause** (F5), **1×-16×**, a slider and *T+00:20.0 / 03:31.0*.
+  One clock drives both: each panel shows its loco's last @dmi at or before
+  its own T+0 + T, muted when that frame is over 3 s old, as the DMI window
+  draws a stale frame. Under each panel, whose and when (*"Loco 1_1 ·
+  14:02:47.0"*, or *"last frame 5 s before"*).
+- **What differs between the two DMIs at this moment**: one row per field,
+  Run A beside Run B, in the panel's own words (Mode, Brake, Permitted
+  speed, Target speed, Target, Signal, System messages, Tag, Location,
+  Radio, …). *"The two DMIs show the same."* when nothing does.
+
+**DmiDiff** (new) is that comparison: two DMI pictures field by field, in
+panel order and the DMI's units. It marks speed, distances and location as
+values that move every frame. Session 372's change list is the same
+comparison between one frame and the next.
+
+The window holds the runs' @dmi lines only. The rest of a run is in its
+recorded-session window.
+
+**Files.** `dmidiff.{h,cpp}`, `runcomparewindow.{h,cpp}` (new, in
+`dlcore.pri`); `sessionwindow.{h,cpp}` (`compareWithAnotherRun`, Tools
+entry); `mainwindow.{h,cpp}`, `mainwindow_menus.cpp` (File ▸ Compare two
+runs…); `tests/test_session371.cpp`, `tests/tests.pro`.
+
+**Tests.** New `session371` (31 checks). DmiDiff: two empty pictures and two
+equal ones differ in nothing; one side without a frame is one line; four
+changed fields, in panel order and words ("Mode FS → OS", "Brake none → EB",
+"Speed 45 km/h → 52 km/h", "Target speed — → 30 km/h"); speed marked as
+moving, mode not; brake names. The window, on two real runs of loco 1_1 on
+2026-06-27 (`loco_1_1_27062026_140226.cap` to 14:06, which brakes, and the
+rear-end capture `loco_1_1_27062026_151052.cap`, which does not), each
+written as a .dlr: both load, loco 1_1 chosen; T+0 at each first DMI frame;
+the clock's length; at T+0 and T+20 s each panel shows its own run's last
+frame at or before its start + T; the table is DmiDiff's, cell for cell;
+moving B's T+0 moves only B; Play at 4×, pause, the end; Align at the first
+FSB or EB refused, naming run B, with neither start moved; the braking run
+beside itself, aligned at its brake, shows the brake on both and nothing
+differing; Align at the first DMI frame puts both back; a .dlr without @dmi
+refused by name and run B left as it was; from a recorded-session window,
+that recording is run A.
+
+**Looked at.** The window drawn offscreen at 1280 × 860 with the two runs at
+T+20 s: run A in Trip with EB and "Train Tripped, Select P_Trp", run B in
+Staff Responsible. Seven rows differ. The first drawing squeezed the table
+to three rows and the Run A column; both fixed before the gate.
+
+**Not tested.** The file dialogs; the play timer itself (the suite steps
+`advance` as the timer does).
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4** (`qmake6`): all green: 396 suites / 10088 checks, 0 failed; 15
+  validators; menu audit; smoke.
+- **Qt 5.15.13:** builds; `session371` green. The 4 pixel checks of
+  `session134`/`session135` fail in this container on Qt 5 as before any
+  change (see session 364).
+
+---
+
 <a id="session-370"></a>
 ## Session 370 — the test cases over a recording
 

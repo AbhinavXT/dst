@@ -40,6 +40,7 @@
 #include "notessidecar.h"
 #include "reviewpack.h"
 #include "reviewpackdialog.h"
+#include "runcomparewindow.h"
 #include "configfiles.h"
 #include "settings.h"
 #include "sourcerowdelegate.h"
@@ -3136,6 +3137,15 @@ bool MainWindow::openReviewPack(const QString &zipPath)
     notify(pack.damaged.isEmpty() ? NoteLevel::Info : NoteLevel::Warning,
            tr("%1 — %2 records").arg(pack.summary()).arg(n), QDir::toNativeSeparators(pack.dir));
     return true;
+}
+
+void MainWindow::onActionCompareRuns()
+{
+    // Its own Open buttons choose the runs: two runs are two choices, and
+    // each may be several .dlr files or a review pack.
+    auto *w = new RunCompareWindow(&m_colorRules, this);
+    w->show();
+    w->raise();
 }
 
 void MainWindow::refreshFieldIndex()
