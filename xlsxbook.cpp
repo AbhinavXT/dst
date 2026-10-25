@@ -555,4 +555,8 @@ bool writeFile(const QString &path, const QVector<Sheet> &sheets, QString *err)
     return true;
 }
 
+QByteArray zipFiles(const QVector<QPair<QString, QByteArray>> &files) { return zip(files); }
+
+QHash<QString, QByteArray> unzipFiles(const QByteArray &z, QString *err) { return unzip(z, err); }
+
 }  // namespace XlsxBook
