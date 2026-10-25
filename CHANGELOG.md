@@ -11,6 +11,59 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-368"></a>
+## Session 368 — Play in the recorded-session window: the DMI as it happened
+
+Item 3 of the remote-review list (session 365). The DMI clip (262) is a GIF
+of a minute or two; a test of half an hour is watched, paused and rewound.
+The DMI window and the Live Loco Console already follow the cursor of the
+recorded-session window (sessions 84, 169), so Play moves the cursor.
+
+**What the operator sees.** A **Playback** bar over the recorded-session
+window (and over a review pack, session 367):
+- **▶ Play / ❚❚ Pause** (F5). Play starts at the selected row (at the start
+  again from the last row). The cursor walks the tab on show in time, and
+  everything that follows the cursor plays with it: the DMI window, the Live
+  Loco Console, the decoded fields and raw bytes. The DMI takes its frames
+  from every loaded tab, so a recording split by source plays its DMI too.
+- **1× 2× 4× 8× 16×**: how much faster than it happened.
+- **Skip quiet spans** (on): when nothing was recorded for more than 3 s, go
+  straight to the next row, and say so (*"Nothing recorded for 21 s: skipped
+  to 14:03:20"*). Off, a quiet span plays as long as it lasted.
+- **DMI**: opens the DMI window, following.
+- The clock (*14:03:11 · 4×*) beside it. Clicking a row, the ribbon,
+  Go to timestamp or F4 while playing moves the clock there. Bringing
+  another tab forward plays that tab from the same moment. A filtered table
+  plays only the rows it shows. At the last row it stops and says *"End of
+  the recording"*.
+
+**Files.** `sessionwindow.{h,cpp}` (the bar; `startPlayback`,
+`stopPlayback`, `advancePlayback`, `setPlaybackSpeed`, `setSkipQuiet`);
+`tests/test_session368.cpp`, `tests/tests.pro`.
+
+**Tests.** New `session368` (16 checks) on real frames: 14:02-14:05 of
+`replay/loco_1_1_27062026_140226.cap`, @dmi in one tab and the rest in
+another, every frame of 14:03:00-14:03:20 taken out. Checked: the bar (Play,
+five speeds, F5); Play starts at the selected row and reads Pause; at 4× one
+second plays four; the cursor is on the last row of that moment; the DMI
+broker's moment is the cursor's, with loco 1_1's @dmi from the other tab;
+F5 pauses; Play resumes from a moved cursor; the 20 s hole is skipped and
+said; with skipping off the cursor waits through it; at the end it stops,
+says so and reads Play again.
+
+**Not tested.** The 100 ms timer itself (the suite steps `advancePlayback`
+as the timer does); the DMI window's drawing while playing (its following is
+session 84's, tested there).
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4** (`qmake6`): all green: 393 suites / 10021 checks, 0 failed; 15
+  validators; menu audit; smoke.
+- **Qt 5.15.13:** builds; `session348`, `session349`, `session365` and
+  `session368` green. The 4 pixel checks of `session134`/`session135` fail
+  in this container on Qt 5 as before any change (see session 364).
+
+---
+
 <a id="session-367"></a>
 ## Session 367 — the review pack: what the test site saw, in one file
 
