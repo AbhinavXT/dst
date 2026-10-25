@@ -26,6 +26,12 @@
 #include "framediffwindow.h"
 #include "fieldplot.h"
 #include "packetmakerdialog.h"
+#include "dmiclip.h"
+#include "dmiclipdialog.h"
+#include "incidentreport.h"
+#include "incidentreportdialog.h"
+#include "incidentreportwindow.h"
+#include "radiochartdialog.h"
 
 #include <QCloseEvent>
 #include <QApplication>
@@ -36,6 +42,8 @@
 #include <QSortFilterProxyModel>
 #include <QDateTime>
 #include <QHBoxLayout>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QSpinBox>
 #include <QTreeWidget>
 #include <QMenu>
@@ -449,6 +457,13 @@ void SessionWindow::buildToolsMenu()
     a = tools->addAction(tr("&Plot field over time…"));
     a->setShortcut(QKeySequence("Ctrl+Shift+P"));
     connect(a, &QAction::triggered, this, &SessionWindow::onToolPlotField);
+
+    // Session 368: the incident pack, over a recording sent from the site.
+    a = tools->addAction(tr("&Incident report…"));
+    a->setObjectName(QStringLiteral("sessionIncidentReport"));
+    a->setToolTip(tr("The incident pack around the selected row (or the tab's last), "
+                     "with this recording's notes"));
+    connect(a, &QAction::triggered, this, &SessionWindow::onIncidentReport);
 
     tools->addSeparator();
 
@@ -870,7 +885,162 @@ void SessionWindow::onRowContextMenu(const QPoint &pos)
         });
     }
 
+    // Session 368: the live window's review tools, on this recording.
+    QString key;
+    for (auto it = m_tabUi.constBegin(); it != m_tabUi.constEnd(); ++it)
+        if (it->view == view) key = it.key();
+    if (cur && !key.isEmpty()) {
+        menu.addSeparator();
+        QAction *note = menu.addAction(noteOf(key, cur).isEmpty() && !cur->bookmarked
+                                           ? tr("Add &note…") : tr("Edit &note…"));
+        note->setObjectName(QStringLiteral("rowNote"));
+        connect(note, &QAction::triggered, this, [this, key, cur]() {
+            bool ok = false;
+            const QString text = QInputDialog::getText(
+                this, tr("Note on this row"),
+                tr("Note (kept with the bookmark, and in the incident pack):"),
+                QLineEdit::Normal, noteOf(key, cur), &ok);
+            if (ok) setRowNote(key, cur, text);
+        });
+        QAction *clip = menu.addAction(tr("DMI c&lip around here…"));
+        clip->setObjectName(QStringLiteral("rowDmiClip"));
+        clip->setToolTip(tr("The DMI as the loco pilot saw it, ±30 s around this row, as an animated GIF"));
+        connect(clip, &QAction::triggered, this, [this, key, cur]() {
+            QString why;
+            DmiClipDialog *dlg = makeClipDialog(key, cur, &why);
+            if (!dlg) { statusBar()->showMessage(why, 5000); return; }
+            dlg->exec();
+            delete dlg;
+        });
+        QAction *radio = menu.addAction(tr("Radio ch&art around here…"));
+        radio->setObjectName(QStringLiteral("rowRadioChart"));
+        radio->setToolTip(tr("SLRP, LSRP and ARP ±30 s around this row as a sequence diagram (PNG or SVG)"));
+        connect(radio, &QAction::triggered, this, [this, key, cur]() {
+            RadioChartDialog *dlg = makeRadioChart(key, cur->epochMs);
+            if (!dlg) return;
+            dlg->exec();
+            delete dlg;
+        });
+        QAction *pack = menu.addAction(tr("&Incident report around here…"));
+        pack->setObjectName(QStringLiteral("rowIncidentReport"));
+        connect(pack, &QAction::triggered, this, [this, key, cur]() {
+            const LogModel *m = m_models.value(key);
+            IncidentReportDialog dlg(cur->epochMs, m->entryAt(0)->epochMs,
+                                     m->entryAt(m->count() - 1)->epochMs, this);
+            if (dlg.exec() != QDialog::Accepted) return;
+            openIncidentReport(key, dlg.atMs(), dlg.beforeMs(), dlg.afterMs());
+        });
+    }
+
     menu.exec(view->viewport()->mapToGlobal(pos));
+}
+
+QString SessionWindow::tabName(const QString &tabKey) const
+{
+    const QString name = m_names ? m_names->lookupByKey(tabKey) : QString();
+    return name.isEmpty() ? tabKey : name;
+}
+
+DmiClipDialog *SessionWindow::makeClipDialog(const QString &tabKey, const LogEntryPtr &entry, QString *why)
+{
+    if (!entry) { if (why) *why = tr("Select a row first."); return nullptr; }
+    // The row's tab when it holds @dmi, else the first that does: the clip
+    // is of the moment, wherever its DMI frames were recorded.
+    QString key = tabKey;
+    LogModel *model = m_models.value(tabKey);
+    if (!model || DmiClip::locosIn(model).isEmpty()) {
+        model = nullptr;
+        for (int i = 0; i < m_tabs->count() && !model; ++i) {
+            for (auto it = m_tabUi.constBegin(); it != m_tabUi.constEnd(); ++it) {
+                if (it->view && it->view->parentWidget() == m_tabs->widget(i)
+                    && !DmiClip::locosIn(it->model).isEmpty()) {
+                    model = it->model;
+                    key = it.key();
+                    break;
+                }
+            }
+        }
+    }
+    if (!model) {
+        if (why) *why = tr("This recording holds no @dmi frames: no DMI to clip.");
+        return nullptr;
+    }
+    return new DmiClipDialog(model, tabName(key), entry->epochMs, dmiKeyOfText(entry->text), this);
+}
+
+RadioChartDialog *SessionWindow::makeRadioChart(const QString &tabKey, qint64 atMs)
+{
+    LogModel *model = m_models.value(tabKey);
+    return model ? new RadioChartDialog(model, tabName(tabKey), atMs, this) : nullptr;
+}
+
+IncidentReportWindow *SessionWindow::openIncidentReport(const QString &tabKey, qint64 atMs,
+                                                        qint64 beforeMs, qint64 afterMs)
+{
+    LogModel *model = m_models.value(tabKey);
+    if (!model || model->count() == 0) return nullptr;
+    IncidentReport::Options options;
+    options.beforeMs = beforeMs;
+    options.afterMs = afterMs;
+    auto *w = new IncidentReportWindow(model, tabKey, tabName(tabKey), atMs, options, this);
+    w->setBookmarks(m_bookmarks);   // the notes made here, and live, on this tab
+    w->show();
+    w->raise();
+    return w;
+}
+
+void SessionWindow::onIncidentReport()
+{
+    const QString key = currentTabKey();
+    LogModel *model = m_models.value(key);
+    if (!model || model->count() == 0) {
+        statusBar()->showMessage(tr("No records in this tab to report on."), 3000);
+        return;
+    }
+    const LogEntryPtr cur = currentEntry();
+    const qint64 first = model->entryAt(0)->epochMs;
+    const qint64 last = model->entryAt(model->count() - 1)->epochMs;
+    IncidentReportDialog dlg(cur ? cur->epochMs : last, first, last, this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    openIncidentReport(key, dlg.atMs(), dlg.beforeMs(), dlg.afterMs());
+}
+
+QString SessionWindow::noteOf(const QString &tabKey, const LogEntryPtr &entry) const
+{
+    if (!m_bookmarks || !entry) return QString();
+    for (const Bookmark &b : m_bookmarks->all())
+        if (b.tabKey == tabKey && b.epochMs == entry->epochMs) return b.note;
+    return QString();
+}
+
+bool SessionWindow::setRowNote(const QString &tabKey, const LogEntryPtr &entry, const QString &note)
+{
+    // Without a store a note has nowhere to live: say so rather than drop it.
+    if (!entry || !m_bookmarks) {
+        statusBar()->showMessage(tr("Notes are not kept in this window."), 3000);
+        return false;
+    }
+    if (!m_bookmarks->has(tabKey, entry->epochMs)) m_bookmarks->toggle(tabKey, entry->epochMs, entry->text);
+    entry->bookmarked = true;
+    for (int i = 0; i < m_bookmarks->count(); ++i)
+        if (m_bookmarks->all().at(i).tabKey == tabKey && m_bookmarks->all().at(i).epochMs == entry->epochMs)
+            m_bookmarks->setNote(i, note);
+    LogModel *model = m_models.value(tabKey);
+    for (int r = 0; model && r < model->count(); ++r) {
+        if (model->entryAt(r) == entry) { refreshMarks(tabKey, r); break; }
+    }
+    statusBar()->showMessage(note.isEmpty() ? tr("Bookmarked, no note.") : tr("Note kept."), 2000);
+    return true;
+}
+
+void SessionWindow::refreshMarks(const QString &tabKey, int sourceRow)
+{
+    auto it = m_tabUi.constFind(tabKey);
+    if (it == m_tabUi.constEnd() || !it->model) return;
+    const QModelIndex tl = it->model->index(sourceRow, LogModel::ColTime);
+    emit it->model->dataChanged(tl, tl, { Qt::DisplayRole });
+    if (it->marks)  { it->marks->refreshLater(); }
+    if (it->ribbon) { it->ribbon->refreshLater(); }
 }
 
 void SessionWindow::onSelectionChanged()

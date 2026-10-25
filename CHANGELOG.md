@@ -10,6 +10,63 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-368"></a>
+## Session 368 — the .dlr viewer: DMI clip, radio chart, notes and the incident pack
+
+Item 1 of the remote-review list Abhinav agreed after patch 363 (testing at
+the site, review elsewhere: 1 the review tools on a recording, 2 a review
+pack from the site, 3 DMI playback, 4 notes beside the capture). A file
+sent from the site is opened with File ▸ Open recorded session…, and that
+window had none of the review tools: the DMI clip (262), the radio chart
+(345), notes on rows (343) and the incident pack (97/133/343) worked only on
+live tabs.
+
+**What the operator sees** in the recorded-session window:
+- **Right-click a row** ▸ **Add note…** (Edit note… on a marked row),
+  **DMI clip around here…**, **Radio chart around here…** and **Incident
+  report around here…**: the same dialogs as in the live window, over the
+  recording.
+- **Tools ▸ Incident report…**: the pack around the selected row (else the
+  tab's last), as Tools ▸ Monitor ▸ Reports ▸ Incident report… does live.
+- **The DMI clip finds the DMI.** When the row's tab has no @dmi (a
+  recording split by source), the clip uses the first tab that has.
+  When no tab has any, it says "This recording holds no @dmi frames: no
+  DMI to clip." in the status bar.
+- **Notes go into the shared bookmark store**, as Ctrl+B here already did,
+  so a note made in the viewer is in the incident pack's *Operator notes*
+  and in the live window's Bookmarks dock.
+
+**Files.** `sessionwindow.{h,cpp}` (the row menu; `makeClipDialog`,
+`makeRadioChart`, `openIncidentReport`, `setRowNote`, `noteOf`;
+Tools ▸ Incident report…); `tests/test_session368.cpp`, `tests/tests.pro`.
+
+**Tests.** New `session368` (23 checks) on real frames: 14:02-14:05 of
+`replay/loco_1_1_27062026_140226.cap` written as two .dlr files the way Save
+writes them, the @dmi frames in one (source 81) and everything else in the
+other (source 21). Checked: the row menu lists the four entries (read off the
+popup); a clip from a radio row finds loco 1_1 in the other tab and writes a
+GIF; a recording without @dmi is refused, with the reason; the radio chart
+has arrows and exports SVG; Add note… bookmarks the row with its note, Edit
+note… changes it (still one mark); the pack opens over the recording with
+that note as its Operator note and the window asked for; an unknown tab gets
+no chart and no pack; a window without a bookmark store refuses a note rather
+than dropping it.
+
+**Not tested.** The modal dialogs' own buttons from the menu (the suites
+drive the same functions the menu calls).
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4** (`qmake6`): all green: 390 suites / 9949 checks, 0 failed; 15
+  validators; menu audit; smoke. Run on the tree of patches 367 and 368
+  together.
+- **Qt 5.15.13:** the changed suites green (`session362` 36, `session368` 23).
+  `session134` and `session135` fail 4 pixel-size checks in this container
+  on Qt 5 (Firmware Flasher minimum size, Packet Maker send bar). They
+  failed the same way before any change, and CI passes them on Linux and
+  Windows: this container's Qt 5 fonts, not the code.
+
+---
+
 <a id="session-367"></a>
 ## Session 367 — CI: session362's code lists on MSVC
 
