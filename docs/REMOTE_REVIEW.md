@@ -44,6 +44,28 @@ picture: it adds the test run and the kavach.xml the site decoded with.
    - **Add note…**: your own note. It also goes into the `.notes.json` beside
      the unpacked `.dlr`, so sending that file back carries it.
 
+## More on a recording (patches 372-375)
+
+- **Tools** in the recording window also has, for the tab on show: Run
+  summary report, Mission report, Speed vs distance, Radio and GPS health,
+  Odometry at the tags, Fault timeline, Cab inputs and outputs, Track
+  diagram. They are the same windows as live; "show in log" lands in the
+  recording.
+- **Test cases** menu: the test cases loaded in the live window run over the
+  recording by themselves. You can also run the built-in set or a file. The
+  Test cases dock shows OBSERVED / NOT ANSWERED per clause; double-click to
+  reach the evidence. *Save observation report…* writes the report. Long
+  recordings show a progress bar with Stop.
+- **Tools ▸ What changed on the DMI…** lists every change on a loco's DMI:
+  mode, brake, target, signal, messages, tag. Speed and countdowns are left
+  out unless you ask for them. **F8 / Shift+F8** jump to the next / previous
+  change.
+- **Two runs of the same scenario:** File ▸ Compare two runs…, or Tools ▸
+  Compare with another run… from a recording. The two DMIs play side by side
+  on one clock, aligned at the first DMI frame, the first FSB/EB or the first
+  mode change. Below them, a table lists what differs between the two DMIs
+  at each moment.
+
 ## What a pack is
 
 A plain zip, readable without DLConsole: `README.txt` says what is in it,
