@@ -10,6 +10,80 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-375"></a>
+## Session 375 — what changed on the DMI
+
+Item 4 of the second remote-review list (session 372). The DMI is sent about
+once a second and mostly repeats itself. A reviewer looks for the moments it
+changed. Finding them meant playing the recording and watching.
+
+**What the operator sees** in the recorded-session window (and a review
+pack):
+- **Tools ▸ What changed on the DMI…**: a **DMI changes** dock. Pick a
+  **Loco** (every loco with @dmi in any tab of the recording). One row per
+  @dmi frame that changed something from the frame before, with its time and
+  what changed, in the DMI's words:
+  *"Mode Stand By Mode → System Failure Mode; Brake none → EB; System
+  messages System Self-Test Success → System Fault, Isolate or Restart
+  KAVACH"*. Rows grow to show the whole sentence. Under it: *"40 change(s)
+  on loco 1_1's DMI"*.
+- **Speed, distances and location** move every frame while the train runs.
+  They are left out unless *Speed, distances and location too* is ticked.
+  So is a **message that counts down**: "End of Authority in 3250m" →
+  "… 3242m", "PSR in 0143m with speed limit 80Kmph" → "… 0139m …" (only
+  its numbers differ). The message appearing, going, or another message in
+  its place is still a change.
+- **Double-click** a change: the tab on show lands on that moment, and the
+  DMI window (following the cursor) shows it.
+- On the **Playback bar**: **◀ DMI change** (Shift+F8) and **DMI change ▶**
+  (F8) move the cursor to the previous / next change, from wherever it is.
+  The status bar says what changed. At either end it stays put and says
+  *"No further change on the DMI."*. While playing, the clock follows the
+  cursor there (session 371).
+
+**DmiDiff (session 374) now marks a counting message as moving.** On the
+real captures this takes the change list from 557 to 88 entries
+(`loco_1_1_29062026_134509`), 505 to 29 (`…_170217`), 323 to 103
+(`…_140226`). The side-by-side of session 374 still lists such a message
+when the two runs differ.
+
+**Files.** `dmichanges.{h,cpp}` (new, in `dlcore.pri`): `locos`, `list`,
+`next`, `previous`. `dmidiff.{h,cpp}`: the counting message.
+`sessionwindow.{h,cpp}`: the dock, the Tools entry, the two Playback actions;
+`showDmiChanges`, `dmiChanges`, `stepDmiChange`. `tests/test_session375.cpp`,
+`tests/tests.pro`.
+
+**Tests.** New `session375` (26 checks) on the real 2026-10-08 run
+`replay/2026-10-08/loco_1_1_08102026_105200.cap` (Limited Supervision, Stand
+By, System Failure with EB), @dmi in tab 81_1 and the rest in 21_1. Checked:
+the locos per tab; changes listed, in time order, nothing moving by default;
+every frame where the mode or the brake changed (found by reading the frames
+one by one) is there, saying so, including System Failure Mode and EB; with
+speed and distances, at least as many; next and previous strictly after and
+before; a message appearing is a change, its distance counting down is not,
+another message in its place is. In the window: the dock waits to be asked
+for; one row per change, for loco 1_1 found in the other tab; the box adds
+the moving values; a double-click lands the radio tab on that moment; F8 /
+Shift+F8 on the bar step first, second, back; after the last change it stays.
+
+**Looked at.** The dock drawn offscreen at 1400 × 800 beside the 10:52 run.
+The first drawing cut each change at the column's edge; rows now grow to the
+sentence.
+
+**Not tested.** The live window has no DMI changes dock (it is for review).
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4** (`qmake6`): all green: 397 suites / 10114 checks, 0 failed; 15
+  validators; menu audit; smoke.
+- **Qt 5.15.13:** the suite did not compile at first:
+  `stringList = { QStringLiteral(…) }` is ambiguous on Qt 5. Written as
+  `QStringList{ … }`; `session374` and `session375` then green on Qt 5, and
+  `session375` again on Qt 6 (the change is in the suite only). The 4 pixel
+  checks of `session134`/`session135` fail in this container on Qt 5 as
+  before any change (see session 367).
+
+---
+
 <a id="session-374"></a>
 ## Session 374 — two runs played in step, the DMIs side by side
 

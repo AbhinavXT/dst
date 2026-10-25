@@ -2,6 +2,7 @@
 
 #include "dmipanel.h"
 
+#include <QRegularExpression>
 #include <QStringList>
 
 namespace DmiDiff {
@@ -75,10 +76,25 @@ QVector<Item> compare(const DmiState &a, const DmiState &b)
         return out;
     }
     const QVector<Field> fa = fieldsOf(a), fb = fieldsOf(b);
+    // A message that counts down ("End of Authority in 3250m" → "… 3242m",
+    // "PSR in 0143m with speed limit 80Kmph" → "… 0139m …") changes every
+    // frame while the train moves: the same message, its numbers moving. It
+    // is marked as moving, like speed. Its coming and going is a change.
+    static const QRegularExpression digits(QStringLiteral("\\d+"));
+    auto counting = [](const QString &x, const QString &y) {
+        if (x.isEmpty() || y.isEmpty()) return false;
+        QString a = x, b = y;
+        a.replace(digits, QStringLiteral("#"));
+        b.replace(digits, QStringLiteral("#"));
+        return a == b;
+    };
     for (int i = 0; i < fa.size(); ++i) {
         if (fa.at(i).value == fb.at(i).value) continue;
-        out.append({ QLatin1String(fa.at(i).key), QLatin1String(fa.at(i).label), fa.at(i).value, fb.at(i).value,
-                     fa.at(i).continuous });
+        const QString key = QLatin1String(fa.at(i).key);
+        const bool moving = fa.at(i).continuous
+                            || ((key == QLatin1String("system") || key == QLatin1String("context"))
+                                && counting(fa.at(i).value, fb.at(i).value));
+        out.append({ key, QLatin1String(fa.at(i).label), fa.at(i).value, fb.at(i).value, moving });
     }
     return out;
 }
