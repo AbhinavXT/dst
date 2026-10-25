@@ -44,6 +44,7 @@
 #include "navhistory.h"
 #include "notessidecar.h"
 #include "reviewpack.h"
+#include "dmichanges.h"
 #include "theme.h"
 
 class ColorRules;
@@ -161,6 +162,13 @@ public:
     // B is chosen there. Null when nothing is loaded.
     class RunCompareWindow *compareWithAnotherRun();
 
+    // Session 372: what changed on a loco's DMI, frame to frame (DmiChanges),
+    // in a dock; a double-click lands the tab on show on that moment.
+    // Previous / Next DMI change (Shift+F8 / F8) step the cursor between them.
+    void showDmiChanges();
+    const QVector<DmiChanges::Change> &dmiChanges() const { return m_dmiChanges; }
+    bool stepDmiChange(int dir);
+
 protected:
     // Remember size/position for the next opening.
     void closeEvent(QCloseEvent *event) override;
@@ -226,6 +234,7 @@ private:
     void updatePlaybackUi();
     void runTestCases();                      // session 370
     void buildTestCasesUi();
+    void refreshDmiChanges();                 // session 372
     void refreshMarks(const QString &tabKey, int sourceRow);
 
     // The tab the operator is looking at, and what is selected in it.
@@ -276,6 +285,14 @@ private:
     class TestCasePanel       *m_testPanel = nullptr;
     class QDockWidget         *m_testDock = nullptr;
     QStringList                m_loadedNames;   // the files, for the report's title
+
+    // Session 372: DMI changes.
+    class QDockWidget  *m_dmiDock = nullptr;
+    class QComboBox    *m_dmiLoco = nullptr;
+    class QCheckBox    *m_dmiMoving = nullptr;
+    class QTableWidget *m_dmiTable = nullptr;
+    QLabel             *m_dmiCount = nullptr;
+    QVector<DmiChanges::Change> m_dmiChanges;
 
     // Session 348: Back/Forward over this window's jumps, as the live window.
     NavHistory m_nav;

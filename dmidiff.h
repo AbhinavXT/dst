@@ -12,8 +12,9 @@
 //
 //  "Steady" fields are the ones whose change is an event: mode, brake,
 //  target, signal, messages, tag. Speed, distances and location move every
-//  frame; they are compared too, and marked, so a change list can leave them
-//  out and a side-by-side can keep them.
+//  frame; so does a message that counts down ("End of Authority in 3250m"
+//  → "… 3242m": only its numbers differ). They are compared too, and marked,
+//  so a change list can leave them out and a side-by-side can keep them.
 // =============================================================================
 
 #include <QString>

@@ -33,6 +33,7 @@
 #include "incidentreportwindow.h"
 #include "radiochartdialog.h"
 #include "runcomparewindow.h"
+#include <QTableWidget>
 #include "configfiles.h"
 #include "testassertions.h"
 #include "testcaseboard.h"
@@ -371,6 +372,18 @@ void SessionWindow::buildPlaybackBar()
     m_skipQuiet->setChecked(true);
     m_skipQuiet->setToolTip(tr("When nothing was recorded for more than 3 s, go straight to the next row"));
     m_playBar->addWidget(m_skipQuiet);
+
+    // Session 372: from one change on the DMI to the next.
+    QAction *prevChange = m_playBar->addAction(tr("◀ DMI change"));
+    prevChange->setObjectName(QStringLiteral("playbackPrevDmiChange"));
+    prevChange->setShortcut(QKeySequence(QStringLiteral("Shift+F8")));
+    prevChange->setToolTip(tr("The previous change on the DMI (Shift+F8)"));
+    connect(prevChange, &QAction::triggered, this, [this]() { stepDmiChange(-1); });
+    QAction *nextChange = m_playBar->addAction(tr("DMI change ▶"));
+    nextChange->setObjectName(QStringLiteral("playbackNextDmiChange"));
+    nextChange->setShortcut(QKeySequence(QStringLiteral("F8")));
+    nextChange->setToolTip(tr("The next change on the DMI: mode, brake, target, signal, messages, tag (F8)"));
+    connect(nextChange, &QAction::triggered, this, [this]() { stepDmiChange(+1); });
 
     QAction *dmi = m_playBar->addAction(tr("DMI"));
     dmi->setObjectName(QStringLiteral("playbackDmi"));
@@ -945,6 +958,12 @@ void SessionWindow::buildToolsMenu()
         connect(a, &QAction::triggered, this, [this, which]() { openReviewTool(which); });
     }
     tools->addSeparator();
+
+    // Session 372: the moments the DMI changed.
+    a = tools->addAction(tr("What changed on the D&MI…"));
+    a->setObjectName(QStringLiteral("sessionDmiChanges"));
+    a->setToolTip(tr("Each change on a loco's DMI (mode, brake, target, signal, messages, tag), frame to frame"));
+    connect(a, &QAction::triggered, this, &SessionWindow::showDmiChanges);
 
     // Session 371: this run beside another one.
     a = tools->addAction(tr("Compare with another r&un…"));
@@ -1543,6 +1562,124 @@ QWidget *SessionWindow::openReviewTool(ReviewTool tool)
         w->raise();
     }
     return w;
+}
+
+// ---------------------------------------------------------------------------
+//  Session 372 — what changed on the DMI
+// ---------------------------------------------------------------------------
+
+void SessionWindow::showDmiChanges()
+{
+    if (!m_dmiDock) {
+        auto *page = new QWidget(this);
+        auto *lay = new QVBoxLayout(page);
+        lay->setContentsMargins(4, 4, 4, 4);
+        auto *row = new QHBoxLayout;
+        row->addWidget(new QLabel(tr("Loco"), page));
+        m_dmiLoco = new QComboBox(page);
+        m_dmiLoco->setObjectName(QStringLiteral("dmiChangesLoco"));
+        row->addWidget(m_dmiLoco, 1);
+        lay->addLayout(row);
+        m_dmiMoving = new QCheckBox(tr("Speed, distances and location too"), page);
+        m_dmiMoving->setObjectName(QStringLiteral("dmiChangesContinuous"));
+        m_dmiMoving->setToolTip(tr("They change every frame while the train moves"));
+        lay->addWidget(m_dmiMoving);
+        m_dmiTable = new QTableWidget(0, 2, page);
+        m_dmiTable->setObjectName(QStringLiteral("dmiChangesTable"));
+        m_dmiTable->setHorizontalHeaderLabels({ tr("Time"), tr("What changed") });
+        m_dmiTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+        m_dmiTable->horizontalHeader()->setStretchLastSection(true);
+        m_dmiTable->verticalHeader()->hide();
+        // A change is a sentence: rows grow to show it whole (tens to a
+        // few hundred rows, so the cost is nothing).
+        m_dmiTable->verticalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+        m_dmiTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        m_dmiTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+        m_dmiTable->setWordWrap(true);
+        lay->addWidget(m_dmiTable, 1);
+        m_dmiCount = new QLabel(page);
+        m_dmiCount->setStyleSheet(UiColor::mutedStyle());
+        lay->addWidget(m_dmiCount);
+        // The tab on show lands on the moment; the DMI window follows it.
+        connect(m_dmiTable, &QTableWidget::cellDoubleClicked, this, [this](int r, int) {
+            if (r >= 0 && r < m_dmiChanges.size()) jumpToTime(currentTabKey(), m_dmiChanges.at(r).ms);
+        });
+        connect(m_dmiLoco, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &SessionWindow::refreshDmiChanges);
+        connect(m_dmiMoving, &QCheckBox::toggled, this, &SessionWindow::refreshDmiChanges);
+
+        m_dmiDock = new QDockWidget(tr("DMI changes"), this);
+        m_dmiDock->setObjectName(QStringLiteral("sessionDmiChangesDock"));
+        m_dmiDock->setWidget(page);
+        m_dmiDock->setAllowedAreas(Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
+        addDockWidget(Qt::RightDockWidgetArea, m_dmiDock);
+        for (QDockWidget *d : findChildren<QDockWidget *>())
+            if (d->objectName() == QLatin1String("sessionFieldDock")) tabifyDockWidget(d, m_dmiDock);
+    }
+    // Every loco with @dmi in any tab: a recording split by source keeps
+    // the DMI in another tab than the one on show.
+    QStringList keys;
+    for (LogModel *m : qAsConst(m_models))
+        for (const QString &k : DmiChanges::locos(m))
+            if (!keys.contains(k)) keys << k;
+    keys.sort();
+    const QString was = m_dmiLoco->currentData().toString();
+    {
+        const QSignalBlocker block(m_dmiLoco);
+        m_dmiLoco->clear();
+        for (const QString &k : keys) m_dmiLoco->addItem(tr("Loco %1").arg(k), k);
+        const int i = m_dmiLoco->findData(was);
+        if (i >= 0) m_dmiLoco->setCurrentIndex(i);
+    }
+    refreshDmiChanges();
+    m_dmiDock->show();
+    m_dmiDock->raise();
+}
+
+void SessionWindow::refreshDmiChanges()
+{
+    m_dmiChanges.clear();
+    const QString loco = m_dmiLoco ? m_dmiLoco->currentData().toString() : QString();
+    for (LogModel *m : qAsConst(m_models)) {
+        if (loco.isEmpty() || !DmiChanges::locos(m).contains(loco)) continue;
+        m_dmiChanges = DmiChanges::list(m, loco, m_dmiMoving && m_dmiMoving->isChecked());
+        break;
+    }
+    if (!m_dmiTable) return;
+    m_dmiTable->setRowCount(m_dmiChanges.size());
+    for (int i = 0; i < m_dmiChanges.size(); ++i) {
+        const DmiChanges::Change &c = m_dmiChanges.at(i);
+        m_dmiTable->setItem(i, 0, new QTableWidgetItem(QDateTime::fromMSecsSinceEpoch(c.ms).toString(QStringLiteral("HH:mm:ss.zzz"))));
+        auto *what = new QTableWidgetItem(c.text());
+        what->setToolTip(c.text());
+        m_dmiTable->setItem(i, 1, what);
+    }
+    m_dmiCount->setText(loco.isEmpty() ? tr("No @dmi frames in this recording.")
+                                       : tr("%1 change(s) on loco %2's DMI").arg(m_dmiChanges.size()).arg(loco));
+}
+
+bool SessionWindow::stepDmiChange(int dir)
+{
+    if (m_dmiChanges.isEmpty()) {
+        // The list is made on first use, for the first loco with @dmi.
+        if (!m_dmiDock) showDmiChanges();
+        if (m_dmiChanges.isEmpty()) {
+            statusBar()->showMessage(tr("No changes on the DMI in this recording."), 3000);
+            return false;
+        }
+    }
+    const QString key = currentTabKey();
+    const LogEntryPtr cur = currentEntry();
+    const qint64 at = cur ? cur->epochMs : 0;
+    const DmiChanges::Change *c = dir > 0 ? DmiChanges::next(m_dmiChanges, at) : DmiChanges::previous(m_dmiChanges, at);
+    if (!c) {
+        statusBar()->showMessage(dir > 0 ? tr("No further change on the DMI.") : tr("No earlier change on the DMI."), 3000);
+        return false;
+    }
+    jumpToTime(key, c->ms);
+    statusBar()->showMessage(tr("DMI %1: %2").arg(QDateTime::fromMSecsSinceEpoch(c->ms).toString(QStringLiteral("HH:mm:ss")),
+                                                  c->text()),
+                             6000);
+    return true;
 }
 
 RunCompareWindow *SessionWindow::compareWithAnotherRun()

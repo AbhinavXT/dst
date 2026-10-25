@@ -163,6 +163,7 @@ SOURCES += \
     $$PWD/reviewpack.cpp \
     $$PWD/reviewpackdialog.cpp \
     $$PWD/dmidiff.cpp \
+    $$PWD/dmichanges.cpp \
     $$PWD/runcomparewindow.cpp \
     $$PWD/archivesearch.cpp \
     $$PWD/commandpalette.cpp \
@@ -370,6 +371,7 @@ HEADERS += \
     $$PWD/reviewpack.h \
     $$PWD/reviewpackdialog.h \
     $$PWD/dmidiff.h \
+    $$PWD/dmichanges.h \
     $$PWD/runcomparewindow.h \
     $$PWD/archivesearch.h \
     $$PWD/commandpalette.h \
