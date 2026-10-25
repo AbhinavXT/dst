@@ -265,6 +265,7 @@ qint64 SessionWindow::loadFiles(const QStringList &paths)
     qint64 grandTotal = 0;
     qint64 skipped    = 0;
 
+    m_merge = NotesSidecar::Merge();
     QApplication::setOverrideCursor(Qt::WaitCursor);
 
     for (const QString &path : paths) {
@@ -286,10 +287,15 @@ qint64 SessionWindow::loadFiles(const QStringList &paths)
         QVector<LogEntryPtr> batch;
         batch.reserve(kChunk);
 
+        LoadedFile loaded;
+        loaded.path = path;
+        loaded.tabKey = key;
         while (reader.next()) {
             LogEntryPtr e = MessageDispatcher::buildEntry(
                 reader.wire(), reader.arrivalMs(), m_rules);
             if (!e) { ++skipped; continue; }
+            if (!loaded.firstMs || e->epochMs < loaded.firstMs) loaded.firstMs = e->epochMs;
+            loaded.lastMs = qMax(loaded.lastMs, e->epochMs);
 
             batch.append(e);
             if (batch.size() >= kChunk) {
@@ -305,6 +311,25 @@ qint64 SessionWindow::loadFiles(const QStringList &paths)
         if (!batch.isEmpty()) model->appendEntries(batch);
 
         grandTotal += reader.recordsRead();
+        m_files.append(loaded);
+
+        // Session 366: the notes the site made, from the file beside it.
+        // Into the shared store (the reader's own notes are never
+        // overwritten), before the marks are painted below.
+        QString notesErr;
+        const QVector<Bookmark> sideMarks = NotesSidecar::read(path, &notesErr);
+        if (!notesErr.isEmpty()) m_warnings << notesErr;
+        if (!sideMarks.isEmpty()) {
+            if (m_bookmarks) {
+                const NotesSidecar::Merge m = NotesSidecar::mergeInto(m_bookmarks, sideMarks);
+                m_merge.added += m.added;
+                m_merge.filled += m.filled;
+                m_merge.differ += m.differ;
+            } else {
+                m_warnings << tr("%1: %2 note(s) beside it not shown (no bookmark store)")
+                                  .arg(QFileInfo(path).fileName()).arg(sideMarks.size());
+            }
+        }
 
         // A truncated tail is expected often enough that it is reported as
         // information, not failure: it is what a file looks like when the
@@ -370,7 +395,28 @@ qint64 SessionWindow::loadFiles(const QStringList &paths)
         setWindowTitle(tr("Recorded session — %1 files").arg(paths.size()));
     }
 
+    // Session 366: say what came in from the notes files, and what did not.
+    const int fromFiles = m_merge.added + m_merge.filled;
+    if (fromFiles || m_merge.differ) {
+        QString notes = tr("From the notes beside the recording: %1").arg(countOf(fromFiles, "mark", "marks"));
+        if (m_merge.differ)
+            notes += tr("; %1 your own, kept").arg(countOf(m_merge.differ, "note differs from", "notes differ from"));
+        statusBar()->showMessage(notes, 15000);
+    }
+
     return grandTotal;
+}
+
+void SessionWindow::writeSidecars(const QString &tabKey)
+{
+    if (!m_bookmarks) return;
+    for (const LoadedFile &f : qAsConst(m_files)) {
+        if (f.tabKey != tabKey) continue;
+        QString err;
+        if (!NotesSidecar::write(f.path, NotesSidecar::marksIn(m_bookmarks->all(), tabKey, f.firstMs, f.lastMs), &err))
+            statusBar()->showMessage(tr("The notes were kept, but not written beside %1: %2")
+                                         .arg(QFileInfo(f.path).fileName(), err), 8000);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -701,6 +747,7 @@ void SessionWindow::onToggleBookmark()
     if (t.marks)  { t.marks->refreshLater(); }
     if (t.ribbon) { t.ribbon->refreshLater(); }
     statusBar()->showMessage(added ? tr("Bookmarked.") : tr("Bookmark removed."), 2000);
+    writeSidecars(key);   // session 366
 }
 
 void SessionWindow::onGotoTimestamp()
@@ -1030,6 +1077,7 @@ bool SessionWindow::setRowNote(const QString &tabKey, const LogEntryPtr &entry, 
         if (model->entryAt(r) == entry) { refreshMarks(tabKey, r); break; }
     }
     statusBar()->showMessage(note.isEmpty() ? tr("Bookmarked, no note.") : tr("Note kept."), 2000);
+    writeSidecars(tabKey);   // session 366: beside the recording too
     return true;
 }
 

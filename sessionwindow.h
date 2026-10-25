@@ -42,6 +42,7 @@
 
 #include "logentry.h"
 #include "navhistory.h"
+#include "notessidecar.h"
 #include "theme.h"
 
 class ColorRules;
@@ -114,6 +115,10 @@ public:
     bool setRowNote(const QString &tabKey, const LogEntryPtr &entry, const QString &note);
     QString noteOf(const QString &tabKey, const LogEntryPtr &entry) const;
 
+    // Session 366: what the last loadFiles() took from the notes files
+    // beside the recordings (x.notes.json next to x.dlr).
+    NotesSidecar::Merge lastMerge() const { return m_merge; }
+
 protected:
     // Remember size/position for the next opening.
     void closeEvent(QCloseEvent *event) override;
@@ -173,6 +178,8 @@ private:
     void stepProblem(int dir);
     void stepBookmark(int dir);
     QString tabName(const QString &tabKey) const;
+    // Session 366: rewrite the notes file beside each recording of `tabKey`.
+    void writeSidecars(const QString &tabKey);
     void refreshMarks(const QString &tabKey, int sourceRow);
 
     // The tab the operator is looking at, and what is selected in it.
@@ -196,6 +203,12 @@ private:
     QHash<QString, TabUi>     m_tabUi;
 
     QStringList m_warnings;
+
+    // Session 366: each file loaded, the tab it fed and the span it held, so
+    // a note made here goes into the notes file beside the right one.
+    struct LoadedFile { QString path, tabKey; qint64 firstMs = 0, lastMs = 0; };
+    QVector<LoadedFile> m_files;
+    NotesSidecar::Merge m_merge;
 
     // Session 348: Back/Forward over this window's jumps, as the live window.
     NavHistory m_nav;
