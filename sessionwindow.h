@@ -94,6 +94,26 @@ public:
 
     void setTheme(Theme t);
 
+    // Session 365: the live window's review tools, on a recording. A file
+    // sent from the test site is read here, not in the live tabs, so the
+    // DMI clip, radio chart, notes and incident report are here too. Each
+    // returns what it opened (null, with `why`, when there is nothing to
+    // show), so a test can drive it without a modal loop.
+    //
+    // The DMI clip of the row's tab, or of the first tab holding @dmi when
+    // the row's tab has none (a recording can be split by source).
+    class DmiClipDialog *makeClipDialog(const QString &tabKey, const LogEntryPtr &entry,
+                                        QString *why = nullptr);
+    class RadioChartDialog *makeRadioChart(const QString &tabKey, qint64 atMs);
+    // The incident pack over tab `tabKey` around `atMs`, with this
+    // window's bookmarks as its Operator notes. Shown.
+    class IncidentReportWindow *openIncidentReport(const QString &tabKey, qint64 atMs,
+                                                   qint64 beforeMs, qint64 afterMs);
+    // Bookmark the row if it is not, and set its note ("" clears the note,
+    // the bookmark stays), as Add note… in the live window.
+    bool setRowNote(const QString &tabKey, const LogEntryPtr &entry, const QString &note);
+    QString noteOf(const QString &tabKey, const LogEntryPtr &entry) const;
+
 protected:
     // Remember size/position for the next opening.
     void closeEvent(QCloseEvent *event) override;
@@ -125,6 +145,7 @@ private slots:
     void onToggleBookmark();
     void onNextBookmark();
     void onPrevBookmark();
+    void onIncidentReport();          // session 365: Tools ▸ Incident report…
 
 private:
     LogModel *modelForKey(const QString &tabKey);
@@ -151,6 +172,8 @@ private:
     void rebuildSummary();
     void stepProblem(int dir);
     void stepBookmark(int dir);
+    QString tabName(const QString &tabKey) const;
+    void refreshMarks(const QString &tabKey, int sourceRow);
 
     // The tab the operator is looking at, and what is selected in it.
     QString      currentTabKey() const;
