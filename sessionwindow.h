@@ -139,6 +139,14 @@ public:
     void advancePlayback(qint64 wallMs);
     qint64 playbackClock() const { return m_clock; }
 
+    // Session 372: the live window's Monitor ▸ Running and Reports tools that
+    // read one tab, over the tab on show here. Each opens as it does live,
+    // over this window's own rows; a click in it ("show in log") lands on
+    // the row here. Returns the window (null when the tab is empty).
+    enum class ReviewTool { RunReport, MissionReport, SpeedDistance, RadioHealth,
+                            Odometry, FaultTimeline, CabIo, TrackDiagram };
+    QWidget *openReviewTool(ReviewTool tool);
+
 protected:
     // Remember size/position for the next opening.
     void closeEvent(QCloseEvent *event) override;

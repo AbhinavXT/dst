@@ -32,6 +32,13 @@
 #include "incidentreportdialog.h"
 #include "incidentreportwindow.h"
 #include "radiochartdialog.h"
+#include "faulttimelinewindow.h"
+#include "iotimelinewindow.h"
+#include "odometrywindow.h"
+#include "radiohealthwindow.h"
+#include "runreportwindow.h"
+#include "speeddistance.h"
+#include "trackdiagramwindow.h"
 #include "testcatalogwindow.h"
 #include <QDesktopServices>
 #include <QPushButton>
@@ -767,6 +774,28 @@ void SessionWindow::buildToolsMenu()
     a->setShortcut(QKeySequence("Ctrl+Shift+P"));
     connect(a, &QAction::triggered, this, &SessionWindow::onToolPlotField);
 
+    // Session 372: what Tools ▸ Monitor ▸ Running and Reports open live,
+    // over the tab on show. (Braking Curves and the Two-loco view read the
+    // live dispatcher, not a tab: not here.)
+    tools->addSeparator();
+    const struct { const char *text; const char *name; ReviewTool tool; } reviewTools[] = {
+        { QT_TR_NOOP("&Run summary report…"),       "sessionRunReport",     ReviewTool::RunReport },
+        { QT_TR_NOOP("&Mission report…"),           "sessionMissionReport", ReviewTool::MissionReport },
+        { QT_TR_NOOP("Speed vs &distance…"),        "sessionSpeedDistance", ReviewTool::SpeedDistance },
+        { QT_TR_NOOP("Radio and GPS &health…"),     "sessionRadioHealth",   ReviewTool::RadioHealth },
+        { QT_TR_NOOP("&Odometry at the tags…"),     "sessionOdometry",      ReviewTool::Odometry },
+        { QT_TR_NOOP("&Fault timeline…"),           "sessionFaultTimeline", ReviewTool::FaultTimeline },
+        { QT_TR_NOOP("&Cab inputs and outputs…"),   "sessionCabIo",         ReviewTool::CabIo },
+        { QT_TR_NOOP("Trac&k diagram…"),            "sessionTrackDiagram",  ReviewTool::TrackDiagram },
+    };
+    for (const auto &t : reviewTools) {
+        a = tools->addAction(tr(t.text));
+        a->setObjectName(QLatin1String(t.name));
+        const ReviewTool which = t.tool;
+        connect(a, &QAction::triggered, this, [this, which]() { openReviewTool(which); });
+    }
+    tools->addSeparator();
+
     // Session 368: the incident pack, over a recording sent from the site.
     a = tools->addAction(tr("&Incident report…"));
     a->setObjectName(QStringLiteral("sessionIncidentReport"));
@@ -1296,6 +1325,67 @@ IncidentReportWindow *SessionWindow::openIncidentReport(const QString &tabKey, q
     w->setBookmarks(m_bookmarks);   // the notes made here, and live, on this tab
     w->show();
     w->raise();
+    return w;
+}
+
+QWidget *SessionWindow::openReviewTool(ReviewTool tool)
+{
+    const QString key = currentTabKey();
+    LogModel *model = m_models.value(key);
+    if (!model || model->count() == 0) {
+        statusBar()->showMessage(tr("No records in this tab."), 3000);
+        return nullptr;
+    }
+    const QString name = tabName(key);
+    // Parented here: they read this window's rows, so they go when it goes.
+    QWidget *w = nullptr;
+    auto jump = [this](const QString &tabKey, qint64 ms) { jumpToTime(tabKey, ms); };
+    switch (tool) {
+    case ReviewTool::RunReport:
+        w = new RunReportWindow(model, key, name, this);
+        break;
+    case ReviewTool::MissionReport:
+        w = new RunReportWindow(model, key, name, this, RunReportWindow::Kind::Missions);
+        break;
+    case ReviewTool::SpeedDistance: {
+        auto *sd = new SpeedDistanceWindow(model, key, this);
+        connect(sd, &SpeedDistanceWindow::jumpRequested, this, jump);
+        w = sd;
+        break;
+    }
+    case ReviewTool::RadioHealth: {
+        auto *rh = new RadioHealthWindow(model, key, name, this);
+        connect(rh, &RadioHealthWindow::jumpRequested, this, jump);
+        w = rh;
+        break;
+    }
+    case ReviewTool::Odometry: {
+        auto *od = new OdometryWindow(model, key, name, this);
+        connect(od, &OdometryWindow::jumpRequested, this, jump);
+        w = od;
+        break;
+    }
+    case ReviewTool::FaultTimeline: {
+        auto *ft = new FaultTimelineWindow(model, key, name, this);
+        connect(ft, &FaultTimelineWindow::jumpRequested, this, jump);
+        w = ft;
+        break;
+    }
+    case ReviewTool::CabIo: {
+        auto *io = new IoTimelineWindow(model, key, name, this);
+        connect(io, &IoTimelineWindow::jumpRequested, this, jump);
+        w = io;
+        break;
+    }
+    case ReviewTool::TrackDiagram:
+        w = new TrackDiagramWindow(model, key, name, this);
+        break;
+    }
+    if (w) {
+        w->setWindowTitle(tr("%1 — recording").arg(w->windowTitle()));
+        w->show();
+        w->raise();
+    }
     return w;
 }
 
