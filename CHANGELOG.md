@@ -11,6 +11,55 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-369"></a>
+## Session 369 — the Monitor tools on a recording
+
+Item 1 of the second remote-review list Abhinav agreed after patch 368 (1 the
+Monitor tools on a recording, 2 test cases over a recording, 3 two runs played
+in step, 4 what changed on the DMI). Session 365 brought the DMI clip, radio
+chart, notes and incident pack to the recorded-session window. The rest of
+Tools ▸ Monitor ▸ Running and Reports still worked only on live tabs, so a
+pack from the site could not get a run summary or a fault timeline.
+
+**What the operator sees.** In the recorded-session window (and a review
+pack), Tools has, over the tab on show:
+**Run summary report…**, **Mission report…** (with the DMI at each
+mission's key moments), **Speed vs distance…**, **Radio and GPS health…**,
+**Odometry at the tags…**, **Fault timeline…**, **Cab inputs and outputs…**,
+**Track diagram…**. They are the live windows, over the recording's rows,
+titled "… — recording". "Show in log" from any of them lands on that row in
+the recording, and Back returns. They close with the recording's window.
+
+**Not here.** Braking Curves and the Two-loco view read the live dispatcher
+(its tab list and its live feed), not one tab. Two runs side by side is
+item 3 (session 371).
+
+**Files.** `sessionwindow.{h,cpp}` (`openReviewTool`, the Tools entries);
+`tests/test_session369.cpp`, `tests/tests.pro`.
+
+**Tests.** New `session369` (20 checks), real frames:
+`replay/loco_1_1_27062026_140226.cap` to 14:06, a live tab and the same rows
+written to a .dlr and loaded. Checked: the eight entries; the Run summary
+opens over the recording, titled so and owned by the window, and its report
+is the live tab's (less the "generated" line); the Mission report the same;
+Radio and GPS health (summary and links), Odometry (summary and table rows)
+and the Fault timeline (failures text) say what they say live; a jump from
+Radio and GPS health lands on that moment; Speed vs distance, Cab inputs and
+outputs and the Track diagram open; a window with nothing loaded opens none.
+
+**Not tested.** The drawings of Speed vs distance, Cab I/O and the Track
+diagram, beyond opening (their content is the live windows' own, tested in
+their sessions).
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4** (`qmake6`): all green: 394 suites / 10041 checks, 0 failed; 15
+  validators; menu audit; smoke.
+- **Qt 5.15.13:** builds; `session369` green. The 4 pixel checks of
+  `session134`/`session135` fail in this container on Qt 5 as before any
+  change (see session 364).
+
+---
+
 <a id="session-368"></a>
 ## Session 368 — Play in the recorded-session window: the DMI as it happened
 
