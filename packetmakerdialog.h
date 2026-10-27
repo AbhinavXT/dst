@@ -28,6 +28,7 @@
 #include "schema/schemaencoder.h"
 
 class SessionKeyStore;
+struct CaptureLine;
 class QComboBox;
 class QLineEdit;
 class QSpinBox;
@@ -96,6 +97,9 @@ public:
     void observe(const LogEntryPtr &entry);
     void closeExpiredReplies(qint64 nowMs);
     void setReplyWatchForTest(const QString &types, const QString &field, int windowMs);
+    // Session 378: the AAP's station random comes from here when set (tests
+    // reproduce a real AAP); 0 = a fresh random per ARP.
+    void setStationRandomForTest(quint16 r) { m_stnRandomForTest = r; }
 
 signals:
     void loopbackRequested(const QString &captureLine);
@@ -375,6 +379,19 @@ private:
     void setReply(int row, const QString &text);
     void onLoopback();
     void updateSendLogTitle();
+    // Session 378: answering the loco (stationanswer.h). Only while armed.
+    QCheckBox *m_answerLoco = nullptr;
+    QLineEdit *m_aapPresetEdit = nullptr;
+    QLineEdit *m_layoutEdit = nullptr;
+    QHash<QString, qint64> m_aapFields;    // the AAP preset's header
+    QHash<int, qint64> m_stnTags;          // unique tag id -> abs loc
+    int     m_stnRef = -1;                 // ref tag in use; -1 = the form's
+    quint16 m_stnRandomForTest = 0;
+    QString m_pendingCaptype;              // send log's Packet, when not the form's
+    bool startAnswering();
+    void answerArp(const CaptureLine &c, const QHash<QString, qint64> &arp, qint64 epochMs);
+    void answerLsrp(const QHash<QString, qint64> &lsrp);
+    void sendAnswer(const QString &captype, const PacketBuilder::Result &r, const QString &note);
 public:
     // The log as CSV, as Export writes it (public for the tests).
     QString sendLogCsv() const;

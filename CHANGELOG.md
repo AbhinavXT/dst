@@ -10,6 +10,60 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-378"></a>
+## Session 378 — Packet Maker answers the loco: ARP → AAP, LSRP → SLRP
+
+Abhinav: *"arp arrives, and the packet maker sends aap by making a random number
+and calculating and storing mac... Then loco sends lsrp and in reply of lsrp the
+packet maker sends a slrp packet that is set by the user. Currently we are only
+increasing the frame number but we also need to calculate ma and dist packet
+start and rfid to send updated slrp to a running loco"*. Asked and answered:
+build the AAP reply too, keys from the session-key store; MA end fixed; tag
+locations from a Station Layout; the SLRP carries the LSRP's FRAME_NUM.
+
+**What the operator sees.** Send log tab, a new row: **Answer the loco: ARP →
+AAP, LSRP → this SLRP**, an AAP preset, a station layout (the built-in default
+to start with). Ticking it needs an SLRP in the form, an AAP preset and a layout
+holding the form's LAST_REF_RFID; otherwise it unticks and the status line says
+why. It answers only while **armed**, to the form's destinations:
+
+- **ARP → AAP**: the preset, with FRAME_NUM and DEST_LOCO_ID from the ARP, a
+  fresh STN_RND_NUM_RS, MACed with the session key derived from the loco's auth
+  keys (the store: @auth_keys frames) and both randoms. The key goes into the
+  form's key field, so the SLRPs that follow are MACed with it. No auth keys for
+  that loco: not answered, and said. @arprecv (another loco's ARP) is not answered.
+- **LSRP → SLRP** (only from the form's DEST_LOCO_ID): FRAME_NUM from the LSRP,
+  so every FRAME_OFFSET is 0 (C.4.2: station frame − last loco frame, / 2);
+  LAST_REF_RFID moved to the LSRP's LAST_RFID_TAG when the layout has it (kept
+  otherwise, and said); DIST_PKT_START and APPR_SIG_DIST shrink by the distance
+  the ref moved, so the start signal and the signal (and the MA end, signal +
+  MA_W_R_T_SIG) stay where the form put them. A value that would not fit, or a
+  ref past the signal, is refused with the reason; nothing is clamped.
+- Each answer is a send-log row: Packet `aap` / `slrp`, and in Reply what it
+  answers and what moved (`answers LSRP 40380: ref tag 906, DIST_PKT_START -200 m,
+  APPR_SIG_DIST 916 m`).
+
+**Why APPR_SIG_DIST counts from the ref tag.** In
+`replay/2026-10-08/loco_1_1_08102026_105200.cap` the station moved ref 18
+(166864 m) → 906 (167064 m) and sent DIST_PKT_START 0 → −200 and APPR_SIG_DIST
+1116 → 916, constant in between while the loco moved. `trackdiagram.h` places the
+signal from the loco's location instead; not changed here.
+
+**Files.** `stationanswer.{h,cpp}` (new, pure), `packetmakerdialog.{h,cpp}`,
+`dlcore.pri`; tests `test_session378.cpp` (new), `tests.pro`.
+
+**Tests.** `session378` (25 checks), all on that real capture and the Section_30
+layout: the AAP built from the real ARP, the loco's auth keys and the real
+station random **is the real AAP byte for byte, MAC included**; the SLRP built
+from the real SLRP before (ref 18) and the LSRP that read tag 906 **is the real
+station's answer byte for byte**; an unknown tag keeps the ref; reverse flips the
+shift; a ref beyond the signal and a form ref outside the layout are refused;
+nothing goes out disarmed; @arprecv is not answered. Not tested: against a live
+loco; the other sub-packets (SSP, gradient, TSR, …) are sent as set, since they
+count from the start signal, which does not move. Gate: with the bundle at push.
+
+---
+
 <a id="session-377"></a>
 ## Session 377 — NMS health: MISSING_LINKED_RFID is 2 bytes
 

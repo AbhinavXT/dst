@@ -14,6 +14,8 @@
 #include "messageheader.h"
 #include "packetpreset.h"
 #include "sessionkeystore.h"
+#include "stationanswer.h"
+#include <QRandomGenerator>
 #include "subpacketwindow.h"
 
 #include <QPalette>
@@ -760,6 +762,41 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     replyRow->addWidget(m_replyWindow);
     logLay->addLayout(replyRow);
     connect(m_replyField, &QLineEdit::textChanged, this, [this]() { m_replyHaveLast = false; });
+
+    // Answer the loco (session 378): ARP -> AAP from a preset, LSRP -> this SLRP.
+    auto *answerRow = new QHBoxLayout;
+    m_answerLoco = new QCheckBox(tr("Answer the loco: ARP → AAP, LSRP → this SLRP"), logPage);
+    m_answerLoco->setObjectName(QStringLiteral("pmAnswerLoco"));
+    m_answerLoco->setToolTip(tr("While armed: each ARP gets an AAP (the preset, with a fresh station random\n"
+                                "and the session key derived from the loco's auth keys); each LSRP from that\n"
+                                "loco gets this SLRP with its FRAME_NUM and the last tag it read as LAST_REF_RFID;\n"
+                                "DIST_PKT_START and APPR_SIG_DIST are re-counted from that tag, so the start\n"
+                                "signal and the signal stay where this SLRP puts them."));
+    m_aapPresetEdit = new QLineEdit(logPage);
+    m_aapPresetEdit->setObjectName(QStringLiteral("pmAnswerAap"));
+    m_aapPresetEdit->setPlaceholderText(tr("AAP preset (.json)"));
+    m_layoutEdit = new QLineEdit(StationLayout::defaultFile(), logPage);
+    m_layoutEdit->setObjectName(QStringLiteral("pmAnswerLayout"));
+    m_layoutEdit->setToolTip(tr("Station layout: where each RFID tag is"));
+    const auto browse = [this, logPage](QLineEdit *e, const QString &filter) {
+        const QString p = QFileDialog::getOpenFileName(logPage, QString(), e->text(), filter);
+        if (!p.isEmpty()) e->setText(p);
+    };
+    auto *aapBrowse = new QPushButton(tr("…"), logPage);
+    auto *layoutBrowse = new QPushButton(tr("…"), logPage);
+    connect(aapBrowse, &QPushButton::clicked, this,
+            [this, browse]() { browse(m_aapPresetEdit, tr("Packet preset (*.json)")); });
+    connect(layoutBrowse, &QPushButton::clicked, this,
+            [this, browse]() { browse(m_layoutEdit, tr("Station layout (*.xlsx *.json)")); });
+    answerRow->addWidget(m_answerLoco);
+    answerRow->addWidget(m_aapPresetEdit, 1);
+    answerRow->addWidget(aapBrowse);
+    answerRow->addWidget(m_layoutEdit, 1);
+    answerRow->addWidget(layoutBrowse);
+    logLay->addLayout(answerRow);
+    connect(m_answerLoco, &QCheckBox::toggled, this, [this](bool on) {
+        if (on && !startAnswering()) m_answerLoco->setChecked(false);
+    });
     auto *replyTimer = new QTimer(this);
     replyTimer->start(250);
     connect(replyTimer, &QTimer::timeout, this,
@@ -1850,6 +1887,15 @@ void PacketMakerDialog::observe(const LogEntryPtr &entry)
     if (entry.isNull() || entry->header.source_id == kLoopbackSourceId) { return; }
     const QString t = entry->text.trimmed();
     if (!t.startsWith(QLatin1Char('@'))) { return; }
+    if (m_answerLoco->isChecked() && m_armed->isChecked()) {
+        const CaptureLine c = CaptureDecoder::parseLine(t);
+        if (c.valid && (c.type == CapType::ARP || c.type == CapType::LSRP)) {
+            QHash<QString, qint64> raw;
+            CaptureDecoder::describe(c, nullptr, 0, &raw);
+            if (c.type == CapType::ARP) answerArp(c, raw, entry->epochMs);
+            else answerLsrp(raw);
+        }
+    }
     const QSet<QString> types = replyTypes();
     if (types.isEmpty()) { return; }
     const QString captype = t.mid(1, t.indexOf(QLatin1Char(' ')) - 1).section(QLatin1Char('_'), 0, 0).toLower();
@@ -1889,6 +1935,97 @@ void PacketMakerDialog::observe(const LogEntryPtr &entry)
     }
 }
 
+bool PacketMakerDialog::startAnswering()
+{
+    if (currentCaptype() != QLatin1String("slrp")) {
+        m_status->fail(tr("Answering needs an SLRP in the form."));
+        return false;
+    }
+    PacketPreset aap;
+    QString err;
+    if (!PacketPreset::load(m_aapPresetEdit->text().trimmed(), &aap, &err) || aap.captype != QLatin1String("aap")) {
+        m_status->fail(tr("Not answering — the AAP preset: %1").arg(err.isEmpty() ? tr("not an AAP") : err));
+        return false;
+    }
+    StationLayout::Layout layout;
+    if (!StationLayout::load(m_layoutEdit->text().trimmed(), &layout, &err)) {
+        m_status->fail(tr("Not answering — the station layout: %1").arg(err));
+        return false;
+    }
+    m_aapFields = aap.header;
+    m_stnTags = StationAnswer::tagLocations(layout);
+    m_stnRef = -1;
+    const qint64 ref = readHeader().value(QStringLiteral("LAST_REF_RFID"));
+    if (!m_stnTags.contains(int(ref))) {
+        m_status->fail(tr("Not answering — LAST_REF_RFID %1 is not in the station layout.").arg(ref));
+        return false;
+    }
+    m_status->ok(tr("Answering the loco while armed (%1 tags in the layout).").arg(m_stnTags.size()));
+    return true;
+}
+
+void PacketMakerDialog::answerArp(const CaptureLine &c, const QHash<QString, qint64> &arp, qint64 epochMs)
+{
+    const quint16 rnd = m_stnRandomForTest ? m_stnRandomForTest
+                                           : quint16(QRandomGenerator::global()->bounded(1, 0x10000));
+    const QHash<QString, qint64> h = StationAnswer::aapFor(m_aapFields, arp, rnd);
+    const int locoId = int(arp.value(QStringLiteral("SOURCE_LOCO_ID")));
+    const int stnId = int(h.value(QStringLiteral("SOURCE_STN_ID")));
+    if (!m_keys->haveSet(0, c.locoId) || !m_keys->haveSet(1, c.locoId)) {
+        m_status->fail(tr("ARP from loco %1 not answered — no auth keys for it in the log.").arg(locoId));
+        return;
+    }
+    const SessionKeyGen::Result k = SessionKeyGen::derive(
+        m_keys->keySet(0, c.locoId), m_keys->keySet(1, c.locoId),
+        quint16(arp.value(QStringLiteral("LOCO_RND_NUM_RL"))), rnd, locoId, stnId,
+        QDateTime::fromMSecsSinceEpoch(epochMs));
+    if (!k.ok) {
+        m_status->fail(tr("ARP from loco %1 not answered — session key: %2").arg(locoId).arg(k.error));
+        return;
+    }
+    // The SLRPs that follow are MACed with this key.
+    m_keyEdit->setText(QString::fromLatin1(k.sessionKey.toHex()));
+    const PacketBuilder::Result r = m_builder.build(QStringLiteral("aap"), h, {}, k.sessionKey);
+    sendAnswer(QStringLiteral("aap"), r,
+               tr("answers ARP %1 from loco %2, station random %3")
+                   .arg(arp.value(QStringLiteral("FRAME_NUM"))).arg(locoId)
+                   .arg(QStringLiteral("%1").arg(rnd, 4, 16, QLatin1Char('0')).toUpper()));
+}
+
+void PacketMakerDialog::answerLsrp(const QHash<QString, qint64> &lsrp)
+{
+    commitCurrentSub();
+    QHash<QString, qint64> h = readHeader();
+    if (lsrp.value(QStringLiteral("SOURCE_LOCO_ID")) != h.value(QStringLiteral("DEST_LOCO_ID"))) return;
+    QVector<Schema::SubEntry> subs = m_subs;
+    const StationAnswer::Reply a = StationAnswer::slrpFor(lsrp, m_stnTags, &m_stnRef, &h, &subs);
+    if (!a.ok) {
+        m_status->fail(tr("LSRP %1 not answered — %2").arg(lsrp.value(QStringLiteral("FRAME_NUM"))).arg(a.why));
+        return;
+    }
+    sendAnswer(QStringLiteral("slrp"), m_builder.build(QStringLiteral("slrp"), h, subs, sessionKey()),
+               tr("answers LSRP %1: %2").arg(lsrp.value(QStringLiteral("FRAME_NUM"))).arg(a.note));
+}
+
+void PacketMakerDialog::sendAnswer(const QString &captype, const PacketBuilder::Result &r, const QString &note)
+{
+    if (!r.ok) {
+        m_status->fail(tr("%1 not sent — %2").arg(captype.toUpper(), r.error));
+        return;
+    }
+    const QVector<UdpSender::Target> dests = destinations();
+    if (dests.isEmpty()) {
+        m_status->fail(tr("%1 not sent — no destination.").arg(captype.toUpper()));
+        return;
+    }
+    m_pendingCaptype = captype;
+    m_pendingFrameNum = r.raw.value(QStringLiteral("FRAME_NUM"), -1);
+    const int row = m_sendLog->rowCount();
+    m_sender.sendOnce(r.frame, dests, headerPrefix(captype, r.frame.size()));
+    m_pendingCaptype.clear();
+    if (m_sendLog->rowCount() > row) setReply(m_sendLog->rowCount() - 1, note);
+}
+
 void PacketMakerDialog::closeExpiredReplies(qint64 nowMs)
 {
     const QString field = m_replyField->text().trimmed();
@@ -1924,7 +2061,7 @@ void PacketMakerDialog::onDatagramSent(const QByteArray &datagram, const QString
     const QStringList cells = {
         QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd HH:mm:ss.zzz")),
         QString::number(m_sender.sentCount()),
-        m_packetCombo->currentText(),
+        m_pendingCaptype.isEmpty() ? m_packetCombo->currentText() : m_pendingCaptype,
         m_pendingFrameNum >= 0 ? QString::number(m_pendingFrameNum) : QString(),
         reached.join(QStringLiteral("; ")),
         QString::number(datagram.size()),
@@ -2502,6 +2639,7 @@ void PacketMakerDialog::onPacketChanged()
     m_sender.stop();
     // A different packet is a different decision.
     disarm(tr("Disarmed: the packet type changed."));
+    if (m_answerLoco) m_answerLoco->setChecked(false);
     m_subs.clear();
     m_curSub = -1;
     m_subList->clear();

@@ -27,6 +27,7 @@ SOURCES += \
     $$PWD/dlrplayerdialog.cpp \
     $$PWD/messageheader.cpp \
     $$PWD/sessionkeygen.cpp \
+    $$PWD/stationanswer.cpp \
     $$PWD/sessionkeydialog.cpp \
     $$PWD/sessionkeystore.cpp \
     $$PWD/schema/schemadecoder.cpp \
@@ -240,6 +241,7 @@ HEADERS += \
     $$PWD/dlrplayerdialog.h \
     $$PWD/messageheader.h \
     $$PWD/sessionkeygen.h \
+    $$PWD/stationanswer.h \
     $$PWD/sessionkeydialog.h \
     $$PWD/sessionkeystore.h \
     $$PWD/schema/schemadecoder.h \
