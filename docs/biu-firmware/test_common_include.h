@@ -14,3 +14,5 @@ extern LocoParams loco_params;
 extern uint64_t fake_usec;
 static inline uint64_t ClockP_getTimeUsec(void) { return fake_usec; }
 #define BIU_SPEED_VALID()         (loco_params.speed_ok == 1)
+void test_can_send(uint16_t cob, const uint8_t *data, uint8_t n);
+#define BIU_CAN_SEND(cob, data, n) test_can_send(cob, data, n)

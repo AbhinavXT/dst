@@ -1,9 +1,11 @@
 #ifndef BIUSIM_H
 #define BIUSIM_H
 // =============================================================================
-//  BiuSimulator (session 360) -- a Brake Interface Unit on the far side of the
-//  VCC's CAN-over-UDP gateway, for testing the firmware's brake logic
-//  (brake_pressure_interface_user.c) without a BIU.
+//  BiuSimulator (session 360) -- a Brake Interface Unit over UDP, for testing
+//  the firmware's brake logic (brake_pressure_interface_user.c) without a BIU.
+//  On the loco the BIU is on the VCC's CAN bus; on the bench the firmware's
+//  UDP link (biu_link_select(BIU_LINK_UDP), session 376) sends it the same
+//  frames.
 //
 //  What a BIU does, after RDSO MP.0.01.00.31 Rev.05 Annexure-1:
 //    * network manager: its boot-up, its heartbeat every 500 ms, and NMT

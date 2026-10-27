@@ -275,7 +275,7 @@ void BiuSimulator::receive(const QByteArray &datagram, const QString &fromHost, 
     if (!fromDatagram(datagram, &item.frame, &why)) {
         ++m_rejected;
         item.frame.data = datagram;
-        item.note = tr("Not a gateway frame: %1").arg(why);
+        item.note = tr("Not a frame in the UDP link's format: %1").arg(why);
         emit logged(item);
         emit changed();
         return;

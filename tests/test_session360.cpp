@@ -26,8 +26,8 @@
 
 // =============================================================================
 //  Session 360 — the Brake Test Bench: a BIU (RDSO MP.0.01.00.31 Rev.05
-//  Annexure-1) on the far side of the VCC's CAN-over-UDP gateway, the air it
-//  moves, and the analog card that reads it.
+//  Annexure-1) over the firmware's UDP link (on the loco: CAN, session 376),
+//  the air it moves, and the analog card that reads it.
 //
 //  Abhinav: "make a miniature biu simulator in dlconsole window to fully test
 //  the brake pressure logic in firmware ... simulate all the packets that biu

@@ -62,10 +62,20 @@ typedef enum {
  *   0.01 m/s on the wire (Annexure-1 2.2.2).
  * BIU_DYNAMIC_BRAKING() defaults to 0 (no dynamic-braking input known).
  * BIU_NOW_MS() defaults to the TI DPL clock in milliseconds.
- * BIU_SIM_IP0..3 / BIU_SIM_PORT: where the CAN frames go over UDP, the gateway
- *   or the DLConsole BIU simulator (default 192.168.25.126:51234).
+ * BIU_CAN_SEND(cob, data, n): your CAN driver's send, for the CAN link (see
+ *   biu_can_send_frame in the .c). Empty until you put it there.
+ * BIU_SIM_IP0..3 / BIU_SIM_PORT: the DLConsole Brake Test Bench, for the UDP
+ *   link (default 192.168.25.126:51234).
  * BIU_HEARTBEAT_PERIOD_MS (500) / BIU_HEARTBEAT_TIMEOUT_MS (1500).
  */
+
+/* Which link the BIU frames use. CAN (the default): the real BIU, wired to the
+ * VCC's CAN controller. UDP: the DLConsole Brake Test Bench (a BIU simulator on
+ * a PC). The frames are the same; only the way they travel differs. Only the
+ * selected link is sent on and listened to. */
+typedef enum { BIU_LINK_CAN = 0, BIU_LINK_UDP } BiuLink;
+void    biu_link_select(BiuLink link);
+BiuLink biu_link_selected(void);
 
 /* Network management (Annexure-1 2.1, 4). biu_link_init once after power-on:
  * sends the boot-up message and waits pre-operational. biu_link_tick at least
@@ -81,10 +91,16 @@ uint8_t biu_link_up(void);       /* the BIU's heartbeat is fresh and says operat
  * brake_type: a Command (the VCC's brake type 0-5). */
 void send_biu_command(uint8_t loco_type, uint8_t train_mode, uint8_t brake_type);
 
-/* Read one gateway frame from the BIU: [COB-ID lo][COB-ID hi][3 + n][n data bytes].
- * Takes the NMT command, the BIU's heartbeat and its three status frames.
- * Returns 1 if it took the frame. */
-uint8_t process_biu_reply(const uint8_t *buffer, uint16_t len);
+/* Frames from the BIU: the NMT command, its heartbeat and its three status
+ * frames. Each returns 1 if it took the frame, 0 if not (wrong link selected,
+ * a frame the BIU does not send, or too short).
+ *
+ * CAN link: call from your CAN receive with each frame: its 11-bit identifier,
+ * DLC and data bytes. */
+uint8_t process_biu_can_frame(uint16_t cob, const uint8_t *data, uint8_t dlc);
+/* UDP link: call with each datagram from the DLConsole Brake Test Bench:
+ * [COB-ID lo][COB-ID hi][3 + n][n data bytes]. */
+uint8_t process_biu_udp_frame(const uint8_t *buffer, uint16_t len);
 
 /* The BIU's last status (pressures with validity, codes, discretes). */
 const BiuStatus *biu_status_get(void);

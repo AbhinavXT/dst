@@ -749,9 +749,11 @@ QWidget *BrakeBenchWindow::buildNetworkTab()
     connect(m_replyPort, QOverload<int>::of(&QSpinBox::valueChanged), this, applyReply);
     lg->setColumnStretch(4, 1);
     lv->addLayout(lg);
-    auto *note = muted(tr("One CAN frame per datagram: [COB-ID lo][COB-ID hi][3 + n][n data bytes], as the "
-                          "firmware's gateway sends them. The BIU is node 0x10, KAVACH 0x20: commands on 0x190, "
-                          "status on 0x220 / 0x320 / 0x420, heartbeats on 0x710 / 0x720."), link);
+    auto *note = muted(tr("On the loco the BIU is on the VCC's CAN bus. For the bench, build the firmware with its "
+                          "UDP link selected (biu_link_select(BIU_LINK_UDP)): it then sends the same frames here, "
+                          "one per datagram, [COB-ID lo][COB-ID hi][3 + n][n data bytes]. The BIU is node 0x10, "
+                          "KAVACH 0x20: commands on 0x190, status on 0x220 / 0x320 / 0x420, heartbeats on "
+                          "0x710 / 0x720."), link);
     note->setWordWrap(true);
     lv->addWidget(note);
     left->addWidget(link);
@@ -1885,7 +1887,8 @@ void BrakeBenchWindow::refreshBench()
     } else {
         for (QLabel *c : m_cmdBits1) styleChip(c, false, false);
         for (QLabel *c : m_cmdBits2) styleChip(c, false, false);
-        m_cmdMeta->setText(biuRunning() ? tr("No command yet: the VCC sends them to UDP %1 once KAVACH is operational.")
+        m_cmdMeta->setText(biuRunning() ? tr("No command yet: the VCC sends them to UDP %1 once KAVACH is operational, when its firmware "
+                                                 "is on the UDP link (on CAN it talks to a real BIU).")
                                               .arg(m_biu->listenPort())
                                         : tr("Start the BIU to hear KAVACH."));
     }

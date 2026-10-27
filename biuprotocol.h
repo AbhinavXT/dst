@@ -9,9 +9,11 @@
 //  pressures, its codes, its discrete bits), and both send a heartbeat every
 //  500 ms. The BIU is the network manager: it starts KAVACH with NMT.
 //
-//  The VCC reaches the CAN bus through a UDP gateway; one CAN frame per
-//  datagram:  [COB-ID lo][COB-ID hi][3 + n][n data bytes]  (the firmware's
-//  brake_pressure_interface_user.c, session 360).
+//  On the loco the BIU is wired to the VCC's CAN controller. The bench talks
+//  to the firmware's UDP link instead (session 376), one CAN frame per
+//  datagram:  [COB-ID lo][COB-ID hi][3 + n][n data bytes]. The 3-byte header
+//  is that link's format, not the spec's: a datagram has no CAN identifier or
+//  length field.
 //
 //  Pure functions and values only: the simulator is biusim.h.
 // =============================================================================
@@ -40,7 +42,7 @@ enum NmtCommand : quint8 { NmtStart = 0x01, NmtStop = 0x02, NmtPreOp = 0x80, Nmt
 QString nmtStateName(int state);       // "Operational", "Pre-operational", "0x12"
 QString nmtCommandName(int cs);        // "Start remote node", ...
 
-// ---- the gateway's datagram -------------------------------------------------------
+// ---- the UDP link's datagram ------------------------------------------------------
 struct Frame {
     quint16    cob = 0;
     QByteArray data;

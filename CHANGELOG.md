@@ -10,6 +10,57 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-376"></a>
+## Session 376 — BIU firmware: the CAN link to the real BIU, UDP kept for the bench
+
+Abhinav: *"Biu will be directly connected to vcc through CAN. Update the firmware
+logic and dlconsole logic to work accordingly"*. Asked and answered: the
+firmware only builds the message, and leaves a marked line for his CAN driver's
+send; it also keeps functions to send and receive the BIU frames to and from
+DLConsole over UDP; *"the udp path should not change the code for the can
+path"*.
+
+**Why.** The 3-byte header (`[COB-ID lo][COB-ID hi][3 + n]`) is not in the spec.
+Annexure-1 is CAN, where the identifier and the length are fields of the CAN
+frame itself. The header was only there because the frames went over UDP.
+
+**Firmware (`docs/biu-firmware/`, the reference copy handed to Abhinav).**
+- `biu_link_select(BIU_LINK_CAN | BIU_LINK_UDP)`, CAN by default. Only the
+  selected link is sent on and listened to.
+- CAN: `biu_can_send_frame` passes identifier = COB-ID, DLC = n and the data
+  bytes, with no header. The send is one marked line, for his driver's send
+  (or a `BIU_CAN_SEND(cob, data, n)` define); until then nothing goes on the
+  bus. His CAN receive calls `process_biu_can_frame(cob, data, dlc)`.
+- UDP: `biu_udp_send_frame` / `process_biu_udp_frame`, the old datagram format,
+  for the Brake Test Bench. `process_biu_reply` is gone.
+- The two paths share only the frame contents and the state they update.
+- `CHANGES.md`: the two links, the new call-site steps 4-7, 74 checks.
+
+**DLConsole.** The bench still talks UDP, so its protocol is unchanged. Only
+the wording changes: the Network tab, the "No command yet" line, the log note
+for a bad datagram and the comments no longer call it a "CAN-over-UDP
+gateway". They say the firmware must be on its UDP link for the bench, and
+that on the loco the BIU is on the VCC's CAN bus.
+
+**Files.** `docs/biu-firmware/brake_pressure_interface_user.{c,h}`,
+`test_biu.c`, `test_common_include.h`, `CHANGES.md`; `biuprotocol.{h,cpp}`,
+`biusim.{h,cpp}`, `brakebenchwindow.cpp`, `tests/test_session360.cpp`
+(comment), `docs/BRAKE_BENCH_NEXT.md`.
+
+**Tests.** Firmware host test, 74 checks (12 new), with gcc `-std=c11 -Wall
+-Wextra -Wpedantic -Wconversion -Wshadow -Werror`: the CAN heartbeat (id 0x720,
+DLC 1), the command (id 0x190, DLC 8, the same 8 bytes with no header), nothing
+sent on UDP while on CAN, NMT and status frames taken from CAN, a 3-byte or
+9-byte CAN frame refused, and each link's frames refused while the other is
+selected. No new DLConsole suite: its behaviour did not change.
+
+**Gate (Mac, local):** Qt 6 and Qt 5.15 all green, 399 suites / 10177 checks, 0 failed; validators, menu audit, smoke.
+
+**Not tested:** the TI compiler, the target, a real BIU, and the CAN send (his
+to put in).
+
+---
+
 <a id="session-375"></a>
 ## Session 375 — what changed on the DMI
 

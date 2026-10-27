@@ -20,6 +20,10 @@
 #ifndef BIU_NOW_MS
 #define BIU_NOW_MS()           ((uint32_t)(ClockP_getTimeUsec() / 1000U))
 #endif
+#ifndef BIU_CAN_SEND
+/* Put your CAN driver's send here (or define BIU_CAN_SEND in a header). */
+#define BIU_CAN_SEND(cob, data, n)  ((void)(cob), (void)(data), (void)(n))
+#endif
 #ifndef BIU_SIM_IP0
 #define BIU_SIM_IP0 192U
 #define BIU_SIM_IP1 168U
@@ -204,8 +208,27 @@ void biu_encode_command(const BiuCommand *c, uint8_t out[BIU_FRAME_LEN])
 
 static uint16_t le16(const uint8_t *p) { return (uint16_t)(p[0] | ((uint16_t)p[1] << 8)); }
 
-/* One CAN frame through the UDP gateway: [COB-ID lo][COB-ID hi][3 + n][n data bytes]. */
-static void biu_send_frame(uint16_t cob, const uint8_t *data, uint8_t n)
+static BiuLink s_link = BIU_LINK_CAN;
+
+void    biu_link_select(BiuLink link) { s_link = link; }
+BiuLink biu_link_selected(void)       { return s_link; }
+
+/* CAN link: the frame as the bus carries it. Standard 11-bit identifier = the
+ * COB-ID, DLC = n, then the n data bytes. No header: the identifier and the
+ * length travel in the CAN frame itself (Annexure-1 2.2). */
+static void biu_can_send_frame(uint16_t cob, const uint8_t *data, uint8_t n)
+{
+    if (n > BIU_FRAME_LEN) n = BIU_FRAME_LEN;
+    /* >>> Send on the VCC's CAN controller here, with your CAN driver's send
+     *     function: identifier `cob` (11-bit, standard), DLC `n`, data[0..n-1].
+     *     Replace this line with it, or define BIU_CAN_SEND(cob, data, n). <<< */
+    BIU_CAN_SEND(cob, data, n);
+}
+
+/* UDP link, to the DLConsole Brake Test Bench: one frame per datagram,
+ * [COB-ID lo][COB-ID hi][3 + n][n data bytes]. The 3-byte header is the
+ * bench's format, not the spec's: a datagram has no CAN identifier or DLC. */
+static void biu_udp_send_frame(uint16_t cob, const uint8_t *data, uint8_t n)
 {
     uint8_t buffer[3U + BIU_FRAME_LEN];
     if (n > BIU_FRAME_LEN) n = BIU_FRAME_LEN;
@@ -221,6 +244,12 @@ static void biu_send_frame(uint16_t cob, const uint8_t *data, uint8_t n)
     biu_sim_addr.ip_addr3 = BIU_SIM_IP3;
     ip_addr_t biu_sim_ip_address = set_pc_ipAddr(biu_sim_addr);
     UDP_Send((const char *)buffer, &biu_sim_ip_address, BIU_SIM_PORT, (uint16_t)(3U + n));
+}
+
+static void biu_send_frame(uint16_t cob, const uint8_t *data, uint8_t n)
+{
+    if (s_link == BIU_LINK_UDP) biu_udp_send_frame(cob, data, n);
+    else                        biu_can_send_frame(cob, data, n);
 }
 
 /* ---- Module state ------------------------------------------------------------- */
@@ -388,14 +417,9 @@ void send_biu_command(uint8_t loco_type, uint8_t train_mode, uint8_t brake_type)
     biu_send_frame(BIU_COB_COMMAND, data, BIU_FRAME_LEN);
 }
 
-uint8_t process_biu_reply(const uint8_t *buffer, uint16_t len)
+/* One frame from the BIU, whichever link brought it. */
+static uint8_t take_biu_frame(uint16_t cob, const uint8_t *d, uint8_t n)
 {
-    if (buffer == NULL || len < 3U) return 0U;
-    const uint16_t cob = le16(buffer);
-    const uint8_t total = buffer[2];
-    if (total < 3U || total > 3U + BIU_FRAME_LEN || len < total) return 0U;
-    const uint8_t n = (uint8_t)(total - 3U);
-    const uint8_t *d = buffer + 3;
     uint32_t now = BIU_NOW_MS();
     if (now == 0U) now = 1U;   /* 0 means "never" in rx_ms */
 
@@ -446,6 +470,20 @@ uint8_t process_biu_reply(const uint8_t *buffer, uint16_t len)
     default:
         return 0U;
     }
+}
+
+uint8_t process_biu_can_frame(uint16_t cob, const uint8_t *data, uint8_t dlc)
+{
+    if (s_link != BIU_LINK_CAN || (data == NULL && dlc > 0U) || dlc > BIU_FRAME_LEN) return 0U;
+    return take_biu_frame(cob, data, dlc);
+}
+
+uint8_t process_biu_udp_frame(const uint8_t *buffer, uint16_t len)
+{
+    if (s_link != BIU_LINK_UDP || buffer == NULL || len < 3U) return 0U;
+    const uint8_t total = buffer[2];
+    if (total < 3U || total > 3U + BIU_FRAME_LEN || len < total) return 0U;
+    return take_biu_frame(le16(buffer), buffer + 3, (uint8_t)(total - 3U));
 }
 
 const BiuStatus *biu_status_get(void) { return &s_status; }

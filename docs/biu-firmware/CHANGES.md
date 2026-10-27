@@ -60,11 +60,19 @@ recorded" means none was written down, and "not from the spec" means a code defe
     500 ms heartbeats, my choice.*
 - **Speed** defaults to m/s x 100 (0.01 m/s on the wire), rounded. You round to 2 places already, so this matches.
   *Spec: Annexure-1 2.2.2 (speed, 0.01 m/s, lower byte first).*
-- **Defaults** are 192.168.25.126:51234 (the DLConsole BIU simulator). Override `BIU_SIM_IP0..3` / `BIU_SIM_PORT`.
-  *Not from the spec: the bench's addresses.*
-- **Gateway frames have a variable length:** `[COB-ID lo][COB-ID hi][3 + n][n bytes]`. The heartbeat has 1 byte,
-  NMT 2, data frames 8. *Not from the spec: the VCC's own CAN-over-UDP gateway format (your
-  `brake_pressure_interface_user.c`).*
+- **Two links (third round, 2026-10-27).** The BIU is wired to the VCC's own CAN controller, so the frames
+  go on the bus as CAN frames; a UDP link to the DLConsole Brake Test Bench stays for bench testing. Only the
+  selected link (`biu_link_select`, CAN by default) is sent on and listened to; the frames are the same.
+  - **CAN:** `biu_can_send_frame` hands over identifier = COB-ID (11-bit), DLC = n, and the n data bytes, with
+    no header (the heartbeat has DLC 1, NMT 2, data frames 8). The send itself is the one marked line in that
+    function: put your CAN driver's send there, or define `BIU_CAN_SEND(cob, data, n)`. Until then nothing goes
+    on the bus. Your CAN receive calls `process_biu_can_frame(cob, data, dlc)`.
+    *Spec: Annexure-1 2.2 (COB-IDs and frame data); the identifier and length are CAN's own fields.*
+  - **UDP (DLConsole bench):** `biu_udp_send_frame` / `process_biu_udp_frame`, one frame per datagram,
+    `[COB-ID lo][COB-ID hi][3 + n][n bytes]`, to 192.168.25.126:51234 by default (`BIU_SIM_IP0..3` /
+    `BIU_SIM_PORT`). *Not from the spec: the 3-byte header is the bench's format, because a datagram has no CAN
+    identifier or DLC; it came from your original `brake_pressure_interface_user.c`.*
+  - The two paths share no send or receive code, only the frame contents and the state they update.
 
 ## What callers must change
 
@@ -72,8 +80,13 @@ recorded" means none was written down, and "not from the spec" means a code defe
 2. **`validate_brake_pressure(loco, mode, brake, CMD_MR/CMD_BP/CMD_BC, value)`.**
 3. **`check_brake_malfunction(which, value)`** judges against the command last sent and returns `BrakeCheck`.
    Treat `BRAKE_CHECK_NO_SPEC` like `BRAKE_CHECK_MALFUNCTION`.
-4. **`process_biu_reply(buffer, len)`**: give it every UDP datagram that comes in from the BIU or gateway.
-5. **Call `biu_link_init()` once, then `biu_link_tick()` and `send_biu_command()` every 250 ms.**
+4. **CAN send:** put your CAN driver's send on the marked line in `biu_can_send_frame` (or define
+   `BIU_CAN_SEND(cob, data, n)`): standard 11-bit identifier `cob`, DLC `n`, `data[0..n-1]`.
+5. **CAN receive:** call `process_biu_can_frame(cob, data, dlc)` with every CAN frame from the BIU (ids 0x000,
+   0x710, 0x220, 0x320, 0x420; a filter on those is enough). `process_biu_reply` is gone.
+6. **Bench testing over UDP:** `biu_link_select(BIU_LINK_UDP)` before `biu_link_init()`, and give
+   `process_biu_udp_frame(buffer, len)` every datagram from the DLConsole Brake Test Bench.
+7. **Call `biu_link_init()` once, then `biu_link_tick()` and `send_biu_command()` every 250 ms.**
 
 ## Tested
 
@@ -81,10 +94,12 @@ recorded" means none was written down, and "not from the spec" means a code defe
 `common_include.h` / `enet_user.h`:
 `gcc -std=c11 -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror -I. test_biu.c brake_pressure_interface_user.c -lm`
 
-It runs 62 checks:
-- the frame bytes against Annexure-1, with values from Annexure-4;
+It runs 74 checks:
+- the frame bytes against Annexure-1, with values from Annexure-4 (on the UDP link, where the bytes are visible);
+- the CAN link: identifier and DLC per frame, the same 8 command bytes with no header, nothing on UDP, status
+  frames taken from CAN, and a frame from the link not selected refused;
 - boot-up, heartbeat, start, stop and reset, and the BIU heartbeat timeout;
 - settling per pressure (EB -> release, LE -> NB);
 - the three status frames, acks and refusals.
 
-Not built with the TI compiler or on target, and not run against a real BIU.
+Not built with the TI compiler or on target, and not run against a real BIU. The CAN send is yours to put in.

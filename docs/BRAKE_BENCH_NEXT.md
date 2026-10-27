@@ -97,7 +97,7 @@ then CHANGELOG sessions 363 back to 359.
 
 ## Only a loco or the target can confirm
 
-- The firmware BIU interface on target (TI compiler, real CAN gateway).
+- The firmware BIU interface on target (TI compiler, the CAN send put in, a real BIU on the CAN bus).
 - That a loco's VCC applications answer on the four flasher-table addresses,
   and that each VCC keeps its BIU state from the frames it is sent.
 - The analog card's 34-byte frame against the real card.

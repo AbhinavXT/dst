@@ -18,15 +18,27 @@ void UDP_Send(const char *b, ip_addr_t *ip, uint16_t port, uint16_t len)
     memcpy(sent, b, len); sent_len = len; sent_port = port; sent_ip = ip->addr; ++sends;
 }
 
+static uint16_t can_cob[64]; static uint8_t can_dlc[64], can_data[64][8]; static int can_sends;
+void test_can_send(uint16_t cob, const uint8_t *data, uint8_t n)
+{
+    if (can_sends >= 64) return;
+    can_cob[can_sends] = cob; can_dlc[can_sends] = n; memcpy(can_data[can_sends], data, n); ++can_sends;
+}
+
 static int fails, checks;
 #define CHECK(c, what) do { ++checks; if (!(c)) { ++fails; printf("FAIL %s (line %d)\n", what, __LINE__); } } while (0)
 static void advance_s(double s) { fake_usec += (uint64_t)(s * 1e6); }
-static void frame(uint16_t cob, const uint8_t *d, uint8_t n) { uint8_t b[11] = { (uint8_t)cob, (uint8_t)(cob >> 8), (uint8_t)(3 + n) }; memcpy(b + 3, d, n); process_biu_reply(b, (uint16_t)(3 + n)); }
+static void frame(uint16_t cob, const uint8_t *d, uint8_t n) { uint8_t b[11] = { (uint8_t)cob, (uint8_t)(cob >> 8), (uint8_t)(3 + n) }; memcpy(b + 3, d, n); process_biu_udp_frame(b, (uint16_t)(3 + n)); }
 static void nmt(uint8_t cs, uint8_t node) { const uint8_t d[2] = { cs, node }; frame(0x000, d, 2); }
 
 int main(void)
 {
     loco_params.sensor_speed = 10.0f; loco_params.speed_ok = 1; loco_params.loco_health_status = 1;
+
+    CHECK(biu_link_selected() == BIU_LINK_CAN, "the CAN link is the default");
+    /* The checks below run on the UDP link (the DLConsole bench), where the
+     * bytes are visible; the CAN link is checked at the end. */
+    biu_link_select(BIU_LINK_UDP);
 
     /* ---- network management ---- */
     biu_link_init();
@@ -53,7 +65,7 @@ int main(void)
 
     /* ---- command frame ---- */
     send_biu_command(LOCO_WAP7, TRAIN_MODE_FORMATION, NORMAL_BRAKE);
-    CHECK(sends == 1 && sent_len == 11 && sent[2] == 11, "operational: 11-byte gateway frame, length byte 11");
+    CHECK(sends == 1 && sent_len == 11 && sent[2] == 11, "operational: 11-byte UDP frame, length byte 11");
     CHECK(sent[0] == 0x90 && sent[1] == 0x01, "COB-ID 0x190 = 0x180 + BIU node 0x10");
     CHECK(sent_port == 51234 && sent_ip == 0xC0A8197Eu, "to 192.168.25.126:51234");
     CHECK(sent[3] == 0xE8 && sent[4] == 0x03, "10.00 m/s = 1000 (0x03E8), lower byte first");
@@ -146,8 +158,8 @@ int main(void)
     frame(0x320, next, 8);
     send_biu_command(LOCO_WAG9, TRAIN_MODE_FORMATION, NO_BRAKE_T);
     CHECK((sent[6] & 0x03) == 0x01, "a new fault code (0x1028) is acked; display 0 not");
-    { const uint8_t bad[11] = { 0x20, 0x02, 12 }; CHECK(process_biu_reply(bad, 11) == 0, "length byte past the buffer refused"); }
-    { const uint8_t shortp[6] = { 0x20, 0x02, 6, 1, 2, 3 }; CHECK(process_biu_reply(shortp, 6) == 0, "pressure frame with 3 bytes refused"); }
+    { const uint8_t bad[11] = { 0x20, 0x02, 12 }; CHECK(process_biu_udp_frame(bad, 11) == 0, "length byte past the buffer refused"); }
+    { const uint8_t shortp[6] = { 0x20, 0x02, 6, 1, 2, 3 }; CHECK(process_biu_udp_frame(shortp, 6) == 0, "pressure frame with 3 bytes refused"); }
 
     /* ---- stop, reset ---- */
     nmt(0x02, 0x00);
@@ -165,6 +177,33 @@ int main(void)
     PressureReading r = current_to_pressure(12.0f, 10.0f);
     CHECK(r.status == SENSE_OK && fabsf(r.value_kgcm2 - 5.1f) < 1e-4f, "12 mA on 10 bar = 5.1 kg/cm2");
     CHECK(current_to_pressure(3.0f, 10.0f).status == SENSE_FAULT_OPEN, "3 mA open");
+
+    /* ---- the CAN link: the same frames, no header, nothing on UDP ---- */
+    biu_link_select(BIU_LINK_CAN);
+    nmt(0x01, 0x20);
+    CHECK(biu_nmt_state() == 0x7F, "CAN link: a UDP datagram from the bench is not taken");
+    { const uint8_t d[2] = { 0x01, 0x20 }; CHECK(process_biu_can_frame(0x000, d, 2) == 1 && biu_nmt_state() == 0x05,
+                                                 "CAN link: NMT start as a CAN frame (id 0x000, DLC 2): operational"); }
+    const int udp_before = sends, hb_before = heartbeats;
+    can_sends = 0;
+    advance_s(0.5); biu_link_tick();
+    CHECK(can_sends == 1 && can_cob[0] == 0x720 && can_dlc[0] == 1 && can_data[0][0] == 0x05,
+          "CAN heartbeat: id 0x720, DLC 1, [05]");
+    loco_params.sensor_speed = 10.0f;
+    send_biu_command(LOCO_WAP7, TRAIN_MODE_FORMATION, NORMAL_BRAKE);
+    CHECK(can_sends == 2 && can_cob[1] == 0x190 && can_dlc[1] == 8, "CAN command: id 0x190, DLC 8");
+    { const uint8_t want[8] = { 0xE8, 0x03, 0x12, 0x0C, 88, 24, 0, 0 };
+      CHECK(memcmp(can_data[1], want, 8) == 0, "CAN command data: the 8 bytes of Annexure-1, no 3-byte header"); }
+    CHECK(sends == udp_before && heartbeats == hb_before, "CAN link: nothing sent on UDP");
+    { const uint8_t pc[8] = { 90, 30, 170, 88, 24, 0, 0, 0x7F };
+      CHECK(process_biu_can_frame(0x220, pc, 8) == 1 && fabsf(st->pressure[BIU_P_BP].kgcm2 - 4.5f) < 1e-4f
+                && fabsf(st->pressure[BIU_P_BC].kgcm2 - 1.5f) < 1e-4f, "CAN status 0x220: BP 4.5, BC 1.5");
+      CHECK(process_biu_can_frame(0x220, pc, 3) == 0, "CAN: a 3-byte pressure frame refused");
+      CHECK(process_biu_can_frame(0x220, pc, 9) == 0, "CAN: DLC above 8 refused"); }
+    { const uint8_t hbc = 0x05; CHECK(process_biu_can_frame(0x710, &hbc, 1) == 1 && biu_link_up(), "CAN: BIU heartbeat, link up"); }
+    biu_link_select(BIU_LINK_UDP);
+    { const uint8_t pc[8] = { 100, 0, 180, 0, 0, 0, 0, 0x7F };
+      CHECK(process_biu_can_frame(0x220, pc, 8) == 0, "UDP link: a CAN frame is not taken"); }
 
     printf("%d checks, %d failed\n", checks, fails);
     return fails != 0;

@@ -58,7 +58,7 @@ QByteArray toDatagram(const Frame &f)
 bool fromDatagram(const QByteArray &datagram, Frame *out, QString *why)
 {
     auto fail = [why](const QString &w) { if (why) *why = w; return false; };
-    if (datagram.size() < 3) return fail(tr("%1 bytes: shorter than the 3-byte gateway header").arg(datagram.size()));
+    if (datagram.size() < 3) return fail(tr("%1 bytes: shorter than the 3-byte header").arg(datagram.size()));
     const int total = quint8(datagram.at(2));
     if (total < 3 || total > 3 + kDataLen)
         return fail(tr("length byte %1: a frame is 3 to 11 bytes").arg(total));
