@@ -1071,6 +1071,63 @@
     </repeat>
   </packet>
 
+  <!-- Session 360: the old cab. Abhinav: "add a toggle for both dip and dop so
+       that dl console can decode both old and sifa ones". Tools > Schema >
+       Cab layout picks, for @dip1/@dip2 and for @dop1/@dop2/@lout, either the
+       packets named dip1 ... lout (SIFA extended inputs; the old cab's output
+       names, as since session 293) or these. They are matched by the decoder
+       from that switch, never by a capture line's own tag.
+       STRUCT_CAB_INPUT (cabio.cpp oldCabInputs): every old-cab controller,
+       @dip1 and @dip2 alike. Bit 17 is padding. -->
+  <packet name="DIP_OLD" match="captype==dip_old" wire="lsb-first" trailer_bytes="0">
+    <field name="1 biu_status"                 bits="1"/>
+    <field name="2 mr_cock"                    bits="1"/>
+    <field name="3 bp_cock"                    bits="1"/>
+    <field name="4 em_cock"                    bits="1"/>
+    <field name="5 mr_pressure_fdbk"           bits="1"/>
+    <field name="6 bp_pressure_fdbk"           bits="1"/>
+    <field name="7 nb_pressure_fdbk"           bits="1"/>
+    <field name="8 fsb_pressure_fdbk"          bits="1"/>
+    <field name="9 eb_pressure_fdbk"           bits="1"/>
+    <field name="10 nb_command_fdbk"           bits="1"/>
+    <field name="11 fsb_command_fdbk"          bits="1"/>
+    <field name="12 eb_command_fdbk"           bits="1"/>
+    <field name="13 cab1_input"                bits="1"/>
+    <field name="14 cab2_input"                bits="1"/>
+    <field name="15 run_forward"               bits="1"/>
+    <field name="16 run_reverse"               bits="1"/>
+    <field name="17 pg_direction"              bits="1"/>
+    <pad bits="1"/>
+    <field name="19 cab1_leading_non_leading"  bits="1"/>
+    <field name="20 cab2_leading_non_leading"  bits="1"/>
+    <field name="21 kavach_isolation"          bits="1"/>
+    <field name="22 bl_key_cab1"               bits="1"/>
+    <field name="23 bl_key_cab2"               bits="1"/>
+    <field name="24 em_cock_fail"              bits="1"/>
+    <field name="25 cancel_cab2"               bits="1"/>
+    <field name="26 comm_cab2"                 bits="1"/>
+    <field name="27 sos_cab2"                  bits="1"/>
+    <field name="28 ack"                       bits="1"/>
+    <field name="29 qrv_fb"                    bits="1"/>
+    <field name="30 cancel_cab1"               bits="1"/>
+    <field name="31 comm_cab1"                 bits="1"/>
+    <field name="32 sos_cab1"                  bits="1"/>
+  </packet>
+
+  <!-- @dop1/@dop2 readback pins named after the SIFA-extended STRUCT_LOCO_OUTPUT
+       (cabio.cpp outputBits): the same five flags per pin as DOP1. -->
+  <packet name="DOP_SIFA" match="captype==dop_sifa" wire="lsb-first" trailer_bytes="0">
+    <repeat name="pin" count="16" index0="true" sep=" "
+            labels="dmi_sos_red dmi_sos_green dmi1_buzzer dmi2_buzzer horn1 horn2 traction_on_off pvef_disable nuteral_section fouling_mark light_engine_brake full_service_brake normal_brake emergency_brake sifa_valve spare">
+      <field name="a"      bits="1"/>
+      <field name="b"      bits="1"/>
+      <field name="fault"  bits="1"/>
+      <field name="trans"  bits="1"/>
+      <field name="output" bits="1"/>
+      <pad bits="3"/>
+    </repeat>
+  </packet>
+
   <!-- @dop2: identical layout to @dop1, and the same STRUCT_LOCO_OUTPUT names -->
   <packet name="DOP2" match="captype==dop2" wire="lsb-first" trailer_bytes="0">
     <repeat name="pin" count="16" index0="true" sep=" "
@@ -2128,6 +2185,26 @@
     <field name="emergency_brake"    bits="1"/>
     <field name="sifa_valve"         bits="1"/>
     <field name="spare"              bits="1"/>
+  </packet>
+
+  <!-- @lout in the old cab's STRUCT_LOCO_OUTPUT (session 360): every output acts on 1. -->
+  <packet name="LOUT_OLD" match="captype==lout_old" wire="lsb-first" trailer_bytes="0">
+    <field name="kavach_ok"          bits="1"/>
+    <field name="kavach_not_ok"      bits="1"/>
+    <field name="sos"                bits="1"/>
+    <field name="buzzer"             bits="1"/>
+    <field name="horn"               bits="1"/>
+    <field name="normal_brake"       bits="1"/>
+    <field name="full_service_brake" bits="1"/>
+    <field name="emergency_brake"    bits="1"/>
+    <field name="no_sos_green_led"   bits="1"/>
+    <field name="light_engine_brake" bits="1"/>
+    <field name="spare_10"           bits="1"/>
+    <field name="spare_11"           bits="1"/>
+    <field name="spare_12"           bits="1"/>
+    <field name="spare_13"           bits="1"/>
+    <field name="spare_14"           bits="1"/>
+    <field name="spare_15"           bits="1"/>
   </packet>
 
   <!-- ===================================================================

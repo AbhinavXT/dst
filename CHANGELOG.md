@@ -11,6 +11,46 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-365"></a>
+## Session 365 — Cab layout switch: @dip and @dop decoded as SIFA or old cab
+
+Abhinav: *"Can we add a toggle for both dip and dop so that dl console can
+decode both old and sifa ones"*.
+
+**What the operator sees.** Tools ▸ Schema ▸ **Cab layout** has two choices,
+remembered between runs:
+- **@dip1 / @dip2 inputs:** SIFA extended (SET1 / SET2, as before) or Old
+  cab (`STRUCT_CAB_INPUT`, the same struct for @dip1 and @dip2; bit 17 is
+  padding).
+- **@dop1 / @dop2 / @lout outputs:** SIFA extended outputs (`dmi_sos_red` …
+  `emergency_brake`, `sifa_valve`, `spare`) or Old cab outputs (`kavach_ok`
+  … `light_engine_brake`, `spare_10..15`, as before). @dop keeps its five
+  flags per pin (a, b, fault, trans, output); only the names change.
+
+The selected row is decoded again at once. The defaults keep what was shown
+before: @dip as SIFA, @dop as old cab, so @lout (which follows the outputs
+switch) now starts with the old cab's names: pick SIFA extended outputs for
+a SIFA bench.
+
+**Files.** `schema/kavach.xml` (packets `DIP_OLD`, `DOP_SIFA`, `LOUT_OLD`,
+matched by the switch, not by a line's tag), `capturedecoder.{h,cpp}`
+(`dipOldCab` / `dopOldCab`, read once from the settings), `settings.h`
+(`decode/dip_old_cab`, `decode/dop_old_cab`), `mainwindow_menus.cpp`.
+
+**Tests.** `session365` (11 checks), on the real @dip1 and @dop1 of
+`replay/2026-10-08/loco_1_1_08102026_101300.cap`: SIFA and old names for the
+same bytes, every old-cab input at cabio's bit, @dip2 the same struct, the
+@dop pin flags unchanged under SIFA names, @lout bit 13 by layout.
+`session364` now sets the SIFA outputs for its @lout checks.
+
+**Gate:** with the bundle at push. `session365`, `364`, `293`, `324`, `327`
+passed on Qt 6.
+
+**Not tested:** a real old-cab @dip/@dop capture (every capture here is
+SIFA); the menu by hand. The Cab I/O Simulator's own Cab switch is separate.
+
+---
+
 <a id="session-364"></a>
 ## Session 364 — @lout: the output word the VCC sends the output cards
 

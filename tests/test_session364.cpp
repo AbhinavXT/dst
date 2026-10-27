@@ -48,6 +48,9 @@ void clearSaved()
 TEST_SUITE(session364)
 {
     // ---- the decoder ------------------------------------------------------------------------------
+    // Session 365: @lout follows the outputs' cab layout; these are the SIFA names.
+    const bool dopWas = CaptureDecoder::dopOldCab();
+    CaptureDecoder::setDopOldCab(false);
     const CaptureLine c = CaptureDecoder::parseLine(kLine);
     CHECK(c.valid && c.type == CapType::Lout && c.bytes.size() == 2, "@lout parses: two bytes");
     CHECK(CaptureDecoder::directionFor(CapType::Lout) == CapDir::Out
@@ -81,6 +84,7 @@ TEST_SUITE(session364)
         }
         CHECK(same, "every SIFA output's bit decodes under its name");
     }
+    CaptureDecoder::setDopOldCab(dopWas);
 
 #ifdef DL_HAVE_SERIAL
     // ---- the simulator ----------------------------------------------------------------------------

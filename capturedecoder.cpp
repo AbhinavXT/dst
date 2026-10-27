@@ -1,6 +1,7 @@
 #include "capturedecoder.h"
 #include "schema/schemaencoder.h"
 #include "sessionkeystore.h"
+#include "settings.h"
 #include "schema/schemadecoder.h"   // global scope: declares namespace Schema + pulls in QtXml
 
 #include <QStringList>
@@ -474,6 +475,35 @@ CapType typeFromToken(const QString &token)
     if (token.startsWith("rand"))
         return CapType::Random;
     return CapType::Unknown;
+}
+
+// Session 360: read once from the settings, then kept here (dip/dop rows are many).
+namespace {
+int g_dipOld = -1, g_dopOld = -1;
+}
+
+bool dipOldCab()
+{
+    if (g_dipOld < 0) g_dipOld = Settings::dipOldCab() ? 1 : 0;
+    return g_dipOld == 1;
+}
+
+bool dopOldCab()
+{
+    if (g_dopOld < 0) g_dopOld = Settings::dopOldCab() ? 1 : 0;
+    return g_dopOld == 1;
+}
+
+void setDipOldCab(bool old)
+{
+    g_dipOld = old ? 1 : 0;
+    Settings::setDipOldCab(old);
+}
+
+void setDopOldCab(bool old)
+{
+    g_dopOld = old ? 1 : 0;
+    Settings::setDopOldCab(old);
 }
 
 const char *typeLabel(CapType t)
@@ -1524,10 +1554,15 @@ QVector<FieldRow> describe(const CaptureLine &c, const QHash<int, qint64> *tagLo
         // ix.rfidUid; the inspector rows come from the schema.
         r += schemaRows(b, QStringLiteral("rfid"), nullptr, -1, rawValues);
         break;
-    case CapType::Dip1:  r += schemaRows(b, QStringLiteral("dip1"), nullptr, -1, rawValues);  break;
-    case CapType::Dip2:  r += schemaRows(b, QStringLiteral("dip2"), nullptr, -1, rawValues);  break;
-    case CapType::Dop1:  r += schemaRows(b, QStringLiteral("dop1"), nullptr, -1, rawValues);  break;
-    case CapType::Dop2:  r += schemaRows(b, QStringLiteral("dop2"), nullptr, -1, rawValues);  break;
+    // Session 360: the cab layout switch picks the packet.
+    case CapType::Dip1:
+        r += schemaRows(b, dipOldCab() ? QStringLiteral("dip_old") : QStringLiteral("dip1"), nullptr, -1, rawValues); break;
+    case CapType::Dip2:
+        r += schemaRows(b, dipOldCab() ? QStringLiteral("dip_old") : QStringLiteral("dip2"), nullptr, -1, rawValues); break;
+    case CapType::Dop1:
+        r += schemaRows(b, dopOldCab() ? QStringLiteral("dop1") : QStringLiteral("dop_sifa"), nullptr, -1, rawValues); break;
+    case CapType::Dop2:
+        r += schemaRows(b, dopOldCab() ? QStringLiteral("dop2") : QStringLiteral("dop_sifa"), nullptr, -1, rawValues); break;
     case CapType::CcSys: r += schemaRows(b, QStringLiteral("ccsys"), nullptr, -1, rawValues); break;
     case CapType::DlSys: r += schemaRows(b, QStringLiteral("dlsys"), nullptr, -1, rawValues); break;
     case CapType::Linfo: r += schemaRows(b, QStringLiteral("linfo"), nullptr, -1, rawValues); break;
@@ -1543,7 +1578,8 @@ QVector<FieldRow> describe(const CaptureLine &c, const QHash<int, qint64> *tagLo
     // @rdir READER_INFO (session 194): 5 B LE, no header/CRC.
     case CapType::Rdir:   r += schemaRows(b, QStringLiteral("rdir"),   nullptr, -1, rawValues); break;
     // @lout (session 359): STRUCT_LOCO_OUTPUT, 2 B LE, no CRC.
-    case CapType::Lout:   r += schemaRows(b, QStringLiteral("lout"),   nullptr, -1, rawValues); break;
+    case CapType::Lout:
+        r += schemaRows(b, dopOldCab() ? QStringLiteral("lout_old") : QStringLiteral("lout"), nullptr, -1, rawValues); break;
     // @dllog (session 267): the log message LKAVACH sends the LDLU. The
     // RFID-tag sub-type (abnormal 14) carries dl_tag_data, the @rfid frame
     // without its reader id byte: decoded by the RFID packet, as "tag.".

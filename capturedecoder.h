@@ -265,6 +265,15 @@ namespace CaptureDecoder {
 // Returns valid=false if `text` is not an @-capture line.
 CaptureLine parseLine(const QString &text);
 
+// Session 360: which cab's structs @dip1/@dip2 and @dop1/@dop2/@lout decode
+// with (Tools > Schema > Cab layout; saved). At first, as before: @dip as the
+// SIFA-extended sets, @dop as the old cab's STRUCT_LOCO_OUTPUT names, and
+// @lout (which follows @dop) therefore as the old cab too.
+bool dipOldCab();
+bool dopOldCab();
+void setDipOldCab(bool old);
+void setDopOldCab(bool old);
+
 // Field-by-field breakdown of a parsed frame for the per-type tab. Decodes
 // semantically where we have a verified spec (NMS); for the bit-packed radio
 // frames it lists the envelope, message header (arp/lsrp), CRC and the body

@@ -4,6 +4,7 @@
 //  concern can be read, and recompiled, on its own. No behaviour change.
 // =============================================================================
 #include "mainwindow.h"
+#include "capturedecoder.h"
 #include "soundalerts.h"
 #include <QSettings>
 #include "frameclock.h"
@@ -683,6 +684,30 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     actSchemaEditor->setToolTip(tr("Browse kavach.xml and change its packets, structs, fields, enums and tables; "
                                    "every edit is checked by the decoder, reviewed as a diff, and backed up"));
     connect(actSchemaEditor, &QAction::triggered, this, &MainWindow::onActionSchemaEditor);
+
+    // Session 360: decode @dip and @dop/@lout as the SIFA-extended or the old cab's structs.
+    QMenu *cabMenu = schemaMenu->addMenu(tr("&Cab layout"));
+    cabMenu->setObjectName(QStringLiteral("cabLayoutMenu"));
+    auto addCabChoice = [this, cabMenu](const QString &title, bool old, bool checked, void (*set)(bool), QActionGroup *g) {
+        QAction *a = cabMenu->addAction(title);
+        a->setCheckable(true);
+        a->setChecked(checked);
+        g->addAction(a);
+        connect(a, &QAction::triggered, this, [this, set, old] {
+            set(old);
+            if (!m_fieldPanel) return;
+            auto it = m_tabs.find(currentTabKey());
+            if (it != m_tabs.end() && it->view) m_fieldPanel->showEntry(entryFromProxyIndex(it->view->currentIndex()));
+        });
+    };
+    cabMenu->addSection(tr("@dip1 / @dip2 inputs"));
+    auto *dipGroup = new QActionGroup(this);
+    addCabChoice(tr("SIFA extended (SET1 / SET2)"), false, !CaptureDecoder::dipOldCab(), &CaptureDecoder::setDipOldCab, dipGroup);
+    addCabChoice(tr("Old cab (STRUCT_CAB_INPUT)"), true, CaptureDecoder::dipOldCab(), &CaptureDecoder::setDipOldCab, dipGroup);
+    cabMenu->addSection(tr("@dop1 / @dop2 / @lout outputs"));
+    auto *dopGroup = new QActionGroup(this);
+    addCabChoice(tr("SIFA extended outputs"), false, !CaptureDecoder::dopOldCab(), &CaptureDecoder::setDopOldCab, dopGroup);
+    addCabChoice(tr("Old cab outputs"), true, CaptureDecoder::dopOldCab(), &CaptureDecoder::setDopOldCab, dopGroup);
 
     QAction *actFieldIndex = schemaMenu->addAction(tr("&Field index…"));
     connect(actFieldIndex, &QAction::triggered,

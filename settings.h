@@ -101,6 +101,12 @@ public:
     // .dlr are written at all — the console is live-view only, and the
     // in-memory ring is the only history. Everything else in this group is
     // inert while this is false.
+    // Session 360: the cab layout @dip / @dop are decoded with (CaptureDecoder::dipOldCab).
+    static bool dipOldCab() { QSettings s(iniPath(), QSettings::IniFormat); return s.value("decode/dip_old_cab", false).toBool(); }
+    static void setDipOldCab(bool on) { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("decode/dip_old_cab", on); }
+    static bool dopOldCab() { QSettings s(iniPath(), QSettings::IniFormat); return s.value("decode/dop_old_cab", true).toBool(); }
+    static void setDopOldCab(bool on) { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("decode/dop_old_cab", on); }
+
     static bool diskLoggingEnabled()
     { QSettings s(iniPath(), QSettings::IniFormat); return s.value("disk/enabled", true).toBool(); }
     static void setDiskLoggingEnabled(bool on)
