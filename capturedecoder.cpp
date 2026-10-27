@@ -48,7 +48,7 @@ const NmsEventDef kNmsEventTable[] = {
     {  36, 2, false, "RFID_READER_1_LINK_STATUS" },
     {  37, 2, false, "RFID_READER_2_LINK_STATUS" },
     {  38, 2, false, "DUPLICATE_MISSING_RFID" },
-    {  39, 4, false, "MISSING_LINKED_RFID" },
+    {  39, 2, false, "MISSING_LINKED_RFID" },
     {  40, 4, false, "COMPUTED_TLM_STATUS" },
     {  41, 1, false, "TRAIN_CONFIG_CHANGE" },
     {  42, 1, false, "BOOTUP_SEQUENCE_ERROR" },

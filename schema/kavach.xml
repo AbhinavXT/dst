@@ -702,7 +702,7 @@
       <event id="36" bytes="2" name="RFID_READER_1_LINK_STATUS"/>
       <event id="37" bytes="2" name="RFID_READER_2_LINK_STATUS"/>
       <event id="38" bytes="2" name="DUPLICATE_MISSING_RFID"/>
-      <event id="39" bytes="4" name="MISSING_LINKED_RFID"/>
+      <event id="39" bytes="2" name="MISSING_LINKED_RFID"/>
       <event id="40" bytes="4" name="COMPUTED_TLM_STATUS"/>
       <event id="41" bytes="1" name="TRAIN_CONFIG_CHANGE"/>
       <event id="42" bytes="1" name="BOOTUP_SEQUENCE_ERROR"/>

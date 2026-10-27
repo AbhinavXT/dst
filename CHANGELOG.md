@@ -10,6 +10,27 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-377"></a>
+## Session 377 — NMS health: MISSING_LINKED_RFID is 2 bytes
+
+Abhinav: *"Set missing linked rfid field in kavach.xml as 2 byte instead of 4"*.
+
+**What changed.** NMS health event 39 `MISSING_LINKED_RFID` is now 2 bytes
+in `schema/kavach.xml` and in `kNmsEventTable` (`capturedecoder.cpp`). The two
+must agree: `validate_nmshlth.py` checks the XML against the C++ table.
+
+**What the operator sees.** A health frame carrying event 39 shows a 2-byte
+value, and the events after it decode from the right offset (with 4 bytes they
+were shifted by two).
+
+**Files.** `schema/kavach.xml`, `capturedecoder.cpp`.
+
+**Tests.** `validate_nmshlth.py`: 10701/10701 frames match. Not tested: no
+frame in `replay/` carries event 39, so no real capture confirms the size.
+Gate: with the bundle at push.
+
+---
+
 <a id="session-376"></a>
 ## Session 376 — BIU firmware: the CAN link to the real BIU, UDP kept for the bench
 
