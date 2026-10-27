@@ -10,6 +10,39 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-367"></a>
+## Session 367 — CI: session362's code lists on MSVC
+
+`main` went red on the Windows job after patches 361-363 merged: two checks
+of `session362` failed, "queued codes, in order" and "a code that is not one
+is dropped". Linux and Qt 6 were green.
+
+**Cause: the test, not the preset.** Both checks compared against
+`QVector<quint16>({ 0x1004 })` and `QVector<quint16>({ 0x1004, 0x1040 })`.
+MSVC 2019 reads those as the size constructors: `QVector(int size)` (4100
+zeros) and `QVector(int size, const T &value)` (4100 copies of 0x1040). GCC
+and clang take the initializer list. The JSON round-trip check in the same
+block passed on Windows, which shows the preset itself read the codes back
+right. The three-element `QVector<quint16>({ 560, 598, 8 })` in session194
+matches no size constructor, so it was never hit.
+
+**Fix.** `QVector<quint16>{ … }`, which is always the list. Inside `CHECK` it
+goes in parentheses, because the macro would split the braces' comma.
+CLAUDE.md's list of Windows traps names it.
+
+**Files.** `tests/test_session362.cpp`, `CLAUDE.md`.
+
+**Not tested here.** MSVC: the container has none. CI's Windows job is the
+check.
+
+Built in the PR #2 cloud session as its Patch 364; taken onto `main` as 367
+so a release can go out: the `patch-364`-`366` releases were blocked by
+this Windows failure.
+
+**Gate (Mac, local):** Qt 6 and Qt 5.15 at push.
+
+---
+
 <a id="session-366"></a>
 ## Session 366 — @lout is the whole output data frame (from the real log)
 

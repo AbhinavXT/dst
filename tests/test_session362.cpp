@@ -90,7 +90,7 @@ TEST_SUITE(session362)
         CHECK(back.pressure[A9Ref].manual && near362(back.pressure[A9Ref].kg, 3.45) && back.pressure[Bc].valid == 2,
               "manual pressures and validity");
         CHECK(back.bits[0][3] == 1 && back.bits[2][7] == 2 && back.bits[1][0] == 0, "forced bits");
-        CHECK(back.faults == QVector<quint16>({ 0x1004, 0x1040 }) && back.displays == QVector<quint16>({ 0x2001 }),
+        CHECK(back.faults == (QVector<quint16>{ 0x1004, 0x1040 }) && back.displays == QVector<quint16>{ 0x2001 },
               "queued codes, in order");
         CHECK(!back.frameOn[1] && back.frameOn[0] && back.silent, "frames off and silence");
         CHECK(j.value(QStringLiteral("air")).toObject().value(QStringLiteral("bc")).toObject().value(QStringLiteral("fault")).toString()
@@ -111,7 +111,7 @@ TEST_SUITE(session362)
               "a partial preset: what it says, the defaults for the rest");
         QJsonObject odd = p.toJson();
         odd.insert(QStringLiteral("faults"), QJsonArray({ QStringLiteral("0x1004"), QStringLiteral("nope"), 0, QStringLiteral("0x10000") }));
-        CHECK(BenchPreset::fromJson(odd, clean).faults == QVector<quint16>({ 0x1004 }), "a code that is not one is dropped");
+        CHECK(BenchPreset::fromJson(odd, clean).faults == QVector<quint16>{ 0x1004 }, "a code that is not one is dropped");
 
         const QStringList diff = p.differences(clean);
         CHECK(diff.contains(QStringLiteral("BC slow ×5")) && diff.contains(QStringLiteral("A9 ref manual 3.45"))
