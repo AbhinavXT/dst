@@ -123,8 +123,8 @@ TEST_SUITE(session308)
         }
     }
     CHECK(same, "each element's tag, attribute count and every decoded value match QDomDocument's, in order");
-    CHECK(doc.all(QStringLiteral("packet")).size() == 26 && doc.all(QStringLiteral("enum")).size() == 62,
-          "26 packets and 62 enums");
+    CHECK(doc.all(QStringLiteral("packet")).size() == 30 && doc.all(QStringLiteral("enum")).size() == 62,
+          "30 packets and 62 enums");
     const int slrp = find308(doc, QStringLiteral("packet"), QStringLiteral("SLRP"));
     CHECK(slrp > 0 && doc.node(slrp).line == 937, "SLRP is at line 937, as in the file");
     const int aap = find308(doc, QStringLiteral("packet"), QStringLiteral("AAP"));
@@ -372,7 +372,7 @@ TEST_SUITE(session308)
     QApplication::processEvents();
     QStringList cats;
     for (int i = 0; i < win.outline()->topLevelItemCount(); ++i) cats << win.outline()->topLevelItem(i)->text(0);
-    CHECK(cats.value(0) == QLatin1String("Packets (26)") && cats.contains(QStringLiteral("Enums (62)"))
+    CHECK(cats.value(0) == QLatin1String("Packets (30)") && cats.contains(QStringLiteral("Enums (62)"))
               && cats.contains(QStringLiteral("CRCs (3)")),
           QByteArray("the outline: ") + cats.join(QLatin1String(", ")).toUtf8());
     CHECK(win.selectContainer(QStringLiteral("packet"), QStringLiteral("AAP")), "AAP selected");

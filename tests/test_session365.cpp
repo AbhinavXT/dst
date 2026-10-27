@@ -79,7 +79,7 @@ TEST_SUITE(session365)
           && valueOf(dop, QStringLiteral("sifa_valve")) != QLatin1String("<none>"), "SIFA: emergency_brake and sifa_valve pins");
 
     // @lout 0x2000 (bit 13): SIFA emergency_brake; old cab spare_13.
-    const QString lout = QStringLiteral("@lout_1_1 2026-10-24T10:00:00 1 00 20");
+    const QString lout = QStringLiteral("@lout_1_1 2026-10-24T10:00:00 1 CC CC 10 01 0D 2D 01 00 00 20 00 00 00 00 DD DD");
     CHECK(valueOf(lout, QStringLiteral("emergency_brake")) == QLatin1String("1"), "SIFA: @lout bit 13 is emergency_brake");
     CaptureDecoder::setDopOldCab(true);
     CHECK(valueOf(lout, QStringLiteral("spare_13")) == QLatin1String("1") && valueOf(lout, QStringLiteral("emergency_brake")) == QLatin1String("0"),

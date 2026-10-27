@@ -1477,11 +1477,13 @@ void CabIoSimWindow::observeDmiLine(const QString &line)
 
 void CabIoSimWindow::observeLoutLine(const QString &line)
 {
-    // shortcut: every loco's @lout lines drive the one cab, as observeDmiLine does.
+    // shortcut: every loco's @lout lines, to either output card, drive the one cab, as observeDmiLine does.
     const CaptureLine cap = CaptureDecoder::parseLine(line);
-    if (!cap.valid || cap.type != CapType::Lout || cap.bytes.size() != 2) return;
+    if (!cap.valid || cap.type != CapType::Lout) return;
+    Frame f;
+    if (!parse(cap.bytes, &f) || !f.isOutputData()) return;   // the whole output data frame (session 361)
     ++m_loutLines;
-    takeOutputWord(quint16(quint8(cap.bytes.at(0)) | quint8(cap.bytes.at(1)) << 8), nowMs());
+    takeOutputWord(f.outputWord(), nowMs());
 }
 
 // The lamps, the rules and the Brake Test Bench follow a new output word, from an

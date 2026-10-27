@@ -8,6 +8,44 @@ From patch 87 on, history lives in git (`git log`), and this file gets one
 section per patch. The per-session `CHANGES_SESSION_*.md` files it replaces
 are in the first commit if the originals are ever needed.
 
+---
+
+<a id="session-366"></a>
+## Session 366 — @lout is the whole output data frame (from the real log)
+
+Abhinav sent the first real log with @lout,
+`81_1_24102026_164654.log` (492 @lout lines). Session 364 had
+taken @lout as two bytes; the real line is the output data frame the VCC
+sends output cards 13 and 14, whole:
+`CC CC 10 01 0D 2D 0D 00 E1 03 3E 89 05 73 DD DD`. So session 364 ignored
+every real line.
+
+**What changed.**
+- The `LOUT` / `LOUT_OLD` packets decode the frame: sof, length, src, dest,
+  msg_id (0x2D), seq (LE), the sixteen output bits, crc, eof.
+- The Cab I/O Simulator parses the line with the cab frame parser and takes
+  the word of an output data frame (to card 13 or 14); anything else is
+  ignored.
+
+In this log the word is 0x03E1 or 0x01E1: in the SIFA layout every brake
+applied throughout, `fouling_mark` (bit 9) going on and off.
+
+**Files.** `schema/kavach.xml`, `cabiosimwindow.cpp`,
+`tests/fixtures/lout_20261024.txt` (six real @lout lines).
+
+**Tests.** `session364` (17 checks) now runs on the real lines: the frame
+parses as output data to card 13, header fields, the word's bits, the
+simulator through all six lines (bit 9 changes once, EB never), a 2-byte
+line ignored. `session365` uses a full frame for its @lout check.
+
+**Gate:** with the bundle at push. `session364`, `365` passed on Qt 6.
+
+**Not tested:** the frame CRC is shown, not checked. The log's @biu lines
+are the wrong packet (Abhinav): nothing is built from them.
+
+**Rebased onto 360-363:** `session308` and `session310` count the real
+schema's packets; 364-366 added four (`LOUT`, `LOUT_OLD`, `DIP_OLD`,
+`DOP_SIFA`), so 26 is now 30. Full gate, Qt 6 and Qt 5, at push.
 
 ---
 
