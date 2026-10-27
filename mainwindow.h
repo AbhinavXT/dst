@@ -154,6 +154,11 @@ private slots:
     void onActionOpenSession();   // File → Open recorded session…
     // The .dlr files in one session viewer; the records read (0: none).
     qint64 openSessionFiles(const QStringList &paths);
+    // Session 370: a review pack from the test site, and making one here.
+    void onActionExportReviewPack();
+    void onActionOpenReviewPack();
+    bool openReviewPack(const QString &zipPath);
+    void onActionCompareRuns();   // session 374
     void onActionSearchAll();     // Edit → Search all sources… (Ctrl+Shift+A)
     void onActionSearchArchive(); // Edit → Search recorded sessions…
     // Open one .dlr in a session viewer.

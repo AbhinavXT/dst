@@ -37,6 +37,11 @@
 #include "savedata.h"
 #include "sessionfile.h"
 #include "sessionwindow.h"
+#include "notessidecar.h"
+#include "reviewpack.h"
+#include "reviewpackdialog.h"
+#include "runcomparewindow.h"
+#include "configfiles.h"
 #include "settings.h"
 #include "sourcerowdelegate.h"
 #include "settingsdialog.h"
@@ -1237,9 +1242,29 @@ void MainWindow::on_pbSaveBtn_clicked()
         kvId  = static_cast<quint16>(currentKey.mid(us + 1).toInt());
     }
 
-    auto *worker = new SaveData(filepath, friendly, model->snapshot(),
+    const QVector<LogEntryPtr> snapshot = model->snapshot();
+    auto *worker = new SaveData(filepath, friendly, snapshot,
                                 srcId, kvId, Settings::saveIncludesRaw());
     connect(worker, &SaveData::saveFinished, this, &MainWindow::onSaveFinished);
+    // Session 369: the tab's notes in the saved span, beside the .log and
+    // .dlr (x.notes.json), so the files carry them wherever they are sent.
+    // Taken now, with the snapshot: a note made after Save is not in it.
+    qint64 firstMs = 0, lastMs = 0;
+    for (const LogEntryPtr &e : snapshot) {
+        if (!e) continue;
+        if (!firstMs || e->epochMs < firstMs) firstMs = e->epochMs;
+        lastMs = qMax(lastMs, e->epochMs);
+    }
+    if (firstMs) {
+        const QVector<Bookmark> marks = NotesSidecar::marksIn(m_bookmarks.all(), currentKey, firstMs, lastMs);
+        if (!marks.isEmpty()) {
+            connect(worker, &SaveData::saveFinished, this, [this, marks](const QString &logPath, const QString &, int) {
+                QString err;
+                if (!NotesSidecar::write(logPath, marks, &err))
+                    notify(NoteLevel::Warning, tr("Saved, but the notes were not written beside it"), err);
+            });
+        }
+    }
     connect(worker, &SaveData::saveFailed,   this, &MainWindow::onSaveFailed);
     connect(worker, &QThread::finished, worker, &QObject::deleteLater);
     worker->start();
@@ -2985,6 +3010,8 @@ void MainWindow::openSessionAt(const QString &filePath, qint64 epochMs)
     win->setFrameWatch(m_frameWatch);
     win->setSessionKeys(m_sessionKeys);
     win->setBookmarkStore(&m_bookmarks);
+    // Session 373: the test cases loaded here run over the recording too.
+    if (!m_tests.assertions().isEmpty()) win->setTestCases(m_tests.sourceJson());
     const qint64 n = win->loadFiles({ filePath });
     win->show();
 
@@ -3017,6 +3044,8 @@ qint64 MainWindow::openSessionFiles(const QStringList &paths)
     // The same store the live tabs use: a row bookmarked while reviewing a
     // recording is the same row bookmarked live.
     win->setBookmarkStore(&m_bookmarks);
+    // Session 373: the test cases loaded here run over the recording too.
+    if (!m_tests.assertions().isEmpty()) win->setTestCases(m_tests.sourceJson());
     const qint64 n = win->loadFiles(paths);
 
     if (n == 0) {
@@ -3033,6 +3062,90 @@ qint64 MainWindow::openSessionFiles(const QStringList &paths)
     notify(NoteLevel::Info, tr("Loaded %1 records from %2 session file(s)")
                                .arg(n).arg(paths.size()));
     return n;
+}
+
+// =============================================================================
+//  Session 370 — the review pack: what the test site saw, in one .zip
+// =============================================================================
+
+void MainWindow::onActionExportReviewPack()
+{
+    // Every tab, the one in view first; the dialog leaves out those with no
+    // raw frames (nothing to put in a .dlr) and says why.
+    QVector<ReviewPack::Capture> captures;
+    const QString current = currentTabKey();
+    QStringList keys;
+    if (!current.isEmpty()) keys << current;
+    for (const TabUi &t : qAsConst(m_tabs))
+        if (!keys.contains(t.tabKey)) keys << t.tabKey;
+    for (const QString &key : keys) {
+        LogModel *model = m_dispatcher->modelForKey(key);
+        if (!model || model->count() == 0) continue;
+        const QString name = m_tabs.value(key).friendlyName;
+        captures.append({ key, name.isEmpty() ? m_dispatcher->friendlyNameFor(key) : name, model->snapshot(),
+                          m_bookmarks.all() });
+    }
+    if (captures.isEmpty()) {
+        notify(NoteLevel::Info, tr("No tab has anything to pack yet."));
+        return;
+    }
+
+    ReviewPack::Input base;
+    const QString schema = Settings::schemaPath();
+    QFile xml(schema.isEmpty() ? QStringLiteral(":/schema/kavach.xml") : schema);
+    if (xml.open(QIODevice::ReadOnly)) base.schemaXml = xml.readAll();
+    base.schemaFrom = schema.isEmpty() || !QFileInfo::exists(schema) ? tr("built in") : QDir::toNativeSeparators(schema);
+    base.testRunPath = Settings::testRunLastFile();
+    for (ConfigKind kind : { ConfigKind::ColorRules, ConfigKind::FriendlyNames, ConfigKind::FieldMap }) {
+        const ConfigChoice c = resolveConfig(kind);
+        if (!c.path.isEmpty()) base.config.append({ configFileSpec(kind).fileName, c.path });
+    }
+
+    ReviewPackDialog dlg(captures, base, this);
+    dlg.exec();
+}
+
+void MainWindow::onActionOpenReviewPack()
+{
+    const QString path = QFileDialog::getOpenFileName(this, tr("Open review pack"), QDir::homePath(),
+                                                      tr("Review packs (*.zip);;All files (*)"));
+    if (!path.isEmpty()) openReviewPack(path);
+}
+
+bool MainWindow::openReviewPack(const QString &zipPath)
+{
+    // Unpacked beside the pack (Pack.zip → Pack_files), so the .dlr files
+    // and their notes stay where the reviewer can find them again, and a
+    // note made while reviewing goes into those files.
+    const ReviewPack::Opened pack = ReviewPack::open(zipPath, ReviewPack::defaultDir(zipPath));
+    if (!pack.ok) {
+        QMessageBox::warning(this, tr("Review pack"), tr("Could not open %1:\n\n%2")
+                                                          .arg(QDir::toNativeSeparators(zipPath), pack.error));
+        return false;
+    }
+    auto *win = new SessionWindow(&m_colorRules, &m_nameMap, m_theme, this);
+    win->setFrameWatch(m_frameWatch);
+    win->setSessionKeys(m_sessionKeys);
+    win->setBookmarkStore(&m_bookmarks);
+    // Session 373: the test cases loaded here run over the recording too.
+    if (!m_tests.assertions().isEmpty()) win->setTestCases(m_tests.sourceJson());
+    win->setReviewPack(pack);
+    const qint64 n = win->loadFiles(pack.dlrs);
+    win->show();
+    win->raise();
+    RecentFiles::add(zipPath);
+    notify(pack.damaged.isEmpty() ? NoteLevel::Info : NoteLevel::Warning,
+           tr("%1 — %2 records").arg(pack.summary()).arg(n), QDir::toNativeSeparators(pack.dir));
+    return true;
+}
+
+void MainWindow::onActionCompareRuns()
+{
+    // Its own Open buttons choose the runs: two runs are two choices, and
+    // each may be several .dlr files or a review pack.
+    auto *w = new RunCompareWindow(&m_colorRules, this);
+    w->show();
+    w->raise();
 }
 
 void MainWindow::refreshFieldIndex()

@@ -10,6 +10,540 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-375"></a>
+## Session 375 — what changed on the DMI
+
+Item 4 of the second remote-review list (session 372). The DMI is sent about
+once a second and mostly repeats itself. A reviewer looks for the moments it
+changed. Finding them meant playing the recording and watching.
+
+**What the operator sees** in the recorded-session window (and a review
+pack):
+- **Tools ▸ What changed on the DMI…**: a **DMI changes** dock. Pick a
+  **Loco** (every loco with @dmi in any tab of the recording). One row per
+  @dmi frame that changed something from the frame before, with its time and
+  what changed, in the DMI's words:
+  *"Mode Stand By Mode → System Failure Mode; Brake none → EB; System
+  messages System Self-Test Success → System Fault, Isolate or Restart
+  KAVACH"*. Rows grow to show the whole sentence. Under it: *"40 change(s)
+  on loco 1_1's DMI"*.
+- **Speed, distances and location** move every frame while the train runs.
+  They are left out unless *Speed, distances and location too* is ticked.
+  So is a **message that counts down**: "End of Authority in 3250m" →
+  "… 3242m", "PSR in 0143m with speed limit 80Kmph" → "… 0139m …" (only
+  its numbers differ). The message appearing, going, or another message in
+  its place is still a change.
+- **Double-click** a change: the tab on show lands on that moment, and the
+  DMI window (following the cursor) shows it.
+- On the **Playback bar**: **◀ DMI change** (Shift+F8) and **DMI change ▶**
+  (F8) move the cursor to the previous / next change, from wherever it is.
+  The status bar says what changed. At either end it stays put and says
+  *"No further change on the DMI."*. While playing, the clock follows the
+  cursor there (session 371).
+
+**DmiDiff (session 374) now marks a counting message as moving.** On the
+real captures this takes the change list from 557 to 88 entries
+(`loco_1_1_29062026_134509`), 505 to 29 (`…_170217`), 323 to 103
+(`…_140226`). The side-by-side of session 374 still lists such a message
+when the two runs differ.
+
+**Files.** `dmichanges.{h,cpp}` (new, in `dlcore.pri`): `locos`, `list`,
+`next`, `previous`. `dmidiff.{h,cpp}`: the counting message.
+`sessionwindow.{h,cpp}`: the dock, the Tools entry, the two Playback actions;
+`showDmiChanges`, `dmiChanges`, `stepDmiChange`. `tests/test_session375.cpp`,
+`tests/tests.pro`.
+
+**Tests.** New `session375` (26 checks) on the real 2026-10-08 run
+`replay/2026-10-08/loco_1_1_08102026_105200.cap` (Limited Supervision, Stand
+By, System Failure with EB), @dmi in tab 81_1 and the rest in 21_1. Checked:
+the locos per tab; changes listed, in time order, nothing moving by default;
+every frame where the mode or the brake changed (found by reading the frames
+one by one) is there, saying so, including System Failure Mode and EB; with
+speed and distances, at least as many; next and previous strictly after and
+before; a message appearing is a change, its distance counting down is not,
+another message in its place is. In the window: the dock waits to be asked
+for; one row per change, for loco 1_1 found in the other tab; the box adds
+the moving values; a double-click lands the radio tab on that moment; F8 /
+Shift+F8 on the bar step first, second, back; after the last change it stays.
+
+**Looked at.** The dock drawn offscreen at 1400 × 800 beside the 10:52 run.
+The first drawing cut each change at the column's edge; rows now grow to the
+sentence.
+
+**Not tested.** The live window has no DMI changes dock (it is for review).
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4** (`qmake6`): all green: 397 suites / 10114 checks, 0 failed; 15
+  validators; menu audit; smoke.
+- **Qt 5.15.13:** the suite did not compile at first:
+  `stringList = { QStringLiteral(…) }` is ambiguous on Qt 5. Written as
+  `QStringList{ … }`; `session374` and `session375` then green on Qt 5, and
+  `session375` again on Qt 6 (the change is in the suite only). The 4 pixel
+  checks of `session134`/`session135` fail in this container on Qt 5 as
+  before any change (see session 367).
+
+---
+
+<a id="session-374"></a>
+## Session 374 — two runs played in step, the DMIs side by side
+
+Item 3 of the second remote-review list (session 372). The same scenario is
+run more than once: two runs at the site, or before and after a firmware
+change. The Two-loco view (98, 132, 172) shows two locos of one live session.
+Nothing played two recordings together.
+
+**What the operator sees.** **File ▸ Compare two runs…**, or **Tools ▸
+Compare with another run…** in a recorded-session window (that recording is
+run A). A window with two DMIs side by side:
+- **Run A / Run B**, each with **Open…**: one or more .dlr files of one run,
+  or a review pack (session 370). Each side has its **Loco** (the same as the
+  other run's when it has it) and **T+0 at**: the moment of that run the
+  clock calls T+0, by default its loco's first DMI frame, and editable.
+- **Align at** the first DMI frame, the first FSB or EB, or the first change
+  of mode, then **Align**: both T+0s at that moment. A run without one is
+  named and its start left alone (*"Run B (loco 1_1) has no FSB or EB: its
+  start is left as it was."*).
+- **▶ Play / ❚❚ Pause** (F5), **1×-16×**, a slider and *T+00:20.0 / 03:31.0*.
+  One clock drives both: each panel shows its loco's last @dmi at or before
+  its own T+0 + T, muted when that frame is over 3 s old, as the DMI window
+  draws a stale frame. Under each panel, whose and when (*"Loco 1_1 ·
+  14:02:47.0"*, or *"last frame 5 s before"*).
+- **What differs between the two DMIs at this moment**: one row per field,
+  Run A beside Run B, in the panel's own words (Mode, Brake, Permitted
+  speed, Target speed, Target, Signal, System messages, Tag, Location,
+  Radio, …). *"The two DMIs show the same."* when nothing does.
+
+**DmiDiff** (new) is that comparison: two DMI pictures field by field, in
+panel order and the DMI's units. It marks speed, distances and location as
+values that move every frame. Session 375's change list is the same
+comparison between one frame and the next.
+
+The window holds the runs' @dmi lines only. The rest of a run is in its
+recorded-session window.
+
+**Files.** `dmidiff.{h,cpp}`, `runcomparewindow.{h,cpp}` (new, in
+`dlcore.pri`); `sessionwindow.{h,cpp}` (`compareWithAnotherRun`, Tools
+entry); `mainwindow.{h,cpp}`, `mainwindow_menus.cpp` (File ▸ Compare two
+runs…); `tests/test_session374.cpp`, `tests/tests.pro`.
+
+**Tests.** New `session374` (31 checks). DmiDiff: two empty pictures and two
+equal ones differ in nothing; one side without a frame is one line; four
+changed fields, in panel order and words ("Mode FS → OS", "Brake none → EB",
+"Speed 45 km/h → 52 km/h", "Target speed — → 30 km/h"); speed marked as
+moving, mode not; brake names. The window, on two real runs of loco 1_1 on
+2026-06-27 (`loco_1_1_27062026_140226.cap` to 14:06, which brakes, and the
+rear-end capture `loco_1_1_27062026_151052.cap`, which does not), each
+written as a .dlr: both load, loco 1_1 chosen; T+0 at each first DMI frame;
+the clock's length; at T+0 and T+20 s each panel shows its own run's last
+frame at or before its start + T; the table is DmiDiff's, cell for cell;
+moving B's T+0 moves only B; Play at 4×, pause, the end; Align at the first
+FSB or EB refused, naming run B, with neither start moved; the braking run
+beside itself, aligned at its brake, shows the brake on both and nothing
+differing; Align at the first DMI frame puts both back; a .dlr without @dmi
+refused by name and run B left as it was; from a recorded-session window,
+that recording is run A.
+
+**Looked at.** The window drawn offscreen at 1280 × 860 with the two runs at
+T+20 s: run A in Trip with EB and "Train Tripped, Select P_Trp", run B in
+Staff Responsible. Seven rows differ. The first drawing squeezed the table
+to three rows and the Run A column; both fixed before the gate.
+
+**Not tested.** The file dialogs; the play timer itself (the suite steps
+`advance` as the timer does).
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4** (`qmake6`): all green: 396 suites / 10088 checks, 0 failed; 15
+  validators; menu audit; smoke.
+- **Qt 5.15.13:** builds; `session374` green. The 4 pixel checks of
+  `session134`/`session135` fail in this container on Qt 5 as before any
+  change (see session 367).
+
+---
+
+<a id="session-373"></a>
+## Session 373 — the test cases over a recording
+
+Item 2 of the second remote-review list (session 372). Live, the test-case
+engine marks every loaded case OBSERVED / NOT ANSWERED / not observed as the
+traffic arrives (sessions 305, 306). A recording from the site was never run
+through it, so the reviewer could not see which SIF clauses the run
+exercised unless the site happened to have the cases loaded.
+
+**What the operator sees** in the recorded-session window (and a review
+pack):
+- **The cases loaded in the live window run over the recording** when it
+  opens: every tab, merged in time order, as the engine saw the traffic
+  live. A **Test cases** dock comes up in front (it joins the panel tabs then, not before) with the same table as live
+  (Case, Clause, State, At, Source, Evidence; the section filter). A
+  double-click lands on the evidence row in the recording.
+- **A Test cases menu**: *Run the built-in test cases over this recording*,
+  *Run test cases from a file…*, *Show results*, *Save observation report…*
+  (the live report, titled "KAVACH test observations — recording <files>").
+  Loading other cases runs them again.
+- **NOT ANSWERED near the end**: a precondition whose window outlasts the
+  recording is resolved by the recording's last moment, as the live timer
+  resolves it by the clock.
+- **It can be stopped.** The engine decodes a frame for each case that asks
+  about it: about 1 ms a row with the 101 built-in cases (session 306's
+  suite takes 18 s over these captures). Over 1.5 s a progress dialog
+  shows, with **Stop**; the results then stand up to where it stopped, and
+  the status bar says where (*"Test cases stopped at 14:03:11 (2500 of 9000
+  rows): …"*).
+
+The states are the engine's words, never Pass / Fail. The site's own
+verdicts are the test run in the pack (session 370).
+
+**Files.** `testassertions.{h,cpp}` (`sourceJson`: the JSON last loaded);
+`sessionwindow.{h,cpp}` (the engine, board, dock and menu; `setTestCases`,
+`runTestCases`, `testReportHtml`); `mainwindow.cpp` (the live window's cases
+go to each recording window it opens: Open recorded session, Open Recent,
+Archive search, review packs); `tests/test_session373.cpp`, `tests/tests.pro`.
+
+**Tests.** New `session373` (16 checks) on the real 2026-10-08 run
+`replay/2026-10-08/loco_1_1_08102026_105200.cap` (sessions 305, 306), written
+as a .dlr. Checked: the window's own engine with the 101 cases; its counts
+are the live engine's over the same rows, with OBSERVED and NOT ANSWERED
+cases both; case by case, the same state from the same frame; an OBSERVED
+case's evidence on tab 1_1; the dock, one row per case; a double-click
+lands on the evidence frame; the report names the case and the recording;
+an empty set clears; setting the cases again gives the same result; with no
+cases the dock is not on show and the menu offers the built-in set.
+
+**Not tested.** Stop in the progress dialog (the loop's stop is a
+`wasCanceled()` check every 250 rows). The file dialogs.
+
+**Worth doing later.** The engine itself: a per-frame decode shared by the
+cases would make it many times faster, live too. It is not changed here.
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4** (`qmake6`): all green: 395 suites / 10057 checks, 0 failed; 15
+  validators; menu audit; smoke. (The first run failed 7 checks: the new
+  suite left `fieldmap.json` loaded in the process-wide `FieldCatalog`, and
+  `assertions` reads `RADIO1_LINK_FAIL` without it; and the hidden Test cases
+  dock took a fourth tab beside the decoded fields, which `session144`
+  counts. Both fixed: the suite puts the catalog back, and the dock joins
+  the tabs the first time it has results.)
+- **Qt 5.15.13:** builds; `session373`, `session144` and `assertions` green.
+  The 4 pixel checks of `session134`/`session135` fail in this container on
+  Qt 5 as before any change (see session 367).
+
+---
+
+<a id="session-372"></a>
+## Session 372 — the Monitor tools on a recording
+
+Item 1 of the second remote-review list Abhinav agreed after patch 371 (1 the
+Monitor tools on a recording, 2 test cases over a recording, 3 two runs played
+in step, 4 what changed on the DMI). Session 368 brought the DMI clip, radio
+chart, notes and incident pack to the recorded-session window. The rest of
+Tools ▸ Monitor ▸ Running and Reports still worked only on live tabs, so a
+pack from the site could not get a run summary or a fault timeline.
+
+**What the operator sees.** In the recorded-session window (and a review
+pack), Tools has, over the tab on show:
+**Run summary report…**, **Mission report…** (with the DMI at each
+mission's key moments), **Speed vs distance…**, **Radio and GPS health…**,
+**Odometry at the tags…**, **Fault timeline…**, **Cab inputs and outputs…**,
+**Track diagram…**. They are the live windows, over the recording's rows,
+titled "… — recording". "Show in log" from any of them lands on that row in
+the recording, and Back returns. They close with the recording's window.
+
+**Not here.** Braking Curves and the Two-loco view read the live dispatcher
+(its tab list and its live feed), not one tab. Two runs side by side is
+item 3 (session 374).
+
+**Files.** `sessionwindow.{h,cpp}` (`openReviewTool`, the Tools entries);
+`tests/test_session372.cpp`, `tests/tests.pro`.
+
+**Tests.** New `session372` (20 checks), real frames:
+`replay/loco_1_1_27062026_140226.cap` to 14:06, a live tab and the same rows
+written to a .dlr and loaded. Checked: the eight entries; the Run summary
+opens over the recording, titled so and owned by the window, and its report
+is the live tab's (less the "generated" line); the Mission report the same;
+Radio and GPS health (summary and links), Odometry (summary and table rows)
+and the Fault timeline (failures text) say what they say live; a jump from
+Radio and GPS health lands on that moment; Speed vs distance, Cab inputs and
+outputs and the Track diagram open; a window with nothing loaded opens none.
+
+**Not tested.** The drawings of Speed vs distance, Cab I/O and the Track
+diagram, beyond opening (their content is the live windows' own, tested in
+their sessions).
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4** (`qmake6`): all green: 394 suites / 10041 checks, 0 failed; 15
+  validators; menu audit; smoke.
+- **Qt 5.15.13:** builds; `session372` green. The 4 pixel checks of
+  `session134`/`session135` fail in this container on Qt 5 as before any
+  change (see session 367).
+
+---
+
+<a id="session-371"></a>
+## Session 371 — Play in the recorded-session window: the DMI as it happened
+
+Item 3 of the remote-review list (session 368). The DMI clip (262) is a GIF
+of a minute or two; a test of half an hour is watched, paused and rewound.
+The DMI window and the Live Loco Console already follow the cursor of the
+recorded-session window (sessions 84, 169), so Play moves the cursor.
+
+**What the operator sees.** A **Playback** bar over the recorded-session
+window (and over a review pack, session 370):
+- **▶ Play / ❚❚ Pause** (F5). Play starts at the selected row (at the start
+  again from the last row). The cursor walks the tab on show in time, and
+  everything that follows the cursor plays with it: the DMI window, the Live
+  Loco Console, the decoded fields and raw bytes. The DMI takes its frames
+  from every loaded tab, so a recording split by source plays its DMI too.
+- **1× 2× 4× 8× 16×**: how much faster than it happened.
+- **Skip quiet spans** (on): when nothing was recorded for more than 3 s, go
+  straight to the next row, and say so (*"Nothing recorded for 21 s: skipped
+  to 14:03:20"*). Off, a quiet span plays as long as it lasted.
+- **DMI**: opens the DMI window, following.
+- The clock (*14:03:11 · 4×*) beside it. Clicking a row, the ribbon,
+  Go to timestamp or F4 while playing moves the clock there. Bringing
+  another tab forward plays that tab from the same moment. A filtered table
+  plays only the rows it shows. At the last row it stops and says *"End of
+  the recording"*.
+
+**Files.** `sessionwindow.{h,cpp}` (the bar; `startPlayback`,
+`stopPlayback`, `advancePlayback`, `setPlaybackSpeed`, `setSkipQuiet`);
+`tests/test_session371.cpp`, `tests/tests.pro`.
+
+**Tests.** New `session371` (16 checks) on real frames: 14:02-14:05 of
+`replay/loco_1_1_27062026_140226.cap`, @dmi in one tab and the rest in
+another, every frame of 14:03:00-14:03:20 taken out. Checked: the bar (Play,
+five speeds, F5); Play starts at the selected row and reads Pause; at 4× one
+second plays four; the cursor is on the last row of that moment; the DMI
+broker's moment is the cursor's, with loco 1_1's @dmi from the other tab;
+F5 pauses; Play resumes from a moved cursor; the 20 s hole is skipped and
+said; with skipping off the cursor waits through it; at the end it stops,
+says so and reads Play again.
+
+**Not tested.** The 100 ms timer itself (the suite steps `advancePlayback`
+as the timer does); the DMI window's drawing while playing (its following is
+session 84's, tested there).
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4** (`qmake6`): all green: 393 suites / 10021 checks, 0 failed; 15
+  validators; menu audit; smoke.
+- **Qt 5.15.13:** builds; `session348`, `session349`, `session368` and
+  `session371` green. The 4 pixel checks of `session134`/`session135` fail
+  in this container on Qt 5 as before any change (see session 367).
+
+---
+
+<a id="session-370"></a>
+## Session 370 — the review pack: what the test site saw, in one file
+
+Item 2 of the remote-review list (session 368). Testing happens at the site
+and the review somewhere else. What arrived was whatever someone remembered
+to attach: a .dlr without its notes, a screenshot, a time typed in a chat.
+The reviewer decoded with another kavach.xml and could not see the test
+run's verdicts.
+
+**At the site: File ▸ Export review pack…**
+- **Site, Tester, Loco** (remembered for the next pack) and **What to look
+  at**: the site's own words, which the reviewer reads first.
+- **Tabs**: every tab with rows, the one in view first. A tab with no raw
+  frames is greyed out, with why (nothing to put in a .dlr).
+- **Span**: *Everything in the chosen tabs*, or *From / To* (seeded on the
+  last 10 minutes).
+- **The test run** open in the Test Case Catalog, ticked when there is one.
+- As the choices change it says what that is: *"1512 frames from 2 tab(s),
+  2 note(s), the test run — about 1.6 MB before compression."* **Export…**
+  writes `ReviewPack_<site>_<date>_<time>.zip` and says what went in.
+
+**What is in the .zip**: `manifest.json` (who, where, what, the span, the
+program, Qt and OS, and every file with its size and CRC-32); `README.txt`
+(the same, for someone without the program, what-to-look-at first, and "it
+makes no pass/fail judgement"); `captures/<tab>.dlr` and
+`captures/<tab>.notes.json` (session 369) per tab; `testrun/<run>.testrun.json`;
+`config/kavach.xml` (the one decoding at the site, built in or chosen);
+`config/` colour rules, friendly names and field map as resolved (session
+271). Entries are deflated: on the test fixture a 345 kB .dlr goes to 30 kB.
+Python's `zipfile` and Info-ZIP `unzip -t` read it with no errors.
+
+**Where the review happens: File ▸ Open review pack…** (also Open Recent
+and dropping the .zip on the window). It is unpacked beside itself
+(`Pack.zip` → `Pack_files/`) and opens in a recorded-session window, titled
+*"Review pack — <site>"*:
+- every capture, with the site's notes on their rows (session 369), and all
+  the review tools (session 368);
+- a **Review pack** panel in front: *What to look at*, then site, tester,
+  loco, when, span, program; whether its **kavach.xml is the same as the one
+  decoding here**, or *DIFFERENT* with its path (said, not swapped in: the
+  reader chooses the schema); **Open its test run…** (the Test Case Catalog
+  on that run); **Show the files**.
+- a file whose size or CRC-32 does not match the manifest is named
+  (*"DAMAGED, not opened"*) and left out. It is not read as evidence.
+
+**Safety.** Only `manifest.json`, `README.txt` and files one level down in
+`captures/`, `testrun/` and `config/` are written. A name with `..`, a drive
+or a leading slash is never written. A zip that is not a pack is refused
+by name. More than 1.5 GB of frames is refused, with the way out (a shorter
+span, fewer tabs): the zip has no zip64.
+
+**Not done.** Reopening a pack unpacks it again over `Pack_files/`. Notes
+made while reviewing are still in the reviewer's own bookmarks and come back
+on the rows, but the notes file beside the unpacked .dlr starts over from
+the site's.
+
+**Files.** `reviewpack.{h,cpp}`, `reviewpackdialog.{h,cpp}` (new, in
+`dlcore.pri`); `xlsxbook.{h,cpp}` (`zipFiles`, `unzipFiles`: the zip it
+already had, made public); `sessionwindow.{h,cpp}` (`setReviewPack`, the
+panel, the title); `mainwindow.{h,cpp}`, `mainwindow_menus.cpp`,
+`mainwindow_recent.cpp`, `recentfiles.{h,cpp}` (File ▸ Export / Open review
+pack, `.zip` in Open Recent and drops); `tests/test_session370.cpp`,
+`tests/tests.pro`.
+
+**Tests.** New `session370` (31 checks) on real frames, 14:02-14:05 of
+`replay/loco_1_1_27062026_140226.cap` in two tabs, with three bookmarks (one
+outside the span) and a test run. Checked: file names; the frames in the span
+and the two notes inside it; the nine files, in order; deflated smaller than
+its parts; read back by the plain unzip; the manifest's who / what / program;
+every file's size and CRC-32; README.txt; the kavach.xml byte for byte; the
+default folder; opened: two captures, the run and the schema found, the
+summary line; the unpacked .dlr frame for frame, byte for byte and to the
+millisecond; the viewer loads it, takes the two notes and shows what to look
+at; refused with no frames in the span (and no file); a zip that is not a
+pack; a pack with `../evil.txt` (not written) and a capture whose CRC is
+wrong (named, not opened, the other one is); the dialog's choices are the
+pack's input, its count line, Export writes and says so, who and where are
+remembered (and the shared INI is put back).
+
+**Not tested.** The file dialogs and the menu entries' clicks themselves.
+The Test Case Catalog opened from the panel.
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4** (`qmake6`): all green: 392 suites / 10005 checks, 0 failed; 15
+  validators; menu audit; smoke.
+- **Qt 5.15.13:** builds; `session368`-`session370` green. The 4 pixel
+  checks of `session134`/`session135` fail in this container on Qt 5 as
+  before any change (see session 367).
+
+---
+
+<a id="session-369"></a>
+## Session 369 — notes beside the capture: `x.notes.json` next to `x.dlr`
+
+Item 4 of the remote-review list (session 368), and the part session 343
+left undone: *"notes saved next to each capture file."* Bookmarks and their
+notes lived only in `bookmarks.json` beside the INI, on the machine where
+they were made. A recording sent from the site arrived without "EB felt
+late here".
+
+**What the operator sees.**
+- **Save** (the log header's Save) also writes `<name>.notes.json` beside the
+  `.log` and `.dlr`, when the tab has notes in the saved span: the marks with
+  their notes and the start of each row. Indented JSON with a `time` per
+  mark, so it can be read without the program.
+- **Opening a .dlr** (File ▸ Open recorded session…, Open Recent, a drop)
+  reads the notes file beside it into the bookmark store. The marks show on
+  their rows, in F2 / Shift+F2, on the ribbon and the marker bar, and in the
+  incident pack. The status bar says what came in: *"From the notes beside
+  the recording: 2 marks"*.
+- **Nobody's words are overwritten.** A mark the reader has without a note
+  takes the file's note. A mark whose note differs keeps the reader's, and
+  the status bar adds *"1 note differs from your own, kept"*.
+- **A note made in the viewer goes back into the file.** Add note…, Edit
+  note… and Ctrl+B rewrite the notes file beside each recording of that tab
+  (its marks inside that file's span). When the last mark goes, the file
+  goes too, so it cannot bring back notes that were taken off. If the folder
+  is read-only, the note stays in the store and the status bar says it was
+  not written beside the file.
+
+**Not done.** The live recorder's rotating `.dlr` files in the log folder get
+no notes file; their notes go out in the review pack (session 370). A note
+added after Save is not in that save's notes file.
+
+**Files.** `notessidecar.{h,cpp}` (new, in `dlcore.pri`): `pathFor`,
+`marksIn`, `write`, `read`, `mergeInto`. `sessionwindow.{h,cpp}`: each loaded
+file's tab and span, the merge on load, `writeSidecars`, `lastMerge`.
+`mainwindow.cpp`: Save writes the notes file. `tests/test_session369.cpp`,
+`tests/tests.pro`.
+
+**Tests.** New `session369` (25 checks). The file: `x.dlr` and `x.log` share
+`x.notes.json`; only the tab's marks inside the span, in time order; it
+names its format and capture; read back with tab, time, note and row text;
+no file means no marks; another JSON is refused, with why; no marks removes
+the file. The merge: 2 added, 1 filled in, 1 differing (kept), and a second
+merge changes nothing. The viewer, on 300 real lines of
+`replay/loco_1_1_27062026_151052.cap` written as a .dlr: the site's two notes
+come in, their rows are marked (a row of another second is not; the times
+are whole seconds, and a mark is on its moment), and the status bar says so.
+The reviewer's note goes into the file in time order. Ctrl+B off takes the
+mark out of the file too. Opened again with a differing note of the
+reader's: the reader's is kept, counted, and said.
+
+**Not tested.** Save's notes file through the live window (MainWindow's
+Save runs on a worker thread; the suite covers `marksIn` and `write`, which
+it calls).
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4** (`qmake6`): all green: 391 suites / 9974 checks, 0 failed; 15
+  validators; menu audit; smoke.
+- **Qt 5.15.13:** builds; `session368` and `session369` green. The 4 pixel
+  checks of `session134`/`session135` fail in this container on Qt 5 as
+  before any change (see session 367).
+
+---
+
+<a id="session-368"></a>
+## Session 368 — the .dlr viewer: DMI clip, radio chart, notes and the incident pack
+
+Item 1 of the remote-review list Abhinav agreed after patch 363 (testing at
+the site, review elsewhere: 1 the review tools on a recording, 2 a review
+pack from the site, 3 DMI playback, 4 notes beside the capture). A file
+sent from the site is opened with File ▸ Open recorded session…, and that
+window had none of the review tools: the DMI clip (262), the radio chart
+(345), notes on rows (343) and the incident pack (97/133/343) worked only on
+live tabs.
+
+**What the operator sees** in the recorded-session window:
+- **Right-click a row** ▸ **Add note…** (Edit note… on a marked row),
+  **DMI clip around here…**, **Radio chart around here…** and **Incident
+  report around here…**: the same dialogs as in the live window, over the
+  recording.
+- **Tools ▸ Incident report…**: the pack around the selected row (else the
+  tab's last), as Tools ▸ Monitor ▸ Reports ▸ Incident report… does live.
+- **The DMI clip finds the DMI.** When the row's tab has no @dmi (a
+  recording split by source), the clip uses the first tab that has.
+  When no tab has any, it says "This recording holds no @dmi frames: no
+  DMI to clip." in the status bar.
+- **Notes go into the shared bookmark store**, as Ctrl+B here already did,
+  so a note made in the viewer is in the incident pack's *Operator notes*
+  and in the live window's Bookmarks dock.
+
+**Files.** `sessionwindow.{h,cpp}` (the row menu; `makeClipDialog`,
+`makeRadioChart`, `openIncidentReport`, `setRowNote`, `noteOf`;
+Tools ▸ Incident report…); `tests/test_session368.cpp`, `tests/tests.pro`.
+
+**Tests.** New `session368` (23 checks) on real frames: 14:02-14:05 of
+`replay/loco_1_1_27062026_140226.cap` written as two .dlr files the way Save
+writes them, the @dmi frames in one (source 81) and everything else in the
+other (source 21). Checked: the row menu lists the four entries (read off the
+popup); a clip from a radio row finds loco 1_1 in the other tab and writes a
+GIF; a recording without @dmi is refused, with the reason; the radio chart
+has arrows and exports SVG; Add note… bookmarks the row with its note, Edit
+note… changes it (still one mark); the pack opens over the recording with
+that note as its Operator note and the window asked for; an unknown tab gets
+no chart and no pack; a window without a bookmark store refuses a note rather
+than dropping it.
+
+**Not tested.** The modal dialogs' own buttons from the menu (the suites
+drive the same functions the menu calls).
+
+**Gate (Linux, cloud container).**
+- **Qt 6.4** (`qmake6`): all green: 390 suites / 9949 checks, 0 failed; 15
+  validators; menu audit; smoke. Run on the tree of patches 367 and 368
+  together.
+- **Qt 5.15.13:** the changed suites green (`session362` 36, `session368` 23).
+  `session134` and `session135` fail 4 pixel-size checks in this container
+  on Qt 5 (Firmware Flasher minimum size, Packet Maker send bar). They
+  failed the same way before any change, and CI passes them on Linux and
+  Windows: this container's Qt 5 fonts, not the code.
+
+---
+
 <a id="session-367"></a>
 ## Session 367 — CI: session362's code lists on MSVC
 

@@ -36,6 +36,7 @@ bool TestAssertionEngine::load(const QString &path, QString *err)
 bool TestAssertionEngine::loadFromJson(const QByteArray &json, QString *err)
 {
     m_asserts.clear();
+    m_json = json;
     ++m_generation;
 
     QJsonParseError perr{};

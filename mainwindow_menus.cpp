@@ -146,6 +146,23 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     connect(actReplay, &QAction::triggered, this, &MainWindow::onActionReplayCapture);
     m_startActions << actOpenSession << actReplay;
 
+    // Session 370: what the test site saw, in one file, and that file
+    // opened where the review happens.
+    QAction *actPackOut = fileMenu->addAction(tr("Export re&view pack…"));
+    actPackOut->setObjectName(QStringLiteral("fileExportReviewPack"));
+    actPackOut->setToolTip(tr("The recordings, their notes, the test run and the kavach.xml in force, "
+                              "in one .zip to send to whoever reviews the test"));
+    connect(actPackOut, &QAction::triggered, this, &MainWindow::onActionExportReviewPack);
+    QAction *actPackIn = fileMenu->addAction(tr("Open review pac&k…"));
+    actPackIn->setObjectName(QStringLiteral("fileOpenReviewPack"));
+    actPackIn->setToolTip(tr("A review pack from the test site: its recordings and notes in a recorded-session window"));
+    connect(actPackIn, &QAction::triggered, this, &MainWindow::onActionOpenReviewPack);
+    // Session 374: the same scenario run twice, played in step.
+    QAction *actCompareRuns = fileMenu->addAction(tr("Compare t&wo runs…"));
+    actCompareRuns->setObjectName(QStringLiteral("fileCompareRuns"));
+    actCompareRuns->setToolTip(tr("Two recordings (or review packs) played in step, their DMIs side by side"));
+    connect(actCompareRuns, &QAction::triggered, this, &MainWindow::onActionCompareRuns);
+
     // Session 287: the files opened last, of every kind openFiles() takes;
     // rebuilt as it opens, so a file deleted since shows as missing.
     m_recentMenu = fileMenu->addMenu(tr("Open &Recent"));

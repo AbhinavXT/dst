@@ -42,6 +42,9 @@
 
 #include "logentry.h"
 #include "navhistory.h"
+#include "notessidecar.h"
+#include "reviewpack.h"
+#include "dmichanges.h"
 #include "theme.h"
 
 class ColorRules;
@@ -94,6 +97,78 @@ public:
 
     void setTheme(Theme t);
 
+    // Session 368: the live window's review tools, on a recording. A file
+    // sent from the test site is read here, not in the live tabs, so the
+    // DMI clip, radio chart, notes and incident report are here too. Each
+    // returns what it opened (null, with `why`, when there is nothing to
+    // show), so a test can drive it without a modal loop.
+    //
+    // The DMI clip of the row's tab, or of the first tab holding @dmi when
+    // the row's tab has none (a recording can be split by source).
+    class DmiClipDialog *makeClipDialog(const QString &tabKey, const LogEntryPtr &entry,
+                                        QString *why = nullptr);
+    class RadioChartDialog *makeRadioChart(const QString &tabKey, qint64 atMs);
+    // The incident pack over tab `tabKey` around `atMs`, with this
+    // window's bookmarks as its Operator notes. Shown.
+    class IncidentReportWindow *openIncidentReport(const QString &tabKey, qint64 atMs,
+                                                   qint64 beforeMs, qint64 afterMs);
+    // Bookmark the row if it is not, and set its note ("" clears the note,
+    // the bookmark stays), as Add note… in the live window.
+    bool setRowNote(const QString &tabKey, const LogEntryPtr &entry, const QString &note);
+    QString noteOf(const QString &tabKey, const LogEntryPtr &entry) const;
+
+    // Session 369: what the last loadFiles() took from the notes files
+    // beside the recordings (x.notes.json next to x.dlr).
+    NotesSidecar::Merge lastMerge() const { return m_merge; }
+
+    // Session 370: this window shows a review pack. A "Review pack" panel,
+    // in front: what to look at, who sent it from where, the schema it was
+    // decoded with there (same as here, or not), its test run.
+    void setReviewPack(const ReviewPack::Opened &pack);
+
+    // Session 371: Play. The cursor walks the tab on show in time, at the
+    // chosen speed, and everything that follows the cursor plays with it:
+    // the DMI window, the Live Loco Console, the decoded fields. A quiet
+    // span over 3 s is skipped (and said) unless that is switched off.
+    // Moving the cursor while playing moves the clock there.
+    void startPlayback();
+    void stopPlayback();
+    bool isPlaying() const { return m_playing; }
+    void setPlaybackSpeed(int times);          // 1, 2, 4, 8, 16
+    void setSkipQuiet(bool on);
+    // One step of `wallMs` of real time (the timer's, or a test's).
+    void advancePlayback(qint64 wallMs);
+    qint64 playbackClock() const { return m_clock; }
+
+    // Session 372: the live window's Monitor ▸ Running and Reports tools that
+    // read one tab, over the tab on show here. Each opens as it does live,
+    // over this window's own rows; a click in it ("show in log") lands on
+    // the row here. Returns the window (null when the tab is empty).
+    enum class ReviewTool { RunReport, MissionReport, SpeedDistance, RadioHealth,
+                            Odometry, FaultTimeline, CabIo, TrackDiagram };
+    QWidget *openReviewTool(ReviewTool tool);
+
+    // Session 373: the test cases (the live window's, or the built-in set,
+    // or a file) run over every tab of the recording, in time order, by an
+    // engine of this window's own. The results are in a Test cases dock, as
+    // live; a double-click lands on the evidence row. Setting cases again
+    // runs them again; an empty array clears them.
+    void setTestCases(const QByteArray &json);
+    const class TestAssertionEngine *testEngine() const { return m_tests; }
+    class TestCaseBoard *testBoard() const { return m_testBoard; }
+    QString testReportHtml() const;
+
+    // Session 374: this recording as run A of a Compare two runs window; run
+    // B is chosen there. Null when nothing is loaded.
+    class RunCompareWindow *compareWithAnotherRun();
+
+    // Session 375: what changed on a loco's DMI, frame to frame (DmiChanges),
+    // in a dock; a double-click lands the tab on show on that moment.
+    // Previous / Next DMI change (Shift+F8 / F8) step the cursor between them.
+    void showDmiChanges();
+    const QVector<DmiChanges::Change> &dmiChanges() const { return m_dmiChanges; }
+    bool stepDmiChange(int dir);
+
 protected:
     // Remember size/position for the next opening.
     void closeEvent(QCloseEvent *event) override;
@@ -125,6 +200,7 @@ private slots:
     void onToggleBookmark();
     void onNextBookmark();
     void onPrevBookmark();
+    void onIncidentReport();          // session 368: Tools ▸ Incident report…
 
 private:
     LogModel *modelForKey(const QString &tabKey);
@@ -151,6 +227,15 @@ private:
     void rebuildSummary();
     void stepProblem(int dir);
     void stepBookmark(int dir);
+    QString tabName(const QString &tabKey) const;
+    // Session 369: rewrite the notes file beside each recording of `tabKey`.
+    void writeSidecars(const QString &tabKey);
+    void buildPlaybackBar();                  // session 371
+    void updatePlaybackUi();
+    void runTestCases();                      // session 373
+    void buildTestCasesUi();
+    void refreshDmiChanges();                 // session 375
+    void refreshMarks(const QString &tabKey, int sourceRow);
 
     // The tab the operator is looking at, and what is selected in it.
     QString      currentTabKey() const;
@@ -173,6 +258,41 @@ private:
     QHash<QString, TabUi>     m_tabUi;
 
     QStringList m_warnings;
+
+    // Session 369: each file loaded, the tab it fed and the span it held, so
+    // a note made here goes into the notes file beside the right one.
+    struct LoadedFile { QString path, tabKey; qint64 firstMs = 0, lastMs = 0; };
+    QVector<LoadedFile> m_files;
+    NotesSidecar::Merge m_merge;
+    QString m_packTitle;   // session 370: the pack's site, for the title
+
+    // Session 371: playback.
+    class QToolBar  *m_playBar = nullptr;
+    class QAction   *m_actPlay = nullptr;
+    class QComboBox *m_speed = nullptr;
+    class QCheckBox *m_skipQuiet = nullptr;
+    QLabel          *m_playClock = nullptr;
+    class QTimer    *m_playTimer = nullptr;
+    qint64           m_playWallMs = 0;   // when the timer last ticked (ms since epoch)
+    bool             m_playing = false;
+    qint64           m_clock = 0;        // the recording's time being played
+    QString          m_playTab;          // the tab it plays
+    int              m_playRow = -1;     // the proxy row it last put the cursor on
+
+    // Session 373: test cases over the recording.
+    class TestAssertionEngine *m_tests = nullptr;
+    class TestCaseBoard       *m_testBoard = nullptr;
+    class TestCasePanel       *m_testPanel = nullptr;
+    class QDockWidget         *m_testDock = nullptr;
+    QStringList                m_loadedNames;   // the files, for the report's title
+
+    // Session 375: DMI changes.
+    class QDockWidget  *m_dmiDock = nullptr;
+    class QComboBox    *m_dmiLoco = nullptr;
+    class QCheckBox    *m_dmiMoving = nullptr;
+    class QTableWidget *m_dmiTable = nullptr;
+    QLabel             *m_dmiCount = nullptr;
+    QVector<DmiChanges::Change> m_dmiChanges;
 
     // Session 348: Back/Forward over this window's jumps, as the live window.
     NavHistory m_nav;

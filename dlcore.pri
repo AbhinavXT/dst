@@ -159,6 +159,12 @@ SOURCES += \
     $$PWD/namemap.cpp \
     $$PWD/rawbytespanel.cpp \
     $$PWD/bookmarks.cpp \
+    $$PWD/notessidecar.cpp \
+    $$PWD/reviewpack.cpp \
+    $$PWD/reviewpackdialog.cpp \
+    $$PWD/dmidiff.cpp \
+    $$PWD/dmichanges.cpp \
+    $$PWD/runcomparewindow.cpp \
     $$PWD/archivesearch.cpp \
     $$PWD/commandpalette.cpp \
     $$PWD/archivesearchwindow.cpp \
@@ -361,6 +367,12 @@ HEADERS += \
     $$PWD/namemap.h \
     $$PWD/rawbytespanel.h \
     $$PWD/bookmarks.h \
+    $$PWD/notessidecar.h \
+    $$PWD/reviewpack.h \
+    $$PWD/reviewpackdialog.h \
+    $$PWD/dmidiff.h \
+    $$PWD/dmichanges.h \
+    $$PWD/runcomparewindow.h \
     $$PWD/archivesearch.h \
     $$PWD/commandpalette.h \
     $$PWD/archivesearchwindow.h \

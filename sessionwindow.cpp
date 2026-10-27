@@ -26,16 +26,51 @@
 #include "framediffwindow.h"
 #include "fieldplot.h"
 #include "packetmakerdialog.h"
+#include "dmiclip.h"
+#include "dmiclipdialog.h"
+#include "incidentreport.h"
+#include "incidentreportdialog.h"
+#include "incidentreportwindow.h"
+#include "radiochartdialog.h"
+#include "runcomparewindow.h"
+#include <QTableWidget>
+#include "configfiles.h"
+#include "testassertions.h"
+#include "testcaseboard.h"
+#include "testcasepanel.h"
+#include <QFileDialog>
+#include <QSaveFile>
+#include <QProgressDialog>
+#include <algorithm>
+#include "faulttimelinewindow.h"
+#include "iotimelinewindow.h"
+#include "odometrywindow.h"
+#include "radiohealthwindow.h"
+#include "runreportwindow.h"
+#include "speeddistance.h"
+#include "trackdiagramwindow.h"
+#include "testcatalogwindow.h"
+#include <QDesktopServices>
+#include <QPushButton>
+#include <QUrl>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QTimer>
+#include <QToolBar>
 
 #include <QCloseEvent>
 #include <QApplication>
 #include <QDockWidget>
+#include <QDir>
 #include <QFileInfo>
+#include <QJsonObject>
 #include <QHeaderView>
 #include <QLabel>
 #include <QSortFilterProxyModel>
 #include <QDateTime>
 #include <QHBoxLayout>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QSpinBox>
 #include <QTreeWidget>
 #include <QMenu>
@@ -157,9 +192,409 @@ SessionWindow::SessionWindow(const ColorRules *rules,
 
     m_lblSummary = new QLabel(tr("No session loaded"), this);
     statusBar()->addWidget(m_lblSummary);
+
+    buildPlaybackBar();   // session 371
+    buildTestCasesUi();   // session 373
+}
+
+// ---------------------------------------------------------------------------
+//  Session 373 — the test cases over a recording
+//
+//  Live, the engine sees every entry of every source as it arrives and marks
+//  each case OBSERVED / NOT ANSWERED (sessions 305, 306). A recording from
+//  the site is the same traffic: the same engine runs over all its tabs,
+//  merged in time order, so the reviewer sees which clauses the run
+//  exercised without the site having had the cases loaded.
+// ---------------------------------------------------------------------------
+
+void SessionWindow::buildTestCasesUi()
+{
+    m_tests = new TestAssertionEngine(this);
+    m_testBoard = new TestCaseBoard(m_tests, this);
+    m_testPanel = new TestCasePanel(m_testBoard, this);
+    connect(m_testPanel, &TestCasePanel::jumpRequested, this,
+            [this](const QString &tabKey, qint64 ms) { jumpToTime(tabKey, ms); });
+    m_testDock = new QDockWidget(tr("Test cases"), this);
+    m_testDock->setObjectName(QStringLiteral("sessionTestCasesDock"));
+    m_testDock->setWidget(m_testPanel);
+    m_testDock->setAllowedAreas(Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
+    addDockWidget(Qt::RightDockWidgetArea, m_testDock);
+    m_testDock->hide();   // shown, and tabbed with the panels, once there are cases
+
+    auto *menu = menuBar()->addMenu(tr("Test &cases"));
+    QAction *a = menu->addAction(tr("Run the &built-in test cases over this recording"));
+    a->setObjectName(QStringLiteral("sessionTestCasesBuiltin"));
+    connect(a, &QAction::triggered, this, [this]() {
+        QFile f(builtinConfigPath(ConfigKind::TestCases));
+        if (f.open(QIODevice::ReadOnly)) setTestCases(f.readAll());
+    });
+    a = menu->addAction(tr("Run test cases from a &file…"));
+    a->setObjectName(QStringLiteral("sessionTestCasesFile"));
+    connect(a, &QAction::triggered, this, [this]() {
+        const QString path = QFileDialog::getOpenFileName(this, tr("Test cases"), QString(),
+                                                          tr("Test cases (*.json);;All files (*)"));
+        QFile f(path);
+        if (!path.isEmpty() && f.open(QIODevice::ReadOnly)) setTestCases(f.readAll());
+    });
+    menu->addSeparator();
+    a = menu->addAction(tr("&Show results"));
+    connect(a, &QAction::triggered, this, [this]() { m_testDock->show(); m_testDock->raise(); });
+    a = menu->addAction(tr("&Save observation report…"));
+    a->setObjectName(QStringLiteral("sessionTestCasesReport"));
+    connect(a, &QAction::triggered, this, [this]() {
+        if (m_tests->assertions().isEmpty()) {
+            statusBar()->showMessage(tr("No test cases have been run over this recording."), 4000);
+            return;
+        }
+        const QString path = QFileDialog::getSaveFileName(this, tr("Save observation report"),
+                                                          QDir::home().filePath(QStringLiteral("observations_recording.html")),
+                                                          tr("HTML (*.html)"));
+        if (path.isEmpty()) return;
+        QSaveFile f(path);
+        if (f.open(QIODevice::WriteOnly) && f.write(testReportHtml().toUtf8()) >= 0 && f.commit())
+            statusBar()->showMessage(tr("Saved %1").arg(QFileInfo(path).fileName()), 4000);
+        else
+            statusBar()->showMessage(tr("Not saved: %1").arg(f.errorString()), 6000);
+    });
+}
+
+void SessionWindow::setTestCases(const QByteArray &json)
+{
+    QString err;
+    if (!m_tests->loadFromJson(json, &err)) {
+        statusBar()->showMessage(tr("The test cases did not load: %1").arg(err), 6000);
+        return;
+    }
+    runTestCases();
+}
+
+void SessionWindow::runTestCases()
+{
+    m_tests->resetObservations();
+    if (m_tests->assertions().isEmpty()) {
+        m_testBoard->poll();
+        m_testDock->hide();
+        return;
+    }
+    // Every tab, merged by time: the engine sees the recording as it saw
+    // the traffic live, whichever source each frame came from.
+    QVector<LogEntryPtr> all;
+    for (LogModel *m : qAsConst(m_models))
+        for (int r = 0; r < m->count(); ++r)
+            if (LogEntryPtr e = m->entryAt(r)) all.append(e);
+    std::stable_sort(all.begin(), all.end(),
+                     [](const LogEntryPtr &a, const LogEntryPtr &b) { return a->epochMs < b->epochMs; });
+    // The engine decodes a frame for each case that asks about it: about a
+    // millisecond a row with the 101 built-in cases. An hour of recording is
+    // a minute or more, so it runs with a progress dialog and can be
+    // stopped; the results then stand up to where it stopped, and say so.
+    QProgressDialog progress(tr("Running %1 test case(s) over %2 rows…").arg(m_tests->assertions().size()).arg(all.size()),
+                             tr("Stop"), 0, all.size(), this);
+    progress.setWindowTitle(tr("Test cases"));
+    progress.setMinimumDuration(1500);
+    progress.setWindowModality(Qt::WindowModal);
+    int done = 0;
+    for (const LogEntryPtr &e : qAsConst(all)) {
+        m_tests->observe(e);
+        if (++done % 250 == 0) {
+            progress.setValue(done);
+            if (progress.wasCanceled()) break;
+        }
+    }
+    progress.setValue(all.size());
+    const bool stopped = done < all.size();
+    // A precondition near the end: resolved by the last moment run, as the
+    // live timer resolves it by the clock.
+    if (done > 0) m_tests->expireArmed(all.at(done - 1)->epochMs);
+    m_testBoard->poll();
+    // Tabbed with the decoded fields the first time it has something to
+    // show: a hidden dock still takes a tab in that bar.
+    if (!m_testDock->property("tabbed").toBool()) {
+        for (QDockWidget *d : findChildren<QDockWidget *>())
+            if (d->objectName() == QLatin1String("sessionFieldDock")) tabifyDockWidget(d, m_testDock);
+        m_testDock->setProperty("tabbed", true);
+    }
+    m_testDock->show();
+    m_testDock->raise();
+    if (stopped)
+        statusBar()->showMessage(tr("Test cases stopped at %1 (%2 of %3 rows): %4")
+                                     .arg(QDateTime::fromMSecsSinceEpoch(all.at(done - 1)->epochMs).toString(QStringLiteral("HH:mm:ss")))
+                                     .arg(done).arg(all.size()).arg(m_testBoard->summary()));
+    else
+        statusBar()->showMessage(tr("Test cases over the recording: %1").arg(m_testBoard->summary()), 8000);
+}
+
+QString SessionWindow::testReportHtml() const
+{
+    qint64 last = 0;
+    for (LogModel *m : m_models)
+        if (m->count()) last = qMax(last, m->entryAt(m->count() - 1)->epochMs);
+    return m_tests->buildReportHtml(tr("KAVACH test observations — recording %1").arg(m_loadedNames.join(QStringLiteral(", "))),
+                                    last);
+}
+
+// ---------------------------------------------------------------------------
+//  Session 371 — Play
+//
+//  A recording is read with its DMI beside it. The GIF clip (session 262)
+//  shows a minute or two; a test of half an hour is watched, paused,
+//  rewound. Play moves the cursor through the tab in time: the DMI window
+//  and the Live Loco Console already follow the cursor (session 84/169), so
+//  they play too, from every loaded tab, not only the one on show.
+// ---------------------------------------------------------------------------
+
+namespace {
+constexpr int    kPlayTickMs = 100;
+constexpr qint64 kQuietMs    = 3000;   // a step longer than this is skipped, as the clip shortens it
+}  // namespace
+
+void SessionWindow::buildPlaybackBar()
+{
+    m_playBar = addToolBar(tr("Playback"));
+    m_playBar->setObjectName(QStringLiteral("playbackBar"));
+    m_playBar->setMovable(false);
+
+    m_actPlay = m_playBar->addAction(tr("▶ Play"));
+    m_actPlay->setObjectName(QStringLiteral("playbackPlay"));
+    m_actPlay->setShortcut(QKeySequence(QStringLiteral("F5")));
+    m_actPlay->setToolTip(tr("Play the recording from the selected row: the cursor moves in time, "
+                             "and the DMI follows it (F5 plays and pauses)"));
+    connect(m_actPlay, &QAction::triggered, this, [this]() { m_playing ? stopPlayback() : startPlayback(); });
+
+    m_speed = new QComboBox(m_playBar);
+    m_speed->setObjectName(QStringLiteral("playbackSpeed"));
+    for (int x : { 1, 2, 4, 8, 16 }) m_speed->addItem(tr("%1×").arg(x), x);
+    m_speed->setToolTip(tr("How much faster than it happened"));
+    m_playBar->addWidget(m_speed);
+
+    m_skipQuiet = new QCheckBox(tr("Skip quiet spans"), m_playBar);
+    m_skipQuiet->setObjectName(QStringLiteral("playbackSkipQuiet"));
+    m_skipQuiet->setChecked(true);
+    m_skipQuiet->setToolTip(tr("When nothing was recorded for more than 3 s, go straight to the next row"));
+    m_playBar->addWidget(m_skipQuiet);
+
+    // Session 375: from one change on the DMI to the next.
+    QAction *prevChange = m_playBar->addAction(tr("◀ DMI change"));
+    prevChange->setObjectName(QStringLiteral("playbackPrevDmiChange"));
+    prevChange->setShortcut(QKeySequence(QStringLiteral("Shift+F8")));
+    prevChange->setToolTip(tr("The previous change on the DMI (Shift+F8)"));
+    connect(prevChange, &QAction::triggered, this, [this]() { stepDmiChange(-1); });
+    QAction *nextChange = m_playBar->addAction(tr("DMI change ▶"));
+    nextChange->setObjectName(QStringLiteral("playbackNextDmiChange"));
+    nextChange->setShortcut(QKeySequence(QStringLiteral("F8")));
+    nextChange->setToolTip(tr("The next change on the DMI: mode, brake, target, signal, messages, tag (F8)"));
+    connect(nextChange, &QAction::triggered, this, [this]() { stepDmiChange(+1); });
+
+    QAction *dmi = m_playBar->addAction(tr("DMI"));
+    dmi->setObjectName(QStringLiteral("playbackDmi"));
+    dmi->setToolTip(tr("Open the DMI window, following the cursor"));
+    connect(dmi, &QAction::triggered, this, [this]() {
+        const QString key = currentTabKey();
+        if (m_tabUi.contains(key) && m_tabUi[key].view) offerDmiAt(key, m_tabUi[key].view->currentIndex());
+        DmiWindow::showFollowing(this, nullptr);
+    });
+
+    m_playClock = new QLabel(m_playBar);
+    m_playClock->setObjectName(QStringLiteral("playbackClock"));
+    m_playBar->addSeparator();
+    m_playBar->addWidget(m_playClock);
+
+    m_playTimer = new QTimer(this);
+    m_playTimer->setInterval(kPlayTickMs);
+    connect(m_playTimer, &QTimer::timeout, this, [this]() {
+        const qint64 now = QDateTime::currentMSecsSinceEpoch();
+        const qint64 wall = now - m_playWallMs;
+        m_playWallMs = now;
+        advancePlayback(wall);
+    });
+    updatePlaybackUi();
+}
+
+void SessionWindow::setPlaybackSpeed(int times)
+{
+    const int i = m_speed->findData(times);
+    if (i >= 0) m_speed->setCurrentIndex(i);
+    updatePlaybackUi();
+}
+
+void SessionWindow::setSkipQuiet(bool on) { m_skipQuiet->setChecked(on); }
+
+void SessionWindow::updatePlaybackUi()
+{
+    m_actPlay->setText(m_playing ? tr("❚❚ Pause") : tr("▶ Play"));
+    m_playClock->setText(m_clock > 0 ? QStringLiteral("%1 · %2")
+                                           .arg(QDateTime::fromMSecsSinceEpoch(m_clock).toString(QStringLiteral("HH:mm:ss")),
+                                                m_speed->currentText())
+                                     : QString());
+}
+
+void SessionWindow::startPlayback()
+{
+    const QString key = currentTabKey();
+    const TabUi ui = m_tabUi.value(key);
+    auto *proxy = ui.view ? qobject_cast<QSortFilterProxyModel *>(ui.view->model()) : nullptr;
+    if (!proxy || proxy->rowCount() == 0) {
+        statusBar()->showMessage(tr("Nothing to play in this tab."), 3000);
+        return;
+    }
+    int row = ui.view->currentIndex().isValid() ? ui.view->currentIndex().row() : 0;
+    if (row >= proxy->rowCount() - 1) row = 0;   // at the end: from the start again
+    ui.view->setCurrentIndex(proxy->index(row, qMax(0, ui.view->currentIndex().column())));
+    m_playTab = key;
+    m_playRow = row;
+    m_clock = ui.model->entryAt(proxy->mapToSource(proxy->index(row, 0)).row())->epochMs;
+    m_playing = true;
+    m_playWallMs = QDateTime::currentMSecsSinceEpoch();
+    m_playTimer->start();
+    updatePlaybackUi();
+}
+
+void SessionWindow::stopPlayback()
+{
+    m_playing = false;
+    if (m_playTimer) m_playTimer->stop();
+    updatePlaybackUi();
+}
+
+void SessionWindow::advancePlayback(qint64 wallMs)
+{
+    if (!m_playing) return;
+    const QString key = currentTabKey();
+    const TabUi ui = m_tabUi.value(key);
+    auto *proxy = ui.view ? qobject_cast<QSortFilterProxyModel *>(ui.view->model()) : nullptr;
+    if (!proxy || proxy->rowCount() == 0) { stopPlayback(); return; }
+    auto timeAt = [&](int r) { return ui.model->entryAt(proxy->mapToSource(proxy->index(r, 0)).row())->epochMs; };
+    const int rows = proxy->rowCount();
+
+    int r = ui.view->currentIndex().isValid() ? ui.view->currentIndex().row() : -1;
+    if (key != m_playTab) {
+        // Another tab brought forward: play it from the same moment.
+        m_playTab = key;
+        r = -1;
+        while (r + 1 < rows && timeAt(r + 1) <= m_clock) ++r;
+    } else if (r != m_playRow && r >= 0) {
+        m_clock = timeAt(r);   // the operator moved the cursor: play from there
+    }
+    m_clock += wallMs * qMax(1, m_speed->currentData().toInt());
+
+    while (r + 1 < rows && timeAt(r + 1) <= m_clock) ++r;
+    if (r + 1 < rows && m_skipQuiet->isChecked() && r >= 0) {
+        const qint64 quiet = timeAt(r + 1) - timeAt(r);
+        if (quiet > kQuietMs && m_clock - timeAt(r) >= kQuietMs) {
+            m_clock = timeAt(r + 1);
+            while (r + 1 < rows && timeAt(r + 1) <= m_clock) ++r;
+            statusBar()->showMessage(tr("Nothing recorded for %1 s: skipped to %2")
+                                         .arg((quiet + 500) / 1000)
+                                         .arg(QDateTime::fromMSecsSinceEpoch(m_clock).toString(QStringLiteral("HH:mm:ss"))),
+                                     4000);
+        }
+    }
+    if (r >= 0 && r != ui.view->currentIndex().row()) {
+        ui.view->setCurrentIndex(proxy->index(r, qMax(0, ui.view->currentIndex().column())));
+        ui.view->scrollTo(ui.view->currentIndex(), QAbstractItemView::EnsureVisible);
+    }
+    m_playRow = r;
+    if (r == rows - 1) {
+        stopPlayback();
+        statusBar()->showMessage(tr("End of the recording (%1)").arg(QDateTime::fromMSecsSinceEpoch(timeAt(r))
+                                                                        .toString(QStringLiteral("HH:mm:ss"))),
+                                 5000);
+        return;
+    }
+    updatePlaybackUi();
 }
 
 SessionWindow::~SessionWindow() = default;
+
+void SessionWindow::setReviewPack(const ReviewPack::Opened &pack)
+{
+    const QJsonObject &m = pack.manifest;
+    auto *page = new QWidget(this);
+    auto *lay = new QVBoxLayout(page);
+    lay->setContentsMargins(6, 6, 6, 6);
+
+    const QString what = m.value(QStringLiteral("what_to_look_at")).toString();
+    auto *whatLabel = new QLabel(page);
+    whatLabel->setObjectName(QStringLiteral("reviewPackWhat"));
+    whatLabel->setWordWrap(true);
+    whatLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    whatLabel->setText(what.isEmpty() ? tr("The site gave no note on what to look at.")
+                                      : tr("<b>What to look at:</b> %1").arg(what.toHtmlEscaped()));
+    lay->addWidget(whatLabel);
+
+    // Who, where, when, with what: the README's lines.
+    QStringList rows;
+    auto row = [&rows](const QString &label, const QString &value) {
+        if (!value.isEmpty()) rows << QStringLiteral("<tr><td>%1</td><td>%2</td></tr>").arg(label, value.toHtmlEscaped());
+    };
+    row(tr("Site"), m.value(QStringLiteral("site")).toString());
+    row(tr("Tester"), m.value(QStringLiteral("tester")).toString());
+    row(tr("Loco"), m.value(QStringLiteral("loco")).toString());
+    row(tr("Made"), m.value(QStringLiteral("created")).toString());
+    const QJsonObject span = m.value(QStringLiteral("span")).toObject();
+    row(tr("Span"), span.value(QStringLiteral("from")).toString().isEmpty()
+                        ? tr("everything in the tabs sent")
+                        : span.value(QStringLiteral("from")).toString() + QStringLiteral(" → ")
+                              + span.value(QStringLiteral("to")).toString());
+    const QJsonObject prog = m.value(QStringLiteral("program")).toObject();
+    row(tr("Program"), QStringLiteral("%1, Qt %2, %3")
+                           .arg(QStringLiteral("%1 %2").arg(prog.value(QStringLiteral("name")).toString(),
+                                                            prog.value(QStringLiteral("version")).toString()).trimmed(),
+                                prog.value(QStringLiteral("qt")).toString(), prog.value(QStringLiteral("os")).toString()));
+    // The schema: the same bytes as the one decoding here, or not. A
+    // different one is said, not swapped in: which schema decodes is the
+    // reader's choice (File ▸ Schema).
+    if (!pack.schemaPath.isEmpty()) {
+        QFile theirs(pack.schemaPath), ours(Settings::schemaPath().isEmpty() ? QStringLiteral(":/schema/kavach.xml")
+                                                                             : Settings::schemaPath());
+        const bool same = theirs.open(QIODevice::ReadOnly) && ours.open(QIODevice::ReadOnly) && theirs.readAll() == ours.readAll();
+        row(tr("kavach.xml"), same ? tr("the same as the one decoding here")
+                                   : tr("DIFFERENT from the one decoding here: %1").arg(QDir::toNativeSeparators(pack.schemaPath)));
+    }
+    auto *details = new QLabel(QStringLiteral("<table cellspacing=\"4\">%1</table>").arg(rows.join(QString())), page);
+    details->setObjectName(QStringLiteral("reviewPackDetails"));
+    details->setWordWrap(true);
+    details->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    lay->addWidget(details);
+    if (!pack.damaged.isEmpty()) {
+        auto *bad = new QLabel(tr("Damaged in the pack, not opened: %1").arg(pack.damaged.join(QStringLiteral(", "))), page);
+        bad->setWordWrap(true);
+        bad->setStyleSheet(UiColor::warningStyle());
+        lay->addWidget(bad);
+    }
+
+    auto *buttons = new QHBoxLayout;
+    if (!pack.testRunPath.isEmpty()) {
+        auto *run = new QPushButton(tr("Open its test run…"), page);
+        run->setObjectName(QStringLiteral("reviewPackRun"));
+        run->setToolTip(QDir::toNativeSeparators(pack.testRunPath));
+        connect(run, &QPushButton::clicked, this, [this, path = pack.testRunPath]() {
+            auto *w = new TestCatalogWindow(this);
+            w->reopenLast();
+            w->openRun(path);
+            w->show();
+            w->raise();
+        });
+        buttons->addWidget(run);
+    }
+    auto *folder = new QPushButton(tr("Show the files"), page);
+    folder->setToolTip(QDir::toNativeSeparators(pack.dir));
+    connect(folder, &QPushButton::clicked, this, [dir = pack.dir]() { QDesktopServices::openUrl(QUrl::fromLocalFile(dir)); });
+    buttons->addWidget(folder);
+    buttons->addStretch(1);
+    lay->addLayout(buttons);
+    lay->addStretch(1);
+
+    auto *dock = new QDockWidget(tr("Review pack"), this);
+    dock->setObjectName(QStringLiteral("sessionReviewPackDock"));
+    dock->setWidget(page);
+    dock->setAllowedAreas(Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
+    addDockWidget(Qt::RightDockWidgetArea, dock);
+    for (QDockWidget *d : findChildren<QDockWidget *>())
+        if (d->objectName() == QLatin1String("sessionFieldDock")) tabifyDockWidget(d, dock);
+    dock->raise();   // in front: the site's own words first
+    m_packTitle = m.value(QStringLiteral("site")).toString();
+}
 
 LogModel *SessionWindow::modelForKey(const QString &tabKey)
 {
@@ -257,6 +692,7 @@ qint64 SessionWindow::loadFiles(const QStringList &paths)
     qint64 grandTotal = 0;
     qint64 skipped    = 0;
 
+    m_merge = NotesSidecar::Merge();
     QApplication::setOverrideCursor(Qt::WaitCursor);
 
     for (const QString &path : paths) {
@@ -278,10 +714,16 @@ qint64 SessionWindow::loadFiles(const QStringList &paths)
         QVector<LogEntryPtr> batch;
         batch.reserve(kChunk);
 
+        m_loadedNames << QFileInfo(path).fileName();
+        LoadedFile loaded;
+        loaded.path = path;
+        loaded.tabKey = key;
         while (reader.next()) {
             LogEntryPtr e = MessageDispatcher::buildEntry(
                 reader.wire(), reader.arrivalMs(), m_rules);
             if (!e) { ++skipped; continue; }
+            if (!loaded.firstMs || e->epochMs < loaded.firstMs) loaded.firstMs = e->epochMs;
+            loaded.lastMs = qMax(loaded.lastMs, e->epochMs);
 
             batch.append(e);
             if (batch.size() >= kChunk) {
@@ -297,6 +739,25 @@ qint64 SessionWindow::loadFiles(const QStringList &paths)
         if (!batch.isEmpty()) model->appendEntries(batch);
 
         grandTotal += reader.recordsRead();
+        m_files.append(loaded);
+
+        // Session 369: the notes the site made, from the file beside it.
+        // Into the shared store (the reader's own notes are never
+        // overwritten), before the marks are painted below.
+        QString notesErr;
+        const QVector<Bookmark> sideMarks = NotesSidecar::read(path, &notesErr);
+        if (!notesErr.isEmpty()) m_warnings << notesErr;
+        if (!sideMarks.isEmpty()) {
+            if (m_bookmarks) {
+                const NotesSidecar::Merge m = NotesSidecar::mergeInto(m_bookmarks, sideMarks);
+                m_merge.added += m.added;
+                m_merge.filled += m.filled;
+                m_merge.differ += m.differ;
+            } else {
+                m_warnings << tr("%1: %2 note(s) beside it not shown (no bookmark store)")
+                                  .arg(QFileInfo(path).fileName()).arg(sideMarks.size());
+            }
+        }
 
         // A truncated tail is expected often enough that it is reported as
         // information, not failure: it is what a file looks like when the
@@ -355,14 +816,40 @@ qint64 SessionWindow::loadFiles(const QStringList &paths)
     }
     m_lblSummary->setText(summary);
 
-    if (paths.size() == 1) {
+    if (!m_packTitle.isEmpty()) {
+        setWindowTitle(tr("Review pack — %1").arg(m_packTitle));
+    } else if (paths.size() == 1) {
         setWindowTitle(tr("Recorded session — %1")
                            .arg(QFileInfo(paths.first()).fileName()));
     } else {
         setWindowTitle(tr("Recorded session — %1 files").arg(paths.size()));
     }
 
+    // Session 373: the test cases, over everything now loaded.
+    if (!m_tests->assertions().isEmpty()) runTestCases();
+
+    // Session 369: say what came in from the notes files, and what did not.
+    const int fromFiles = m_merge.added + m_merge.filled;
+    if (fromFiles || m_merge.differ) {
+        QString notes = tr("From the notes beside the recording: %1").arg(countOf(fromFiles, "mark", "marks"));
+        if (m_merge.differ)
+            notes += tr("; %1 your own, kept").arg(countOf(m_merge.differ, "note differs from", "notes differ from"));
+        statusBar()->showMessage(notes, 15000);
+    }
+
     return grandTotal;
+}
+
+void SessionWindow::writeSidecars(const QString &tabKey)
+{
+    if (!m_bookmarks) return;
+    for (const LoadedFile &f : qAsConst(m_files)) {
+        if (f.tabKey != tabKey) continue;
+        QString err;
+        if (!NotesSidecar::write(f.path, NotesSidecar::marksIn(m_bookmarks->all(), tabKey, f.firstMs, f.lastMs), &err))
+            statusBar()->showMessage(tr("The notes were kept, but not written beside %1: %2")
+                                         .arg(QFileInfo(f.path).fileName(), err), 8000);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -449,6 +936,47 @@ void SessionWindow::buildToolsMenu()
     a = tools->addAction(tr("&Plot field over time…"));
     a->setShortcut(QKeySequence("Ctrl+Shift+P"));
     connect(a, &QAction::triggered, this, &SessionWindow::onToolPlotField);
+
+    // Session 372: what Tools ▸ Monitor ▸ Running and Reports open live,
+    // over the tab on show. (Braking Curves and the Two-loco view read the
+    // live dispatcher, not a tab: not here.)
+    tools->addSeparator();
+    const struct { const char *text; const char *name; ReviewTool tool; } reviewTools[] = {
+        { QT_TR_NOOP("&Run summary report…"),       "sessionRunReport",     ReviewTool::RunReport },
+        { QT_TR_NOOP("&Mission report…"),           "sessionMissionReport", ReviewTool::MissionReport },
+        { QT_TR_NOOP("Speed vs &distance…"),        "sessionSpeedDistance", ReviewTool::SpeedDistance },
+        { QT_TR_NOOP("Radio and GPS &health…"),     "sessionRadioHealth",   ReviewTool::RadioHealth },
+        { QT_TR_NOOP("&Odometry at the tags…"),     "sessionOdometry",      ReviewTool::Odometry },
+        { QT_TR_NOOP("&Fault timeline…"),           "sessionFaultTimeline", ReviewTool::FaultTimeline },
+        { QT_TR_NOOP("&Cab inputs and outputs…"),   "sessionCabIo",         ReviewTool::CabIo },
+        { QT_TR_NOOP("Trac&k diagram…"),            "sessionTrackDiagram",  ReviewTool::TrackDiagram },
+    };
+    for (const auto &t : reviewTools) {
+        a = tools->addAction(tr(t.text));
+        a->setObjectName(QLatin1String(t.name));
+        const ReviewTool which = t.tool;
+        connect(a, &QAction::triggered, this, [this, which]() { openReviewTool(which); });
+    }
+    tools->addSeparator();
+
+    // Session 375: the moments the DMI changed.
+    a = tools->addAction(tr("What changed on the D&MI…"));
+    a->setObjectName(QStringLiteral("sessionDmiChanges"));
+    a->setToolTip(tr("Each change on a loco's DMI (mode, brake, target, signal, messages, tag), frame to frame"));
+    connect(a, &QAction::triggered, this, &SessionWindow::showDmiChanges);
+
+    // Session 374: this run beside another one.
+    a = tools->addAction(tr("Compare with another r&un…"));
+    a->setObjectName(QStringLiteral("sessionCompareRuns"));
+    a->setToolTip(tr("This recording and another run of the same scenario, played in step, the DMIs side by side"));
+    connect(a, &QAction::triggered, this, [this]() { compareWithAnotherRun(); });
+
+    // Session 368: the incident pack, over a recording sent from the site.
+    a = tools->addAction(tr("&Incident report…"));
+    a->setObjectName(QStringLiteral("sessionIncidentReport"));
+    a->setToolTip(tr("The incident pack around the selected row (or the tab's last), "
+                     "with this recording's notes"));
+    connect(a, &QAction::triggered, this, &SessionWindow::onIncidentReport);
 
     tools->addSeparator();
 
@@ -686,6 +1214,7 @@ void SessionWindow::onToggleBookmark()
     if (t.marks)  { t.marks->refreshLater(); }
     if (t.ribbon) { t.ribbon->refreshLater(); }
     statusBar()->showMessage(added ? tr("Bookmarked.") : tr("Bookmark removed."), 2000);
+    writeSidecars(key);   // session 369
 }
 
 void SessionWindow::onGotoTimestamp()
@@ -870,7 +1399,362 @@ void SessionWindow::onRowContextMenu(const QPoint &pos)
         });
     }
 
+    // Session 368: the live window's review tools, on this recording.
+    QString key;
+    for (auto it = m_tabUi.constBegin(); it != m_tabUi.constEnd(); ++it)
+        if (it->view == view) key = it.key();
+    if (cur && !key.isEmpty()) {
+        menu.addSeparator();
+        QAction *note = menu.addAction(noteOf(key, cur).isEmpty() && !cur->bookmarked
+                                           ? tr("Add &note…") : tr("Edit &note…"));
+        note->setObjectName(QStringLiteral("rowNote"));
+        connect(note, &QAction::triggered, this, [this, key, cur]() {
+            bool ok = false;
+            const QString text = QInputDialog::getText(
+                this, tr("Note on this row"),
+                tr("Note (kept with the bookmark, and in the incident pack):"),
+                QLineEdit::Normal, noteOf(key, cur), &ok);
+            if (ok) setRowNote(key, cur, text);
+        });
+        QAction *clip = menu.addAction(tr("DMI c&lip around here…"));
+        clip->setObjectName(QStringLiteral("rowDmiClip"));
+        clip->setToolTip(tr("The DMI as the loco pilot saw it, ±30 s around this row, as an animated GIF"));
+        connect(clip, &QAction::triggered, this, [this, key, cur]() {
+            QString why;
+            DmiClipDialog *dlg = makeClipDialog(key, cur, &why);
+            if (!dlg) { statusBar()->showMessage(why, 5000); return; }
+            dlg->exec();
+            delete dlg;
+        });
+        QAction *radio = menu.addAction(tr("Radio ch&art around here…"));
+        radio->setObjectName(QStringLiteral("rowRadioChart"));
+        radio->setToolTip(tr("SLRP, LSRP and ARP ±30 s around this row as a sequence diagram (PNG or SVG)"));
+        connect(radio, &QAction::triggered, this, [this, key, cur]() {
+            RadioChartDialog *dlg = makeRadioChart(key, cur->epochMs);
+            if (!dlg) return;
+            dlg->exec();
+            delete dlg;
+        });
+        QAction *pack = menu.addAction(tr("&Incident report around here…"));
+        pack->setObjectName(QStringLiteral("rowIncidentReport"));
+        connect(pack, &QAction::triggered, this, [this, key, cur]() {
+            const LogModel *m = m_models.value(key);
+            IncidentReportDialog dlg(cur->epochMs, m->entryAt(0)->epochMs,
+                                     m->entryAt(m->count() - 1)->epochMs, this);
+            if (dlg.exec() != QDialog::Accepted) return;
+            openIncidentReport(key, dlg.atMs(), dlg.beforeMs(), dlg.afterMs());
+        });
+    }
+
     menu.exec(view->viewport()->mapToGlobal(pos));
+}
+
+QString SessionWindow::tabName(const QString &tabKey) const
+{
+    const QString name = m_names ? m_names->lookupByKey(tabKey) : QString();
+    return name.isEmpty() ? tabKey : name;
+}
+
+DmiClipDialog *SessionWindow::makeClipDialog(const QString &tabKey, const LogEntryPtr &entry, QString *why)
+{
+    if (!entry) { if (why) *why = tr("Select a row first."); return nullptr; }
+    // The row's tab when it holds @dmi, else the first that does: the clip
+    // is of the moment, wherever its DMI frames were recorded.
+    QString key = tabKey;
+    LogModel *model = m_models.value(tabKey);
+    if (!model || DmiClip::locosIn(model).isEmpty()) {
+        model = nullptr;
+        for (int i = 0; i < m_tabs->count() && !model; ++i) {
+            for (auto it = m_tabUi.constBegin(); it != m_tabUi.constEnd(); ++it) {
+                if (it->view && it->view->parentWidget() == m_tabs->widget(i)
+                    && !DmiClip::locosIn(it->model).isEmpty()) {
+                    model = it->model;
+                    key = it.key();
+                    break;
+                }
+            }
+        }
+    }
+    if (!model) {
+        if (why) *why = tr("This recording holds no @dmi frames: no DMI to clip.");
+        return nullptr;
+    }
+    return new DmiClipDialog(model, tabName(key), entry->epochMs, dmiKeyOfText(entry->text), this);
+}
+
+RadioChartDialog *SessionWindow::makeRadioChart(const QString &tabKey, qint64 atMs)
+{
+    LogModel *model = m_models.value(tabKey);
+    return model ? new RadioChartDialog(model, tabName(tabKey), atMs, this) : nullptr;
+}
+
+IncidentReportWindow *SessionWindow::openIncidentReport(const QString &tabKey, qint64 atMs,
+                                                        qint64 beforeMs, qint64 afterMs)
+{
+    LogModel *model = m_models.value(tabKey);
+    if (!model || model->count() == 0) return nullptr;
+    IncidentReport::Options options;
+    options.beforeMs = beforeMs;
+    options.afterMs = afterMs;
+    auto *w = new IncidentReportWindow(model, tabKey, tabName(tabKey), atMs, options, this);
+    w->setBookmarks(m_bookmarks);   // the notes made here, and live, on this tab
+    w->show();
+    w->raise();
+    return w;
+}
+
+QWidget *SessionWindow::openReviewTool(ReviewTool tool)
+{
+    const QString key = currentTabKey();
+    LogModel *model = m_models.value(key);
+    if (!model || model->count() == 0) {
+        statusBar()->showMessage(tr("No records in this tab."), 3000);
+        return nullptr;
+    }
+    const QString name = tabName(key);
+    // Parented here: they read this window's rows, so they go when it goes.
+    QWidget *w = nullptr;
+    auto jump = [this](const QString &tabKey, qint64 ms) { jumpToTime(tabKey, ms); };
+    switch (tool) {
+    case ReviewTool::RunReport:
+        w = new RunReportWindow(model, key, name, this);
+        break;
+    case ReviewTool::MissionReport:
+        w = new RunReportWindow(model, key, name, this, RunReportWindow::Kind::Missions);
+        break;
+    case ReviewTool::SpeedDistance: {
+        auto *sd = new SpeedDistanceWindow(model, key, this);
+        connect(sd, &SpeedDistanceWindow::jumpRequested, this, jump);
+        w = sd;
+        break;
+    }
+    case ReviewTool::RadioHealth: {
+        auto *rh = new RadioHealthWindow(model, key, name, this);
+        connect(rh, &RadioHealthWindow::jumpRequested, this, jump);
+        w = rh;
+        break;
+    }
+    case ReviewTool::Odometry: {
+        auto *od = new OdometryWindow(model, key, name, this);
+        connect(od, &OdometryWindow::jumpRequested, this, jump);
+        w = od;
+        break;
+    }
+    case ReviewTool::FaultTimeline: {
+        auto *ft = new FaultTimelineWindow(model, key, name, this);
+        connect(ft, &FaultTimelineWindow::jumpRequested, this, jump);
+        w = ft;
+        break;
+    }
+    case ReviewTool::CabIo: {
+        auto *io = new IoTimelineWindow(model, key, name, this);
+        connect(io, &IoTimelineWindow::jumpRequested, this, jump);
+        w = io;
+        break;
+    }
+    case ReviewTool::TrackDiagram:
+        w = new TrackDiagramWindow(model, key, name, this);
+        break;
+    }
+    if (w) {
+        w->setWindowTitle(tr("%1 — recording").arg(w->windowTitle()));
+        w->show();
+        w->raise();
+    }
+    return w;
+}
+
+// ---------------------------------------------------------------------------
+//  Session 375 — what changed on the DMI
+// ---------------------------------------------------------------------------
+
+void SessionWindow::showDmiChanges()
+{
+    if (!m_dmiDock) {
+        auto *page = new QWidget(this);
+        auto *lay = new QVBoxLayout(page);
+        lay->setContentsMargins(4, 4, 4, 4);
+        auto *row = new QHBoxLayout;
+        row->addWidget(new QLabel(tr("Loco"), page));
+        m_dmiLoco = new QComboBox(page);
+        m_dmiLoco->setObjectName(QStringLiteral("dmiChangesLoco"));
+        row->addWidget(m_dmiLoco, 1);
+        lay->addLayout(row);
+        m_dmiMoving = new QCheckBox(tr("Speed, distances and location too"), page);
+        m_dmiMoving->setObjectName(QStringLiteral("dmiChangesContinuous"));
+        m_dmiMoving->setToolTip(tr("They change every frame while the train moves"));
+        lay->addWidget(m_dmiMoving);
+        m_dmiTable = new QTableWidget(0, 2, page);
+        m_dmiTable->setObjectName(QStringLiteral("dmiChangesTable"));
+        m_dmiTable->setHorizontalHeaderLabels({ tr("Time"), tr("What changed") });
+        m_dmiTable->horizontalHeader()->setSectionResizeMode(0, QHeaderView::ResizeToContents);
+        m_dmiTable->horizontalHeader()->setStretchLastSection(true);
+        m_dmiTable->verticalHeader()->hide();
+        // A change is a sentence: rows grow to show it whole (tens to a
+        // few hundred rows, so the cost is nothing).
+        m_dmiTable->verticalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+        m_dmiTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+        m_dmiTable->setSelectionBehavior(QAbstractItemView::SelectRows);
+        m_dmiTable->setWordWrap(true);
+        lay->addWidget(m_dmiTable, 1);
+        m_dmiCount = new QLabel(page);
+        m_dmiCount->setStyleSheet(UiColor::mutedStyle());
+        lay->addWidget(m_dmiCount);
+        // The tab on show lands on the moment; the DMI window follows it.
+        connect(m_dmiTable, &QTableWidget::cellDoubleClicked, this, [this](int r, int) {
+            if (r >= 0 && r < m_dmiChanges.size()) jumpToTime(currentTabKey(), m_dmiChanges.at(r).ms);
+        });
+        connect(m_dmiLoco, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &SessionWindow::refreshDmiChanges);
+        connect(m_dmiMoving, &QCheckBox::toggled, this, &SessionWindow::refreshDmiChanges);
+
+        m_dmiDock = new QDockWidget(tr("DMI changes"), this);
+        m_dmiDock->setObjectName(QStringLiteral("sessionDmiChangesDock"));
+        m_dmiDock->setWidget(page);
+        m_dmiDock->setAllowedAreas(Qt::RightDockWidgetArea | Qt::BottomDockWidgetArea);
+        addDockWidget(Qt::RightDockWidgetArea, m_dmiDock);
+        for (QDockWidget *d : findChildren<QDockWidget *>())
+            if (d->objectName() == QLatin1String("sessionFieldDock")) tabifyDockWidget(d, m_dmiDock);
+    }
+    // Every loco with @dmi in any tab: a recording split by source keeps
+    // the DMI in another tab than the one on show.
+    QStringList keys;
+    for (LogModel *m : qAsConst(m_models))
+        for (const QString &k : DmiChanges::locos(m))
+            if (!keys.contains(k)) keys << k;
+    keys.sort();
+    const QString was = m_dmiLoco->currentData().toString();
+    {
+        const QSignalBlocker block(m_dmiLoco);
+        m_dmiLoco->clear();
+        for (const QString &k : keys) m_dmiLoco->addItem(tr("Loco %1").arg(k), k);
+        const int i = m_dmiLoco->findData(was);
+        if (i >= 0) m_dmiLoco->setCurrentIndex(i);
+    }
+    refreshDmiChanges();
+    m_dmiDock->show();
+    m_dmiDock->raise();
+}
+
+void SessionWindow::refreshDmiChanges()
+{
+    m_dmiChanges.clear();
+    const QString loco = m_dmiLoco ? m_dmiLoco->currentData().toString() : QString();
+    for (LogModel *m : qAsConst(m_models)) {
+        if (loco.isEmpty() || !DmiChanges::locos(m).contains(loco)) continue;
+        m_dmiChanges = DmiChanges::list(m, loco, m_dmiMoving && m_dmiMoving->isChecked());
+        break;
+    }
+    if (!m_dmiTable) return;
+    m_dmiTable->setRowCount(m_dmiChanges.size());
+    for (int i = 0; i < m_dmiChanges.size(); ++i) {
+        const DmiChanges::Change &c = m_dmiChanges.at(i);
+        m_dmiTable->setItem(i, 0, new QTableWidgetItem(QDateTime::fromMSecsSinceEpoch(c.ms).toString(QStringLiteral("HH:mm:ss.zzz"))));
+        auto *what = new QTableWidgetItem(c.text());
+        what->setToolTip(c.text());
+        m_dmiTable->setItem(i, 1, what);
+    }
+    m_dmiCount->setText(loco.isEmpty() ? tr("No @dmi frames in this recording.")
+                                       : tr("%1 change(s) on loco %2's DMI").arg(m_dmiChanges.size()).arg(loco));
+}
+
+bool SessionWindow::stepDmiChange(int dir)
+{
+    if (m_dmiChanges.isEmpty()) {
+        // The list is made on first use, for the first loco with @dmi.
+        if (!m_dmiDock) showDmiChanges();
+        if (m_dmiChanges.isEmpty()) {
+            statusBar()->showMessage(tr("No changes on the DMI in this recording."), 3000);
+            return false;
+        }
+    }
+    const QString key = currentTabKey();
+    const LogEntryPtr cur = currentEntry();
+    const qint64 at = cur ? cur->epochMs : 0;
+    const DmiChanges::Change *c = dir > 0 ? DmiChanges::next(m_dmiChanges, at) : DmiChanges::previous(m_dmiChanges, at);
+    if (!c) {
+        statusBar()->showMessage(dir > 0 ? tr("No further change on the DMI.") : tr("No earlier change on the DMI."), 3000);
+        return false;
+    }
+    jumpToTime(key, c->ms);
+    statusBar()->showMessage(tr("DMI %1: %2").arg(QDateTime::fromMSecsSinceEpoch(c->ms).toString(QStringLiteral("HH:mm:ss")),
+                                                  c->text()),
+                             6000);
+    return true;
+}
+
+RunCompareWindow *SessionWindow::compareWithAnotherRun()
+{
+    QStringList paths;
+    for (const LoadedFile &f : qAsConst(m_files)) paths << f.path;
+    if (paths.isEmpty()) {
+        statusBar()->showMessage(tr("No recording loaded."), 3000);
+        return nullptr;
+    }
+    auto *w = new RunCompareWindow(m_rules, this);
+    QString err;
+    if (!w->loadRun(RunCompareWindow::A, paths, &err)) {
+        delete w;
+        statusBar()->showMessage(err, 6000);
+        return nullptr;
+    }
+    w->show();
+    w->raise();
+    return w;
+}
+
+void SessionWindow::onIncidentReport()
+{
+    const QString key = currentTabKey();
+    LogModel *model = m_models.value(key);
+    if (!model || model->count() == 0) {
+        statusBar()->showMessage(tr("No records in this tab to report on."), 3000);
+        return;
+    }
+    const LogEntryPtr cur = currentEntry();
+    const qint64 first = model->entryAt(0)->epochMs;
+    const qint64 last = model->entryAt(model->count() - 1)->epochMs;
+    IncidentReportDialog dlg(cur ? cur->epochMs : last, first, last, this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    openIncidentReport(key, dlg.atMs(), dlg.beforeMs(), dlg.afterMs());
+}
+
+QString SessionWindow::noteOf(const QString &tabKey, const LogEntryPtr &entry) const
+{
+    if (!m_bookmarks || !entry) return QString();
+    for (const Bookmark &b : m_bookmarks->all())
+        if (b.tabKey == tabKey && b.epochMs == entry->epochMs) return b.note;
+    return QString();
+}
+
+bool SessionWindow::setRowNote(const QString &tabKey, const LogEntryPtr &entry, const QString &note)
+{
+    // Without a store a note has nowhere to live: say so rather than drop it.
+    if (!entry || !m_bookmarks) {
+        statusBar()->showMessage(tr("Notes are not kept in this window."), 3000);
+        return false;
+    }
+    if (!m_bookmarks->has(tabKey, entry->epochMs)) m_bookmarks->toggle(tabKey, entry->epochMs, entry->text);
+    entry->bookmarked = true;
+    for (int i = 0; i < m_bookmarks->count(); ++i)
+        if (m_bookmarks->all().at(i).tabKey == tabKey && m_bookmarks->all().at(i).epochMs == entry->epochMs)
+            m_bookmarks->setNote(i, note);
+    LogModel *model = m_models.value(tabKey);
+    for (int r = 0; model && r < model->count(); ++r) {
+        if (model->entryAt(r) == entry) { refreshMarks(tabKey, r); break; }
+    }
+    statusBar()->showMessage(note.isEmpty() ? tr("Bookmarked, no note.") : tr("Note kept."), 2000);
+    writeSidecars(tabKey);   // session 369: beside the recording too
+    return true;
+}
+
+void SessionWindow::refreshMarks(const QString &tabKey, int sourceRow)
+{
+    auto it = m_tabUi.constFind(tabKey);
+    if (it == m_tabUi.constEnd() || !it->model) return;
+    const QModelIndex tl = it->model->index(sourceRow, LogModel::ColTime);
+    emit it->model->dataChanged(tl, tl, { Qt::DisplayRole });
+    if (it->marks)  { it->marks->refreshLater(); }
+    if (it->ribbon) { it->ribbon->refreshLater(); }
 }
 
 void SessionWindow::onSelectionChanged()
