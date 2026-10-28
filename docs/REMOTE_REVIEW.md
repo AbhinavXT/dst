@@ -51,7 +51,8 @@ picture: it adds the test run and the kavach.xml the site decoded with.
 
 In the Review pack panel, **Reply to the site…** writes a reply pack: the
 same captures with your notes on them, your **Answer**, any files you
-attach, and the site's own kavach.xml. The site opens it with File ▸ Open
+attach, and the site's own kavach.xml. The DMI clips and radio charts you
+made in that window are already attached (patch 385). The site opens it with File ▸ Open
 review pack…. Your notes show on their rows, and the panel shows what they
 asked and your answer. **Answer the reply…** goes on from there.
 

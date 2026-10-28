@@ -10,6 +10,41 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-385"></a>
+## Session 385 — the clips and charts made while reviewing go into the reply
+
+Abhinav picked items 3 and 5 of the next review-pack list on 2026-10-28.
+This is item 3. A reviewer who made a DMI clip or a radio chart in the pack's
+window had to find it again with Add files… to send it back in the reply
+(session 384).
+
+**What the operator sees.** In a review pack's window, every DMI clip
+(*DMI clip around here…*) and radio chart (*Radio chart around here…*)
+written there is remembered. **Reply to the site…** opens with them
+already in Attachments, each once, in the order they were made. Remove
+takes off any that should not go. A file deleted since is left out. An
+export that failed is not remembered. Recordings opened without a pack have
+no reply, so nothing is collected there.
+
+**Files.** `dmiclipdialog.{h,cpp}`, `radiochartdialog.{h,cpp}` (an
+`exported(path)` signal on a successful write); `sessionwindow.{h,cpp}`
+(`rememberMade`, `madeHere`, the reply's attachments);
+`tests/test_session385.cpp`, `tests/tests.pro`.
+
+**Tests.** New `session385` (11 checks) on real frames, 10:52-10:55 of
+`replay/2026-10-08/loco_1_1_08102026_105200.cap` (28 @dmi frames in tab
+81_1). A clip of 6 s and a radio chart are written from the pack's window,
+plus a clip that cannot be written and the same chart twice. Checked: both
+kept once each, the failed one not; the reply starts with both attached; a
+deleted one is left out; a window with no pack collects nothing.
+
+**Not tested.** The file dialogs behind the clip's and chart's Export
+buttons (they call `exportTo`).
+
+**Gate.** Gated with the bundle at push.
+
+---
+
 <a id="session-384"></a>
 ## Session 384 — the reply pack: the reviewer answers the site
 

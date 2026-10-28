@@ -33,6 +33,9 @@ public:
     QLabel *picture() const { return m_picture; }
     StatusLine *status() const { return m_status; }
 
+signals:
+    void exported(const QString &path);   // session 385: a chart written
+
 private:
     void rebuild();
     void exportAs(const QString &suffix, const QString &filter);

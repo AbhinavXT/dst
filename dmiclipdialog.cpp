@@ -199,5 +199,6 @@ bool DmiClipDialog::exportTo(const QString &path)
                      .arg(QFileInfo(path).fileName()).arg(clip.dmiFrames).arg(duration(clip.clipMs))
                      .arg(clip.gaps ? tr("; %1 gap%2 over 3 s shortened").arg(clip.gaps).arg(clip.gaps == 1 ? "" : "s")
                                     : QString()));
+    emit exported(path);
     return true;
 }

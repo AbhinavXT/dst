@@ -113,6 +113,7 @@ bool RadioChartDialog::exportTo(const QString &path)
     if (err.isEmpty() && RadioChart::save(m_chart, path, &err)) {
         m_status->ok(tr("Wrote %1: %2 frames, %3 the receiver would not process")
                          .arg(QFileInfo(path).fileName()).arg(m_chart.messages.size()).arg(m_chart.dropped()));
+        emit exported(path);
         return true;
     }
     m_status->fail(tr("Not exported: %1").arg(err));

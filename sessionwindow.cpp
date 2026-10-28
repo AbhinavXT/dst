@@ -632,6 +632,11 @@ void SessionWindow::setReviewPack(const ReviewPack::Opened &pack)
     m_pack = pack;
 }
 
+void SessionWindow::rememberMade(const QString &path)
+{
+    if (!m_pack.manifest.isEmpty() && !m_made.contains(path)) m_made << path;
+}
+
 ReviewPackDialog *SessionWindow::makeReplyDialog()
 {
     if (m_pack.manifest.isEmpty()) return nullptr;
@@ -643,6 +648,10 @@ ReviewPackDialog *SessionWindow::makeReplyDialog()
                           m_bookmarks ? m_bookmarks->all() : QVector<Bookmark>() });
     auto *d = new ReviewPackDialog(captures, ReviewPack::replyBase(m_pack), this);
     d->setReply();
+    // Session 385: what was made while reviewing goes back with the answer;
+    // the reviewer can still Remove any of it.
+    for (const QString &p : qAsConst(m_made))
+        if (QFileInfo::exists(p)) d->addAttachment(p);
     d->setWho(m_pack.manifest.value(QStringLiteral("site")).toString(), QString(),
               m_pack.manifest.value(QStringLiteral("loco")).toString());
     return d;
@@ -1531,13 +1540,18 @@ DmiClipDialog *SessionWindow::makeClipDialog(const QString &tabKey, const LogEnt
         if (why) *why = tr("This recording holds no @dmi frames: no DMI to clip.");
         return nullptr;
     }
-    return new DmiClipDialog(model, tabName(key), entry->epochMs, dmiKeyOfText(entry->text), this);
+    auto *d = new DmiClipDialog(model, tabName(key), entry->epochMs, dmiKeyOfText(entry->text), this);
+    connect(d, &DmiClipDialog::exported, this, &SessionWindow::rememberMade);
+    return d;
 }
 
 RadioChartDialog *SessionWindow::makeRadioChart(const QString &tabKey, qint64 atMs)
 {
     LogModel *model = m_models.value(tabKey);
-    return model ? new RadioChartDialog(model, tabName(tabKey), atMs, this) : nullptr;
+    if (!model) return nullptr;
+    auto *d = new RadioChartDialog(model, tabName(tabKey), atMs, this);
+    connect(d, &RadioChartDialog::exported, this, &SessionWindow::rememberMade);
+    return d;
 }
 
 IncidentReportWindow *SessionWindow::openIncidentReport(const QString &tabKey, qint64 atMs,

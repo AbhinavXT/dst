@@ -43,6 +43,9 @@ public:
     QLabel *previewLabel() const { return m_preview; }
     StatusLine *status() const { return m_status; }
 
+signals:
+    void exported(const QString &path);   // session 385: a clip written
+
 private:
     void refreshPreview();
 

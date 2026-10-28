@@ -129,6 +129,7 @@ public:
     // Session 384: the Reply to the site… dialog over this pack's captures
     // and the notes on them now; null when this window holds no pack.
     ReviewPackDialog *makeReplyDialog();
+    QStringList madeHere() const { return m_made; }
 
     // Session 371: Play. The cursor walks the tab on show in time, at the
     // chosen speed, and everything that follows the cursor plays with it:
@@ -207,6 +208,7 @@ private slots:
     void onIncidentReport();          // session 368: Tools ▸ Incident report…
 
 private:
+    void rememberMade(const QString &path);
     LogModel *modelForKey(const QString &tabKey);
     void      buildTab(const QString &tabKey, LogModel *model);
 
@@ -270,6 +272,7 @@ private:
     NotesSidecar::Merge m_merge;
     QString m_packTitle;   // session 370: the pack's site, for the title
     ReviewPack::Opened m_pack;   // session 384: what a reply answers
+    QStringList m_made;          // session 385: clips and charts written here, for the reply
 
     // Session 371: playback.
     class QToolBar  *m_playBar = nullptr;
