@@ -31,6 +31,15 @@ QColor lampRim(const QString &lamp);         // a lit lamp's outline, graphicFlo
 
 namespace SimUi {
 
+// The theme's own colour in the simulators (session 394): the palette's
+// Highlight, as the rest of DLConsole selects and fills with, not the shared
+// accent (sea-blue in Sage). fill / fillText: a filled button, a lit chip.
+// mark(): a line or tint on Base (a dial's arc, a lit tile, a border), held to
+// the graphical floor, since on the dark themes Highlight is itself dark.
+QColor fill();
+QColor fillText();
+QColor mark();
+
 // A row of buttons that read as one control: [ A | B | C ]. The first is checked.
 QWidget *segmented(const QStringList &labels, QButtonGroup **group, QWidget *parent);
 

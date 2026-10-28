@@ -35,7 +35,7 @@ QColor tileFill(Tile t)
 {
     const QColor base = QGuiApplication::palette().color(QPalette::Base);
     switch (t) {
-    case Tile::On:    return blend(base, UiColor::accent(), 0.08);
+    case Tile::On:    return blend(base, SimUi::mark(), 0.08);
     case Tile::Fault: return blend(base, UiColor::warning(), 0.10);
     case Tile::Plain: break;
     }
@@ -56,6 +56,22 @@ QColor lampRim(const QString &lamp)
 }  // namespace CabIoColors
 
 namespace SimUi {
+
+QColor fill()
+{
+    return QGuiApplication::palette().color(QPalette::Highlight);
+}
+
+QColor fillText()
+{
+    return QGuiApplication::palette().color(QPalette::HighlightedText);
+}
+
+QColor mark()
+{
+    return UiColor::withContrast(fill(), QGuiApplication::palette().color(QPalette::Base),
+                                 CabIoColors::graphicFloor());
+}
 
 QWidget *segmented(const QStringList &labels, QButtonGroup **group, QWidget *parent)
 {
@@ -121,7 +137,8 @@ QString baseStyleSheet()
 {
     const QPalette pal = QGuiApplication::palette();
     const QString frame  = UiColor::frame().name();
-    const QString accent = UiColor::accent().name();
+    const QString fillColour = fill().name();
+    const QString fillInk = fillText().name();
     const QString base   = pal.color(QPalette::Base).name();
     const QString text   = pal.color(QPalette::Text).name();
     const QString muted  = UiColor::muted().name();
@@ -130,12 +147,12 @@ QString baseStyleSheet()
         "QWidget#segmented QPushButton[seg=\"mid\"], QWidget#segmented QPushButton[seg=\"last\"] { border-left: none; }"
         "QWidget#segmented QPushButton[seg=\"first\"] { border-top-left-radius: 6px; border-bottom-left-radius: 6px; }"
         "QWidget#segmented QPushButton[seg=\"last\"] { border-top-right-radius: 6px; border-bottom-right-radius: 6px; }"
-        "QWidget#segmented QPushButton:checked { background: %2; color: %3; border-color: %2; font-weight: 600; }"
+        "QWidget#segmented QPushButton:checked { background: %2; color: %6; border-color: %2; font-weight: 600; }"
         "QWidget#segmented QPushButton:disabled { color: %5; }"
-        "QPushButton#primary { background: %2; color: %3; border: 1px solid %2; border-radius: 6px; padding: 5px 18px; font-weight: 600; }"
+        "QPushButton#primary { background: %2; color: %6; border: 1px solid %2; border-radius: 6px; padding: 5px 18px; font-weight: 600; }"
         "QPushButton#primary:disabled { background: %3; color: %5; border-color: %1; }"
         "QPushButton#idChip { border: 1px solid %1; border-radius: 11px; padding: 2px 10px; background: %3; color: %4; }"
-        "QPushButton#idChip:checked { background: %2; color: %3; border-color: %2; font-weight: 600; }"
+        "QPushButton#idChip:checked { background: %2; color: %6; border-color: %2; font-weight: 600; }"
         "QPushButton#idChip:disabled { color: %5; }"
         "QPushButton#idChip:checked:disabled { background: %5; color: %3; border-color: %5; }"
         "QLabel#muted { color: %5; }"
@@ -144,7 +161,7 @@ QString baseStyleSheet()
         "QLabel#mono { font-family: \"Consolas\", \"Menlo\", \"DejaVu Sans Mono\", monospace; color: %5; }"
         "QFrame#card { background: %3; border: 1px solid %1; border-radius: 10px; }"
         "QLabel#cardTitle { font-size: 13pt; font-weight: 600; }")
-        .arg(frame, accent, base, text, muted);
+        .arg(frame, fillColour, base, text, muted, fillInk);
 }
 
 // ---- SignalLamp -----------------------------------------------------------------

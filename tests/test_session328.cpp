@@ -1,4 +1,5 @@
 #include "testutil.h"
+#include <QGuiApplication>
 
 #include "theme.h"
 #include "uicolors.h"
@@ -24,7 +25,8 @@
 //      graphical object), 7 : 1 in High Contrast. Without it a yellow or
 //      white lamp on a light theme is a faint disc;
 //    - the window follows a theme change while open: its stylesheet carries
-//      the new accent.
+//      the new theme's Highlight (session 394: the filled buttons
+//      are the theme's own colour, not the shared accent).
 // =============================================================================
 
 TEST_SUITE(session328)
@@ -74,16 +76,16 @@ TEST_SUITE(session328)
         ThemeUtil::apply(Theme::Light);
         CabIoSimWindow w(nullptr);
         w.setWriteSink([](const QByteArray &) {});
-        const QString lightAccent = UiColor::accent().name();
-        CHECK(w.styleSheet().contains(lightAccent), "built in Light: its stylesheet carries Light's accent");
+        const QString lightFill = QGuiApplication::palette().color(QPalette::Highlight).name();
+        CHECK(w.styleSheet().contains(lightFill), "built in Light: its stylesheet carries Light's Highlight");
         ThemeUtil::apply(Theme::Mocha);
         QApplication::processEvents();
-        const QString mochaAccent = UiColor::accent().name();
-        CHECK(mochaAccent != lightAccent && w.styleSheet().contains(mochaAccent),
-              "switched to Mocha while open: restyled with Mocha's accent");
+        const QString mochaFill = QGuiApplication::palette().color(QPalette::Highlight).name();
+        CHECK(mochaFill != lightFill && w.styleSheet().contains(mochaFill),
+              "switched to Mocha while open: restyled with Mocha's Highlight");
         ThemeUtil::apply(Theme::HighContrast);
         QApplication::processEvents();
-        CHECK(w.styleSheet().contains(UiColor::accent().name()), "and to High Contrast");
+        CHECK(w.styleSheet().contains(QGuiApplication::palette().color(QPalette::Highlight).name()), "and to High Contrast");
         w.close();
     }
 

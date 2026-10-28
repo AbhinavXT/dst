@@ -235,7 +235,7 @@ void BrakeBenchWindow::styleChip(QLabel *chip, bool on, bool known)
     const QString frame = UiColor::frame().name();
     if (on && known)
         chip->setStyleSheet(QStringLiteral("QLabel { background: %1; color: %2; border: 1px solid %1; border-radius: 10px; padding: 1px 8px; font-weight: 600; }")
-                                .arg(UiColor::accent().name(), pal.color(QPalette::Base).name()));
+                                .arg(SimUi::fill().name(), SimUi::fillText().name()));
     else
         chip->setStyleSheet(QStringLiteral("QLabel { background: %1; color: %2; border: 1px %4 %3; border-radius: 10px; padding: 1px 8px; }")
                                 .arg(pal.color(QPalette::Base).name(), UiColor::muted().name(), frame,

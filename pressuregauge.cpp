@@ -1,5 +1,6 @@
 #include "pressuregauge.h"
 
+#include "simwidgets.h"
 #include "uicolors.h"
 
 #include <QKeyEvent>
@@ -148,7 +149,7 @@ void PressureGauge::paintEvent(QPaintEvent *)
     p.setPen(QPen(UiColor::grid(), rad * 0.06, Qt::SolidLine, Qt::FlatCap));
     p.drawArc(arc, int(kStartDeg * 16), int(-kSpanDeg * 16));
     if (!faulty && m_value > 0) {
-        p.setPen(QPen(UiColor::accent(), rad * 0.06, Qt::SolidLine, Qt::FlatCap));
+        p.setPen(QPen(SimUi::mark(), rad * 0.06, Qt::SolidLine, Qt::FlatCap));
         p.drawArc(arc, int(kStartDeg * 16), int(-kSpanDeg * m_value / m_max * 16));
     }
     QFont small = font();
@@ -212,7 +213,7 @@ void PressureGauge::paintEvent(QPaintEvent *)
     p.drawEllipse(c, rad * 0.06, rad * 0.06);
 
     if (hasFocus()) {
-        p.setPen(QPen(UiColor::accent(), 1, Qt::DashLine));
+        p.setPen(QPen(SimUi::mark(), 1, Qt::DashLine));
         p.setBrush(Qt::NoBrush);
         p.drawEllipse(r.adjusted(2, 2, -2, -2));
     }

@@ -1,5 +1,6 @@
 #include "speedgauge.h"
 
+#include "simwidgets.h"
 #include "uicolors.h"
 
 #include <QKeyEvent>
@@ -165,7 +166,7 @@ void SpeedGauge::paintEvent(QPaintEvent *)
     const bool over = m_limit >= 0 && m_value > m_limit + 0.05;
     if (m_value > 0) {
         const auto span = arcSpan(0, qMin(m_value, m_scaleMax));
-        painter.setPen(QPen(over ? UiColor::error() : UiColor::accent(), width, Qt::SolidLine, Qt::FlatCap));
+        painter.setPen(QPen(over ? UiColor::error() : SimUi::mark(), width, Qt::SolidLine, Qt::FlatCap));
         painter.drawArc(arc, span.first, span.second);
     }
     if (m_limit >= 0 && m_limit < m_scaleMax) {
@@ -217,7 +218,7 @@ void SpeedGauge::paintEvent(QPaintEvent *)
     painter.drawEllipse(centre, radius * 0.06, radius * 0.06);
 
     if (hasFocus()) {
-        painter.setPen(QPen(UiColor::accent(), 1, Qt::DashLine));
+        painter.setPen(QPen(SimUi::mark(), 1, Qt::DashLine));
         painter.setBrush(Qt::NoBrush);
         painter.drawEllipse(dial.adjusted(2, 2, -2, -2));
     }

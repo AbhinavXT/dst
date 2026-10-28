@@ -133,7 +133,7 @@ using SimUi::segmented;
 void styleRuleCard(QWidget *card)
 {
     if (!card->property("holds").toBool()) { card->setStyleSheet(QString()); return; }
-    const QString accent = UiColor::accent().name();
+    const QString accent = SimUi::mark().name();
     card->setStyleSheet(QStringLiteral(
         "QFrame#ruleCard { background: %1; border: 1px solid %2; border-left: 4px solid %2; border-radius: 9px; }"
         "QLabel { color: %3; } QLabel#muted { color: %4; }")
@@ -259,7 +259,7 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
         const QPalette pal = palette();
-        const QColor accent = UiColor::accent(), base = pal.color(QPalette::Base);
+        const QColor accent = SimUi::mark(), base = pal.color(QPalette::Base);
         const bool fault = isFault();
         const bool on = isOn();
 
@@ -459,7 +459,7 @@ protected:
         QPainter p(this);
         p.setRenderHint(QPainter::Antialiasing);
         const QPalette pal = palette();
-        p.setPen(QPen(m_recent ? UiColor::accent() : UiColor::frame(), m_recent ? 2 : 1));
+        p.setPen(QPen(m_recent ? SimUi::mark() : UiColor::frame(), m_recent ? 2 : 1));
         p.setBrush(pal.color(QPalette::Base));
         p.drawRoundedRect(QRectF(rect()).adjusted(1, 1, -1, -1), 9, 9);
 

@@ -10,6 +10,43 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-394"></a>
+## Session 394 — the simulators fill in the theme's own colour
+
+Abhinav 2026-10-29: *"in sage theme in speed sim, brake sim and in cab sim, why
+are the buttons not sage themed why are they blue"*.
+
+**Why.** The three simulators drew their filled buttons, lit chips, lit tiles
+and dial arcs in `UiColor::accent()`, the shared accent, which in Sage is
+sea-blue (#245E78). The rest of DLConsole selects in the palette's Highlight,
+Sage's green (#2F6B55).
+
+**What the operator sees.** In every theme, the Cab I/O Simulator, the Brake
+Test Bench and the Loco Simulator fill in the theme's Highlight:
+- Start / Stop BIU / Answer VCC requests, the checked segment, the checked chip
+  and the lit KAVACH-command chips, filled with Highlight and its own text;
+- the switches, lit tiles, rule cards, the recent-byte outline, and the
+  pressure and speed dials' arcs, in Highlight held to 3 : 1 on the card (on
+  the dark themes Highlight is itself dark).
+
+The selected tab's tint and the checkbox ticks are the app-wide style
+(`uistyle.cpp`), the same in every window, and are unchanged.
+
+**Files:** `simwidgets.{h,cpp}` (`SimUi::fill`, `fillText`, `mark`),
+`cabiosimwindow.cpp`, `brakebenchwindow.cpp`, `pressuregauge.cpp`,
+`speedgauge.cpp`, `tests/test_session328.cpp` (follows the theme's Highlight),
+`tests/test_session394.cpp`, `tests/tests.pro`.
+
+**Tests:** `session394` (6 checks): in all eleven themes a filled button's text
+on its fill clears the text floor, and a dial's arc on the card the graphical
+floor; in Sage, the Loco Simulator's and the bench's Start are the green and
+nothing in either is filled with the accent. `session328` now checks the
+Highlight follows a theme change. `contrastaudit` 407 / 407.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11: every stage green.
+
+---
+
 <a id="session-393"></a>
 ## Session 393 — the Loco Simulator looks like the other simulators
 
