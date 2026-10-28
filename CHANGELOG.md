@@ -10,6 +10,62 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-384"></a>
+## Session 384 — the reply pack: the reviewer answers the site
+
+The last of the four review-pack follow-ups (see session 381). Packs went
+one way. The reviewer's notes stayed in their own bookmarks and their answer
+went by mail, with times typed in by hand.
+
+**Where the review happens.** The Review pack panel has **Reply to the
+site…**. It opens the export dialog as *Reply to the site*:
+- **Reviewer:** (empty, theirs to fill in) and **Answer:** in place of
+  Tester and What to look at; site and loco are the pack's;
+- every capture of the pack, with the notes on it now: the site's and the
+  reviewer's;
+- the pack's own test run and **the site's kavach.xml**, so the reply
+  decodes as the site's did;
+- Attachments (session 382), Span and Tabs as for any pack;
+- it writes `ReplyPack_<site>_<date>_<time>.zip`. The site's name is not
+  remembered as the reviewer's own site for their next export.
+
+**In the pack.** The same format, with `in_reply_to` in the manifest: the
+answered pack's site, tester, time made and what they asked. README.txt
+starts *"A REPLY to the pack of … from …"* and has *Reviewer:*.
+summary.html (session 383) shows *"a reply"*, what they asked, then the
+answer.
+
+**At the site.** File ▸ Open review pack… opens it like any pack. The
+panel says *"A reply from <reviewer> to the pack of <time>. You asked: …
+Answer: …"*. The reviewer's notes are on the rows. The site's own notes are
+untouched. A note the reviewer changed on one of the site's marks is kept
+as the site's, and the status bar says *"1 note differs from your own,
+kept"* (session 369's rule). The button reads **Answer the reply…**, so the
+exchange can go on.
+
+**Files.** `reviewpack.{h,cpp}` (`Input::inReplyTo`, `replyBase`,
+`Opened::isReply`, README / summary / summary line); `reviewpackdialog.{h,cpp}`
+(`setReply`, the file name, who is not remembered for a reply);
+`sessionwindow.{h,cpp}` (the button, `makeReplyDialog`, the panel for a
+reply); `tests/test_session384.cpp`, `tests/tests.pro`.
+
+**Tests.** New `session384` (18 checks) on real frames, 14:02-14:03 of
+`replay/loco_1_1_27062026_140226.cap`. The site's pack carries its own
+kavach.xml. Checked: the panel offers a reply; the dialog opens as a reply
+with the pack's site and loco, no reviewer name, and the site's schema;
+the reply is written; the reviewer's own remembered site is unchanged; the
+manifest names the answered pack; README and summary.html say reply; the
+site opens it as a reply; the reviewer's note lands on the site's rows with
+its words, the site's own unchanged; the panel shows question and answer;
+Answer the reply…; a window without a pack offers no reply.
+
+**Not tested.** The dialog's own Export button and file dialog for a reply
+(`exportTo` is what it calls).
+
+**Gate.** Gated with the bundle at push.
+
+---
+
 <a id="session-383"></a>
 ## Session 383 — summary.html: the review pack in any browser
 

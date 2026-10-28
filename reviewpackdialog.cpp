@@ -153,9 +153,11 @@ ReviewPackDialog::ReviewPackDialog(const QVector<ReviewPack::Capture> &captures,
 
     auto *form = new QFormLayout;
     form->addRow(tr("Site:"), m_site);
-    form->addRow(tr("Tester:"), m_tester);
+    m_testerLabel = new QLabel(tr("Tester:"), this);
+    m_whatLabel = new QLabel(tr("What to look at:"), this);
+    form->addRow(m_testerLabel, m_tester);
     form->addRow(tr("Loco:"), m_loco);
-    form->addRow(tr("What to look at:"), m_what);
+    form->addRow(m_whatLabel, m_what);
     form->addRow(tr("Tabs:"), m_tabs);
     auto *span = new QVBoxLayout;
     span->addWidget(m_all);
@@ -182,8 +184,9 @@ ReviewPackDialog::ReviewPackDialog(const QVector<ReviewPack::Capture> &captures,
     connect(m_export, &QPushButton::clicked, this, [this]() {
         const QString site = m_site->text().trimmed().replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9_-]+")),
                                                               QStringLiteral("_"));
-        const QString name = QStringLiteral("ReviewPack_%1%2.zip")
-                                 .arg(site.isEmpty() ? QString() : site + QLatin1Char('_'),
+        const QString name = QStringLiteral("%1_%2%3.zip")
+                                 .arg(m_base.inReplyTo.isEmpty() ? QStringLiteral("ReviewPack") : QStringLiteral("ReplyPack"),
+                                      site.isEmpty() ? QString() : site + QLatin1Char('_'),
                                       QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd_HHmmss")));
         const QString path = QFileDialog::getSaveFileName(this, tr("Save the review pack"),
                                                           QDir::home().filePath(name), tr("Review pack (*.zip)"));
@@ -214,6 +217,15 @@ void ReviewPackDialog::setSpan(qint64 fromMs, qint64 toMs)
     m_to->setDateTime(QDateTime::fromMSecsSinceEpoch(toMs));
     m_range->setChecked(true);
     refreshCount();
+}
+
+void ReviewPackDialog::setReply()
+{
+    setWindowTitle(tr("Reply to the site"));
+    m_testerLabel->setText(tr("Reviewer:"));
+    m_whatLabel->setText(tr("Answer:"));
+    m_what->setPlaceholderText(tr("What you found, and what the site should do or look at next"));
+    m_tester->clear();
 }
 
 void ReviewPackDialog::addAttachment(const QString &path)
@@ -295,10 +307,12 @@ void ReviewPackDialog::refreshCount()
 bool ReviewPackDialog::exportTo(const QString &path)
 {
     const ReviewPack::Input in = input();
-    QSettings ini(Settings::iniPath(), QSettings::IniFormat);
-    ini.setValue(QStringLiteral("reviewpack/site"), in.site);
-    ini.setValue(QStringLiteral("reviewpack/tester"), in.tester);
-    ini.setValue(QStringLiteral("reviewpack/loco"), in.loco);
+    if (in.inReplyTo.isEmpty()) {
+        QSettings ini(Settings::iniPath(), QSettings::IniFormat);
+        ini.setValue(QStringLiteral("reviewpack/site"), in.site);
+        ini.setValue(QStringLiteral("reviewpack/tester"), in.tester);
+        ini.setValue(QStringLiteral("reviewpack/loco"), in.loco);
+    }
 
     m_status->state(tr("Writing the pack…"));
     QApplication::setOverrideCursor(Qt::WaitCursor);

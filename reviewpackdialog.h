@@ -43,6 +43,9 @@ public:
     void setSpan(qint64 fromMs, qint64 toMs);   // 0, 0: everything
     void setTabChecked(const QString &tabKey, bool on);
     void addAttachment(const QString &path);   // what Add files… does per file
+    // A reply (session 384): titled so, "Reviewer:" and "Answer:", and the
+    // site's who and where are not remembered as the reviewer's own.
+    void setReply();
     QLabel *countLabel() const { return m_count; }
     StatusLine *status() const { return m_status; }
 
@@ -58,6 +61,7 @@ private:
     QDateTimeEdit *m_from = nullptr, *m_to = nullptr;
     QCheckBox *m_run = nullptr;
     QListWidget *m_attach = nullptr;
+    QLabel *m_testerLabel = nullptr, *m_whatLabel = nullptr;
     QLabel *m_count = nullptr;
     QPushButton *m_export = nullptr;
     StatusLine *m_status = nullptr;

@@ -3,6 +3,7 @@
 #include "sessionwindow.h"
 #include "uistyle.h"
 #include "bookmarks.h"
+#include "reviewpackdialog.h"
 #include "gototimestampdialog.h"
 #include "markerscrollbar.h"
 #include "timelineribbon.h"
@@ -518,8 +519,18 @@ void SessionWindow::setReviewPack(const ReviewPack::Opened &pack)
     whatLabel->setObjectName(QStringLiteral("reviewPackWhat"));
     whatLabel->setWordWrap(true);
     whatLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    whatLabel->setText(what.isEmpty() ? tr("The site gave no note on what to look at.")
-                                      : tr("<b>What to look at:</b> %1").arg(what.toHtmlEscaped()));
+    if (pack.isReply()) {
+        // Session 384: the reviewer's answer to a pack this site sent.
+        const QJsonObject r = m.value(QStringLiteral("in_reply_to")).toObject();
+        whatLabel->setText(tr("<b>A reply</b> from %1 to the pack of %2. You asked: <i>%3</i><br><b>Answer:</b> %4")
+                               .arg(m.value(QStringLiteral("tester")).toString().toHtmlEscaped(),
+                                    r.value(QStringLiteral("created")).toString().toHtmlEscaped(),
+                                    r.value(QStringLiteral("what_to_look_at")).toString().toHtmlEscaped(),
+                                    what.isEmpty() ? tr("(none given)") : what.toHtmlEscaped()));
+    } else {
+        whatLabel->setText(what.isEmpty() ? tr("The site gave no note on what to look at.")
+                                          : tr("<b>What to look at:</b> %1").arg(what.toHtmlEscaped()));
+    }
     lay->addWidget(whatLabel);
 
     // Who, where, when, with what: the README's lines.
@@ -591,6 +602,16 @@ void SessionWindow::setReviewPack(const ReviewPack::Opened &pack)
         });
         buttons->addWidget(run);
     }
+    auto *reply = new QPushButton(pack.isReply() ? tr("Answer the reply…") : tr("Reply to the site…"), page);
+    reply->setObjectName(QStringLiteral("reviewPackReply"));
+    reply->setToolTip(tr("A pack back: these captures with your notes, your answer and any files you attach."));
+    connect(reply, &QPushButton::clicked, this, [this]() {
+        if (ReviewPackDialog *d = makeReplyDialog()) {
+            d->setAttribute(Qt::WA_DeleteOnClose);
+            d->exec();
+        }
+    });
+    buttons->addWidget(reply);
     auto *folder = new QPushButton(tr("Show the files"), page);
     folder->setToolTip(QDir::toNativeSeparators(pack.dir));
     connect(folder, &QPushButton::clicked, this, [dir = pack.dir]() { QDesktopServices::openUrl(QUrl::fromLocalFile(dir)); });
@@ -608,6 +629,23 @@ void SessionWindow::setReviewPack(const ReviewPack::Opened &pack)
         if (d->objectName() == QLatin1String("sessionFieldDock")) tabifyDockWidget(d, dock);
     dock->raise();   // in front: the site's own words first
     m_packTitle = m.value(QStringLiteral("site")).toString();
+    m_pack = pack;
+}
+
+ReviewPackDialog *SessionWindow::makeReplyDialog()
+{
+    if (m_pack.manifest.isEmpty()) return nullptr;
+    QStringList keys = m_models.keys();
+    keys.sort();
+    QVector<ReviewPack::Capture> captures;
+    for (const QString &key : keys)
+        captures.append({ key, key, m_models.value(key)->snapshot(),
+                          m_bookmarks ? m_bookmarks->all() : QVector<Bookmark>() });
+    auto *d = new ReviewPackDialog(captures, ReviewPack::replyBase(m_pack), this);
+    d->setReply();
+    d->setWho(m_pack.manifest.value(QStringLiteral("site")).toString(), QString(),
+              m_pack.manifest.value(QStringLiteral("loco")).toString());
+    return d;
 }
 
 LogModel *SessionWindow::modelForKey(const QString &tabKey)

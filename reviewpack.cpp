@@ -134,16 +134,23 @@ QString summaryHtml(const QJsonObject &m, const QVector<CaptureSummary> &caps, c
                         "border:1px solid #ccc;margin:4px}</style></head><body>\n")
              .arg(m.value(QStringLiteral("site")).toString().isEmpty() ? QString()
                                                                        : QStringLiteral(" — ") + esc(m.value(QStringLiteral("site")).toString()));
-    h += QStringLiteral("<h1>DLConsole review pack</h1>\n");
+    const QJsonObject reply = m.value(QStringLiteral("in_reply_to")).toObject();
+    h += reply.isEmpty() ? QStringLiteral("<h1>DLConsole review pack</h1>\n")
+                         : QStringLiteral("<h1>DLConsole review pack: a reply</h1>\n<p>To the pack of %1 from %2. "
+                                          "They asked:</p><div class=\"what\">%3</div>\n")
+                               .arg(esc(reply.value(QStringLiteral("created")).toString()),
+                                    esc(reply.value(QStringLiteral("site")).toString()),
+                                    esc(reply.value(QStringLiteral("what_to_look_at")).toString()));
     const QString what = m.value(QStringLiteral("what_to_look_at")).toString();
-    h += QStringLiteral("<p><b>What to look at</b></p><div class=\"what\">%1</div>\n")
-             .arg(what.isEmpty() ? QStringLiteral("(not given)") : esc(what));
+    h += QStringLiteral("<p><b>%1</b></p><div class=\"what\">%2</div>\n")
+             .arg(reply.isEmpty() ? QStringLiteral("What to look at") : QStringLiteral("The answer"),
+                  what.isEmpty() ? QStringLiteral("(not given)") : esc(what));
     h += QStringLiteral("<table>");
     auto row = [&h](const QString &k, const QString &v) {
         if (!v.isEmpty()) h += QStringLiteral("<tr><th>%1</th><td>%2</td></tr>").arg(k, esc(v));
     };
     row(QStringLiteral("Site"), m.value(QStringLiteral("site")).toString());
-    row(QStringLiteral("Tester"), m.value(QStringLiteral("tester")).toString());
+    row(reply.isEmpty() ? QStringLiteral("Tester") : QStringLiteral("Reviewer"), m.value(QStringLiteral("tester")).toString());
     row(QStringLiteral("Loco"), m.value(QStringLiteral("loco")).toString());
     row(QStringLiteral("Made"), m.value(QStringLiteral("created")).toString());
     const QJsonObject span = m.value(QStringLiteral("span")).toObject();
@@ -252,8 +259,12 @@ QString readme(const QJsonObject &m)
         const QString v = m.value(QLatin1String(key)).toString();
         if (!v.isEmpty()) t += QStringLiteral("%1 %2\n").arg(QLatin1String(label), v);
     };
+    const QJsonObject reply = m.value(QStringLiteral("in_reply_to")).toObject();
+    if (!reply.isEmpty())
+        t += QStringLiteral("A REPLY to the pack of %1 from %2.\n\n")
+                 .arg(reply.value(QStringLiteral("created")).toString(), reply.value(QStringLiteral("site")).toString());
     line("Site:   ", "site");
-    line("Tester: ", "tester");
+    line(reply.isEmpty() ? "Tester: " : "Reviewer:", "tester");
     line("Loco:   ", "loco");
     line("Made:   ", "created");
     const QJsonObject span = m.value(QStringLiteral("span")).toObject();
@@ -309,6 +320,21 @@ QString attachmentName(const QString &localPath)
     n.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9._-]+")), QStringLiteral("_"));
     n.replace(QRegularExpression(QStringLiteral("\\.{2,}")), QStringLiteral("."));   // open() refuses ".."
     return n.isEmpty() ? QStringLiteral("file") : n;
+}
+
+Input replyBase(const Opened &pack)
+{
+    Input in;
+    const QJsonObject &m = pack.manifest;
+    for (const char *k : { "site", "tester", "created", "what_to_look_at" })
+        in.inReplyTo.insert(QLatin1String(k), m.value(QLatin1String(k)));
+    in.site = m.value(QStringLiteral("site")).toString();
+    in.loco = m.value(QStringLiteral("loco")).toString();
+    in.testRunPath = pack.testRunPath;
+    QFile xml(pack.schemaPath);
+    if (xml.open(QIODevice::ReadOnly)) in.schemaXml = xml.readAll();   // the site's: the reply decodes as theirs did
+    in.schemaFrom = m.value(QStringLiteral("schema")).toObject().value(QStringLiteral("from")).toString();
+    return in;
 }
 
 QString defaultDir(const QString &zipPath)
@@ -458,6 +484,7 @@ Written write(const QString &zipPath, const Input &in)
     m.insert(QStringLiteral("tester"), in.tester);
     m.insert(QStringLiteral("loco"), in.loco);
     m.insert(QStringLiteral("what_to_look_at"), in.whatToLookAt);
+    if (!in.inReplyTo.isEmpty()) m.insert(QStringLiteral("in_reply_to"), in.inReplyTo);
     QJsonObject span;
     if (!all) {
         span.insert(QStringLiteral("from_ms"), double(in.fromMs));
@@ -598,6 +625,7 @@ QString Opened::summary() const
         notes += v.toObject().value(QStringLiteral("notes")).toInt();
     QString from = site.isEmpty() ? QString() : QStringLiteral(" from %1").arg(site);
     if (!tester.isEmpty()) from += QStringLiteral(" (%1)").arg(tester);
+    if (isReply()) from = QStringLiteral(" (a reply) from %1").arg(tester.isEmpty() ? QStringLiteral("the reviewer") : tester);
     QString s = QStringLiteral("Review pack%1: %2 capture(s), %3 note(s)").arg(from).arg(dlrs.size()).arg(notes);
     if (!testRunPath.isEmpty()) s += QStringLiteral(", a test run");
     if (!attachments.isEmpty()) s += QStringLiteral(", %1 attachment(s)").arg(attachments.size());

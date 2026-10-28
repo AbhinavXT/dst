@@ -47,6 +47,14 @@ picture: it adds the test run and the kavach.xml the site decoded with.
    - **Add note…**: your own note. It also goes into the `.notes.json` beside
      the unpacked `.dlr`, so sending that file back carries it.
 
+## Sending the answer back (patch 384)
+
+In the Review pack panel, **Reply to the site…** writes a reply pack: the
+same captures with your notes on them, your **Answer**, any files you
+attach, and the site's own kavach.xml. The site opens it with File ▸ Open
+review pack…. Your notes show on their rows, and the panel shows what they
+asked and your answer. **Answer the reply…** goes on from there.
+
 ## More on a recording (patches 372-375)
 
 - **Tools** in the recording window also has, for the tab on show: Run

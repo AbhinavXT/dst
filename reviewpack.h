@@ -4,6 +4,11 @@
 // =============================================================================
 //  ReviewPack (session 370) — what the test site saw, in one file.
 //  -----------------------------------------------------------------------------
+//  Testing happens at the site; review happens somewhere else. The reviewer
+//  answers with a reply pack (session 384): the same format, the same
+//  captures with the reviewer's notes added, the answer in place of "what to
+//  look at", and `in_reply_to` naming the pack it answers.
+//
 //  Testing happens at the site; review happens somewhere else. What the site
 //  sent was whatever someone remembered to attach: a .dlr without its notes,
 //  a screenshot, a time typed in a chat. The reviewer then decoded with
@@ -61,6 +66,7 @@ struct Input {
     QVector<QPair<QString, QString>> config;   // (name in config/, local path)
     QStringList attachments;   // local files the site chose; one it cannot read refuses the pack
     qint64 createdMs = 0;      // 0: now
+    QJsonObject inReplyTo;     // a reply: the answered pack's site, tester, created, what_to_look_at
 };
 
 struct Written {
@@ -86,6 +92,7 @@ struct Opened {
     QStringList damaged;       // files whose CRC or size does not match
     bool reused = false;       // this pack was unpacked here before: its notes files were kept (session 381)
     QString summary() const;   // "Review pack from Site A (tester): 2 captures, 3 notes, a test run"
+    bool isReply() const { return manifest.contains(QStringLiteral("in_reply_to")); }
 };
 
 // Unpack into `intoDir` (made if needed; files already there are replaced,
@@ -98,6 +105,10 @@ QString defaultDir(const QString &zipPath);
 
 // The file-name part of a tab's capture: "Loco 1" + "21_1" → "Loco_1_21_1".
 QString captureBase(const Capture &c);
+
+// What a reply to `pack` is made of: its schema and test run, and who it
+// answers. The caller adds the captures and the reviewer's words.
+Input replyBase(const Opened &pack);
 
 // An attachment's name in the pack: "EB 14:03 (2).gif" → "EB_14_03_2_.gif".
 QString attachmentName(const QString &localPath);

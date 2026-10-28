@@ -47,6 +47,7 @@
 #include "dmichanges.h"
 #include "theme.h"
 
+class ReviewPackDialog;
 class ColorRules;
 class FilterBar;
 class FindBar;
@@ -125,6 +126,9 @@ public:
     // in front: what to look at, who sent it from where, the schema it was
     // decoded with there (same as here, or not), its test run.
     void setReviewPack(const ReviewPack::Opened &pack);
+    // Session 384: the Reply to the site… dialog over this pack's captures
+    // and the notes on them now; null when this window holds no pack.
+    ReviewPackDialog *makeReplyDialog();
 
     // Session 371: Play. The cursor walks the tab on show in time, at the
     // chosen speed, and everything that follows the cursor plays with it:
@@ -265,6 +269,7 @@ private:
     QVector<LoadedFile> m_files;
     NotesSidecar::Merge m_merge;
     QString m_packTitle;   // session 370: the pack's site, for the title
+    ReviewPack::Opened m_pack;   // session 384: what a reply answers
 
     // Session 371: playback.
     class QToolBar  *m_playBar = nullptr;
