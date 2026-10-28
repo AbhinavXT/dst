@@ -69,7 +69,7 @@ recorded" means none was written down, and "not from the spec" means a code defe
     on the bus. Your CAN receive calls `process_biu_can_frame(cob_id, data, dlc)`.
     *Spec: Annexure-1 2.2 (COB-IDs and frame data); the identifier and length are CAN's own fields.*
   - **UDP (DLConsole bench):** `biu_udp_send_frame` / `process_biu_udp_frame`, one frame per datagram,
-    `[COB-ID lo][COB-ID hi][3 + n][n bytes]`, to 192.168.25.126:51234 by default (`BIU_SIM_IP0..3` /
+    `[COB-ID lo][COB-ID hi][3 + n][n bytes]`, to 192.168.25.126:51235 by default (`BIU_SIM_IP0..3` /
     `BIU_SIM_PORT`). *Not from the spec: the 3-byte header is the bench's format, because a datagram has no CAN
     identifier or DLC; it came from your original `brake_pressure_interface_user.c`.*
   - The two paths share no send or receive code, only the frame contents and the state they update.
@@ -87,6 +87,8 @@ recorded" means none was written down, and "not from the spec" means a code defe
 6. **Bench testing over UDP:** `biu_link_select(BIU_LINK_UDP)` before `biu_link_init()`, and give
    `process_biu_udp_frame(buffer, len)` every datagram from the DLConsole Brake Test Bench.
 7. **Call `biu_link_init()` once, then `biu_link_tick()` and `send_biu_command()` every 250 ms.**
+8. **Bench port 51235** (patch 390): `BIU_SIM_PORT` defaults to 51235, where the Brake Test Bench now listens.
+   51234 is DLConsole's log port; sharing it split the traffic (the BIU frames were counted as malformed logs).
 
 ## Tested
 

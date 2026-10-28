@@ -65,7 +65,7 @@ typedef enum {
  * BIU_CAN_SEND(cob_id, data, length): your CAN driver's send, for the CAN link (see
  *   biu_can_send_frame in the .c). Empty until you put it there.
  * BIU_SIM_IP0..3 / BIU_SIM_PORT: the DLConsole Brake Test Bench, for the UDP
- *   link (default 192.168.25.126:51234).
+ *   link (default 192.168.25.126:51235; 51234 is DLConsole's log port).
  * BIU_HEARTBEAT_PERIOD_MS (500) / BIU_HEARTBEAT_TIMEOUT_MS (1500).
  */
 

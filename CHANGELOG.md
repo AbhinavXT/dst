@@ -10,6 +10,47 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-390"></a>
+## Session 390 — the Brake Test Bench listens on UDP 51235, off the log port
+
+Abhinav 2026-10-28, testing `loco_sim.exe` on Windows: *"Dl console showing
+malformed datagram"*. Then: *"ok use port 51235"*.
+
+**Why.** The bench and the live log capture both bound UDP 51234 with
+ShareAddress. The OS hands each unicast datagram to one of the two sockets
+(on Windows, either one). The log capture got the loco's frames: it ignored the
+11-byte commands (destination byte 0x01, not 101) and counted each 4-byte
+heartbeat as a malformed datagram. The bench never saw the loco, never
+started it, and the pre-operational loco sent only heartbeats. Not sending VCC
+logs does not help: the capture binds 51234 at start-up. This was the open
+review finding "BIU and live capture both bind 51234 (silent split)".
+
+**What the operator sees.** The bench opens on UDP 51235. Start BIU on the log
+port (Settings ▸ UDP port) is refused, in the status line: *"UDP 51234 is
+DLConsole's log port (Settings): the VCC logs and the BIU cannot share it.
+Listen on 51235, the firmware's BIU_SIM_PORT."* A bench saved on 51234 says so
+on Start; set 51235 once.
+
+**Firmware.** `BIU_SIM_PORT` defaults to 51235 (`CHANGES.md` item 8), and so
+does `loco_sim --bench-port`. The real VCC must be rebuilt with it, or define
+`BIU_SIM_PORT 51235U`.
+
+**Files.** `brakebenchwindow.{h,cpp}`, `tests/test_session360.cpp` (51235),
+`tests/test_session390.cpp` (new), `tests/tests.pro`,
+`docs/biu-firmware/{brake_pressure_interface_user.c,.h, test_biu.c,
+CHANGES.md, HOW_IT_WORKS.md, loco_sim/loco_sim.c}`, `docs/BRAKE_BENCH_NEXT.md`.
+
+**Tests.** `session390` (4 checks): opens on 51235, not the log port; Start on
+the log port refused and said. `session360` (89) on 51235. Firmware host test
+74 / 74 (now to :51235).
+
+**Gate:** see the push.
+
+**Not tested:** on Windows with the real bench and loco_sim.exe (the split is
+the OS's, and the Mac test cannot show it).
+
+---
+
 <a id="session-389"></a>
 ## Session 389 — the loco simulator on Windows, in every release
 

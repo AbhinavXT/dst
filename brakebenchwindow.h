@@ -11,7 +11,7 @@
 //    BIU -> VCC      every field of the BIU's three status frames: a value or
 //                    Auto, validity bits, fault and display codes held until
 //                    acknowledged, every discrete bit Auto / 1 / 0.
-//    Network         where the BIU listens (UDP 51234) and answers (the VCC,
+//    Network         where the BIU listens (UDP 51235) and answers (the VCC,
 //                    50001); its heartbeat and NMT; what it does when KAVACH
 //                    goes quiet.
 //    Analog -> VCC   the analog card (sessions 346-351), moved here from the

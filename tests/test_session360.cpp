@@ -342,8 +342,8 @@ TEST_SUITE(session360)
         w.biu()->setSendSink([&](const QByteArray &d) { sent.add(d); });
         QVector<QByteArray> analog;
         w.setAnalogSink([&](const QByteArray &b) { analog << b; });
-        CHECK(w.listenPort() == 51234 && w.biu()->replyPort() == 50001 && w.source() == BrakeBenchWindow::Source::Biu,
-              "opens on UDP 51234, answering port 50001, following the BIU");
+        CHECK(w.listenPort() == 51235 && w.biu()->replyPort() == 50001 && w.source() == BrakeBenchWindow::Source::Biu,
+              "opens on UDP 51235, answering port 50001, following the BIU");
         CHECK(w.analogFollows() && !w.biuRunning(), "the analog card follows the bench; the BIU waits for Start");
         for (int ch = 0; ch < 3; ++ch) { w.setRates(ch, 1.0, 1.0); w.setAnalogScale(ch, 10); }
 

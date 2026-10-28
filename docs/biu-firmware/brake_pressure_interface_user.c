@@ -31,7 +31,7 @@
 #define BIU_SIM_IP3 126U
 #endif
 #ifndef BIU_SIM_PORT
-#define BIU_SIM_PORT 51234U
+#define BIU_SIM_PORT 51235U   /* not 51234: that is DLConsole's log port */
 #endif
 #ifndef BIU_HEARTBEAT_PERIOD_MS
 #define BIU_HEARTBEAT_PERIOD_MS   500U      /* Annexure-1 4 */

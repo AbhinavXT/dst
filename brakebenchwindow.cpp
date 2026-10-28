@@ -49,6 +49,8 @@ using SimUi::SignalLamp;
 namespace {
 
 constexpr int kLogCap = 2000;
+// The firmware's BIU_SIM_PORT: one above the log port (51234), not on it (session 390).
+constexpr int kDefaultBiuPort = 51235;
 
 QString hexN(quint32 w, int digits)
 {
@@ -692,7 +694,7 @@ QWidget *BrakeBenchWindow::buildNetworkTab()
     lg->addWidget(new QLabel(tr("Listen on UDP port"), link), 0, 0);
     m_listenPort = new QSpinBox(link);
     m_listenPort->setRange(1, 65535);
-    m_listenPort->setToolTip(tr("Where the VCC sends its CAN frames (the firmware's BIU_SIM_PORT), on every address of this PC"));
+    m_listenPort->setToolTip(tr("Where the VCC sends its CAN frames (the firmware's BIU_SIM_PORT, 51235), on every address of this PC. Not the log port: they cannot share it"));
     connect(m_listenPort, QOverload<int>::of(&QSpinBox::valueChanged), this, [this]() { saveSettings(); refreshTop(); });
     lg->addWidget(m_listenPort, 0, 1);
     lg->addWidget(new QLabel(tr("Answer"), link), 1, 0);
@@ -1098,7 +1100,7 @@ void BrakeBenchWindow::loadSettings()
     m_loading = true;
     QSettings s(Settings::iniPath(), QSettings::IniFormat);
     s.beginGroup(QStringLiteral("brakebench"));
-    m_listenPort->setValue(s.value(QStringLiteral("listenPort"), 51234).toInt());
+    m_listenPort->setValue(s.value(QStringLiteral("listenPort"), kDefaultBiuPort).toInt());
     const bool fixed = s.value(QStringLiteral("replyFixed"), false).toBool();
     m_replyMode->button(fixed ? 1 : 0)->setChecked(true);
     m_replyHost->setText(s.value(QStringLiteral("replyHost"), defaultReplyHosts()).toString());
@@ -1237,6 +1239,14 @@ void BrakeBenchWindow::saveSettings() const
 
 bool BrakeBenchWindow::startBiu()
 {
+    // Sharing the log port splits the traffic: the OS gives each datagram to
+    // one of the two sockets, and the log capture counts BIU frames as malformed.
+    if (m_listenPort->value() == Settings::udpPort()) {
+        m_status->fail(tr("UDP %1 is DLConsole's log port (Settings): the VCC logs and the BIU cannot share it. "
+                          "Listen on %2, the firmware's BIU_SIM_PORT.").arg(m_listenPort->value()).arg(kDefaultBiuPort));
+        refreshTop();
+        return false;
+    }
     QString why;
     if (!m_biu->listen(quint16(m_listenPort->value()), &why)) {
         m_status->fail(tr("Cannot listen on UDP %1: %2").arg(m_listenPort->value()).arg(why));

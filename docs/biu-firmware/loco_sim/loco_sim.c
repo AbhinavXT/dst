@@ -3,7 +3,7 @@
  * It runs the real firmware file (../brake_pressure_interface_user.c) on the
  * UDP link, as the VCC does on the bench:
  *   - sends the boot-up, the heartbeat and the 0x190 command every 250 ms to
- *     the bench (UDP 51234), and takes the bench's NMT, heartbeat and status
+ *     the bench (UDP 51235), and takes the bench's NMT, heartbeat and status
  *     frames on the reply port (UDP 50001);
  *   - takes the analog card's 34-byte frames (UDP 20000) and reads BP, BC and
  *     MR through current_to_pressure(), as the VCC does;
@@ -59,7 +59,7 @@ LocoParams loco_params;
 static SocketHandle s_biu_socket = SOCKET_NONE;     /* bound to the reply port: the bench answers the sender */
 static SocketHandle s_analog_socket = SOCKET_NONE;
 static uint32_t s_bench_override_ip;      /* host order; 0 = use the firmware's BIU_SIM_IP0..3 */
-static uint16_t s_bench_port = 51234;
+static uint16_t s_bench_port = 51235;   /* the firmware's BIU_SIM_PORT; 51234 is DLConsole's log port */
 
 /* ---- the firmware's network calls, on real sockets ------------------------------- */
 ip_addr_t set_pc_ipAddr(ipAddress address)
@@ -253,7 +253,7 @@ static int read_typed_line(char *line, size_t size)
 
 static void usage(void)
 {
-    printf("loco_sim [--bench a.b.c.d] [--bench-port 51234] [--reply-port 50001] [--analog-port 20000]\n"
+    printf("loco_sim [--bench a.b.c.d] [--bench-port 51235] [--reply-port 50001] [--analog-port 20000]\n"
            "         [--loco wap7|wag9|wap5] [--mode formation|lem] [--brake 0-5] [--speed m/s]\n"
            "         [--analog-bar 10] [--can]\n"
            "  While running: 0-5 + Enter sets the brake (0 no brake, 1 overspeed, 2 NB, 3 FSB, 4 EB, 5 LE),\n"

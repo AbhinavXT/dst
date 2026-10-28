@@ -38,7 +38,7 @@ and the loco simulator each bring their own stand-ins.
                CAN link│                 │UDP link          0x710     ─► BIU heartbeat / link up
        biu_can_send_frame()    biu_udp_send_frame()         0x220     ─► pressures + validity
        (BIU_CAN_SEND: id,      ([cob lo][cob hi][3+n][data]  0x320     ─► isolation / fault / display codes
-        DLC, data)              to the bench, UDP 51234)    0x420     ─► discrete status bytes
+        DLC, data)              to the bench, UDP 51235)    0x420     ─► discrete status bytes
 ```
 
 Only **one link** is live at a time (`biu_link_select`). CAN is the default: the real BIU on the VCC's CAN
@@ -73,7 +73,7 @@ send heartbeats only.
 | `BIU_DYNAMIC_BRAKING()` | `0` | Dynamic braking active (discrete byte 1, bit 7). |
 | `BIU_NOW_MS()` | `ClockP_getTimeUsec() / 1000` | Milliseconds clock for heartbeats, settling and timeouts. |
 | `BIU_CAN_SEND(cob_id, data, length)` | does nothing | **Your CAN driver's send.** Standard 11-bit identifier `cob_id`, DLC `length`, `data[0..length-1]`. Until you define it, nothing goes on the bus. |
-| `BIU_SIM_IP0..3`, `BIU_SIM_PORT` | 192.168.25.126 : 51234 | Where the UDP link sends (the PC running the bench). |
+| `BIU_SIM_IP0..3`, `BIU_SIM_PORT` | 192.168.25.126 : 51235 | Where the UDP link sends (the PC running the bench). Not 51234: that is DLConsole's log port, and the two cannot share a port. |
 | `BIU_HEARTBEAT_PERIOD_MS` | 500 | Our heartbeat period (Annexure-1 4). |
 | `BIU_HEARTBEAT_TIMEOUT_MS` | 1500 | How old the BIU's heartbeat may be before `biu_link_up()` says 0 (three missed beats; not from the spec). |
 
@@ -284,7 +284,7 @@ cd docs/biu-firmware
 
 ### Run against DLConsole on the same PC
 
-1. In DLConsole: Tools ▸ Transmit ▸ **Brake Test Bench…**. On **Network**, leave the listen port at 51234 and
+1. In DLConsole: Tools ▸ Transmit ▸ **Brake Test Bench…**. On **Network**, leave the listen port at 51235 and
    the reply port at 50001, and set the reply address to the sender (or 127.0.0.1). Press **Start BIU**.
 2. On **Analog → VCC**, set the host to `127.0.0.1` and the port to `20000`, and start sending.
 3. Run:
@@ -298,7 +298,7 @@ cd docs/biu-firmware
 | Option | Default | What it does |
 |--------|---------|--------------|
 | `--bench a.b.c.d` | the firmware's `BIU_SIM_IP` (192.168.25.126) | Where the BIU frames go. |
-| `--bench-port N` | 51234 | The bench's listen port. |
+| `--bench-port N` | 51235 | The bench's listen port. |
 | `--reply-port N` | 50001 | Where the loco listens for the bench's frames (and sends from). |
 | `--analog-port N` | 20000 | Where the loco listens for analog frames. |
 | `--loco wap7\|wag9\|wap5` | wap7 | Brake table loco. |

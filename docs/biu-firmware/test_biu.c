@@ -67,7 +67,7 @@ int main(void)
     send_biu_command(LOCO_WAP7, TRAIN_MODE_FORMATION, NORMAL_BRAKE);
     CHECK(sends == 1 && sent_len == 11 && sent[2] == 11, "operational: 11-byte UDP frame, length byte 11");
     CHECK(sent[0] == 0x90 && sent[1] == 0x01, "COB-ID 0x190 = 0x180 + BIU node 0x10");
-    CHECK(sent_port == 51234 && sent_ip == 0xC0A8197Eu, "to 192.168.25.126:51234");
+    CHECK(sent_port == 51235 && sent_ip == 0xC0A8197Eu, "to 192.168.25.126:51235");
     CHECK(sent[3] == 0xE8 && sent[4] == 0x03, "10.00 m/s = 1000 (0x03E8), lower byte first");
     CHECK(sent[7] == 88, "NB A9 4.4 kg/cm2 -> 88 (0.05/bit)");
     CHECK(sent[8] == 24, "NB SA9 1.2 kg/cm2 -> 24 (Annexure-4 8.1, 9.1)");
