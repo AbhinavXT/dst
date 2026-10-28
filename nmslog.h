@@ -118,13 +118,17 @@ struct Table {
 // CRC did not match. Warn: an event worth reading (a brake application, an
 // SoS, a missing tag, no GPS fix, a fault reported). Read from the decoded
 // text, so it follows the decoder's labels. `why` says what was reported.
-enum class Mark { None, Warn, Fail };
+// Ok: a fault reported recovered (code type 0x02).
+enum class Mark { None, Warn, Fail, Ok };
 Mark markOf(const QString &column, const QString &value, QString *why = nullptr);
 
 // Adds `entry` as a row when it is a well-formed capture line of `kind`.
 // False (and nothing added) otherwise. *newColumns set when the packet
 // brought a column the table did not have.
 bool append(Table &t, Kind kind, const LogEntry &entry, bool *newColumns = nullptr);
+
+// A fault's code type: 0x01 "Faulty", 0x02 "Recovered", anything else empty.
+QString faultStatus(int codeType);
 
 // Session 255: the fault summary, one line per FaultSpan: module, fault,
 // code type, subsystem, first listed (PC time, rtc), no longer listed (PC

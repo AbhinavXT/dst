@@ -106,7 +106,7 @@ TEST_SUITE(session255)
     const QVector<QStringList> sum = NmsLog::faultSummary(t);
     CHECK(sum.size() == t.faultSpans.size() && NmsLog::faultSummaryHeader().size() == 9, "one summary line per span, 9 columns");
     CHECK(sum.value(0).value(0) == QLatin1String("2 (VCC Mc-2)") && sum.value(0).value(1) == QLatin1String("26 (safety error)")
-              && sum.value(0).value(2) == QLatin1String("0X01") && sum.value(0).value(3).startsWith(QLatin1String("34")),
+              && sum.value(0).value(2) == QLatin1String("0X01 (Faulty)") && sum.value(0).value(3).startsWith(QLatin1String("34")),
           qPrintable("first line: module, fault, code type, subsystem: " + sum.value(0).join(" | ")));
     CHECK(sum.value(0).value(5) == t.cell(0, t.index.value(QStringLiteral("rtc"))), "first listed (rtc) is that packet's rtc");
     {

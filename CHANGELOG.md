@@ -10,6 +10,34 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-387"></a>
+## Session 387 — NMS fault code type reads Faulty / Recovered, in colour
+
+Abhinav 2026-10-28: *"In fault table for nms show fault status 0x01 as faulty
+and 0x02 as recovered. Also add colors"*.
+
+**What the operator sees.** Wherever an NMS fault's code type is shown it
+now reads `0X01 (Faulty)` in the error colour or `0X02 (Recovered)` in the
+ok colour (`UiColor`); any other code reads as before, uncoloured:
+- the @nmsflt log table (`fault[N] code_type` cells; tooltip says what was
+  reported), and its CSV / Excel export;
+- Fault summary… (the Code type column, and its CSV);
+- Active Faults (the code column, while the fault is still listed).
+
+**How.** `NmsLog::faultStatus(code)` is the one mapping; `NmsLog::Mark`
+gains `Ok` for the green mark. The schema and the decoder are untouched:
+the Decode / Field Inspector rows still show the bare code.
+
+**Files.** `nmslog.h/.cpp`, `nmslogwindow.cpp`, `faultpanelwindow.cpp`.
+
+**Tests.** session250: every `fault[N] code_type` cell of the real
+@nmsflt frames in `replay/` reads Faulty / Recovered and is marked Fail /
+Ok (both seen). session255 and session141 follow the new text.
+
+**Gate.** Gated with the bundle at push.
+
+---
+
 <a id="session-386"></a>
 ## Session 386 — key frames in the review pack; a recording checks MACs with its own keys
 

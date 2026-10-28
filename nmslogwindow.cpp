@@ -136,7 +136,8 @@ QVariant NmsLogTableModel::data(const QModelIndex &index, int role) const
     }
     if (role == Qt::ToolTipRole) return why.isEmpty() ? text : text + QStringLiteral("\n") + why;
     if (m == NmsLog::Mark::None) return QVariant();
-    if (role == Qt::ForegroundRole) return QBrush(m == NmsLog::Mark::Fail ? UiColor::error() : UiColor::warning());
+    if (role == Qt::ForegroundRole)
+        return QBrush(m == NmsLog::Mark::Fail ? UiColor::error() : m == NmsLog::Mark::Ok ? UiColor::ok() : UiColor::warning());
     QFont f;
     f.setBold(true);
     return f;
@@ -889,6 +890,8 @@ void NmsLogWindow::fillFaultSummary()
             if (!it) m_faultTable->setItem(r, c, it = new QTableWidgetItem);
             it->setText(rows.at(r).value(c));
         }
+        const QString st = NmsLog::faultStatus(sp.codeType);
+        if (!st.isEmpty()) m_faultTable->item(r, 2)->setForeground(st == QLatin1String("Faulty") ? UiColor::error() : UiColor::ok());
     }
     m_faultTable->resizeColumnsToContents();
     m_faultNote->setText(rows.isEmpty() ? tr("No fault listed in this tab yet.")

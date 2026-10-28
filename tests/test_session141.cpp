@@ -64,7 +64,7 @@ TEST_SUITE(session141)
         bool lowerX = true, mono = true;
         for (int r = 0; r < table->rowCount(); ++r) {
             const QString code = table->item(r, 4)->text();
-            lowerX = lowerX && code.startsWith(QLatin1String("0x")) && code.mid(2) == code.mid(2).toUpper();
+            lowerX = lowerX && code.startsWith(QLatin1String("0x")) && code.mid(2, 2) == code.mid(2, 2).toUpper();
             mono = mono && QFontInfo(table->item(r, 4)->font()).fixedPitch();
         }
         CHECK(lowerX, QByteArray("codes read 0x02, not 0X02 (") + table->item(0, 4)->text().toUtf8() + ")");

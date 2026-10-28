@@ -3,6 +3,7 @@
 #include "uicolors.h"
 #include "windowgeometry.h"
 #include "messagedispatcher.h"
+#include "nmslog.h"
 
 #include <QCloseEvent>
 #include <QCheckBox>
@@ -536,8 +537,11 @@ void FaultPanelWindow::rebuildTable()
         QTableWidgetItem *fault = cell(3, f.faultName, act ? pc.active : pc.dim);
         QFont ff = fault->font(); ff.setBold(act); fault->setFont(ff);
         // "0x02", not "0X02": only the digits are upper case (session 141).
+        const QString st = NmsLog::faultStatus(f.codeType);
         QTableWidgetItem *code = cell(4, QStringLiteral("0x") + QStringLiteral("%1")
-                                      .arg(f.codeType, 2, 16, QChar('0')).toUpper(), fg);
+                                      .arg(f.codeType, 2, 16, QChar('0')).toUpper()
+                                      + (st.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(st)),
+                                      st.isEmpty() || !act ? fg : st == QLatin1String("Faulty") ? pc.active : pc.ok);
         code->setFont(mono);
         cell(5, f.subsystemName, act ? pc.label : pc.dim);
         cell(6, durationText(act ? (nowMs - f.firstMs) : (f.lastMs - f.firstMs)), fg);

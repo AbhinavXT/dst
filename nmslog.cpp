@@ -64,6 +64,11 @@ Mark markOf(const QString &column, const QString &value, QString *why)
     if (is("CRC"))
         return value == QLatin1String("FAIL") ? mark(Mark::Fail, QStringLiteral("The frame's CRC did not match"))
                                               : Mark::None;
+    if (name.startsWith(QLatin1String("fault[")) && name.endsWith(QLatin1String("code_type"))) {
+        if (value.endsWith(QLatin1String("(Faulty)"))) return mark(Mark::Fail, QStringLiteral("The fault is reported active"));
+        if (value.endsWith(QLatin1String("(Recovered)"))) return mark(Mark::Ok, QStringLiteral("The fault is reported recovered"));
+        return Mark::None;
+    }
     if (name.startsWith(QLatin1String("fault[")) && name.endsWith(QLatin1String("fault_id")))
         return mark(Mark::Warn, QStringLiteral("A fault the subsystem reported"));
 
@@ -217,7 +222,12 @@ bool append(Table &t, Kind kind, const LogEntry &entry, bool *newColumns)
                       : r.field.startsWith(QLatin1Char(' ')) ? Group::Body
                       : leadRank(name) < leadRank(QString()) ? Group::Lead
                       : Group::Header;
-        put(n == 1 ? name : QStringLiteral("%1 (%2)").arg(name).arg(n), r.value.trimmed(), g);
+        QString value = r.value.trimmed();
+        if (name.startsWith(QLatin1String("fault[")) && name.endsWith(QLatin1String("code_type"))) {
+            const QString st = faultStatus(value.toInt(nullptr, 16));   // "0X01": toInt takes the 0x prefix
+            if (!st.isEmpty()) value += QStringLiteral(" (%1)").arg(st);
+        }
+        put(n == 1 ? name : QStringLiteral("%1 (%2)").arg(name).arg(n), value, g);
     }
     while (row.size() < t.columns.size()) row << QString();
     bool changed = false;   // the first packet's events are all new: changed
@@ -333,6 +343,11 @@ bool append(Table &t, Kind kind, const LogEntry &entry, bool *newColumns)
     return true;
 }
 
+QString faultStatus(int codeType)
+{
+    return codeType == 0x01 ? QStringLiteral("Faulty") : codeType == 0x02 ? QStringLiteral("Recovered") : QString();
+}
+
 QStringList faultSummaryHeader()
 {
     return { QStringLiteral("Module"), QStringLiteral("Fault"), QStringLiteral("Code type"),
@@ -370,7 +385,9 @@ QVector<QStringList> faultSummary(const Table &t)
         const int to = (open ? t.rows.size() - 1 : sp.toRow - t.rowBase);
         const qint64 ms = (to >= 0 && to < t.epochMs.size() && from >= 0 && from < t.epochMs.size())
                               ? t.epochMs.at(to) - t.epochMs.at(from) : 0;
-        out << QStringList{ sp.module, sp.fault, QStringLiteral("0X%1").arg(sp.codeType, 2, 16, QLatin1Char('0')).toUpper(),
+        QString code = QStringLiteral("0X%1").arg(sp.codeType, 2, 16, QLatin1Char('0')).toUpper();
+        if (!faultStatus(sp.codeType).isEmpty()) code += QStringLiteral(" (%1)").arg(faultStatus(sp.codeType));
+        out << QStringList{ sp.module, sp.fault, code,
                             sp.subsystem, pcTime(t, sp.fromRow), rtc >= 0 ? t.cell(from, rtc) : QString(),
                             open ? QStringLiteral("still listed in the last packet") : pcTime(t, sp.toRow),
                             open ? QStringLiteral("at least ") + span(ms) : span(ms), QString::number(sp.packets) };

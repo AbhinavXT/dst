@@ -94,6 +94,23 @@ TEST_SUITE(session250)
         { "RADIO_1_FORWARD_POWER",     "0.0 W",            Mark::None },
         { "CRC",                       "PASS",             Mark::None },
     };
+    // A fault's code type reads Faulty (0x01, red) or Recovered (0x02, green), on real @nmsflt rows.
+    {
+        int faulty = 0, recovered = 0;
+        bool marked = true;
+        for (int c = 0; c < fl.columns.size(); ++c) {
+            const QString col = fl.header(c);
+            if (!col.startsWith(QLatin1String("fault[")) || !col.endsWith(QLatin1String("code_type"))) continue;
+            for (int r = 0; r < fl.rows.size(); ++r) {
+                const QString v = fl.cell(r, c);
+                if (v.startsWith(QLatin1String("0X01"))) { ++faulty; marked = marked && v == QLatin1String("0X01 (Faulty)") && markAt(fl, r, col) == Mark::Fail; }
+                if (v.startsWith(QLatin1String("0X02"))) { ++recovered; marked = marked && v == QLatin1String("0X02 (Recovered)") && markAt(fl, r, col) == Mark::Ok; }
+            }
+        }
+        CHECK(faulty > 0 && recovered > 0 && marked,
+              qPrintable(QStringLiteral("code types: %1 Faulty, %2 Recovered, all marked").arg(faulty).arg(recovered)));
+        CHECK(NmsLog::faultStatus(3).isEmpty(), "another code type reads as it is");
+    }
     for (const auto &k : cases) {
         const int r = rowWith(hl, QLatin1String(k.column), QLatin1String(k.value));
         CHECK(r >= 0 && markAt(hl, r, QLatin1String(k.column)) == k.mark,
