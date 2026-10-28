@@ -176,7 +176,7 @@ CHANGES.md, HOW_IT_WORKS.md, loco_sim/loco_sim.c}`, `docs/BRAKE_BENCH_NEXT.md`.
 the log port refused and said. `session360` (89) on 51235. Firmware host test
 74 / 74 (now to :51235).
 
-**Gate** (macOS), Qt 5.15.19 and Qt 6.11, with 392: every stage green.
+**Gate:** see the push.
 
 **Not tested:** on Windows with the real bench and loco_sim.exe (the split is
 the OS's, and the Mac test cannot show it).
