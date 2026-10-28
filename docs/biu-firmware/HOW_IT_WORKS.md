@@ -17,7 +17,7 @@ where in the spec each rule comes from.
 | `brake_pressure_interface_user.h` | The public API, the brake table's types (`Range`, `BrakeSpec`), the enums (`LocoType`, `Mode`, `Command`, `PressureCmd`, `BrakeCheck`), and the analog reading (`PressureReading`). |
 | `brake_pressure_interface_user.c` | Everything that runs: the brake table, the frame codec, the two links (CAN, UDP), network management, sending the command, taking BIU frames, the checks, and the 4-20 mA conversion. |
 | `test_biu.c` + `test_common_include.h` + `test_enet_user.h` | Host test: 74 checks with a fake clock and fake sends. |
-| `loco_sim/` | The loco simulator (section 9). |
+| `loco_sim/` | The loco simulator (section 10). |
 
 The `.c` needs two headers from the VCC project: `common_include.h` (it uses `loco_params`, `SERIAL_PRINTF`,
 the brake-type enum, `ClockP_getTimeUsec`) and `enet_user.h` (it uses `UDP_Send`, `set_pc_ipAddr`). The test
@@ -47,7 +47,173 @@ both; only the envelope differs.
 
 ---
 
-## 3. The order you call things in
+## 3. The messages, in order
+
+Who is who: **KAVACH** is the VCC running this firmware (CAN node `0x20`, or `loco_sim` on a PC). The **BIU** is
+the Brake Interface Unit (node `0x10`): the real one on CAN, or DLConsole's Brake Test Bench over UDP. The BIU is
+the network manager: KAVACH may send only its heartbeat until the BIU starts it.
+
+Each message is shown twice. **CAN**: COB-ID and data bytes. **UDP**: the whole datagram, which is the same data
+behind a 3-byte header `[COB-ID lo][COB-ID hi][3 + data length]`. On UDP, KAVACH sends to the bench at
+`BIU_SIM_IP:51235`, and the bench replies to KAVACH's port 50001 (`loco_sim`'s `--reply-port`).
+
+Example byte values are for WAP7, formation, NB, 10 m/s, with the bench on its default (automatic) settings.
+
+### Step 1: the BIU powers up (BIU → everyone)
+
+| | |
+|-|-|
+| Message | BIU boot-up, `0x710 [00]` |
+| UDP | `10 07 04 00` |
+| Inside | byte 0 = `00`: "I have just booted" |
+| When | once, when the BIU starts (on the bench: when you press **Start BIU**) |
+
+Then the BIU sends its **heartbeat** every 500 ms: `0x710 [05]` (UDP `10 07 04 05`). Byte 0 is its NMT state:
+`05` operational, `7F` pre-operational, `04` stopped. KAVACH stores it: `biu_link_up()` is 1 only while this
+arrives at least every 1.5 s **and** says `05`.
+
+On the bench, the three status frames (step 6) also start at this point, every 250 ms, before KAVACH is heard
+from. KAVACH takes them in any NMT state.
+
+### Step 2: KAVACH powers up (KAVACH → BIU)
+
+| | |
+|-|-|
+| Message | KAVACH boot-up, `0x720 [00]` |
+| UDP | `20 07 04 00` |
+| Inside | byte 0 = `00`: "I have just booted" |
+| When | once, from `biu_link_init()` (or the first `biu_link_tick()`) |
+| Code | `nmt_boot()` → `send_heartbeat(BIU_NMT_BOOT_UP)` |
+
+KAVACH is now **pre-operational**. Every 500 ms it sends its heartbeat `0x720 [7F]` (UDP `20 07 04 7F`).
+`send_biu_command()` is called every 250 ms but **sends nothing yet**: it returns at "not operational".
+
+### Step 3: the BIU starts KAVACH (BIU → KAVACH)
+
+| | |
+|-|-|
+| Message | NMT "start remote node", `0x000 [01 20]` |
+| UDP | `00 00 05 01 20` |
+| Inside | byte 0 = command `01` (start), byte 1 = node `20` (KAVACH; `00` would mean every node) |
+| When | the bench sends it right after its own heartbeat, every 500 ms, for as long as KAVACH's last heartbeat is not `05` |
+| Code | KAVACH: `take_biu_frame` case `0x000` → `s_nmt_state = 05` (operational) |
+
+### Step 4: KAVACH says it is running (KAVACH → BIU)
+
+Its next heartbeat is `0x720 [05]` (UDP `20 07 04 05`). The bench sees `05` and stops sending NMT start.
+
+### Step 5: the command, every 250 ms (KAVACH → BIU)
+
+| | |
+|-|-|
+| Message | command, `0x190` (0x180 + the BIU's node 0x10), 8 bytes |
+| UDP | `90 01 0B E8 03 12 0C 58 18 00 00` |
+| When | every call to `send_biu_command()` (every 250 ms) while operational, **even when the brake did not change** |
+| Code | `send_biu_command` → `biu_encode_command` → `biu_send_frame` |
+
+| Byte | Example | Inside |
+|------|---------|--------|
+| 0-1 | `E8 03` | speed 1000 = 10.00 m/s (0.01 m/s per bit, low byte first) |
+| 2 | `12` | discrete byte 1: bit 1 health OK, bit 4 speed valid. The other bits: 0 brake test request, 2 BP charging cut-out, 3 BIU isolate, 5 light engine, 6 remote loco, 7 dynamic braking |
+| 3 | `0C` | discrete byte 2: bit 2 A9 valid, bit 3 SA9 valid. Bit 0 fault code ack and bit 1 display code ack are 0 here (step 7) |
+| 4 | `58` | A9 = BP target: 88 × 0.05 = 4.40 kg/cm² |
+| 5 | `18` | SA9 = BC target: 24 × 0.05 = 1.20 kg/cm² |
+| 6-7 | `00 00` | spare |
+
+The BIU applies A9 / SA9 to the brakes. Byte meanings are in section 6, "Command frame".
+
+### Step 6: the BIU's status, every 250 ms (BIU → KAVACH)
+
+Three frames, one after the other, in this order:
+
+**6a. Pressures, `0x220`** (UDP `20 02 0B` + 8 bytes)
+
+| Byte | Example | Inside |
+|------|---------|--------|
+| 0 | `58` | BP, 4.40 kg/cm² (each pressure byte is 0.05 kg/cm² per bit) |
+| 1 | `18` | BC, 1.20 |
+| 2 | `B4` | MR, 9.00 |
+| 3 | `58` | A9 reference, 4.40 |
+| 4 | `18` | SA9 reference, 1.20 |
+| 5 | | air flow |
+| 6 | | feed pipe |
+| 7 | `7F` | validity: bit n = byte n is valid. `7F` = all seven valid |
+
+KAVACH keeps each pressure with its valid bit (`biu_status_get()`), and `check_brake_malfunction()` judges BP,
+BC and MR against the command it sent.
+
+**6b. Codes, `0x320`** (UDP `20 03 0B` + 8 bytes)
+
+| Bytes | Inside |
+|-------|--------|
+| 0-1 | isolation counter, low byte first |
+| 2-3 | fault code, low byte first; 0 = none |
+| 4-5 | display-only message code, low byte first; 0 = none |
+| 6-7 | spare |
+
+**6c. Discretes, `0x420`** (UDP `20 04 0B` + 8 bytes)
+
+| Byte | Example | Inside |
+|------|---------|--------|
+| 0 | `65` | discrete byte 1: bit 0 healthy, 2 pilot overridden by BIU, 5 emergency valve cut in, 6 power cut-off relay. The other bits: 1 command overridden by pilot, 3 manual isolate, 4 BP charging cut out |
+| 1 | `00` | discrete byte 2: bit 0 panel test passed, 1 failed, 2 in progress |
+| 2 | `F6` | discrete byte 3: bits 1-2 BP / BC select valves on, bits 4-7 all four valves OK. The other bits: 0 BP cut-out valve on, 3 emergency valve on |
+| 3-7 | | spare |
+
+These example bits are what the bench sets on its own while it brakes. A real BIU sets them from its hardware.
+
+### Step 7: a fault or display code and its ack (BIU → KAVACH → BIU)
+
+1. The BIU puts a code in `0x320`, for example fault `0x0105` → bytes 2-3 = `05 01`.
+2. KAVACH sees a code that is new (not 0, and not the one it acked last) → `s_fault_ack_pending = 1`.
+3. KAVACH's **next** `0x190` has byte 3 bit 0 = 1 (fault ack). In the example, byte 3 becomes `0D` instead of `0C`.
+   The ack goes out for that one frame only; the next one is back to `0C`. (Display codes do the same with bit 1:
+   `0E`.)
+4. The bench takes the ack, drops that code, and its next `0x320` has the next queued code, or 0.
+5. When the BIU sends 0, KAVACH forgets the last acked code, so the same code later is acked again.
+
+The same code repeated without a 0 in between is not acked twice. This is why the command must go every cycle:
+the ack has no other way to reach the BIU.
+
+### Steady state
+
+```
+time (ms)   KAVACH (0x20)                           BIU (0x10)
+    0       0x190 command  ───────────────────────►
+            ◄──────────────────────── 0x220 pressures
+            ◄──────────────────────── 0x320 codes
+            ◄──────────────────────── 0x420 discretes
+            0x720 [05] heartbeat ────────────────►
+            ◄──────────────────────── 0x710 [05] heartbeat
+  250       0x190 command  ───────────────────────►
+            ◄──────────────────── 0x220, 0x320, 0x420
+  500       0x190, 0x720 [05] ───────────────────►
+            ◄──────────── 0x710 [05], 0x220, 0x320, 0x420
+  ...
+```
+
+Neither side waits for the other: both send on their own clocks, so the order inside one 250 ms slot can vary.
+
+### When something changes
+
+| What happens | Messages |
+|--------------|----------|
+| The brake changes (e.g. NB → EB) | Only A9 / SA9 in the next `0x190` change (EB: A9 `00`, SA9 `30` = 2.4). The BIU's `0x220` pressures then move, and `check_brake_malfunction` says `WAIT` until the settling time has passed. |
+| The BIU sends NMT stop, `0x000 [02 20]` | KAVACH stops sending `0x190`, and its heartbeat becomes `0x720 [04]`. With auto-start on, the bench starts it again (step 3). |
+| NMT pre-operational, `0x000 [80 20]` | The same, with heartbeat `0x720 [7F]`. |
+| NMT reset, `0x000 [81 20]` or `[82 20]` | KAVACH boots again: `0x720 [00]`, then pre-operational. Back to step 2. |
+| KAVACH goes quiet (no `0x720` and no `0x190` for 1.5 s, the bench's default) | The bench applies emergency on its own (Annexure-1 4 c), or holds / releases, as set on the bench. |
+| The BIU goes quiet (no `0x710` for 1.5 s) | `biu_link_up()` becomes 0. KAVACH keeps sending. |
+
+### Alongside, not part of this dialogue: the analog card
+
+The analog card (DLConsole: the bench's **Analog → VCC** page) sends its own 34-byte frame, message `0xF1`, to
+KAVACH on UDP port 20000, every 100 ms by default. It carries the BP / BC / MR transducer currents, which
+KAVACH checks independently of the BIU (section 7).
+
+---
+
+## 4. The order you call things in
 
 1. `biu_link_select(BIU_LINK_UDP)`: only for the bench. Skip it for the real BIU (CAN is the default).
 2. `biu_link_init()`: once after power-on. Sends the boot-up message (`0x720 [00]`) and goes **pre-operational**.
@@ -64,7 +230,7 @@ send heartbeats only.
 
 ---
 
-## 4. Build hooks (macros you can define)
+## 5. Build hooks (macros you can define)
 
 | Macro | Default | What it does |
 |-------|---------|--------------|
@@ -79,7 +245,7 @@ send heartbeats only.
 
 ---
 
-## 5. Every public function
+## 6. Every public function
 
 ### Link and network management
 
@@ -178,7 +344,7 @@ FSB, EB, LE). Each row: MR range, BP range, BC range, apply time, release time.
 
 MR is 8-10 everywhere. The times differ per loco (see the table in the `.c`). The range macros are
 `RANGE_TOL(nominal, tolerance)`, `RANGE_UPPER(upper_limit)` (from 0) and `RANGE_BETWEEN(lower, upper)`.
-A loco type not in the table gets BP 0 (section 5, "no table row").
+A loco type not in the table gets BP 0 (section 6, "no table row").
 
 ### Codec helpers
 
@@ -190,7 +356,7 @@ A loco type not in the table gets BP 0 (section 5, "no table row").
 
 ---
 
-## 6. The analog code: `current_to_pressure(current_mA, sensor_fs_bar)`
+## 7. The analog code: `current_to_pressure(current_mA, sensor_fs_bar)`
 
 The pressure transducers on the analog card are 4-20 mA loops. This turns a loop current into kg/cm²:
 
@@ -219,7 +385,7 @@ The VCC reads a channel as `mA = raw / 2^31 × 75` and passes it to `current_to_
 
 ---
 
-## 7. Two links, what goes on the wire
+## 8. Two links, what goes on the wire
 
 | | CAN link (real BIU) | UDP link (DLConsole bench) |
 |-|---------------------|----------------------------|
@@ -233,7 +399,7 @@ KAVACH node 0x20), our heartbeat `0x720`, the BIU's `0x710`, NMT `0x000`.
 
 ---
 
-## 8. The host test
+## 9. The host test
 
 ```
 cd docs/biu-firmware
@@ -250,7 +416,7 @@ link (id, DLC, no header, nothing on UDP).
 
 ---
 
-## 9. The loco simulator (`loco_sim/`)
+## 10. The loco simulator (`loco_sim/`)
 
 It is the **real** `brake_pressure_interface_user.c`, built on a PC with stand-in headers that use real UDP
 sockets and the real clock. It plays the VCC on the loco, so DLConsole's Brake Test Bench and analog card get
@@ -284,7 +450,7 @@ cd docs/biu-firmware
 
 ### Run against DLConsole on the same PC
 
-1. In DLConsole: Tools ▸ Transmit ▸ **Brake Test Bench…**. On **Network**, leave the listen port at 51235 and
+1. In DLConsole: Tools ▸ Simulators ▸ **Brake Test Bench…**. On **Network**, leave the listen port at 51235 and
    the reply port at 50001, and set the reply address to the sender (or 127.0.0.1). Press **Start BIU**.
 2. On **Analog → VCC**, set the host to `127.0.0.1` and the port to `20000`, and start sending.
 3. Run:
