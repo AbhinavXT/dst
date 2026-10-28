@@ -10,6 +10,46 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-382"></a>
+## Session 382 — attachments in the review pack
+
+The second review-pack follow-up (see session 381). What the site saw that
+is not in a frame went in a separate mail: a DMI clip GIF, a photo of the
+cab, a note typed on a phone.
+
+**At the site.** *File ▸ Export review pack…* has an **Attachments** row.
+**Add files…** picks any files (each once), **Remove** takes them off. The
+count line adds *"…, 2 attachment(s) — about 119 kB before compression."*
+
+**In the pack.** `attachments/<name>`, the name made safe (letters, digits,
+`._-`; `..` cannot appear), a second file with the same name gets `_2`.
+Each is listed in the manifest with its size and CRC-32, like every other
+file, and in README.txt under *Attachments*. A file that cannot be read
+refuses the pack by name rather than leaving it out silently. The 1.5 GB
+limit counts the attachments too.
+
+**Where the review happens.** The Review pack panel shows *"Attached:"*
+with a link per file, opened by whatever opens that kind of file on the
+machine. The summary line counts them. An attachment whose CRC does not
+match is named as damaged and not offered.
+
+**Files.** `reviewpack.{h,cpp}` (`Input::attachments`, `Opened::attachments`,
+`attachmentName`, `attachments/` allowed on unpack); `reviewpackdialog.{h,cpp}`
+(the row, `addAttachment`); `sessionwindow.cpp` (the panel's links);
+`tests/test_session382.cpp`, `tests/tests.pro`.
+
+**Tests.** New `session382` (17 checks) on real frames, with `myapp_icon.png`
+as the attachment. Checked: the safe name; three attachments, the duplicate
+renamed; the manifest and README; unpacked byte for byte; the summary; the
+panel's links; a changed attachment named as damaged; a missing one refuses
+the pack and writes no file; the dialog adds each file once and counts them.
+
+**Not tested.** The file dialog behind Add files…, and clicking a link.
+
+**Gate.** Gated with the bundle at push.
+
+---
+
 <a id="session-381"></a>
 ## Session 381 — reopening a review pack keeps the reviewer's notes
 

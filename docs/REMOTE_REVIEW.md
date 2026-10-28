@@ -14,6 +14,8 @@ site has.
 3. **File ▸ Export review pack…**
    - Site, Tester, Loco: filled in once, remembered after that.
    - **What to look at:** a sentence or two. The reviewer reads this first.
+   - **Attachments:** Add files… for what is not in a frame (a DMI clip,
+     a photo of the cab). The reviewer sees them in the Review pack panel.
    - Tabs: all of them by default. Span: everything, or From / To around the
      test.
    - **Export…** writes `ReviewPack_<site>_<date>_<time>.zip`. Send that one

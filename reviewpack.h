@@ -19,6 +19,7 @@
 //    testrun/<run>.testrun.json  the open test run, when there is one
 //    config/kavach.xml         the schema the site decoded with
 //    config/<file>             colour rules, names: what the caller adds
+//    attachments/<file>        what the site adds: clips, photos (session 382)
 //
 //  The manifest says who and where (site, tester, loco), what to look at
 //  (free text), the span, the program and Qt version, the OS, and for every
@@ -56,6 +57,7 @@ struct Input {
     QByteArray schemaXml;      // the kavach.xml in force
     QString schemaFrom;        // its file, or "built in"
     QVector<QPair<QString, QString>> config;   // (name in config/, local path)
+    QStringList attachments;   // local files the site chose; one it cannot read refuses the pack
     qint64 createdMs = 0;      // 0: now
 };
 
@@ -77,6 +79,7 @@ struct Opened {
     QStringList dlrs;          // absolute paths, in the manifest's order
     QString testRunPath;       // "" when the pack has none
     QString schemaPath;        // config/kavach.xml, or ""
+    QStringList attachments;   // absolute paths of the undamaged attachments
     QJsonObject manifest;
     QStringList damaged;       // files whose CRC or size does not match
     bool reused = false;       // this pack was unpacked here before: its notes files were kept (session 381)
@@ -93,6 +96,9 @@ QString defaultDir(const QString &zipPath);
 
 // The file-name part of a tab's capture: "Loco 1" + "21_1" → "Loco_1_21_1".
 QString captureBase(const Capture &c);
+
+// An attachment's name in the pack: "EB 14:03 (2).gif" → "EB_14_03_2_.gif".
+QString attachmentName(const QString &localPath);
 
 }  // namespace ReviewPack
 

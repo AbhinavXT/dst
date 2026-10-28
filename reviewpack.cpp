@@ -139,6 +139,11 @@ QString readme(const QJsonObject &m)
                  .arg(c.value(QStringLiteral("first")).toString(), c.value(QStringLiteral("last")).toString())
                  .arg(c.value(QStringLiteral("notes")).toInt());
     }
+    const QJsonArray att = m.value(QStringLiteral("attachments")).toArray();
+    if (!att.isEmpty()) {
+        t += QStringLiteral("\nAttachments:\n");
+        for (const QJsonValue &v : att) t += QStringLiteral("  %1\n").arg(v.toString());
+    }
     const QString run = m.value(QStringLiteral("test_run")).toString();
     t += QStringLiteral("\nTest run: %1\n").arg(run.isEmpty() ? QStringLiteral("none") : run);
     const QJsonObject schema = m.value(QStringLiteral("schema")).toObject();
@@ -158,6 +163,14 @@ QString captureBase(const Capture &c)
     n += c.tabKey;
     n.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9._-]+")), QStringLiteral("_"));
     return n;
+}
+
+QString attachmentName(const QString &localPath)
+{
+    QString n = QFileInfo(localPath).fileName();
+    n.replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9._-]+")), QStringLiteral("_"));
+    n.replace(QRegularExpression(QStringLiteral("\\.{2,}")), QStringLiteral("."));   // open() refuses ".."
+    return n.isEmpty() ? QStringLiteral("file") : n;
 }
 
 QString defaultDir(const QString &zipPath)
@@ -261,6 +274,29 @@ Written write(const QString &zipPath, const Input &in)
         files.append({ QStringLiteral("config/") + QFileInfo(c.first).fileName(), f.readAll() });
     }
 
+    QJsonArray attached;
+    QSet<QString> attNames;
+    for (const QString &path : in.attachments) {
+        QFile f(path);
+        if (!f.open(QIODevice::ReadOnly)) {   // the site chose it: leaving it out silently would mislead
+            w.error = QStringLiteral("cannot read the attachment %1: %2").arg(QFileInfo(path).fileName(), f.errorString());
+            return w;
+        }
+        const QByteArray data = f.readAll();
+        total += data.size();
+        if (total > kMaxBytes) {
+            w.error = QStringLiteral("more than %1 MB with the attachments: leave some out").arg(kMaxBytes / (1024 * 1024));
+            return w;
+        }
+        const QString base = attachmentName(path);
+        QString name = base;
+        for (int n = 2; attNames.contains(name); ++n)
+            name = QFileInfo(base).completeBaseName() + QStringLiteral("_%1.").arg(n) + QFileInfo(base).suffix();
+        attNames.insert(name);
+        files.append({ QStringLiteral("attachments/") + name, data });
+        attached.append(QStringLiteral("attachments/") + name);
+    }
+
     QJsonObject m;
     m.insert(QStringLiteral("format"), QStringLiteral("dlconsole-review-pack"));
     m.insert(QStringLiteral("version"), 1);
@@ -286,6 +322,7 @@ Written write(const QString &zipPath, const Input &in)
     m.insert(QStringLiteral("program"), prog);
     m.insert(QStringLiteral("captures"), caps);
     m.insert(QStringLiteral("test_run"), runName);
+    if (!attached.isEmpty()) m.insert(QStringLiteral("attachments"), attached);
     QJsonObject schema;
     schema.insert(QStringLiteral("file"), schemaName);
     schema.insert(QStringLiteral("from"), in.schemaFrom);
@@ -341,7 +378,7 @@ Opened open(const QString &zipPath, const QString &intoDir)
     // Only the pack's own folders, one level deep: a name with "..", a
     // drive or a leading slash would write outside the folder.
     static const QRegularExpression okName(
-        QStringLiteral("^(manifest\\.json|README\\.txt|(captures|testrun|config)/[A-Za-z0-9._ -]+)$"));
+        QStringLiteral("^(manifest\\.json|README\\.txt|(captures|testrun|config|attachments)/[A-Za-z0-9._ -]+)$"));
     QDir dir(intoDir);
     if (!dir.mkpath(QStringLiteral("."))) {
         o.error = QStringLiteral("cannot make the folder %1").arg(intoDir);
@@ -383,6 +420,11 @@ Opened open(const QString &zipPath, const QString &intoDir)
     if (!run.isEmpty() && QFile::exists(dir.filePath(run))) o.testRunPath = dir.absoluteFilePath(run);
     const QString schema = o.manifest.value(QStringLiteral("schema")).toObject().value(QStringLiteral("file")).toString();
     if (!schema.isEmpty() && QFile::exists(dir.filePath(schema))) o.schemaPath = dir.absoluteFilePath(schema);
+    for (const QJsonValue &v : o.manifest.value(QStringLiteral("attachments")).toArray()) {
+        const QString name = v.toString();
+        if (!name.isEmpty() && !o.damaged.contains(name) && okName.match(name).hasMatch() && QFile::exists(dir.filePath(name)))
+            o.attachments << QDir::cleanPath(dir.absoluteFilePath(name));
+    }
     o.dir = dir.absolutePath();
     if (o.dlrs.isEmpty()) {
         o.error = o.damaged.isEmpty() ? QStringLiteral("the pack holds no capture")
@@ -404,6 +446,7 @@ QString Opened::summary() const
     if (!tester.isEmpty()) from += QStringLiteral(" (%1)").arg(tester);
     QString s = QStringLiteral("Review pack%1: %2 capture(s), %3 note(s)").arg(from).arg(dlrs.size()).arg(notes);
     if (!testRunPath.isEmpty()) s += QStringLiteral(", a test run");
+    if (!attachments.isEmpty()) s += QStringLiteral(", %1 attachment(s)").arg(attachments.size());
     if (reused) s += QStringLiteral("; unpacked here before, the notes made since kept");
     if (!damaged.isEmpty()) s += QStringLiteral("; DAMAGED, not opened: %1").arg(damaged.join(QStringLiteral(", ")));
     return s;

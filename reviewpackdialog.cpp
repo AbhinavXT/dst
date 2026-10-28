@@ -110,6 +110,31 @@ ReviewPackDialog::ReviewPackDialog(const QVector<ReviewPack::Capture> &captures,
         m_run->setText(tr("The test run: %1").arg(QFileInfo(m_base.testRunPath).fileName()));
         m_run->setChecked(true);
     }
+    // Attachments: what the site saw that is not in a frame (a DMI clip, a
+    // photo of the cab), in the pack beside the captures.
+    m_attach = new QListWidget(this);
+    m_attach->setObjectName(QStringLiteral("reviewPackAttachments"));
+    m_attach->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    m_attach->setMaximumHeight(m_attach->fontMetrics().lineSpacing() * 4 + 12);
+    auto *addFiles = new QPushButton(tr("Add files…"), this);
+    addFiles->setObjectName(QStringLiteral("reviewPackAddFiles"));
+    auto *removeFiles = new QPushButton(tr("Remove"), this);
+    auto *attachButtons = new QVBoxLayout;
+    attachButtons->addWidget(addFiles);
+    attachButtons->addWidget(removeFiles);
+    attachButtons->addStretch(1);
+    auto *attachRow = new QHBoxLayout;
+    attachRow->addWidget(m_attach, 1);
+    attachRow->addLayout(attachButtons);
+    connect(addFiles, &QPushButton::clicked, this, [this]() {
+        for (const QString &p : QFileDialog::getOpenFileNames(this, tr("Attach to the review pack"), QDir::homePath()))
+            addAttachment(p);
+    });
+    connect(removeFiles, &QPushButton::clicked, this, [this]() {
+        qDeleteAll(m_attach->selectedItems());
+        refreshCount();
+    });
+
     auto *also = new QLabel(tr("Always in: each tab's notes, the kavach.xml in force (%1), the colour rules, "
                                "names and field map, the program and Qt versions.")
                                 .arg(m_base.schemaFrom.isEmpty() ? tr("built in") : m_base.schemaFrom),
@@ -137,6 +162,7 @@ ReviewPackDialog::ReviewPackDialog(const QVector<ReviewPack::Capture> &captures,
     span->addLayout(spanRow);
     form->addRow(tr("Span:"), span);
     form->addRow(QString(), m_run);
+    form->addRow(tr("Attachments:"), attachRow);
     auto *buttons = new QHBoxLayout;
     buttons->addWidget(m_status, 1);
     buttons->addWidget(m_export);
@@ -190,6 +216,16 @@ void ReviewPackDialog::setSpan(qint64 fromMs, qint64 toMs)
     refreshCount();
 }
 
+void ReviewPackDialog::addAttachment(const QString &path)
+{
+    for (int i = 0; i < m_attach->count(); ++i)
+        if (m_attach->item(i)->data(Qt::UserRole).toString() == path) return;
+    auto *it = new QListWidgetItem(QFileInfo(path).fileName(), m_attach);
+    it->setData(Qt::UserRole, path);
+    it->setToolTip(QDir::toNativeSeparators(path));
+    refreshCount();
+}
+
 void ReviewPackDialog::setTabChecked(const QString &tabKey, bool on)
 {
     for (int i = 0; i < m_tabs->count(); ++i)
@@ -210,6 +246,8 @@ ReviewPack::Input ReviewPackDialog::input() const
         in.toMs = m_to->dateTime().toMSecsSinceEpoch();
     }
     if (!m_run->isChecked()) in.testRunPath.clear();
+    in.attachments.clear();
+    for (int i = 0; i < m_attach->count(); ++i) in.attachments << m_attach->item(i)->data(Qt::UserRole).toString();
     in.captures.clear();
     for (int i = 0; i < m_tabs->count(); ++i) {
         if (m_tabs->item(i)->checkState() != Qt::Checked) continue;
@@ -238,6 +276,7 @@ void ReviewPackDialog::refreshCount()
         for (const Bookmark &b : c.marks)
             if (b.tabKey == c.tabKey && frames && b.epochMs >= first && b.epochMs <= last) ++notes;
     }
+    for (const QString &p : in.attachments) bytes += QFileInfo(p).size();
     const bool bad = !all && in.toMs <= in.fromMs;
     m_export->setEnabled(frames > 0 && !bad);
     if (bad) {
@@ -245,9 +284,10 @@ void ReviewPackDialog::refreshCount()
     } else if (!frames) {
         m_count->setText(tr("No recorded frames in the chosen tabs and span: nothing to pack."));
     } else {
-        m_count->setText(tr("%1 frames from %2 tab(s), %3 note(s)%4 — about %5 before compression.")
+        m_count->setText(tr("%1 frames from %2 tab(s), %3 note(s)%4%5 — about %6 before compression.")
                              .arg(frames).arg(in.captures.size()).arg(notes)
                              .arg(in.testRunPath.isEmpty() ? QString() : tr(", the test run"))
+                             .arg(in.attachments.isEmpty() ? QString() : tr(", %1 attachment(s)").arg(in.attachments.size()))
                              .arg(mb(bytes)));
     }
 }

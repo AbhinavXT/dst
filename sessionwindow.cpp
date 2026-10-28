@@ -563,6 +563,20 @@ void SessionWindow::setReviewPack(const ReviewPack::Opened &pack)
         lay->addWidget(bad);
     }
 
+    if (!pack.attachments.isEmpty()) {
+        // The site's attachments, opened by whatever opens them on this machine.
+        QStringList links;
+        for (const QString &p : pack.attachments)
+            links << QStringLiteral("<a href=\"%1\">%2</a>").arg(QUrl::fromLocalFile(p).toString(),
+                                                                QFileInfo(p).fileName().toHtmlEscaped());
+        auto *att = new QLabel(tr("<b>Attached:</b> %1").arg(links.join(QStringLiteral(", "))), page);
+        att->setObjectName(QStringLiteral("reviewPackAttachments"));
+        att->setWordWrap(true);
+        att->setOpenExternalLinks(true);
+        att->setTextInteractionFlags(Qt::TextBrowserInteraction);
+        lay->addWidget(att);
+    }
+
     auto *buttons = new QHBoxLayout;
     if (!pack.testRunPath.isEmpty()) {
         auto *run = new QPushButton(tr("Open its test run…"), page);

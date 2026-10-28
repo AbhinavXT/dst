@@ -4,8 +4,8 @@
 // =============================================================================
 //  File ▸ Export review pack… (session 370) — the dialog over reviewpack.h.
 //  Who and where (remembered for next time), what to look at, which tabs,
-//  the span (everything, or From / To), and whether the open test run goes
-//  in. It says, as they change, how many frames and notes that is; Export…
+//  the span (everything, or From / To), whether the open test run goes
+//  in, and files to attach (clips, photos: session 382). It says, as they change, how many frames and notes that is; Export…
 //  writes the .zip and says what went in.
 // =============================================================================
 
@@ -42,6 +42,7 @@ public:
     void setWhat(const QString &text);
     void setSpan(qint64 fromMs, qint64 toMs);   // 0, 0: everything
     void setTabChecked(const QString &tabKey, bool on);
+    void addAttachment(const QString &path);   // what Add files… does per file
     QLabel *countLabel() const { return m_count; }
     StatusLine *status() const { return m_status; }
 
@@ -56,6 +57,7 @@ private:
     QRadioButton *m_all = nullptr, *m_range = nullptr;
     QDateTimeEdit *m_from = nullptr, *m_to = nullptr;
     QCheckBox *m_run = nullptr;
+    QListWidget *m_attach = nullptr;
     QLabel *m_count = nullptr;
     QPushButton *m_export = nullptr;
     StatusLine *m_status = nullptr;
