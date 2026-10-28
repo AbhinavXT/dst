@@ -79,10 +79,12 @@ struct Opened {
     QString schemaPath;        // config/kavach.xml, or ""
     QJsonObject manifest;
     QStringList damaged;       // files whose CRC or size does not match
+    bool reused = false;       // this pack was unpacked here before: its notes files were kept (session 381)
     QString summary() const;   // "Review pack from Site A (tester): 2 captures, 3 notes, a test run"
 };
 
-// Unpack into `intoDir` (made if needed; files already there are replaced).
+// Unpack into `intoDir` (made if needed; files already there are replaced,
+// except the notes files when the same pack was unpacked there before).
 Opened open(const QString &zipPath, const QString &intoDir);
 
 // The folder a pack is unpacked into by default: beside it,

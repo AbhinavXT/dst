@@ -10,6 +10,39 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-381"></a>
+## Session 381 — reopening a review pack keeps the reviewer's notes
+
+The first of the review-pack follow-ups Abhinav picked on 2026-10-28 (381
+reopen, 382 attachments, 383 a page readable without DLConsole, 384 the
+reply pack). Session 370 left this open: *"Reopening a pack unpacks it
+again over `Pack_files/`."* A note the reviewer made goes into the notes
+file beside the unpacked .dlr (session 369). Opening the same pack again put
+the site's notes file back over it.
+
+**What the operator sees.** Opening a pack that was unpacked into that
+folder before (the same `manifest.json`) leaves the notes files there as
+they are. The status bar says *"…; unpacked here before, the notes made
+since kept"*. The captures and the rest are written again from the zip.
+A new export from the site (another manifest) is a new pack, and its notes
+replace the folder's.
+
+**Not done.** If the reviewer took every mark off a capture, its notes file
+is gone (session 369), so a reopen brings back the site's notes for it.
+
+**Files.** `reviewpack.{h,cpp}` (`Opened::reused`, the summary line);
+`tests/test_session381.cpp`, `tests/tests.pro`.
+
+**Tests.** New `session381` (11 checks) on real frames, 14:02-14:03 of
+`replay/loco_1_1_27062026_140226.cap`: first open; a reviewer note written
+beside the unpacked .dlr; the second open keeps it and says so; a new export
+into the same folder brings the site's notes again. `session369` and
+`session370` still green.
+
+**Gate.** Gated with the bundle at push.
+
+---
+
 <a id="session-380"></a>
 ## Session 380 — Firmware Flasher: a finished VCC's block map turns all blue
 

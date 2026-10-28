@@ -27,7 +27,8 @@ picture: it adds the test run and the kavach.xml the site decoded with.
 
 1. **File ▸ Open review pack…**, or drop the `.zip` on the window, or use
    File ▸ Open Recent. It unpacks beside itself (`Pack.zip` → `Pack_files/`)
-   and opens a **Review pack — <site>** window.
+   and opens a **Review pack — <site>** window. Opening the same pack
+   again keeps the notes you made in it (patch 381).
 2. The **Review pack** panel: what to look at, who, where, when; whether the
    site's kavach.xml **is the same as yours**; **Open its test run…**.
 3. The site's notes are on their rows (F2 / Shift+F2).

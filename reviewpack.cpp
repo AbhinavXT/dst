@@ -347,6 +347,12 @@ Opened open(const QString &zipPath, const QString &intoDir)
         o.error = QStringLiteral("cannot make the folder %1").arg(intoDir);
         return o;
     }
+    // The same pack unpacked here before: the notes files beside its
+    // captures hold the reviewer's notes since then, so they are kept.
+    {
+        QFile prev(dir.filePath(QStringLiteral("manifest.json")));
+        o.reused = prev.open(QIODevice::ReadOnly) && prev.readAll() == files.value(QStringLiteral("manifest.json"));
+    }
     QHash<QString, QJsonObject> listed;
     for (const QJsonValue &v : o.manifest.value(QStringLiteral("files")).toArray())
         listed.insert(v.toObject().value(QStringLiteral("name")).toString(), v.toObject());
@@ -360,6 +366,7 @@ Opened open(const QString &zipPath, const QString &intoDir)
             o.damaged << name;
             continue;
         }
+        if (o.reused && name.endsWith(QLatin1String(".notes.json")) && QFile::exists(dir.filePath(name))) continue;
         dir.mkpath(QFileInfo(name).path());
         QSaveFile out(dir.filePath(name));
         if (!out.open(QIODevice::WriteOnly) || out.write(it.value()) != it.value().size() || !out.commit()) {
@@ -397,6 +404,7 @@ QString Opened::summary() const
     if (!tester.isEmpty()) from += QStringLiteral(" (%1)").arg(tester);
     QString s = QStringLiteral("Review pack%1: %2 capture(s), %3 note(s)").arg(from).arg(dlrs.size()).arg(notes);
     if (!testRunPath.isEmpty()) s += QStringLiteral(", a test run");
+    if (reused) s += QStringLiteral("; unpacked here before, the notes made since kept");
     if (!damaged.isEmpty()) s += QStringLiteral("; DAMAGED, not opened: %1").arg(damaged.join(QStringLiteral(", ")));
     return s;
 }
