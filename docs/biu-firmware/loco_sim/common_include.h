@@ -20,7 +20,12 @@ extern LocoParams loco_params;
 static inline uint64_t ClockP_getTimeUsec(void)
 {
     struct timespec now;
+#ifdef _WIN32
+    /* shortcut: wall clock (no CLOCK_MONOTONIC in MSVC); a clock change jumps the timers once */
+    timespec_get(&now, TIME_UTC);
+#else
     clock_gettime(CLOCK_MONOTONIC, &now);
+#endif
     return (uint64_t)now.tv_sec * 1000000U + (uint64_t)now.tv_nsec / 1000U;
 }
 #define BIU_SPEED_VALID()  (loco_params.speed_ok == 1)

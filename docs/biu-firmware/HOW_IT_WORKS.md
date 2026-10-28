@@ -256,6 +256,22 @@ It is the **real** `brake_pressure_interface_user.c`, built on a PC with stand-i
 sockets and the real clock. It plays the VCC on the loco, so DLConsole's Brake Test Bench and analog card get
 real firmware traffic without a VCC.
 
+### Get it on Windows
+
+Every release from patch 389 on has **`loco_sim.exe`** next to `DLConsole.exe` (built by CI with MSVC). Run it from
+a Command Prompt or PowerShell, not by double-clicking, so you can see its output and type keys:
+
+```
+loco_sim.exe --bench 127.0.0.1 --loco wag9 --brake 0 --speed 10
+```
+
+Windows Firewall may ask the first time: allow it on private networks, or the bench's replies and the analog
+frames will not reach it. To build it yourself (Developer Command Prompt for Visual Studio, in `docs\biu-firmware`):
+
+```
+cl /std:c11 /D_CRT_SECURE_NO_WARNINGS /Iloco_sim loco_sim\loco_sim.c brake_pressure_interface_user.c /Fe:loco_sim.exe ws2_32.lib
+```
+
 ### Build (Mac or Linux)
 
 ```
@@ -264,8 +280,7 @@ cd docs/biu-firmware
     loco_sim/loco_sim.c brake_pressure_interface_user.c -o loco_sim/loco_sim
 ```
 
-(`/usr/bin/cc` because `cc` is aliased to `clear` in your shell.) Windows is not supported yet: it uses POSIX
-sockets.
+(`/usr/bin/cc` because `cc` is aliased to `clear` in your shell.)
 
 ### Run against DLConsole on the same PC
 
@@ -294,7 +309,7 @@ sockets.
 | `--can` | off | Runs the CAN link with no driver: nothing is sent, and the bench's UDP frames are refused. Shows the link switch. |
 | `--help` | | The usage. |
 
-### Keys while it runs (type, then Enter)
+### Keys while it runs (type, then Enter; on Windows too)
 
 | Key | What it does |
 |-----|--------------|
@@ -340,4 +355,5 @@ The firmware has no analog-versus-BIU cross-check yet, so the difference is show
 ### Not checked
 
 Run against a stand-in bench script (boot-up, NMT start, `0x190` bytes, `0x220`, an analog frame with
-DLConsole's CRC), not yet against the DLConsole window itself. Not built on Windows.
+DLConsole's CRC), not yet against the DLConsole window itself. On Windows, CI builds it and runs `--help`;
+it has not been run against the bench there.

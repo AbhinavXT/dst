@@ -10,6 +10,36 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-389"></a>
+## Session 389 — the loco simulator on Windows, in every release
+
+Abhinav 2026-10-28: *"Make the sim for windows too"*.
+
+**What changed.** `loco_sim.c` builds with Winsock (MSVC or MinGW) as well as
+POSIX sockets: the socket type, error text, `WSAStartup`, and typed keys
+through the console (`_kbhit` / `_getch`, since Windows cannot `select` on
+stdin). The loop wakes at least every 50 ms to see keys on every platform.
+On Windows the clock is `timespec_get` (MSVC has no `CLOCK_MONOTONIC`).
+
+**What the operator sees.** Each release now has `loco_sim.exe` beside
+`DLConsole.exe`, with a line in the release notes. `HOW_IT_WORKS.md` says how
+to run it from a Command Prompt, the firewall prompt, and how to build it with `cl`.
+
+**Files.** `docs/biu-firmware/loco_sim/{loco_sim.c, common_include.h}`,
+`docs/biu-firmware/HOW_IT_WORKS.md`, `.github/workflows/build.yml`
+(package-windows builds it with `cl /std:c11` and runs `--help`; the release
+attaches it).
+
+**Tests.** Mac: builds with `-Wconversion -Wshadow -Werror`; against the stand-in
+bench script the frames are as in 388, a typed `4` changed the brake to EB,
+and `q` quit. Windows: the CI build and `--help` run.
+
+**Gate:** DLConsole's sources are unchanged since 388's green gate (Qt 5 and Qt 6).
+
+**Not tested:** loco_sim.exe against the Brake Test Bench on Windows; MinGW.
+
+---
+
 <a id="session-388"></a>
 ## Session 388 — BIU firmware: full variable names, how it works, a loco simulator
 

@@ -11,26 +11,53 @@
  *     analog card reads, and what check_brake_malfunction() says of each.
  *
  * Type a brake type (0-5) and Enter to change the brake; i toggles BIU
- * isolate, q quits. See README.md for the options.
+ * isolate, q quits. See ../HOW_IT_WORKS.md for the options.
  *
- * shortcut: POSIX sockets only (Mac, Linux); add Winsock if it is needed on Windows. */
+ * Builds on Windows (Winsock, MSVC or MinGW), Mac and Linux (POSIX sockets). */
+#ifdef _WIN32
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <conio.h>
+#else
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
+
 #include "common_include.h"
 #include "../brake_pressure_interface_user.h"
 #include "enet_user.h"
 
-#include <arpa/inet.h>
 #include <errno.h>
-#include <netinet/in.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/select.h>
-#include <sys/socket.h>
-#include <unistd.h>
+
+/* ---- the few places Winsock and POSIX sockets differ ------------------------------ */
+#ifdef _WIN32
+typedef SOCKET SocketHandle;
+typedef int    SocketLength;
+#define SOCKET_NONE           INVALID_SOCKET
+#define close_socket(handle)  closesocket(handle)
+static const char *socket_error_text(void)
+{
+    static char text[32];
+    snprintf(text, sizeof(text), "Winsock error %d", WSAGetLastError());
+    return text;
+}
+#else
+typedef int       SocketHandle;
+typedef socklen_t SocketLength;
+#define SOCKET_NONE           (-1)
+#define close_socket(handle)  close(handle)
+static const char *socket_error_text(void) { return strerror(errno); }
+#endif
 
 LocoParams loco_params;
 
-static int      s_biu_socket = -1;        /* bound to the reply port: the bench answers the sender */
-static int      s_analog_socket = -1;
+static SocketHandle s_biu_socket = SOCKET_NONE;     /* bound to the reply port: the bench answers the sender */
+static SocketHandle s_analog_socket = SOCKET_NONE;
 static uint32_t s_bench_override_ip;      /* host order; 0 = use the firmware's BIU_SIM_IP0..3 */
 static uint16_t s_bench_port = 51234;
 
@@ -50,8 +77,8 @@ void UDP_Send(const char *buffer, ip_addr_t *ip_address, uint16_t port, uint16_t
     destination.sin_addr.s_addr = htonl(s_bench_override_ip ? s_bench_override_ip : ip_address->addr);
     destination.sin_port = htons(s_bench_port);
     (void)port;   /* the firmware's BIU_SIM_PORT; --bench-port sets it here */
-    if (sendto(s_biu_socket, buffer, length, 0, (struct sockaddr *)&destination, sizeof(destination)) < 0)
-        fprintf(stderr, "loco_sim: send to the bench failed: %s\n", strerror(errno));
+    if (sendto(s_biu_socket, buffer, length, 0, (struct sockaddr *)&destination, (SocketLength)sizeof(destination)) < 0)
+        fprintf(stderr, "loco_sim: send to the bench failed: %s\n", socket_error_text());
 }
 
 /* ---- the analog card's frame (DLConsole cabio.h, session 346-347) -------------------
@@ -169,20 +196,60 @@ static void print_report(uint8_t brake_type, float analog_full_scale_bar)
 }
 
 /* ---- set-up ----------------------------------------------------------------------- */
-static int open_udp_socket(uint16_t port)
+static SocketHandle open_udp_socket(uint16_t port)
 {
-    const int socket_fd = socket(AF_INET, SOCK_DGRAM, 0);
-    if (socket_fd < 0) return -1;
+    const SocketHandle socket_handle = socket(AF_INET, SOCK_DGRAM, 0);
+    if (socket_handle == SOCKET_NONE) return SOCKET_NONE;
     const int reuse = 1;
-    setsockopt(socket_fd, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+    setsockopt(socket_handle, SOL_SOCKET, SO_REUSEADDR, (const char *)&reuse, (SocketLength)sizeof(reuse));
     struct sockaddr_in local;
     memset(&local, 0, sizeof(local));
     local.sin_family = AF_INET;
     local.sin_addr.s_addr = htonl(INADDR_ANY);
     local.sin_port = htons(port);
-    if (bind(socket_fd, (struct sockaddr *)&local, sizeof(local)) < 0) { close(socket_fd); return -1; }
-    return socket_fd;
+    if (bind(socket_handle, (struct sockaddr *)&local, (SocketLength)sizeof(local)) != 0) {
+        close_socket(socket_handle);
+        return SOCKET_NONE;
+    }
+    return socket_handle;
 }
+
+/* One typed line, without blocking the 250 ms loop. 1 when a line is ready in
+ * `line`, 0 when not yet, -1 at the end of input (no terminal: stop asking). */
+#ifdef _WIN32
+static int read_typed_line(char *line, size_t size)
+{
+    static char pending[64];
+    static size_t pending_length;
+    while (_kbhit()) {
+        const int key = _getch();
+        if (key == '\r') {
+            _putch('\r'); _putch('\n');
+            pending[pending_length] = '\0';
+            snprintf(line, size, "%s", pending);
+            pending_length = 0;
+            return 1;
+        }
+        if (key == '\b') {
+            if (pending_length > 0) { --pending_length; _putch('\b'); _putch(' '); _putch('\b'); }
+        } else if (pending_length + 1 < sizeof(pending)) {
+            pending[pending_length++] = (char)key;
+            _putch(key);
+        }
+    }
+    return 0;
+}
+#else
+static int read_typed_line(char *line, size_t size)
+{
+    fd_set readable;
+    FD_ZERO(&readable);
+    FD_SET(STDIN_FILENO, &readable);
+    struct timeval no_wait = { 0, 0 };
+    if (select(STDIN_FILENO + 1, &readable, NULL, NULL, &no_wait) <= 0) return 0;
+    return fgets(line, (int)size, stdin) ? 1 : -1;
+}
+#endif
 
 static void usage(void)
 {
@@ -230,10 +297,15 @@ int main(int argument_count, char **arguments)
     }
     loco_params.train_type = train_mode == TRAIN_MODE_LEM ? LIGHT_ENGINE_TYPE : FORMATION_TYPE;
 
+#ifdef _WIN32
+    WSADATA winsock_data;
+    if (WSAStartup(MAKEWORD(2, 2), &winsock_data) != 0) { fprintf(stderr, "loco_sim: Winsock did not start\n"); return 1; }
+#endif
     s_biu_socket = open_udp_socket(reply_port);
     s_analog_socket = open_udp_socket(analog_port);
-    if (s_biu_socket < 0 || s_analog_socket < 0) {
-        fprintf(stderr, "loco_sim: cannot bind UDP %u / %u: %s\n", (unsigned)reply_port, (unsigned)analog_port, strerror(errno));
+    if (s_biu_socket == SOCKET_NONE || s_analog_socket == SOCKET_NONE) {
+        fprintf(stderr, "loco_sim: cannot bind UDP %u / %u (another program on the port?): %s\n",
+                (unsigned)reply_port, (unsigned)analog_port, socket_error_text());
         return 1;
     }
 
@@ -264,39 +336,44 @@ int main(int argument_count, char **arguments)
 
         fd_set readable;
         FD_ZERO(&readable);
-        if (stdin_open) FD_SET(STDIN_FILENO, &readable);
         FD_SET(s_biu_socket, &readable);
         FD_SET(s_analog_socket, &readable);
-        const int highest_fd = s_biu_socket > s_analog_socket ? s_biu_socket : s_analog_socket;
-        const uint64_t wait_us = next_command_us > now_us ? next_command_us - now_us : 0U;
-        struct timeval timeout = { (time_t)(wait_us / 1000000U), (suseconds_t)(wait_us % 1000000U) };
-        if (select(highest_fd + 1, &readable, NULL, NULL, &timeout) < 0) {
+        const SocketHandle highest_socket = s_biu_socket > s_analog_socket ? s_biu_socket : s_analog_socket;
+        /* Wake at least every 50 ms so typed keys are seen (Windows cannot select on the console). */
+        uint64_t wait_us = next_command_us > now_us ? next_command_us - now_us : 0U;
+        if (wait_us > 50000U) wait_us = 50000U;
+        struct timeval timeout;
+        timeout.tv_sec = 0;
+        timeout.tv_usec = (int)wait_us;
+        if (select((int)highest_socket + 1, &readable, NULL, NULL, &timeout) < 0) {
             if (errno == EINTR) continue;
-            perror("select");
+            fprintf(stderr, "loco_sim: select failed: %s\n", socket_error_text());
             return 1;
         }
 
-        uint8_t datagram[256];
+        char datagram_bytes[256];
+        const uint8_t *datagram = (const uint8_t *)datagram_bytes;
         if (FD_ISSET(s_biu_socket, &readable)) {
-            const ssize_t length = recv(s_biu_socket, datagram, sizeof(datagram), 0);
+            const int length = (int)recv(s_biu_socket, datagram_bytes, sizeof(datagram_bytes), 0);
             if (length > 0 && !process_biu_udp_frame(datagram, (uint16_t)length))
-                printf("loco_sim: BIU datagram of %zd bytes not taken (COB-ID 0x%03X)\n", length,
+                printf("loco_sim: BIU datagram of %d bytes not taken (COB-ID 0x%03X)\n", length,
                        length >= 2 ? (unsigned)(datagram[0] | (datagram[1] << 8)) : 0U);
         }
         if (FD_ISSET(s_analog_socket, &readable)) {
-            const ssize_t length = recv(s_analog_socket, datagram, sizeof(datagram), 0);
+            const int length = (int)recv(s_analog_socket, datagram_bytes, sizeof(datagram_bytes), 0);
             AnalogFrame frame;
             if (length > 0 && parse_analog_frame(datagram, (size_t)length, &frame)) {
                 frame.received_ms = (uint32_t)(ClockP_getTimeUsec() / 1000U);
                 if (frame.received_ms == 0U) frame.received_ms = 1U;
                 s_last_analog = frame;
             } else if (length > 0) {
-                printf("loco_sim: analog datagram of %zd bytes is not a 34-byte 0xF1 frame\n", length);
+                printf("loco_sim: analog datagram of %d bytes is not a 34-byte 0xF1 frame\n", length);
             }
         }
-        if (stdin_open && FD_ISSET(STDIN_FILENO, &readable)) {
-            char line[64];
-            if (!fgets(line, sizeof(line), stdin)) { stdin_open = 0; continue; }
+        char line[64];
+        const int typed = stdin_open ? read_typed_line(line, sizeof(line)) : 0;
+        if (typed < 0) stdin_open = 0;
+        if (typed > 0) {
             if (line[0] == 'q') break;
             if (line[0] >= '0' && line[0] <= '5') brake_type = (uint8_t)(line[0] - '0');
             else if (line[0] == 'i') loco_params.dmi_context_values.biu_isolated ^= 1U;
@@ -305,7 +382,10 @@ int main(int argument_count, char **arguments)
                    (unsigned)loco_params.dmi_context_values.biu_isolated, (unsigned)loco_params.speed_ok);
         }
     }
-    close(s_biu_socket);
-    close(s_analog_socket);
+    close_socket(s_biu_socket);
+    close_socket(s_analog_socket);
+#ifdef _WIN32
+    WSACleanup();
+#endif
     return 0;
 }

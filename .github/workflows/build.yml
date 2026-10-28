@@ -181,10 +181,22 @@ jobs:
           Start-Sleep -Seconds 2
           if (Test-Path $dir) { throw "the temporary folder was left behind: $dir" }
 
+      # The BIU firmware's loco simulator (docs/biu-firmware/HOW_IT_WORKS.md),
+      # a console program next to DLConsole.exe in the release.
+      - name: Loco simulator (loco_sim.exe)
+        shell: cmd
+        run: |
+          if not exist dist mkdir dist
+          if not exist build\loco_sim mkdir build\loco_sim
+          cl /nologo /std:c11 /W3 /O2 /D_CRT_SECURE_NO_WARNINGS /Idocs\biu-firmware\loco_sim /Fobuild\loco_sim\ docs\biu-firmware\loco_sim\loco_sim.c docs\biu-firmware\brake_pressure_interface_user.c /Fe:dist\loco_sim.exe ws2_32.lib
+          dist\loco_sim.exe --help
+
       - uses: actions/upload-artifact@v4
         with:
           name: DLConsole-windows
-          path: dist/DLConsole.exe
+          path: |
+            dist/DLConsole.exe
+            dist/loco_sim.exe
 
   # Built on AlmaLinux 8 (a RHEL 8 rebuild, glibc 2.28) so the AppImage runs
   # on RHEL 8 and everything newer; built on a newer system, it would not.
@@ -245,11 +257,13 @@ jobs:
           TAG: ${{ github.ref_name }}
         run: |
           n="${TAG#patch-}"
-          gh release create "$TAG" dist/DLConsole.exe dist/DLConsole-x86_64.AppImage \
+          gh release create "$TAG" dist/DLConsole.exe dist/DLConsole-x86_64.AppImage dist/loco_sim.exe \
             --repo "$GITHUB_REPOSITORY" --title "DLConsole $TAG" --notes "Single-file DLConsole, nothing to install.
 
           - **Windows 10/11:** \`DLConsole.exe\`. Start it. It unpacks to a temporary folder, runs, and cleans up when closed. Windows may warn about an unrecognised app the first time: More info, then Run anyway.
           - **Linux (RHEL 8 / 9 and newer, Ubuntu 20.04 and newer, other distributions with glibc 2.28 or newer):** \`DLConsole-x86_64.AppImage\`. \`chmod +x\` it, then start it. If it says FUSE is missing: \`./DLConsole-x86_64.AppImage --appimage-extract-and-run\`.
+
+          - **Loco simulator (Windows):** \`loco_sim.exe\`, a console program that plays the VCC against the Brake Test Bench and the analog card. Run it from a Command Prompt: \`loco_sim.exe --bench 127.0.0.1\` (\`--help\` for the options). How it works: [docs/biu-firmware/HOW_IT_WORKS.md](https://github.com/$GITHUB_REPOSITORY/blob/$TAG/docs/biu-firmware/HOW_IT_WORKS.md).
 
           Files read from beside the program (color_rules.json, friendly_names.csv, fieldmap.json, testcases.json) go beside the downloaded file.
 
