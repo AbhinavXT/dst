@@ -6,7 +6,7 @@ then CHANGELOG sessions 363 back to 359.
 
 ## Where things stand
 
-- **Patch 360:** Tools ▸ Transmit ▸ Brake Test Bench (`brakebenchwindow`,
+- **Patch 360:** Tools ▸ Simulators ▸ Brake Test Bench (Transmit until 392) (`brakebenchwindow`,
   `biusim`, `biuprotocol`, `brakeplant`, `simwidgets`). The BIU listens on UDP
   51235 (51234 until patch 390, when it clashed with the log port) and answers on 50001, as in RDSO MP.0.01.00.31 Rev.05 Annexure-1. The
   analog card and the brake relays moved here from the Cab I/O Simulator.

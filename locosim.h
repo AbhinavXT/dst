@@ -1,7 +1,7 @@
 #ifndef LOCOSIM_H
 #define LOCOSIM_H
 // =============================================================================
-//  LocoSim (session 391) -- the loco's motion for Tools > Transmit > Loco
+//  LocoSim (session 391) -- the loco's motion for Tools > Simulators > Loco
 //  Simulator, and the speed sensor message it sends the VCC.
 //
 //  Step 1 of bringing LocoTcasSimulator into DLConsole: speed and the two speed

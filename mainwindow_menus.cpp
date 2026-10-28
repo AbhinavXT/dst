@@ -490,6 +490,9 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     auto *monitorMenu  = toolsMenu->addMenu(tr("&Monitor"));      // watch it run
     auto *inspectMenu  = toolsMenu->addMenu(tr("&Inspect"));      // read a frame
     auto *transmitMenu = toolsMenu->addMenu(tr("&Transmit"));     // SENDS packets
+    // Session 392: the stand-ins for the loco's equipment (cab, BIU, the loco
+    // itself) out of Transmit: they send, but they are benches, not packet tools.
+    auto *simulatorsMenu = toolsMenu->addMenu(tr("Sim&ulators"));
     // Session 246: Monitor had grown to nineteen entries. Four groups, by
     // what the window shows: the run as it happens, the loco's running over
     // time, its equipment over time, and a report to save.
@@ -788,9 +791,8 @@ MainWindow::MenuRoots MainWindow::buildMenus()
 
     // Session 324: stands in for the cab on the VCC's IOA serial link --
     // answers its input requests with switches the operator toggles or
-    // flickers, and lights its output data as lamps. It sends, so it is here.
-    transmitMenu->addSeparator();
-    QAction *actCabIoSim = transmitMenu->addAction(tr("Cab &I/O Simulator…"));
+    // flickers, and lights its output data as lamps.
+    QAction *actCabIoSim = simulatorsMenu->addAction(tr("Cab &I/O Simulator…"));
     actCabIoSim->setObjectName(QStringLiteral("actCabIoSim"));
     actCabIoSim->setToolTip(tr("Simulate the cab's input controllers to the VCC over serial (toggle, NO/NC "
                                "states, 250 ms flicker) and show the output data it sends back"));
@@ -803,7 +805,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
 
     // Session 360: the BIU, the analog card and the brake pressures, for
     // testing the VCC's brake logic. Over UDP, so with or without serial.
-    QAction *actBrakeBench = transmitMenu->addAction(tr("&Brake Test Bench…"));
+    QAction *actBrakeBench = simulatorsMenu->addAction(tr("&Brake Test Bench…"));
     actBrakeBench->setObjectName(QStringLiteral("actBrakeBench"));
     actBrakeBench->setToolTip(tr("Stand in for the BIU (CAN over UDP: heartbeat, NMT, status frames, faults) and the "
                                  "analog card's BP / BC / MR, with the pressures moving as the brakes ask"));
@@ -811,7 +813,7 @@ MainWindow::MenuRoots MainWindow::buildMenus()
 
     // Session 391: LocoTcasSimulator in DLConsole, step 1: the loco's speed and
     // its two speed sensors' messages to the VCCs. Over UDP.
-    QAction *actLocoSim = transmitMenu->addAction(tr("&Loco Simulator…"));
+    QAction *actLocoSim = simulatorsMenu->addAction(tr("&Loco Simulator…"));
     actLocoSim->setObjectName(QStringLiteral("actLocoSim"));
     actLocoSim->setToolTip(tr("Drive a simulated loco (speed, accelerate, decelerate, direction) and send its two "
                               "speed sensors' tachometer pulses to the VCCs every 100 ms"));

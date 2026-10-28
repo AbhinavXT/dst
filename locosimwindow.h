@@ -1,7 +1,7 @@
 #ifndef LOCOSIMWINDOW_H
 #define LOCOSIMWINDOW_H
 // =============================================================================
-//  Loco Simulator (session 391) -- Tools > Transmit.
+//  Loco Simulator (session 391) -- Tools > Simulators.
 //
 //  LocoTcasSimulator brought into DLConsole, a step at a time:
 //    Speed   the loco's speed (set, accelerate, decelerate, hold), direction,

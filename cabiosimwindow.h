@@ -1,7 +1,7 @@
 #ifndef CABIOSIMWINDOW_H
 #define CABIOSIMWINDOW_H
 // =============================================================================
-//  Cab I/O Simulator (session 324) -- Tools > Transmit.
+//  Cab I/O Simulator (session 324) -- Tools > Simulators.
 //
 //  Stands in for the cab on the VCC's IOA serial link:
 //    Inputs -> VCC   the input controllers. Each switch is toggled by a click,

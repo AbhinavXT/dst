@@ -357,11 +357,13 @@ int main(int argc, char **argv) {
     QMenu *monitor  = sub(tools, "Monitor");
     QMenu *inspect  = sub(tools, "Inspect");
     QMenu *transmit = sub(tools, "Transmit");
+    QMenu *simulators = sub(tools, "Simulators");
     QMenu *schema   = sub(tools, "Schema");
     QMenu *testcase = sub(tools, "Test cases");
     CHECK(monitor,  "Tools > Monitor");
     CHECK(inspect,  "Tools > Inspect");
     CHECK(transmit, "Tools > Transmit");
+    CHECK(simulators, "Tools > Simulators");
     CHECK(schema,   "Tools > Schema");
     CHECK(testcase, "Tools > Test cases");
 
@@ -635,7 +637,7 @@ int main(int argc, char **argv) {
     CHECK(transmit && findAction(transmit, "Field Sweep"), "Transmit > Field Sweep");
     CHECK(transmit && findAction(transmit, "Selected row"), "Transmit > Selected row -> Packet Maker");
     // Session 324: the Cab I/O Simulator answers the VCC, so it is in Transmit.
-    if (QAction *cabIo = transmit ? findAction(transmit, "Cab I/O Simulator") : nullptr) {
+    if (QAction *cabIo = simulators ? findAction(simulators, "Cab I/O Simulator") : nullptr) {
         cabIo->trigger();
         cabIo->trigger();
         int count = 0;
@@ -646,14 +648,14 @@ int main(int argc, char **argv) {
                 opened = top;
             }
         }
-        CHECK(count == 1, "Transmit > Cab I/O Simulator opens one window, raised again on a second trigger");
+        CHECK(count == 1, "Simulators > Cab I/O Simulator opens one window, raised again on a second trigger");
         if (opened) opened->close();
     } else {
-        CHECK(false, "Transmit > Cab I/O Simulator");
+        CHECK(false, "Simulators > Cab I/O Simulator");
     }
     // Session 360: the Brake Test Bench, beside it; one window, and it hears
     // the Cab I/O Simulator's output word when both are open.
-    if (QAction *bench = transmit ? findAction(transmit, "Brake Test Bench") : nullptr) {
+    if (QAction *bench = simulators ? findAction(simulators, "Brake Test Bench") : nullptr) {
         bench->trigger();
         bench->trigger();
         int count = 0;
@@ -661,9 +663,9 @@ int main(int argc, char **argv) {
         for (QWidget *top : QApplication::topLevelWidgets())
             if (auto *b = qobject_cast<BrakeBenchWindow *>(top))
                 if (b->isVisible()) { ++count; opened = b; }
-        CHECK(count == 1, "Transmit > Brake Test Bench opens one window, raised again on a second trigger");
+        CHECK(count == 1, "Simulators > Brake Test Bench opens one window, raised again on a second trigger");
 #ifdef DL_HAVE_SERIAL
-        if (QAction *cabIo = findAction(transmit, "Cab I/O Simulator")) {
+        if (QAction *cabIo = findAction(simulators, "Cab I/O Simulator")) {
             cabIo->trigger();
             CabIoSimWindow *sim = nullptr;
             for (QWidget *top : QApplication::topLevelWidgets())
@@ -683,10 +685,10 @@ int main(int argc, char **argv) {
 #endif
         if (opened) opened->close();
     } else {
-        CHECK(false, "Transmit > Brake Test Bench");
+        CHECK(false, "Simulators > Brake Test Bench");
     }
     // Session 391: the Loco Simulator, one window.
-    if (QAction *locoSim = transmit ? findAction(transmit, "Loco Simulator") : nullptr) {
+    if (QAction *locoSim = simulators ? findAction(simulators, "Loco Simulator") : nullptr) {
         locoSim->trigger();
         locoSim->trigger();
         int count = 0;
@@ -694,13 +696,17 @@ int main(int argc, char **argv) {
         for (QWidget *top : QApplication::topLevelWidgets())
             if (auto *window = qobject_cast<LocoSimWindow *>(top))
                 if (window->isVisible()) { ++count; opened = window; }
-        CHECK(count == 1, "Transmit > Loco Simulator opens one window, raised again on a second trigger");
+        CHECK(count == 1, "Simulators > Loco Simulator opens one window, raised again on a second trigger");
         CHECK(opened && !opened->running(), "and does not send until Start");
         if (opened) opened->close();
     } else {
-        CHECK(false, "Transmit > Loco Simulator");
+        CHECK(false, "Simulators > Loco Simulator");
     }
-    // The point of the group: nothing that sends may sit outside it.
+    // Session 392: the simulators have their own group, not Transmit.
+    CHECK(transmit && !findAction(transmit, "Cab I/O Simulator") && !findAction(transmit, "Brake Test Bench")
+              && !findAction(transmit, "Loco Simulator"),
+          "no simulator is left in Transmit");
+    // The point of the group: no packet tool may sit outside it.
     CHECK(!findAction(tools, "Packet Maker") && !findAction(tools, "Field Sweep"),
           "no transmitting tool is left loose in Tools");
 

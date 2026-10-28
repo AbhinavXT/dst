@@ -10,6 +10,33 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-392"></a>
+## Session 392 — Tools ▸ Simulators
+
+Abhinav 2026-10-29: *"bring cab io sim, brake pressure sim and loco sim out of
+transmit and into a different category"*.
+
+**What the operator sees.** A new **Tools ▸ Simulators** submenu, after
+Transmit, holding **Cab I/O Simulator…**, **Brake Test Bench…** and **Loco
+Simulator…**. Transmit keeps the packet tools (Packet Maker, Field Sweep,
+Selected row → Packet Maker). The actions keep their object names and
+shortcuts; Cab I/O Simulator is still disabled in a build without serial.
+
+**Files:** `mainwindow_menus.cpp`; header comments in `cabiosimwindow.h`,
+`brakebenchwindow.h`, `locosimwindow.h`, `locosim.h`; `docs/BRAKE_BENCH_NEXT.md`;
+`tests/menuaudit_main.cpp`.
+
+**Tests:** menu audit: Tools ▸ Simulators exists, each of the three opens one
+window from there, and none is left in Transmit.
+
+**Gate:** menu audit on Qt 6.11 passed; the full gate runs with the bundle at
+push.
+
+**Not changed:** `docs/biu-firmware/HOW_IT_WORKS.md` still says Tools ▸
+Transmit ▸ Brake Test Bench (that file has uncommitted edits of Abhinav's).
+
+---
+
 <a id="session-391"></a>
 ## Session 391 — Loco Simulator, step 1: speed and the two speed sensors
 

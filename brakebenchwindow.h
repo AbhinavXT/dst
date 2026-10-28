@@ -1,7 +1,7 @@
 #ifndef BRAKEBENCHWINDOW_H
 #define BRAKEBENCHWINDOW_H
 // =============================================================================
-//  Brake Test Bench (session 360) -- Tools > Transmit.
+//  Brake Test Bench (session 360) -- Tools > Simulators.
 //
 //  Everything the VCC's brake logic talks to, in one window:
 //    Bench           BP, BC and MR as dials, moving toward what the BIU (or
