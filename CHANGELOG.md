@@ -10,6 +10,35 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-380"></a>
+## Session 380 — Firmware Flasher: a finished VCC's block map turns all blue
+
+Abhinav: *"if a ticked vcc is not up then all the squares in flasher fill
+up but some of the last squares remain orange until the rest of the vcc
+are flashed."*
+
+**Cause.** The board's COMPLETE carries no bitmap, so on success the
+engine reports an all-held one (session 323). The block map paints a
+block orange ("resent this round") when the previous bitmap had it
+missing. The last checkpoint's missing tail therefore turned orange, and
+no newer bitmap came to settle it. Another card being shown cleared it,
+so with a VCC that never answers the orange stayed until the batch ended.
+
+**What the operator sees.** When a VCC is verified, its map turns all
+blue, even while the other VCCs are still running or failing.
+
+**Files.** `flasher/flasherflashingpage.cpp` (`finishCard` redraws the
+shown card's map from its final bitmap, as settled),
+`flasher/blockmapwidget.h` (`repairedCount()`, for the test).
+
+**Tests.** `test_session323` (two VCCs, one absent): no orange cell is
+left on the verified VCC's map when the batch ends. The check fails
+without the fix.
+
+**Gate.** `verify.sh` green on Qt 6 and Qt 5.15.
+
+---
+
 <a id="session-379"></a>
 ## Session 379 — Packet Maker: loco 1 and loco 2 as the default destinations
 

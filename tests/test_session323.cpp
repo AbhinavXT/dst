@@ -128,6 +128,8 @@ TEST_SUITE(session323)
         CHECK(plan.size() == 2 && plan.entries().at(0).outcome == Flasher::CardOutcome::Accepted
                   && plan.entries().at(1).outcome == Flasher::CardOutcome::Failed,
               "the VCC that answered is verified, the other failed");
+        CHECK(window.flashingPage()->blockMap()->repairedCount() == 0,
+              "the verified VCC's map is all blue while the other is still failing");
         window.flashingPage()->showEntry(0);
         const int held = window.flashingPage()->blockMap()->heldCount();
         CHECK(held == 300 + 1, QByteArray("the verified VCC's map is full: ") + QByteArray::number(held) + " of 301");

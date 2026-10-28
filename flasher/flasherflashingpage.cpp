@@ -729,6 +729,12 @@ void FlasherFlashingPage::finishCard(int index, const Flasher::BatchEntry &entry
     view.succeeded = Flasher::outcomeIsSuccess(entry.outcome);
     const qint64 now = view.clock.isValid() ? view.clock.elapsed() : 0;
     view.endedMs = now;
+    // A finished card holds every block: the completion bitmap would leave the
+    // last checkpoint's missing tail orange (resent) until another card is shown.
+    if (view.succeeded && index == m_shown && !view.bitmap.isEmpty()) {
+        m_blockMap->reset(view.totalBlocks);
+        m_blockMap->setBitmap(view.bitmap, view.totalBlocks);
+    }
     if (view.phase != kflash::Phase::Idle) {
         view.phaseEndMs[phaseSlot(view.phase)] = now;
     }

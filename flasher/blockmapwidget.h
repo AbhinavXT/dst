@@ -25,6 +25,7 @@ public:
     bool  hasHeightForWidth() const override { return true; }
     int   heightForWidth(int width) const override;
     int   heldCount() const;   /* acknowledged cells (Held or Repaired), for the tests */
+    int   repairedCount() const { return cells_.count(Repaired); }   /* orange cells, for the tests */
 
 public slots:
     void reset(quint32 totalBlocks);
