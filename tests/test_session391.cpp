@@ -14,7 +14,7 @@
 #include <cmath>
 
 // =============================================================================
-//  Session 391 — Loco Simulator, step 1: speed and the two speed sensors.
+//  Session 391 \u2014 Loco Simulator, step 1: speed and the two speed sensors.
 //  The message is LocoTcasSimulator's LPIM_LKAVACH_INFO_MSG (19 B, packed LE).
 //  No real one has been captured: the expected bytes are laid out by hand from
 //  its C struct (header src/dest/msg id/length, reader, dir, tacho 1, tacho 2,

@@ -25,6 +25,7 @@
 #include "brakeplant.h"
 #ifdef DL_HAVE_SERIAL
 #include "cabiosimwindow.h"
+#include "locosimwindow.h"
 #include "serialconsolewindow.h"
 #include "serialmanager.h"
 #endif
@@ -98,6 +99,7 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "faultpanelwindow.h"
 #include "nmslogwindow.h"
 #include <QCheckBox>
+#include <QDoubleSpinBox>
 #include "roundtripwindow.h"
 #include "runreportwindow.h"
 #include "sessionwindow.h"
@@ -217,6 +219,23 @@ int main(int argc, char **argv)
             // (A9 3.5 / SA9 2.4, the bytes the firmware sends), a fault code
             // in flight, the air on its way. SHOT_TAB=0..5: Bench / BIU -> VCC /
             // Network / Analog / Brake relays / Frames.
+            // Session 393: the Loco Simulator running at 72 km/h, accelerating,
+            // sensor 2 channel 2 slipping at 90. SHOT_TAB=0..2: Drive / Frames / Settings.
+            if (which == QLatin1String("locosim")) {
+                auto *w = new LocoSimWindow(nullptr);
+                qint64 *t = new qint64(1782558147000LL);
+                w->setClock([t]() { return *t; });
+                w->setSendSink([](const QByteArray &) {});
+                for (QCheckBox *box : w->findChildren<QCheckBox *>()) box->setChecked(true);
+                w->findChild<QDoubleSpinBox *>(QStringLiteral("locoSimSpeed"))->setValue(72);
+                w->findChild<QDoubleSpinBox *>(QStringLiteral("locoSimChannel22"))->setValue(90);
+                w->motion().setDrive(LocoSim::Motion::Drive::Accelerate);
+                w->start();
+                for (int tick = 0; tick < 40; ++tick) { *t += 100; w->tick(); }
+                const int tab = qEnvironmentVariableIntValue("SHOT_TAB");
+                if (auto *tabs = w->findChild<QTabWidget *>()) tabs->setCurrentIndex(tab);
+                win = w;
+            }
             if (which == QLatin1String("brakebench")) {
                 auto *w = new BrakeBenchWindow(nullptr);
                 qint64 *t = new qint64(1782558147000LL);
@@ -1281,6 +1300,7 @@ int main(int argc, char **argv)
             if (which == QLatin1String("session")) win->resize(1200, 700);   // its own default
             else if (which == QLatin1String("cabio")) win->resize(1240, 860);
             else if (which == QLatin1String("brakebench")) win->resize(1280, 820);
+            else if (which == QLatin1String("locosim")) win->resize(1120, 720);
             else if (small) {
                 const QStringList wh = qEnvironmentVariable("SHOT_SIZE").split(QLatin1Char('x'));
                 if (wh.size() == 2) win->resize(wh.at(0).toInt(), wh.at(1).toInt());

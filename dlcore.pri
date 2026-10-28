@@ -143,6 +143,7 @@ SOURCES += \
     $$PWD/simpreview.cpp \
     $$PWD/locosim.cpp \
     $$PWD/locosimwindow.cpp \
+    $$PWD/speedgauge.cpp \
     $$PWD/taglibrary.cpp \
     $$PWD/tagbuilderwindow.cpp \
     $$PWD/twolocowindow.cpp \
@@ -354,6 +355,7 @@ HEADERS += \
     $$PWD/simpreview.h \
     $$PWD/locosim.h \
     $$PWD/locosimwindow.h \
+    $$PWD/speedgauge.h \
     $$PWD/taglibrary.h \
     $$PWD/tagbuilderwindow.h \
     $$PWD/twolocowindow.h \

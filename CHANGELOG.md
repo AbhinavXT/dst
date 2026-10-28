@@ -10,6 +10,51 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-393"></a>
+## Session 393 — the Loco Simulator looks like the other simulators
+
+Abhinav 2026-10-29: *"now make the UI for speed sim better, what is this no
+speedometers, no other things"*, *"the speed sim does not look like a part of
+the new dl console?"*, *"make the UI better"*.
+
+**What the operator sees.** The Brake Test Bench's look (the simulators' style
+sheet, cards, segmented buttons, a primary Start that turns red as Stop), on
+three tabs:
+- **Drive.**
+  - **Loco card:** a speedometer to drive with (click or drag to set; wheel /
+    arrows 1 km/h, Page Up/Down 10), red above the max speed, the direction in
+    its dial. Under it the speed box, the odometer (Zero), Decelerate / Hold /
+    Accelerate at a rate, quick speeds (0, 15, 30, 60, 90, 110, 120), Forward /
+    Reverse, max speed.
+  - **A card per speed sensor:** on/off, a gauge per channel reading the speed
+    its pulses say, the pulses sent, and the channel's own speed (slip, skid).
+- **Frames:** every message sent (the last 500): time, sensor, direction, both
+  tachometers, the km/h each says, the bytes. Clear.
+- **Settings:** the wheel (with the counts a metre it makes) and the VCCs.
+- **Top bar:** sending or stopped, messages, seconds; the VCC count, port and
+  interval.
+
+**Fixed on the way:** a tick with no time passed sent a message of 0 pulses,
+which says the loco stopped; it now sends nothing. The timer's work is
+`tick()`, so tests and the screenshot go through it.
+
+**Files:** new `speedgauge.{h,cpp}`; `locosimwindow.{h,cpp}`, `dlcore.pri`,
+`tests/screenshot_main.cpp` (`SHOT_WINDOW=locosim`, `SHOT_TAB=0..2`),
+`tests/tests.pro`, `tests/test_session393.cpp`.
+
+**Tests:** `session393` (18 checks): the dial's angles to km/h, click and Page
+Up, a read-only gauge ignoring clicks; the speedometer driving the loco, the
+red band and scale; no message on a tick with no time; one per sensor 100 ms
+later; the channel gauges at 60 and a slipping 90; the Frames row; fits
+1366 × 700; no orphan widgets. `session391` still 22 / 22.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11, with 392: every stage green.
+
+**Not tested:** on Windows or Linux fonts (the screenshots are the Mac's,
+offscreen).
+
+---
+
 <a id="session-392"></a>
 ## Session 392 — Tools ▸ Simulators
 
@@ -131,7 +176,7 @@ CHANGES.md, HOW_IT_WORKS.md, loco_sim/loco_sim.c}`, `docs/BRAKE_BENCH_NEXT.md`.
 the log port refused and said. `session360` (89) on 51235. Firmware host test
 74 / 74 (now to :51235).
 
-**Gate:** see the push.
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11, with 392: every stage green.
 
 **Not tested:** on Windows with the real bench and loco_sim.exe (the split is
 the OS's, and the Mac test cannot show it).
