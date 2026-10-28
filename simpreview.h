@@ -39,6 +39,9 @@
 #include "planrun.h"
 #include "rfidtag.h"
 
+#include <QHash>
+#include <QPair>
+#include <QSet>
 #include <QString>
 #include <QStringList>
 #include <QVector>
@@ -82,6 +85,53 @@ struct Result {
 quint32 pulsesPerTick(double speedKmh);
 double  metresPerTick(double speedKmh);
 Result  run(const RfidTag::Route &route, const Options &options);
+
+// Session 395: the rows and the readers above, one location at a time, for
+// the Loco Simulator's RFID tab (its loco moves at its own speeds; run() is
+// these at a constant one).
+struct Row {
+    QString    id, tagName;
+    int        tagType = 0;
+    double     absLoc = 0, nextAbsLoc = 0;
+    QByteArray bytes;
+};
+// The rows as the simulator reads them: the file's own when every row still
+// holds its tag, else RfidTag::routeRows (route.dir must be set).
+QVector<Row> rowsOf(const RfidTag::Route &route, bool *fromFileRows = nullptr);
+
+class Readers
+{
+public:
+    struct Send { int reader = 1; int row = 0; QByteArray tag; };
+
+    explicit Readers(const QVector<Row> &rows) : m_rows(rows) {}
+    const QVector<Row> &rows() const { return m_rows; }
+    void setReader(int reader, bool on) { (reader == 1 ? m_reader1 : m_reader2) = on; }
+    void setMissing(const QStringList &names);    // rfid_id as the rows name them
+
+    // The loco is now at `d`. Returns the row spanning it (-1: none, nothing
+    // sent) and appends what the readers send there. `extraMetres` widens
+    // reader 2's 20-24 m window to 24 + extra: LocoDialog passes the last
+    // tick's travel so a fast loco cannot step over it; run() passes 0, as
+    // the simulator did when session 203 ported it.
+    int step(double d, double extraMetres, QVector<Send> *sends);
+
+    // For run()'s summary: rows the loco entered, rows reader 1 sent, main
+    // rows reader 2 sent.
+    const QSet<int> &passed() const { return m_passed; }
+    const QSet<int> &sentOn1() const { return m_sentOn1; }
+    bool mainSentOn2(int row) const { return m_mainSentOn2.contains(row); }
+
+private:
+    QVector<Row> m_rows;
+    bool m_reader1 = true, m_reader2 = true;
+    QSet<QString> m_missing;
+    QString m_current = QStringLiteral("0");
+    bool m_secondFlag = false;
+    int m_previous = -1;                                   // sendPreviousRfidData; -1 = reset
+    QHash<int, QPair<int, QByteArray>> m_first, m_second;  // per tag type: row, tag
+    QSet<int> m_passed, m_sentOn1, m_mainSentOn2;
+};
 
 // Session 205: a preview against a loco log's tag reads (PlanRun::readsOf).
 // Each reader's sends are matched in order to that reader's reads of the

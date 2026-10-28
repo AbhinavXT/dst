@@ -19,13 +19,6 @@ constexpr double kWheel = 950 / 1000.0;
 constexpr int    kPulsesPerRev = 30;
 constexpr double kKmhToMs = 0.277777778;
 
-struct Row {
-    QString    id, tagName;
-    int        tagType = 0;
-    double     absLoc = 0, nextAbsLoc = 0;
-    QByteArray bytes;
-};
-
 bool dupOf(const QByteArray &tag) { return RfidTag::summary(tag).duplicate; }
 qint64 locOf(const QByteArray &tag) { return RfidTag::summary(tag).absLoc; }
 
@@ -40,6 +33,84 @@ quint32 pulsesPerTick(double kmh)
 double metresPerTick(double kmh)
 {
     return (kPi * kWheel * pulsesPerTick(kmh)) / kPulsesPerRev / 1000;
+}
+
+QVector<Row> rowsOf(const RfidTag::Route &route, bool *fromFileRows)
+{
+    bool fileRows = true;
+    for (const RfidTag::Tag &t : route.tags)
+        fileRows = fileRows && t.file.present && RfidTag::fromPages(t.file.pageX, t.file.pageY) == t.bytes;
+    QVector<Row> rows;
+    if (fileRows) {
+        for (const RfidTag::Tag &t : route.tags)
+            rows.append({ t.file.rfidId, t.file.tagName, t.file.tagType, t.file.absLoc, t.file.nextAbsLoc, t.bytes });
+    } else {
+        const QVector<RfidTag::RouteRow> rr = RfidTag::routeRows(route.tags, route.dir);
+        for (int i = 0; i < rr.size(); ++i)
+            rows.append({ rr.at(i).rfidId, rr.at(i).tagName, rr.at(i).tagType, double(rr.at(i).absLoc),
+                          double(rr.at(i).nextAbsLoc), route.tags.at(i).bytes });
+    }
+    if (fromFileRows) *fromFileRows = fileRows;
+    return rows;
+}
+
+void Readers::setMissing(const QStringList &names)
+{
+    m_missing.clear();
+    for (const QString &m : names) m_missing.insert(m.trimmed().toUpper());
+}
+
+int Readers::step(double d, double extraMetres, QVector<Send> *sends)
+{
+    int hit = -1;
+    for (int i = 0; i < m_rows.size() && hit < 0; ++i) {
+        const Row &x = m_rows.at(i);
+        if ((x.absLoc <= d && x.nextAbsLoc > d) || (x.absLoc >= d && x.nextAbsLoc < d)) hit = i;
+    }
+    if (hit < 0) return -1;
+    m_passed.insert(hit);
+    int s = hit;
+    if (m_missing.contains(m_rows.at(hit).id.toUpper())) {
+        s = m_previous;                                    // the simulator re-sends the previous row
+    } else {
+        m_previous = hit;
+    }
+    if (s < 0) return hit;                                 // nothing before it: nothing sent
+    const Row &x = m_rows.at(s);
+    if (x.tagType < 9 || x.tagType > 12) return hit;       // no packet for that tag_type
+    const auto send = [&](int reader, int row, const QByteArray &tag) {
+        if (sends) sends->append({ reader, row, tag });
+    };
+    if (m_current != x.id) {
+        if (x.tagName == QLatin1String("main")) m_first.insert(x.tagType, { s, x.bytes });
+        else m_second.insert(x.tagType, { s, x.bytes });
+    }
+    if (m_current != x.id && m_reader1) {
+        send(1, s, x.bytes);
+        m_sentOn1.insert(s);
+    } else if (m_current == x.id && m_reader2) {
+        const double gap = qAbs(d - x.absLoc);
+        if (gap >= 20 && gap < 24 + qMax(0.0, extraMetres)) {
+            const QPair<int, QByteArray> f = m_first.value(x.tagType, { -1, QByteArray() });
+            if (!f.second.isEmpty() && locOf(f.second) != 0) {
+                send(2, f.first, f.second);
+                m_mainSentOn2.insert(f.first);
+                m_first.remove(x.tagType);
+            }
+            m_secondFlag = true;
+        } else if (gap >= 24 && m_secondFlag) {
+            const QPair<int, QByteArray> sc = m_second.value(x.tagType, { -1, QByteArray() });
+            if (!sc.second.isEmpty() && dupOf(sc.second)) {
+                if (locOf(sc.second) != 0) {
+                    send(2, sc.first, sc.second);
+                    m_second.remove(x.tagType);
+                }
+                m_secondFlag = false;
+            }
+        }
+    }
+    m_current = x.id;
+    return hit;
 }
 
 Result run(const RfidTag::Route &route, const Options &o)
@@ -58,94 +129,32 @@ Result run(const RfidTag::Route &route, const Options &o)
         return r;
     }
 
-    // The rows as the simulator reads them.
-    bool fileRows = true;
-    for (const RfidTag::Tag &t : route.tags)
-        fileRows = fileRows && t.file.present && RfidTag::fromPages(t.file.pageX, t.file.pageY) == t.bytes;
-    QVector<Row> rows;
-    if (fileRows) {
-        for (const RfidTag::Tag &t : route.tags)
-            rows.append({ t.file.rfidId, t.file.tagName, t.file.tagType, t.file.absLoc, t.file.nextAbsLoc, t.bytes });
-    } else {
-        const QVector<RfidTag::RouteRow> rr = RfidTag::routeRows(route.tags, route.dir);
-        for (int i = 0; i < rr.size(); ++i)
-            rows.append({ rr.at(i).rfidId, rr.at(i).tagName, rr.at(i).tagType, double(rr.at(i).absLoc),
-                          double(rr.at(i).nextAbsLoc), route.tags.at(i).bytes });
-    }
-    r.fromFileRows = fileRows;
+    const QVector<Row> rows = rowsOf(route, &r.fromFileRows);
     r.pulsesPerTick = pulsesPerTick(o.speedKmh);
     r.metresPerTick = metresPerTick(o.speedKmh);
     if (r.pulsesPerTick == 0) {
         r.error = QStringLiteral("at %1 km/h the simulator counts 0 pulses a tick and stops").arg(o.speedKmh);
         return r;
     }
-    QSet<QString> missing;
-    for (const QString &m : o.missing) missing.insert(m.trimmed().toUpper());
+    Readers readers(rows);
+    readers.setReader(1, o.reader1);
+    readers.setReader(2, o.reader2);
+    readers.setMissing(o.missing);
 
     const double sign = route.dir == RfidTag::DirNominal ? 1 : -1;
     double d = rows.at(o.startRow).absLoc;
-    QString current = QStringLiteral("0");
-    bool secondFlag = false;
-    int previous = -1;                                     // sendPreviousRfidData; -1 = reset
-    QHash<int, QPair<int, QByteArray>> first, second;      // per tag type: row, tag
-    QSet<int> passed, sentOn1;
-    QHash<int, bool> mainSentOn2;                          // main rows: their tag went out on reader 2
-
+    QVector<Readers::Send> sends;
     for (int tick = 1; tick <= o.maxTicks; ++tick) {
         d += sign * r.metresPerTick;
-        int hit = -1;
-        for (int i = 0; i < rows.size() && hit < 0; ++i) {
-            const Row &x = rows.at(i);
-            if ((x.absLoc <= d && x.nextAbsLoc > d) || (x.absLoc >= d && x.nextAbsLoc < d)) hit = i;
-        }
-        if (hit < 0) {
+        sends.clear();
+        if (readers.step(d, 0, &sends) < 0) {
             r.ticks = tick;
             r.endDistance = d;
             r.endReason = QStringLiteral("no row spans %1 m: past the route's last row").arg(d, 0, 'f', 1);
             break;
         }
-        passed.insert(hit);
-        int s = hit;
-        if (missing.contains(rows.at(hit).id.toUpper())) {
-            s = previous;                                  // the simulator re-sends the previous row
-        } else {
-            previous = hit;
-        }
-        if (s < 0) continue;                               // nothing before it: nothing sent
-        const Row &x = rows.at(s);
-        if (x.tagType < 9 || x.tagType > 12) continue;     // no packet for that tag_type
-        auto emitEvent = [&](int reader, int row, const QByteArray &tag) {
-            r.events.append({ tick, tick * 0.1, d, reader, row, RfidTag::nameOf(tag), locOf(tag) });
-        };
-        if (current != x.id) {
-            if (x.tagName == QLatin1String("main")) first.insert(x.tagType, { s, x.bytes });
-            else second.insert(x.tagType, { s, x.bytes });
-        }
-        if (current != x.id && o.reader1) {
-            emitEvent(1, s, x.bytes);
-            sentOn1.insert(s);
-        } else if (current == x.id && o.reader2) {
-            const double gap = qAbs(d - x.absLoc);
-            if (gap >= 20 && gap < 24) {
-                const QPair<int, QByteArray> f = first.value(x.tagType, { -1, QByteArray() });
-                if (!f.second.isEmpty() && locOf(f.second) != 0) {
-                    emitEvent(2, f.first, f.second);
-                    mainSentOn2.insert(f.first, true);
-                    first.remove(x.tagType);
-                }
-                secondFlag = true;
-            } else if (gap >= 24 && secondFlag) {
-                const QPair<int, QByteArray> sc = second.value(x.tagType, { -1, QByteArray() });
-                if (!sc.second.isEmpty() && dupOf(sc.second)) {
-                    if (locOf(sc.second) != 0) {
-                        emitEvent(2, sc.first, sc.second);
-                        second.remove(x.tagType);
-                    }
-                    secondFlag = false;
-                }
-            }
-        }
-        current = x.id;
+        for (const Readers::Send &s : sends)
+            r.events.append({ tick, tick * 0.1, d, s.reader, s.row, RfidTag::nameOf(s.tag), locOf(s.tag) });
         r.ticks = tick;
         r.endDistance = d;
     }
@@ -155,9 +164,10 @@ Result run(const RfidTag::Route &route, const Options &o)
     // spanned) and missing tags.
     const int from = o.startRow;
     for (int i = from; i < rows.size(); ++i) {
-        if (!sentOn1.contains(i) && (passed.contains(i) || i == rows.size() - 1))
+        if (!readers.sentOn1().contains(i) && (readers.passed().contains(i) || i == rows.size() - 1))
             r.neverOnReader1 << rows.at(i).id;
-        if (sentOn1.contains(i) && rows.at(i).tagName == QLatin1String("main") && !mainSentOn2.contains(i) && o.reader2)
+        if (readers.sentOn1().contains(i) && rows.at(i).tagName == QLatin1String("main") && !readers.mainSentOn2(i)
+            && o.reader2)
             r.mainsMissedOnReader2 << rows.at(i).id;
     }
     r.ok = true;

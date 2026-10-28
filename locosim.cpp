@@ -30,6 +30,17 @@ QByteArray speedMessage(int sensor, quint8 direction, quint32 tachometer1, quint
     return message;                           // crc (15-18) stays 0
 }
 
+QByteArray tagFrame(int reader, const QByteArray &tag)
+{
+    if (tag.size() != 16) return QByteArray();
+    QByteArray frame;
+    frame.reserve(kTagFrameSize);
+    frame.append(char(0xAA)).append(char(0xAA)).append(char(kTagFrameSize)).append(char(reader));
+    frame.append(tag);
+    frame.append(char(0xBB)).append(char(0xBB));
+    return frame;
+}
+
 void Motion::setSpeed(double kmh)
 {
     m_speed = qBound(0.0, kmh, m_maxSpeed);

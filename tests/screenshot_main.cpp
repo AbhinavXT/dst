@@ -220,13 +220,20 @@ int main(int argc, char **argv)
             // in flight, the air on its way. SHOT_TAB=0..5: Bench / BIU -> VCC /
             // Network / Analog / Brake relays / Frames.
             // Session 393: the Loco Simulator running at 72 km/h, accelerating,
-            // sensor 2 channel 2 slipping at 90. SHOT_TAB=0..2: Drive / Frames / Settings.
+            // sensor 2 channel 2 slipping at 90. Session 395: on the simulator's
+            // first Configuration1.xml route, reader 2 on port B, a tag skipped.
+            // SHOT_TAB=0..3: Drive / RFID / Frames / Settings.
             if (which == QLatin1String("locosim")) {
                 auto *w = new LocoSimWindow(nullptr);
                 qint64 *t = new qint64(1782558147000LL);
                 w->setClock([t]() { return *t; });
                 w->setSendSink([](const QByteArray &) {});
+                w->setTagSink([](int, const QByteArray &) {});
                 for (QCheckBox *box : w->findChildren<QCheckBox *>()) box->setChecked(true);
+                if (w->loadRouteFile(QStringLiteral(":/tag_scenarios/LocoTcasSimulator/Configuration1.xml"))) {
+                    w->setRoute(0);
+                    w->setReader2OwnPort(true);
+                }
                 w->findChild<QDoubleSpinBox *>(QStringLiteral("locoSimSpeed"))->setValue(72);
                 w->findChild<QDoubleSpinBox *>(QStringLiteral("locoSimChannel22"))->setValue(90);
                 w->motion().setDrive(LocoSim::Motion::Drive::Accelerate);

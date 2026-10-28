@@ -10,6 +10,78 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-395"></a>
+## Session 395 — Loco Simulator, step 2: the RFID readers over serial
+
+Abhinav 2026-10-29, the step session 391 queued (*"we need to fully build rfid
+sending simulator in dlconsole"*). His answers: one port for both readers or
+reader 2 on its own, as the simulator; reader on/off and skipping a tag now,
+the other faults (delay, send twice, corrupt CRC) later; the loco placed at a
+start tag and run along the route.
+
+**What the operator sees.** Tools ▸ Simulators ▸ Loco Simulator, a new
+**RFID** tab:
+- **Route:** Library… (the Tag Builder's scenario library) or Open… (a
+  .tagroute.xml, route.xml or Configuration1.xml); the route, if the file
+  holds several; the start tag; Back to start. Where the loco is: its
+  location, the next tag and how far, how many frames sent.
+- **Readers:** Reader 1 and Reader 2 on or off; reader 2 on port A or its own
+  port B; each port picked and opened here, at 38400 8N1, through the main
+  window's serial ports (so each shows a status-bar chip).
+- **The tags:** the route's rows as the simulator reads them, the loco's row
+  marked; Skip on any tag; when each reader sent it, and where.
+
+The loco runs at the Drive tab's speed while the speed messages are going
+(Start): along the route from the start tag's abs_loc, up for a dir 1 route,
+down for dir 2. Forward / Reverse stays the speed sensors' direction bit, as
+in the simulator. Past the route's last row nothing more is sent, and the
+status line says so (the simulator never sends a route's last tag). Start
+warns when port A is closed; a tag that could not go out says so in its row.
+
+**The frame:** LocoTcasSimulator's `LPIM_LTACS_NORMAL_TAG_PKT`, 22 B: `AA AA`,
+length 22, reader 1 or 2, the 16 tag bytes, `BB BB`. (Its buildTagPacket()
+reverses page_y + page_x, which gives the tag's bytes back in order.)
+
+**The readers are the simulator's**, and the same code as the Tag Builder's
+Simulator preview: session 203's port moved out of `SimPreview::run()` into
+`SimPreview::Readers`, which takes one location at a time; `run()` now
+drives it at a constant speed. Reader 1 sends a row's tag on entering it;
+reader 2 the main tag 20-24 m past, then the duplicate. Live, reader 2's
+window is widened by the tick's travel, as the simulator's LocoDialog does,
+so a fast loco cannot step over it (the preview keeps the fixed window it
+always modelled).
+
+**Not chained:** at a route's end the simulator looks for the next station's
+route; this stops there.
+
+**Files:** `simpreview.{h,cpp}` (`Row`, `rowsOf`, `Readers`), `locosim.{h,cpp}`
+(`tagFrame`), `locosimwindow.{h,cpp}` (the RFID tab; the window takes the
+`SerialManager`), `mainwindow_tools.cpp`, `tests/test_session395.cpp`,
+`tests/tests.pro`, `tests/menuaudit_main.cpp`.
+
+**Tests:** `session395` (23 checks), on the simulator's own Configuration1.xml:
+the frame byte by byte, and its 16 bytes equal to what the simulator's
+buildTagPacket() makes from the row's page_x / page_y; the readers stepped at
+the preview's tick send what `run()` lists; at 160 km/h the widened window
+sends more main tags on reader 2; the window: a route and the loco at its
+first tag, no port (nothing sent, the row says why), a whole run with reader 2
+on port B (each reader's tags in the preview's order, the last tag never
+sent), reader 1 off and a tag skipped (what the preview predicts), a dir 2
+route counting down, a route with no direction refused. Session 203 / 205's
+preview suites pass unchanged on the moved code. Menu audit: the RFID tab, and
+its port A can be picked.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11: every stage green; `dltests` 411
+suites / 10370 checks, 0 failed; menu audit and headless smoke ok.
+
+**Not tested:** against a real VCC or over a real serial port: no tag frame
+has been captured off the line, so the bytes are laid out from the
+simulator's struct.
+
+**Next:** step 3, braking from the BIU's command.
+
+---
+
 <a id="session-394"></a>
 ## Session 394 — the simulators fill in the theme's own colour
 

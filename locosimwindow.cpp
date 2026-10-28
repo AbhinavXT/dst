@@ -4,15 +4,25 @@
 #include "simwidgets.h"
 #include "speedgauge.h"
 #include "statusline.h"
+#include "taglibrary.h"
 #include "udpsender.h"
 #include "uicolors.h"
 #include "windowgeometry.h"
 #include "flasher/flashercore.h"
+#ifdef DL_HAVE_SERIAL
+#include "seriallink.h"
+#include "serialmanager.h"
+#include <QSerialPortInfo>
+#endif
 
 #include <QButtonGroup>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QDateTime>
 #include <QDoubleSpinBox>
+#include <QFileDialog>
+#include <QDir>
+#include <QFileInfo>
 #include <QFrame>
 #include <QGridLayout>
 #include <QHBoxLayout>
@@ -37,6 +47,8 @@
 namespace {
 
 constexpr int kMaxFrameRows = 500;
+// The RFID tab's tag table.
+enum TagColumn { ColAt, ColTag, ColType, ColLoc, ColNext, ColSkip, ColReader1, ColReader2, TagColumns };
 // The drive's segmented buttons, left to right, as the motion's drives.
 const LocoSim::Motion::Drive kDriveOfButton[3] = { LocoSim::Motion::Drive::Decelerate, LocoSim::Motion::Drive::Hold,
                                                    LocoSim::Motion::Drive::Accelerate };
@@ -90,8 +102,8 @@ double scaleFor(double maxSpeed)
 
 }  // namespace
 
-LocoSimWindow::LocoSimWindow(QWidget *parent)
-    : QWidget(parent, Qt::Window)
+LocoSimWindow::LocoSimWindow(SerialManager *serial, QWidget *parent)
+    : QWidget(parent, Qt::Window), m_serial(serial)
 {
     setObjectName(QStringLiteral("locoSimWindow"));
     setWindowTitle(tr("Loco Simulator"));
@@ -129,6 +141,7 @@ LocoSimWindow::LocoSimWindow(QWidget *parent)
     auto *tabs = new QTabWidget(this);
     tabs->setDocumentMode(true);
     tabs->addTab(buildDriveTab(), tr("Drive"));
+    tabs->addTab(buildRfidTab(), tr("RFID"));
     tabs->addTab(buildFramesTab(), tr("Frames"));
     tabs->addTab(buildSettingsTab(), tr("Settings"));
     root->addWidget(tabs, 1);
@@ -159,6 +172,10 @@ LocoSimWindow::LocoSimWindow(QWidget *parent)
 LocoSimWindow::~LocoSimWindow()
 {
     saveSettings();
+#ifdef DL_HAVE_SERIAL
+    for (int which = 0; which < 2; ++which)
+        if (m_serial && m_tagLink[which] && m_weOpened[which]) m_serial->close(m_tagLink[which]->config().portName);
+#endif
 }
 
 void LocoSimWindow::restyle()
@@ -324,6 +341,489 @@ QWidget *LocoSimWindow::buildDriveTab()
             connect(m_channel[sensor][channel], QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, pull);
     }
     return page;
+}
+
+// ---- RFID ------------------------------------------------------------------------------
+
+QWidget *LocoSimWindow::buildRfidTab()
+{
+    auto *page = new QWidget(this);
+    auto *layout = new QVBoxLayout(page);
+    layout->setContentsMargins(0, 8, 0, 0);
+    layout->setSpacing(12);
+    auto *top = new QHBoxLayout;
+    top->setSpacing(12);
+
+    // ---- the route -----------------------------------------------------------
+    QVBoxLayout *routeBody = nullptr;
+    QFrame *route = card(tr("Route"), page, &routeBody);
+    auto *routeGrid = new QGridLayout;
+    routeGrid->setHorizontalSpacing(10);
+    auto *fileRow = new QHBoxLayout;
+    m_routeFileLabel = labelNamed(tr("No route open"), "mono", route);
+    m_routeFileLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    fileRow->addWidget(m_routeFileLabel, 1);
+    auto *library = new QPushButton(tr("Library…"), route);
+    library->setToolTip(tr("A route from the RFID Tag Builder's scenario library"));
+    fileRow->addWidget(library);
+    auto *openFile = new QPushButton(tr("Open…"), route);
+    openFile->setToolTip(tr("A route file: the Tag Builder's .tagroute.xml, a route.xml or a Configuration1.xml"));
+    fileRow->addWidget(openFile);
+    routeGrid->addWidget(labelNamed(tr("File"), "muted", route), 0, 0);
+    routeGrid->addLayout(fileRow, 0, 1);
+    m_routeBox = new QComboBox(route);
+    m_routeBox->setObjectName(QStringLiteral("locoSimRoute"));
+    routeGrid->addWidget(labelNamed(tr("Route"), "muted", route), 1, 0);
+    routeGrid->addWidget(m_routeBox, 1, 1);
+    auto *startRow = new QHBoxLayout;
+    m_startTag = new QComboBox(route);
+    m_startTag->setObjectName(QStringLiteral("locoSimStartTag"));
+    m_startTag->setToolTip(tr("The tag the loco starts at: its abs_loc"));
+    startRow->addWidget(m_startTag, 1);
+    auto *back = new QPushButton(tr("Back to start"), route);
+    back->setToolTip(tr("Put the loco at the start tag again; every tag can be sent again"));
+    startRow->addWidget(back);
+    routeGrid->addWidget(labelNamed(tr("Start tag"), "muted", route), 2, 0);
+    routeGrid->addLayout(startRow, 2, 1);
+    routeGrid->setColumnStretch(1, 1);
+    routeBody->addLayout(routeGrid);
+    m_routeWhere = labelNamed(QString(), "bigValue", route);
+    m_routeWhere->setWordWrap(true);
+    routeBody->addWidget(m_routeWhere);
+    routeBody->addStretch(1);
+    top->addWidget(route, 3);
+
+    // ---- the readers and their ports ---------------------------------------------
+    QVBoxLayout *readerBody = nullptr;
+    QFrame *readers = card(tr("Readers"), page, &readerBody);
+    auto *readerGrid = new QGridLayout;
+    readerGrid->setHorizontalSpacing(10);
+    for (int reader = 0; reader < 2; ++reader) {
+        m_readerOn[reader] = new QCheckBox(tr("Reader %1").arg(reader + 1), readers);
+        m_readerOn[reader]->setObjectName(QStringLiteral("locoSimReader%1").arg(reader + 1));
+        m_readerOn[reader]->setToolTip(reader == 0 ? tr("Sends each tag as the loco reaches it")
+                                                   : tr("Sends the main tag again 20-24 m past it, then its duplicate"));
+        readerGrid->addWidget(m_readerOn[reader], 0, reader);
+    }
+    readerGrid->addWidget(labelNamed(tr("Reader 2 on"), "muted", readers), 1, 0);
+    readerGrid->addWidget(SimUi::segmented({ tr("Port A"), tr("Port B") }, &m_reader2Port, readers), 1, 1);
+    for (int which = 0; which < 2; ++which) {
+        auto *row = new QHBoxLayout;
+        m_tagPort[which] = new QComboBox(readers);
+        m_tagPort[which]->setEditable(true);
+        m_tagPort[which]->setObjectName(QStringLiteral("locoSimTagPort%1").arg(QChar(QLatin1Char('A' + which))));
+        m_tagPort[which]->setMinimumContentsLength(12);
+        row->addWidget(m_tagPort[which], 1);
+        m_tagPortOpen[which] = new QPushButton(tr("Open"), readers);
+        row->addWidget(m_tagPortOpen[which]);
+        readerGrid->addWidget(labelNamed(which == 0 ? tr("Port A") : tr("Port B"), "muted", readers), 2 + 2 * which, 0);
+        readerGrid->addLayout(row, 2 + 2 * which, 1);
+        m_tagPortState[which] = labelNamed(QString(), "muted", readers);
+        readerGrid->addWidget(m_tagPortState[which], 3 + 2 * which, 1);
+    }
+    readerGrid->setColumnStretch(1, 1);
+    readerBody->addLayout(readerGrid);
+    auto *note = labelNamed(tr("Each tag goes out as LocoTcasSimulator's 22-byte frame: AA AA, length 22, reader, the "
+                               "16 tag bytes, BB BB, at %1 8N1.").arg(LocoSim::kTagBaud), "muted", readers);
+    note->setWordWrap(true);
+    readerBody->addWidget(note);
+    readerBody->addStretch(1);
+    top->addWidget(readers, 2);
+    layout->addLayout(top);
+
+    // ---- the tags --------------------------------------------------------------
+    m_tags = new QTableWidget(0, TagColumns, page);
+    m_tags->setObjectName(QStringLiteral("locoSimTags"));
+    m_tags->setHorizontalHeaderLabels({ QString(), tr("Tag"), tr("Type"), tr("abs_loc"), tr("Next"), tr("Skip"),
+                                        tr("Reader 1"), tr("Reader 2") });
+    m_tags->verticalHeader()->setVisible(false);
+    m_tags->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_tags->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_tags->horizontalHeader()->setStretchLastSection(true);
+    m_tags->setAlternatingRowColors(true);
+    m_tags->setToolTip(tr("The route's rows as the simulator reads them. Skip: the tag is not sent "
+                          "(the simulator then keeps the row before it)."));
+    layout->addWidget(m_tags, 1);
+
+    // ---- wiring ----------------------------------------------------------------
+    connect(library, &QPushButton::clicked, this, [this]() {
+        TagLibraryDialog dialog(this);
+        if (dialog.exec() != QDialog::Accepted || dialog.chosen().file.isEmpty()) return;
+        if (loadRouteFile(dialog.chosen().file)) setRoute(dialog.chosen().route);
+    });
+    connect(openFile, &QPushButton::clicked, this, [this]() {
+        const QString start = m_routeFile.startsWith(QLatin1Char(':')) ? QString() : QFileInfo(m_routeFile).absolutePath();
+        const QString path = QFileDialog::getOpenFileName(this, tr("Open a tag route"), start,
+                                                          tr("Tag routes (*.xml);;All files (*)"));
+        if (!path.isEmpty() && loadRouteFile(path)) setRoute(0);
+    });
+    connect(m_routeBox, QOverload<int>::of(&QComboBox::activated), this, [this](int index) { setRoute(index); });
+    connect(m_startTag, QOverload<int>::of(&QComboBox::activated), this, [this](int row) { setStartRow(row); });
+    connect(back, &QPushButton::clicked, this, [this]() { placeAtStart(); });
+    for (int reader = 0; reader < 2; ++reader)
+        connect(m_readerOn[reader], &QCheckBox::toggled, this, [this, reader](bool on) {
+            if (m_readers) m_readers->setReader(reader + 1, on);
+        });
+    connect(m_reader2Port, &QButtonGroup::idClicked, this, [this]() { refreshTagPortState(); });
+    connect(m_tags, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
+        if (item->column() == ColSkip && m_readers) m_readers->setMissing(skippedTags());
+    });
+    for (int which = 0; which < 2; ++which)
+        connect(m_tagPortOpen[which], &QPushButton::clicked, this, [this, which]() { openOrCloseTagPort(which); });
+    refreshTagPorts();
+    return page;
+}
+
+bool LocoSimWindow::loadRouteFile(const QString &path)
+{
+    QString why;
+    QStringList notes;
+    const QVector<RfidTag::Route> routes = RfidTag::readFile(path, &why, &notes);
+    if (routes.isEmpty()) {
+        m_status->fail(tr("No route in %1: %2").arg(QFileInfo(path).fileName(), why));
+        return false;
+    }
+    m_routes = routes;
+    m_routeFile = path;
+    m_routeIndex = -1;
+    m_routeFileLabel->setText(QFileInfo(path).fileName());
+    m_routeFileLabel->setToolTip(QDir::toNativeSeparators(path));
+    fillRouteBox();
+    if (!notes.isEmpty()) m_status->warn(tr("%1: %2").arg(QFileInfo(path).fileName(), notes.join(QStringLiteral("; "))));
+    return true;
+}
+
+void LocoSimWindow::fillRouteBox()
+{
+    const QSignalBlocker block(m_routeBox);
+    m_routeBox->clear();
+    for (const RfidTag::Route &r : m_routes) {
+        const QString dir = r.dir == RfidTag::DirNominal ? tr("dir 1") : r.dir == RfidTag::DirReverse ? tr("dir 2")
+                                                                                                       : tr("no direction");
+        m_routeBox->addItem(tr("%1 · %2 tags · %3").arg(r.name).arg(r.tags.size()).arg(dir));
+    }
+}
+
+void LocoSimWindow::setRoute(int index)
+{
+    if (index < 0 || index >= m_routes.size()) return;
+    m_routeIndex = index;
+    {
+        const QSignalBlocker block(m_routeBox);
+        m_routeBox->setCurrentIndex(index);
+    }
+    fillTagTable();
+    {
+        const QSignalBlocker block(m_startTag);
+        m_startTag->clear();
+        for (int row = 0; row < m_tags->rowCount(); ++row)
+            m_startTag->addItem(tr("%1 at %2 m").arg(m_tags->item(row, ColTag)->text(), m_tags->item(row, ColLoc)->text()));
+    }
+    placeAtStart();
+}
+
+void LocoSimWindow::setStartRow(int row)
+{
+    if (row < 0 || row >= m_startTag->count()) return;
+    {
+        const QSignalBlocker block(m_startTag);
+        m_startTag->setCurrentIndex(row);
+    }
+    placeAtStart();
+}
+
+void LocoSimWindow::fillTagTable()
+{
+    const QSignalBlocker block(m_tags);
+    m_tags->setRowCount(0);
+    if (m_routeIndex < 0) return;
+    const RfidTag::Route &route = m_routes.at(m_routeIndex);
+    // routeRows() needs the direction; without one the rows show the tags only.
+    const QVector<SimPreview::Row> rows = route.dir == RfidTag::DirUnset ? QVector<SimPreview::Row>()
+                                                                         : SimPreview::rowsOf(route);
+    m_tags->setRowCount(route.tags.size());
+    for (int i = 0; i < route.tags.size(); ++i) {
+        const bool known = i < rows.size();
+        const QStringList cells = {
+            QString(),
+            known ? rows.at(i).id : route.tags.at(i).name,
+            known ? QString::number(rows.at(i).tagType) : QString(),
+            known ? QString::number(rows.at(i).absLoc, 'f', 0) : QString(),
+            known ? QString::number(rows.at(i).nextAbsLoc, 'f', 0) : QString(),
+            QString(), QString(), QString(),
+        };
+        for (int column = 0; column < TagColumns; ++column) {
+            auto *item = new QTableWidgetItem(cells.at(column));
+            if (column == ColType || column == ColLoc || column == ColNext)
+                item->setTextAlignment(Qt::AlignRight | Qt::AlignVCenter);
+            if (column == ColSkip) {
+                item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+                item->setCheckState(Qt::Unchecked);
+                item->setToolTip(tr("Skip this tag: it is not sent"));
+            }
+            m_tags->setItem(i, column, item);
+        }
+    }
+    m_tags->resizeColumnsToContents();
+    // The reader columns fill in as the loco runs: share the room.
+    m_tags->horizontalHeader()->setSectionResizeMode(ColReader1, QHeaderView::Stretch);
+    m_tags->horizontalHeader()->setSectionResizeMode(ColReader2, QHeaderView::Stretch);
+}
+
+QStringList LocoSimWindow::skippedTags() const
+{
+    QStringList names;
+    for (int row = 0; row < m_tags->rowCount(); ++row)
+        if (m_tags->item(row, ColSkip)->checkState() == Qt::Checked) names << m_tags->item(row, ColTag)->text();
+    return names;
+}
+
+void LocoSimWindow::setSkipped(const QString &tag, bool skip)
+{
+    for (int row = 0; row < m_tags->rowCount(); ++row)
+        if (m_tags->item(row, ColTag)->text().compare(tag, Qt::CaseInsensitive) == 0)
+            m_tags->item(row, ColSkip)->setCheckState(skip ? Qt::Checked : Qt::Unchecked);
+}
+
+void LocoSimWindow::setReaderOn(int reader, bool on)
+{
+    if (reader == 1 || reader == 2) m_readerOn[reader - 1]->setChecked(on);
+}
+
+void LocoSimWindow::setReader2OwnPort(bool own)
+{
+    m_reader2Port->button(own ? 1 : 0)->setChecked(true);
+    refreshTagPortState();
+}
+
+bool LocoSimWindow::placeAtStart()
+{
+    m_readers.reset();
+    m_routeRow = -1;
+    m_routeEnded = false;
+    m_portWarned = false;
+    const QSignalBlocker block(m_tags);
+    for (int row = 0; row < m_tags->rowCount(); ++row) {
+        m_tags->item(row, ColAt)->setText(QString());
+        m_tags->item(row, ColReader1)->setText(QString());
+        m_tags->item(row, ColReader2)->setText(QString());
+    }
+    if (m_routeIndex < 0) {
+        showRoutePosition();
+        return false;
+    }
+    const RfidTag::Route &route = m_routes.at(m_routeIndex);
+    if (route.dir != RfidTag::DirNominal && route.dir != RfidTag::DirReverse) {
+        m_status->fail(tr("Route %1 has no direction: set it in the RFID Tag Builder. The loco moves by it.").arg(route.name));
+        showRoutePosition();
+        return false;
+    }
+    const QVector<SimPreview::Row> rows = SimPreview::rowsOf(route);
+    const int start = qBound(0, m_startTag->currentIndex(), rows.size() - 1);
+    m_readers.reset(new SimPreview::Readers(rows));
+    m_readers->setReader(1, m_readerOn[0]->isChecked());
+    m_readers->setReader(2, m_readerOn[1]->isChecked());
+    m_readers->setMissing(skippedTags());
+    m_routeD = rows.at(start).absLoc;
+    m_routeRow = start;
+    showRoutePosition();
+    return true;
+}
+
+// The loco moved `metres` (always ahead along the route): what the readers send there.
+void LocoSimWindow::stepRoute(double metres)
+{
+    if (!m_readers || m_routeEnded || metres <= 0) return;
+    const RfidTag::Route &route = m_routes.at(m_routeIndex);
+    m_routeD += route.dir == RfidTag::DirReverse ? -metres : metres;
+    QVector<SimPreview::Readers::Send> sends;
+    const int row = m_readers->step(m_routeD, metres, &sends);
+    if (row < 0) {
+        m_routeEnded = true;
+        m_status->warn(tr("Past route %1's last tag at %2 m: no more tags to send. The simulator never sends a "
+                          "route's last tag.").arg(route.name).arg(m_routeD, 0, 'f', 1));
+    } else {
+        m_routeRow = row;
+    }
+    for (const SimPreview::Readers::Send &send : sends) sendTag(send);
+    showRoutePosition();
+}
+
+void LocoSimWindow::sendTag(const SimPreview::Readers::Send &send)
+{
+    const QByteArray frame = LocoSim::tagFrame(send.reader, send.tag);
+    if (frame.isEmpty()) return;
+    const int port = send.reader == 2 && m_reader2Port->checkedId() == 1 ? 1 : 0;
+    bool sent = false;
+    if (m_tagSink) {
+        m_tagSink(port, frame);
+        sent = true;
+    }
+#ifdef DL_HAVE_SERIAL
+    else if (m_tagLink[port] && m_tagLink[port]->isOpen()) {
+        sent = m_tagLink[port]->write(frame) == frame.size();
+    }
+#endif
+    const QString portName = port == 0 ? tr("port A") : tr("port B");
+    QTableWidgetItem *cell = m_tags->item(send.row, send.reader == 1 ? ColReader1 : ColReader2);
+    if (cell) {
+        cell->setText(sent ? tr("%1 · %2 m").arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss.zzz")))
+                                 .arg(m_routeD, 0, 'f', 1)
+                           : tr("not sent: %1 closed").arg(portName));
+        cell->setToolTip(QString::fromLatin1(frame.toHex(' ')));
+    }
+    if (sent) {
+        ++m_tagsSent;
+    } else if (!m_portWarned) {
+        m_portWarned = true;
+        m_status->warn(tr("Reader %1's tag %2 was not sent: %3 is not open.")
+                           .arg(send.reader).arg(RfidTag::nameOf(send.tag), portName));
+    }
+}
+
+void LocoSimWindow::showRoutePosition()
+{
+    if (!m_routeWhere) return;
+    {
+        const QSignalBlocker block(m_tags);
+        for (int row = 0; row < m_tags->rowCount(); ++row)
+            m_tags->item(row, ColAt)->setText(row == m_routeRow ? QStringLiteral("▶") : QString());
+    }
+    if (!m_readers) {
+        m_routeWhere->setText(m_routeIndex < 0 ? tr("Open a route to send its tags.") : tr("Not on the route."));
+        return;
+    }
+    const QVector<SimPreview::Row> &rows = m_readers->rows();
+    QString text = tr("At %1 m").arg(m_routeD, 0, 'f', 1);
+    if (m_routeEnded) {
+        text += tr(" · past the last tag");
+    } else if (m_routeRow >= 0 && m_routeRow < rows.size()) {
+        const SimPreview::Row &row = rows.at(m_routeRow);
+        text += tr(" · next tag in %1 m").arg(std::fabs(row.nextAbsLoc - m_routeD), 0, 'f', 1);
+        if (m_routeRow + 1 < rows.size()) text += tr(" (%1)").arg(rows.at(m_routeRow + 1).id);
+    }
+    m_routeWhere->setText(text + tr(" · %1 tag frame(s) sent").arg(m_tagsSent));
+}
+
+// ---- the tag ports ---------------------------------------------------------------------
+
+void LocoSimWindow::refreshTagPorts()
+{
+#ifdef DL_HAVE_SERIAL
+    const QList<QSerialPortInfo> ports = QSerialPortInfo::availablePorts();
+    for (int which = 0; which < 2; ++which) {
+        const QString current = tagPortName(which);
+        const QSignalBlocker block(m_tagPort[which]);
+        m_tagPort[which]->clear();
+        for (const QSerialPortInfo &p : ports) {
+            QString label = p.portName();
+            if (!p.description().isEmpty()) label += QStringLiteral(" — ") + p.description();
+            m_tagPort[which]->addItem(label, p.portName());
+        }
+        const int i = m_tagPort[which]->findData(current);
+        if (i >= 0) m_tagPort[which]->setCurrentIndex(i);
+        else m_tagPort[which]->setEditText(current);
+    }
+#endif
+    refreshTagPortState();
+}
+
+// The listed port's name ("COM5", not "COM5 — USB Serial"), or what was typed.
+QString LocoSimWindow::tagPortName(int which) const
+{
+    const QComboBox *box = m_tagPort[which];
+    const int i = box->currentIndex();
+    if (i >= 0 && box->currentText() == box->itemText(i)) return box->itemData(i).toString();
+    return box->currentText().section(QStringLiteral(" — "), 0, 0).trimmed();
+}
+
+void LocoSimWindow::openOrCloseTagPort(int which)
+{
+#ifdef DL_HAVE_SERIAL
+    if (!m_serial) return;
+    SerialLink *link = m_tagLink[which];
+    if (link && (link->isOpen() || link->isOpening())) {
+        m_serial->close(link->config().portName);
+        m_weOpened[which] = false;
+        refreshTagPortState();
+        return;
+    }
+    const QString port = tagPortName(which);
+    if (port.isEmpty()) {
+        m_status->fail(tr("Pick a port first."));
+        return;
+    }
+    if (m_tagLink[1 - which] && m_tagLink[1 - which]->config().portName == port && m_tagLink[1 - which]->isOpen()) {
+        m_status->fail(tr("%1 is already port %2.").arg(port, which == 0 ? tr("B") : tr("A")));
+        return;
+    }
+    SerialConfig config;
+    config.portName = port;
+    config.baud = LocoSim::kTagBaud;
+    m_serial->setFeed(port, false);      // frames out only: never into a console tab,
+    m_serial->setBinary(port, true);     // nor judged as log lines
+    link = m_serial->linkFor(port);
+    if (m_tagLink[which] != link) {
+        if (m_tagLink[which]) disconnect(m_tagLink[which], nullptr, this, nullptr);
+        m_tagLink[which] = link;
+        connect(link, &SerialLink::opened, this, [this, which]() {
+            refreshTagPortState();
+            m_status->ok(tr("Port %1 open: %2.").arg(which == 0 ? tr("A") : tr("B"), m_tagLink[which]->config().portName));
+        });
+        connect(link, &SerialLink::openFailed, this, [this, which](const QString &why) {
+            m_weOpened[which] = false;
+            refreshTagPortState();
+            m_status->fail(tr("Port %1 not opened: %2").arg(which == 0 ? tr("A") : tr("B"), why));
+        });
+        connect(link, &SerialLink::closed, this, [this]() { refreshTagPortState(); });
+        connect(link, &SerialLink::lost, this, [this](const QString &why) {
+            refreshTagPortState();
+            m_status->fail(tr("A tag port went away: %1").arg(why));
+        });
+    }
+    m_weOpened[which] = true;
+    m_portWarned = false;
+    m_serial->openAsync(config);
+    refreshTagPortState();
+#else
+    Q_UNUSED(which);
+#endif
+}
+
+void LocoSimWindow::refreshTagPortState()
+{
+    if (!m_tagPortState[0]) return;
+    const bool ownPort = m_reader2Port && m_reader2Port->checkedId() == 1;
+    for (int which = 0; which < 2; ++which) {
+        const bool used = which == 0 || ownPort;
+        bool open = false, opening = false;
+        QString summary;
+#ifdef DL_HAVE_SERIAL
+        if (SerialLink *link = m_tagLink[which]) {
+            open = link->isOpen();
+            opening = link->isOpening();
+            summary = link->config().summary();
+        }
+#endif
+        const bool can = m_serial != nullptr;
+        m_tagPort[which]->setEnabled(can && used && !open && !opening);
+        m_tagPortOpen[which]->setEnabled(can && (used || open));
+        m_tagPortOpen[which]->setText(open || opening ? tr("Close") : tr("Open"));
+        QLabel *state = m_tagPortState[which];
+        if (!can) {
+            state->setText(tr("No serial ports in this build"));
+            state->setStyleSheet(UiColor::mutedStyle());
+        } else if (open) {
+            state->setText(QStringLiteral("● ") + tr("Open · %1").arg(summary));
+            state->setStyleSheet(UiColor::okStyle());
+        } else if (opening) {
+            state->setText(QStringLiteral("○ ") + tr("Opening…"));
+            state->setStyleSheet(UiColor::warningStyle());
+        } else {
+            state->setText(QStringLiteral("○ ") + (used ? tr("Closed") : tr("Not used: reader 2 is on port A")));
+            state->setStyleSheet(UiColor::mutedStyle());
+        }
+    }
 }
 
 // ---- Frames ----------------------------------------------------------------------------
@@ -549,9 +1049,11 @@ void LocoSimWindow::refreshTop()
     if (!m_state) return;
     const bool on = running();
     const int sensors = int(m_sensorOn[0] && m_sensorOn[0]->isChecked()) + int(m_sensorOn[1] && m_sensorOn[1]->isChecked());
-    m_state->setText(on ? tr("Sending \u00B7 %1 sensor(s) \u00B7 %2 messages \u00B7 %3 s")
-                              .arg(sensors).arg(m_sent).arg((m_clock() - m_startedMs) / 1000)
-                        : tr("Stopped \u00B7 %1 messages sent").arg(m_sent));
+    QString text = on ? tr("Sending \u00B7 %1 sensor(s) \u00B7 %2 messages \u00B7 %3 s")
+                            .arg(sensors).arg(m_sent).arg((m_clock() - m_startedMs) / 1000)
+                      : tr("Stopped \u00B7 %1 messages sent").arg(m_sent);
+    if (m_readers) text += tr(" \u00B7 %1 tag frame(s)").arg(m_tagsSent);
+    m_state->setText(text);
     if (m_linkChip && m_port && m_intervalMs)
         m_linkChip->setText(tr("%1 VCC(s) \u00B7 UDP %2 \u00B7 every %3 ms")
                                 .arg(m_hostList.size()).arg(m_port->value()).arg(m_intervalMs->value()));
@@ -584,6 +1086,12 @@ bool LocoSimWindow::start()
         m_status->warn(tr("Both sensors are off: the loco moves but nothing is sent."));
     else
         m_status->ok(tr("Sending to %1.").arg(m_hostList.join(QStringLiteral(", "))));
+    m_portWarned = false;
+#ifdef DL_HAVE_SERIAL
+    if (m_readers && !m_tagSink && (m_readerOn[0]->isChecked() || m_readerOn[1]->isChecked())
+        && !(m_tagLink[0] && m_tagLink[0]->isOpen()))
+        m_status->warn(tr("Tag port A is not open (RFID tab): the loco runs along the route but no tag is sent."));
+#endif
     pullFromUi();
     m_motion.resetCounts();
     m_lastTickMs = m_startedMs = m_clock();
@@ -640,6 +1148,7 @@ void LocoSimWindow::advance(double seconds)
         logMessage(message, kmhOf(step.pulses[sensor][0]), kmhOf(step.pulses[sensor][1]));
     }
     showStep(step, seconds);
+    stepRoute(step.metres);
     showMotion();
 }
 
@@ -668,6 +1177,22 @@ void LocoSimWindow::loadSettings()
     m_intervalMs->setValue(settings.value(QStringLiteral("intervalMs"), 100).toInt());
     m_timer->setInterval(m_intervalMs->value());
     setHosts(settings.value(QStringLiteral("hosts"), defaultHosts()).toString());
+
+    for (int reader = 0; reader < 2; ++reader)
+        m_readerOn[reader]->setChecked(settings.value(QStringLiteral("rfidReader%1").arg(reader + 1), true).toBool());
+    m_reader2Port->button(settings.value(QStringLiteral("rfidReader2OwnPort"), false).toBool() ? 1 : 0)->setChecked(true);
+    for (int which = 0; which < 2; ++which)
+        m_tagPort[which]->setEditText(settings.value(QStringLiteral("rfidPort%1").arg(QChar(QLatin1Char('A' + which)))).toString());
+    refreshTagPorts();
+    const QString routeFile = settings.value(QStringLiteral("rfidRouteFile")).toString();
+    if (!routeFile.isEmpty() && (routeFile.startsWith(QLatin1Char(':')) || QFileInfo::exists(routeFile))
+        && loadRouteFile(routeFile)) {
+        const int route = qBound(0, settings.value(QStringLiteral("rfidRoute"), 0).toInt(), m_routes.size() - 1);
+        setRoute(route);
+        setStartRow(settings.value(QStringLiteral("rfidStartRow"), 0).toInt());
+    } else {
+        showRoutePosition();
+    }
 }
 
 void LocoSimWindow::saveSettings() const
@@ -686,4 +1211,12 @@ void LocoSimWindow::saveSettings() const
     settings.setValue(QStringLiteral("hosts"), m_hosts->text());
     settings.setValue(QStringLiteral("port"), m_port->value());
     settings.setValue(QStringLiteral("intervalMs"), m_intervalMs->value());
+    for (int reader = 0; reader < 2; ++reader)
+        settings.setValue(QStringLiteral("rfidReader%1").arg(reader + 1), m_readerOn[reader]->isChecked());
+    settings.setValue(QStringLiteral("rfidReader2OwnPort"), m_reader2Port->checkedId() == 1);
+    for (int which = 0; which < 2; ++which)
+        settings.setValue(QStringLiteral("rfidPort%1").arg(QChar(QLatin1Char('A' + which))), tagPortName(which));
+    settings.setValue(QStringLiteral("rfidRouteFile"), m_routeFile);
+    settings.setValue(QStringLiteral("rfidRoute"), m_routeIndex);
+    settings.setValue(QStringLiteral("rfidStartRow"), m_startTag->currentIndex());
 }

@@ -28,6 +28,15 @@
 //    3.14 for pulses and 3.1428571 for distance, 0.09 % apart). The fraction
 //    a message cannot carry is kept for the next, and the time is the clock's,
 //    not a nominal 100 ms, so the pulses add up to the distance travelled.
+//
+//  THE TAG FRAME (session 395, step 2: the RFID readers over serial)
+//    LocoTcasSimulator's LPIM_LTACS_NORMAL_TAG_PKT, 22 B packed, 38400 8N1:
+//    0-1   start_byte   AA AA (0xAAAA LE)
+//    2     packet_length 22
+//    3     rfid_reader  1 or 2
+//    4-19  the tag's 16 bytes: its buildTagPacket() reverses page_y + page_x,
+//          which gives them back in the order the tag holds them
+//    20-21 end_byte     BB BB
 // =============================================================================
 #include <QByteArray>
 #include <QtGlobal>
@@ -38,6 +47,8 @@ constexpr quint8 kSrcSpeedSim = 20;
 constexpr quint8 kDestKavach  = 2;
 constexpr quint8 kMsgSpeedInfo = 1;
 constexpr int    kSpeedMessageSize = 19;
+constexpr int    kTagFrameSize = 22;
+constexpr int    kTagBaud = 38400;
 
 enum Direction : quint8 { Forward = 1, Reverse = 2 };
 
@@ -49,6 +60,8 @@ struct Wheel {
 
 double     pulsesPerMetre(const Wheel &wheel);
 QByteArray speedMessage(int sensor, quint8 direction, quint32 tachometer1, quint32 tachometer2);
+// Empty unless `tag` is 16 bytes (the simulator sends nothing then either).
+QByteArray tagFrame(int reader, const QByteArray &tag);
 
 // What one step sent: pulses[sensor 0/1][channel 0/1], and the metres moved.
 struct Step {

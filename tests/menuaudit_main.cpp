@@ -16,6 +16,7 @@
 #include "statuspins.h"
 #include <QDockWidget>
 #include <QMenuBar>
+#include <QComboBox>
 #include <QTabWidget>
 #include <QHash>
 #include <functional>
@@ -698,6 +699,15 @@ int main(int argc, char **argv) {
                 if (window->isVisible()) { ++count; opened = window; }
         CHECK(count == 1, "Simulators > Loco Simulator opens one window, raised again on a second trigger");
         CHECK(opened && !opened->running(), "and does not send until Start");
+        // Session 395: the RFID readers, on the main window's serial ports.
+        QTabWidget *locoTabs = opened ? opened->findChild<QTabWidget *>() : nullptr;
+        bool rfidTab = false;
+        for (int i = 0; locoTabs && i < locoTabs->count(); ++i) rfidTab = rfidTab || locoTabs->tabText(i) == QLatin1String("RFID");
+        CHECK(rfidTab, "with an RFID tab");
+#ifdef DL_HAVE_SERIAL
+        auto *tagPortA = opened ? opened->findChild<QComboBox *>(QStringLiteral("locoSimTagPortA")) : nullptr;
+        CHECK(tagPortA && tagPortA->isEnabled(), "whose tag port A can be picked: it has the serial ports");
+#endif
         if (opened) opened->close();
     } else {
         CHECK(false, "Simulators > Loco Simulator");

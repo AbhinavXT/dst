@@ -829,7 +829,7 @@ void MainWindow::openBrakeBench()
 
 void MainWindow::openLocoSimulator()
 {
-    if (!m_locoSim) m_locoSim = new LocoSimWindow(this);
+    if (!m_locoSim) m_locoSim = new LocoSimWindow(m_serial, this);
     m_locoSim->show();
     m_locoSim->raise();
     m_locoSim->activateWindow();

@@ -10,18 +10,31 @@
 //              speed their pulses say, at the loco's speed or their own
 //              (slip, skid).
 //    Frames    every speed message sent, decoded, with its bytes.
+//    RFID      (session 395) a Tag Builder route and a start tag: the loco
+//              runs along the route at the Drive tab's speed (up for a dir 1
+//              route, down for dir 2; Forward / Reverse stays the sensors'
+//              direction bit), and reader 1 and reader 2 send each tag over
+//              serial as LocoTcasSimulator does (SimPreview::Readers): one
+//              port for both, or reader 2 on its own. A reader can be off, a
+//              tag skipped. No chaining to the next station's route.
+//    Frames    every speed message sent, decoded, with its bytes.
 //    Settings  the wheel, the VCCs, how often.
-//  Next: the RFID readers over serial from the same position, then braking
-//  from the BIU's command. The motion and the message are locosim.h.
+//  Next: braking from the BIU's command. The motion and the messages are
+//  locosim.h.
 // =============================================================================
 #include "locosim.h"
+#include "rfidtag.h"
+#include "simpreview.h"
 
+#include <QPointer>
 #include <QWidget>
 
 #include <functional>
+#include <memory>
 
 class QButtonGroup;
 class QCheckBox;
+class QComboBox;
 class QDoubleSpinBox;
 class QLabel;
 class QLineEdit;
@@ -29,6 +42,8 @@ class QPushButton;
 class QSpinBox;
 class QTableWidget;
 class QTimer;
+class SerialLink;
+class SerialManager;
 class SpeedGauge;
 class StatusLine;
 class UdpSender;
@@ -37,7 +52,8 @@ class LocoSimWindow : public QWidget
 {
     Q_OBJECT
 public:
-    explicit LocoSimWindow(QWidget *parent = nullptr);
+    // `serial` null: the RFID tab's ports are off (no Qt Serial Port, tests).
+    explicit LocoSimWindow(SerialManager *serial = nullptr, QWidget *parent = nullptr);
     ~LocoSimWindow() override;
 
     LocoSim::Motion &motion() { return m_motion; }
@@ -56,6 +72,22 @@ public:
     int  sentCount() const { return m_sent; }
     void setHosts(const QString &hosts);
 
+    // ---- RFID (session 395) ------------------------------------------------
+    bool   loadRouteFile(const QString &path);   // false (and said) if it holds no route
+    int    routeCount() const { return m_routes.size(); }
+    void   setRoute(int index);                 // and places the loco at its first tag
+    void   setStartRow(int row);                // and places the loco there
+    bool   placeAtStart();                      // false (and said) without a route whose direction is set
+    double routePosition() const { return m_routeD; }
+    int    routeRow() const { return m_routeRow; }   // the row whose span the loco is in, -1 none
+    bool   routeEnded() const { return m_routeEnded; }
+    void   setReaderOn(int reader, bool on);
+    void   setSkipped(const QString &tag, bool skip);   // tag as the rows name it ("904", "904D")
+    void   setReader2OwnPort(bool own);
+    int    tagsSent() const { return m_tagsSent; }
+    // Tests: tag frames go here (port 0 = A, 1 = B) instead of the serial ports.
+    void   setTagSink(const std::function<void(int, const QByteArray &)> &sink) { m_tagSink = sink; }
+
 private:
     void   pullFromUi();                // the controls into the motion
     void   showMotion();                // the motion back into the controls
@@ -68,6 +100,17 @@ private:
     QWidget *buildDriveTab();
     QWidget *buildFramesTab();
     QWidget *buildSettingsTab();
+    QWidget *buildRfidTab();
+    void   fillRouteBox();
+    void   fillTagTable();
+    void   stepRoute(double metres);
+    void   sendTag(const SimPreview::Readers::Send &send);
+    void   showRoutePosition();
+    QStringList skippedTags() const;
+    void   refreshTagPorts();
+    void   refreshTagPortState();
+    void   openOrCloseTagPort(int which);
+    QString tagPortName(int which) const;
 
     LocoSim::Motion m_motion;
     UdpSender      *m_udp = nullptr;
@@ -102,6 +145,31 @@ private:
     QSpinBox       *m_intervalMs = nullptr;
     QTableWidget   *m_frames = nullptr;
     StatusLine     *m_status = nullptr;
+
+    // RFID
+    SerialManager  *m_serial = nullptr;
+    QPointer<SerialLink> m_tagLink[2];
+    bool            m_weOpened[2] = { false, false };
+    std::function<void(int, const QByteArray &)> m_tagSink;
+    QString         m_routeFile;
+    QVector<RfidTag::Route> m_routes;
+    int             m_routeIndex = -1;
+    std::unique_ptr<SimPreview::Readers> m_readers;
+    double          m_routeD = 0;
+    int             m_routeRow = -1;
+    bool            m_routeEnded = false;
+    int             m_tagsSent = 0;
+    bool            m_portWarned = false;
+    QLabel         *m_routeFileLabel = nullptr;
+    QComboBox      *m_routeBox = nullptr;
+    QComboBox      *m_startTag = nullptr;
+    QLabel         *m_routeWhere = nullptr;
+    QCheckBox      *m_readerOn[2] = { nullptr, nullptr };
+    QComboBox      *m_tagPort[2] = { nullptr, nullptr };
+    QPushButton    *m_tagPortOpen[2] = { nullptr, nullptr };
+    QLabel         *m_tagPortState[2] = { nullptr, nullptr };
+    QButtonGroup   *m_reader2Port = nullptr;
+    QTableWidget   *m_tags = nullptr;
 };
 
 #endif  // LOCOSIMWINDOW_H
