@@ -96,6 +96,7 @@
 #include "dmipanel.h"
 #include "dmitimetravel.h"
 #include "brakebenchwindow.h"
+#include "locosimwindow.h"
 #ifdef DL_HAVE_SERIAL
 #include "cabiosimwindow.h"
 #include "serialconsolewindow.h"
@@ -824,6 +825,14 @@ void MainWindow::openBrakeBench()
     m_brakeBench->show();
     m_brakeBench->raise();
     m_brakeBench->activateWindow();
+}
+
+void MainWindow::openLocoSimulator()
+{
+    if (!m_locoSim) m_locoSim = new LocoSimWindow(this);
+    m_locoSim->show();
+    m_locoSim->raise();
+    m_locoSim->activateWindow();
 }
 
 // The bench's brake relays follow the Cab I/O Simulator's output word, and

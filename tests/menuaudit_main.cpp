@@ -45,6 +45,7 @@
 #include "brakebenchwindow.h"
 #ifdef DL_HAVE_SERIAL
 #include "cabiosimwindow.h"
+#include "locosimwindow.h"
 #endif
 #include "framenumberwatch.h"
 #include "messagedispatcher.h"
@@ -683,6 +684,21 @@ int main(int argc, char **argv) {
         if (opened) opened->close();
     } else {
         CHECK(false, "Transmit > Brake Test Bench");
+    }
+    // Session 391: the Loco Simulator, one window.
+    if (QAction *locoSim = transmit ? findAction(transmit, "Loco Simulator") : nullptr) {
+        locoSim->trigger();
+        locoSim->trigger();
+        int count = 0;
+        LocoSimWindow *opened = nullptr;
+        for (QWidget *top : QApplication::topLevelWidgets())
+            if (auto *window = qobject_cast<LocoSimWindow *>(top))
+                if (window->isVisible()) { ++count; opened = window; }
+        CHECK(count == 1, "Transmit > Loco Simulator opens one window, raised again on a second trigger");
+        CHECK(opened && !opened->running(), "and does not send until Start");
+        if (opened) opened->close();
+    } else {
+        CHECK(false, "Transmit > Loco Simulator");
     }
     // The point of the group: nothing that sends may sit outside it.
     CHECK(!findAction(tools, "Packet Maker") && !findAction(tools, "Field Sweep"),

@@ -1,0 +1,78 @@
+#include "locosim.h"
+
+#include <QtEndian>
+#include <cmath>
+
+namespace LocoSim {
+
+namespace {
+constexpr double kPi = 3.14159265358979323846;
+}
+
+double pulsesPerMetre(const Wheel &wheel)
+{
+    if (wheel.diameterMm <= 0) return 0;
+    return wheel.countScale * wheel.pulsesPerRev / (kPi * wheel.diameterMm / 1000.0);
+}
+
+QByteArray speedMessage(int sensor, quint8 direction, quint32 tachometer1, quint32 tachometer2)
+{
+    QByteArray message(kSpeedMessageSize, '\0');
+    uchar *bytes = reinterpret_cast<uchar *>(message.data());
+    bytes[0] = kSrcSpeedSim;
+    bytes[1] = kDestKavach;
+    bytes[2] = kMsgSpeedInfo;
+    qToLittleEndian<quint16>(kSpeedMessageSize, bytes + 3);
+    bytes[5] = quint8(sensor);
+    bytes[6] = direction;
+    qToLittleEndian<quint32>(tachometer1, bytes + 7);
+    qToLittleEndian<quint32>(tachometer2, bytes + 11);
+    return message;                           // crc (15-18) stays 0
+}
+
+void Motion::setSpeed(double kmh)
+{
+    m_speed = qBound(0.0, kmh, m_maxSpeed);
+}
+
+void Motion::setMaxSpeed(double kmh)
+{
+    m_maxSpeed = qMax(0.0, kmh);
+    setSpeed(m_speed);
+}
+
+void Motion::resetCounts()
+{
+    for (auto &sensor : m_carry)
+        for (double &fraction : sensor) fraction = 0;
+}
+
+Step Motion::step(double seconds)
+{
+    Step out;
+    if (seconds <= 0) return out;
+
+    const double startSpeed = m_speed;
+    if (m_drive == Drive::Accelerate) setSpeed(m_speed + m_rate * seconds);
+    else if (m_drive == Drive::Decelerate) setSpeed(m_speed - m_rate * seconds);
+    // The speed ramps through the step: its mean is what the wheel turned at.
+    const double meanSpeed = (startSpeed + m_speed) / 2;
+
+    out.metres = meanSpeed / 3.6 * seconds;
+    m_position += m_direction == Reverse ? -out.metres : out.metres;
+
+    const double perMetre = pulsesPerMetre(m_wheel);
+    for (int sensor = 0; sensor < 2; ++sensor) {
+        for (int channel = 0; channel < 2; ++channel) {
+            const double own = m_channelSpeed[sensor][channel];
+            const double metres = own < 0 ? out.metres : own / 3.6 * seconds;
+            const double counted = metres * perMetre + m_carry[sensor][channel];
+            const double whole = std::floor(counted);
+            m_carry[sensor][channel] = counted - whole;
+            out.pulses[sensor][channel] = quint32(whole);
+        }
+    }
+    return out;
+}
+
+}  // namespace LocoSim

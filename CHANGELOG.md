@@ -10,6 +10,66 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-391"></a>
+## Session 391 — Loco Simulator, step 1: speed and the two speed sensors
+
+Abhinav 2026-10-29, after a review of LocoTcasSimulator (`rfid_sim`): *"we need
+to build speed sim in dlconsole, will do it step by step first speed sending and
+sensors etc... then full on braking algo"*, and *"we need to fully build rfid
+sending simulator in dlconsole"*. His answers: the simulator's own speed
+message (the one the VCC on the bench takes); one Loco Simulator window with
+tabs; configurable wheel with the real π; RFID over serial like the simulator
+(step 2).
+
+**What the operator sees.** Tools ▸ Transmit ▸ **Loco Simulator…**, a **Speed**
+tab:
+- **Loco:** speed (box and slider), max speed, Hold / Accelerate / Decelerate
+  at a rate in km/h/s (stops at max or 0 and holds), Forward (1) / Reverse (2).
+- **Speed sensors:** Sensor 1 and Sensor 2 on or off; each channel at the
+  loco's speed or its own (slip, skid, a dead channel at 0).
+- **Wheel and VCCs:** diameter (950 mm), pulses a turn (30), count scale
+  (×1000); the VCCs (loco 1's four by default, the Loco menu for 2 and 3),
+  port 50001, every 100 ms.
+- **Start / Stop**; a readout of speed, position and messages sent.
+
+**The message:** LocoTcasSimulator's `LPIM_LKAVACH_INFO_MSG`, 19 B LE: src 20,
+dest 2, id 1, length 19, sensor, direction, tachometer 1 and 2 (channels 1
+and 2), CRC 0. One per sensor per tick, to every VCC listed.
+
+**Fixed against the simulator:**
+- π 3.14159… for both pulses and distance (it used 3.14 and 3.1428571, so its
+  odometer and the loco's drifted 0.09 %).
+- The tick's real time, not a nominal 100 ms (its thread slept 100 ms *after*
+  the work, so the loco read low speeds). A tick is held to 1 s.
+- The fraction of a pulse a message cannot carry goes into the next one, so
+  the pulses add up to the distance.
+- Main thread only: no worker thread touching widgets and ports, no spinning
+  core.
+- Acceleration is km/h per second (the simulator's was km/h per 100 ms tick,
+  integer).
+
+**Files:** new `locosim.{h,cpp}` (the motion, the message), `locosimwindow.{h,cpp}`;
+`dlcore.pri`, `mainwindow.h`, `mainwindow_menus.cpp`, `mainwindow_tools.cpp`,
+`tests/tests.pro`, `tests/menuaudit_main.cpp`, `tests/test_session391.cpp`.
+
+**Tests:** `session391` (22 checks): the 19 bytes field by field; 950 mm / 30 /
+×1000 = 10051.9 a metre; 60 km/h for 100 ms = 16753; 100 ticks add up to the
+distance; a late tick; accelerate, max, decelerate to 0, a set speed above
+max; reverse; a skidding and a slipping channel; the window's default VCCs,
+Start refused with none, one message per sensor per tick. Menu audit: one
+window, not sending until Start.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11: every stage green; `dltests` 408
+suites / 10323 checks, 0 failed; menu audit and headless smoke ok.
+
+**Not tested:** against a real VCC, and no real speed message has been
+captured: the bytes are laid out from the simulator's C struct.
+
+**Next:** step 2, the RFID tab: tags from the Tag Builder's routes over serial
+from the same position.
+
+---
+
 <a id="session-390"></a>
 ## Session 390 — the Brake Test Bench listens on UDP 51235, off the log port
 

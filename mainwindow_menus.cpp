@@ -809,6 +809,14 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                                  "analog card's BP / BC / MR, with the pressures moving as the brakes ask"));
     connect(actBrakeBench, &QAction::triggered, this, &MainWindow::openBrakeBench);
 
+    // Session 391: LocoTcasSimulator in DLConsole, step 1: the loco's speed and
+    // its two speed sensors' messages to the VCCs. Over UDP.
+    QAction *actLocoSim = transmitMenu->addAction(tr("&Loco Simulator…"));
+    actLocoSim->setObjectName(QStringLiteral("actLocoSim"));
+    actLocoSim->setToolTip(tr("Drive a simulated loco (speed, accelerate, decelerate, direction) and send its two "
+                              "speed sensors' tachometer pulses to the VCCs every 100 ms"));
+    connect(actLocoSim, &QAction::triggered, this, &MainWindow::openLocoSimulator);
+
     // With the schema commands, not with the transmitting tools: it answers
     // a question about the schema, and the loop it belongs to is edit
     // kavach.xml → reload → validate against real traffic.
