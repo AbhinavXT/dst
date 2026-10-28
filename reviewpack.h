@@ -67,6 +67,10 @@ struct Input {
     QStringList attachments;   // local files the site chose; one it cannot read refuses the pack
     qint64 createdMs = 0;      // 0: now
     QJsonObject inReplyTo;     // a reply: the answered pack's site, tester, created, what_to_look_at
+    // Session 386: with a From / To span, also each tab's last @auth_keys*,
+    // @rand_num and @linfo frame of each kind before From, so the reviewer can
+    // derive the session key and check MACs. They carry key material: opt-in.
+    bool keyFrames = false;
 };
 
 struct Written {
@@ -75,6 +79,7 @@ struct Written {
     QStringList files;         // as in the zip
     int records = 0;           // frames across every .dlr
     int notes = 0;
+    int keyFrames = 0;         // of `records`, the key and config frames from before the span
     qint64 bytes = 0;          // the .zip
 };
 
@@ -102,6 +107,10 @@ Opened open(const QString &zipPath, const QString &intoDir);
 // The folder a pack is unpacked into by default: beside it,
 // "<pack>_files" (Pack.zip → Pack_files).
 QString defaultDir(const QString &zipPath);
+
+// @auth_keys1_1_1, @auth_key2…, @rand_num_1_1, @linfo_1_1: the frames a
+// session key and the loco's configuration are made from (session 386).
+bool isKeyFrame(const QString &text);
 
 // The file-name part of a tab's capture: "Loco 1" + "21_1" → "Loco_1_21_1".
 QString captureBase(const Capture &c);

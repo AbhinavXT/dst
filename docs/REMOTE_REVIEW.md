@@ -16,6 +16,8 @@ site has.
    - **What to look at:** a sentence or two. The reviewer reads this first.
    - **Attachments:** Add files… for what is not in a frame (a DMI clip,
      a photo of the cab). The reviewer sees them in the Review pack panel.
+   - **Key and config frames** (off by default): with From / To, tick it
+     so the reviewer can check MACs. They carry key material.
    - Tabs: all of them by default. Span: everything, or From / To around the
      test.
    - **Export…** writes `ReviewPack_<site>_<date>_<time>.zip`. Send that one

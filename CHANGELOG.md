@@ -10,6 +10,67 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-386"></a>
+## Session 386 — key frames in the review pack; a recording checks MACs with its own keys
+
+Item 5 of the review-pack list, built as Abhinav chose on 2026-10-28
+(*"Opt-in key frames"*). Two gaps:
+- A recording window handed the Decode Workbench and the Packet Maker
+  the live window's session keys, and its Field Inspector had none, so a
+  pack's SLRPs were checked against whatever the reviewer's own live traffic
+  held: nothing, usually.
+- A From / To span cut off the @auth_keys and @rand_num frames sent at
+  session start, so the pack's span had no key to derive.
+
+**At the site.** Export review pack… has a box under the span: *"Key and
+config frames from before the span (@auth_keys, @rand_num, @linfo), so the
+reviewer can check MACs: they carry key material."* It is **off by
+default**, not remembered, and greyed out with *Everything* (every frame is
+already in). Ticked, each tab's .dlr starts with the newest frame of each
+tag before From (`@auth_keys1_1_1` and `@auth_keys2_1_1` both, the last
+`@rand_num`, the last `@linfo`). The manifest counts them (`key_frames`),
+README.txt says *"they carry key material"*, and the status line says
+*"(3 key and config frames)"*. Key frames alone, with nothing in the span,
+are not a pack.
+
+**Where the review happens.** Any recording window (a pack or a plain
+.dlr) derives a session key from its own frames. When it finds one, the
+Field Inspector, the Decode Workbench and the Packet Maker use it, and the
+summary line adds *"session key from the recording"*. When it finds none,
+they use the live window's keys as before. Nothing is written to disk
+(SessionKeyStore's rule).
+
+**Found while testing, not changed.** On the real 2026-10-08 run all 24
+SLRPs of loco 1 come out **MAC FAIL** with the session key derived from its
+own @auth_keys / @rand_num, in the whole run as in the pack. The pack shows
+the reviewer what the site's tool shows. Why the derived key does not
+verify them (key window choice, station id, or the frames themselves) is
+open, for Abhinav.
+
+**Files.** `reviewpack.{h,cpp}` (`Input::keyFrames`, `Written::keyFrames`,
+`isKeyFrame`, README); `reviewpackdialog.{h,cpp}` (the box,
+`setKeyFrames`, the status line); `sessionwindow.{h,cpp}` (`keys()`,
+`m_ownKeys` fed on load, the inspector / workbench / Packet Maker, the
+summary); `tests/test_session386.cpp`, `tests/tests.pro`.
+
+**Tests.** New `session386` (21 checks) on the real 2026-10-08 run, span
+11:12:30-11:13:00. Checked: which frames count; unticked, no key frames and
+the window makes up no key; ticked, the three newest key frames go in first,
+before From (the 11:12:05 @rand_num, not the 11:12:03 one), counted in the
+manifest and README; the window derives its own key (not the live one) and
+an SLRP in the span gets the same MAC result as in the whole run; with no
+key of its own it falls back to the live window's; Everything doubles
+nothing; key frames alone are refused; the box is off by default, greyed
+with Everything, and taken when ticked.
+
+**Not tested.** @linfo frames (this run has none; the tag is matched the
+same way). The Workbench and Packet Maker opened from a recording window
+(they are handed `keys()`).
+
+**Gate.** Gated with the bundle at push.
+
+---
+
 <a id="session-385"></a>
 ## Session 385 — the clips and charts made while reviewing go into the reply
 

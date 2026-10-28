@@ -46,6 +46,7 @@ public:
     // A reply (session 384): titled so, "Reviewer:" and "Answer:", and the
     // site's who and where are not remembered as the reviewer's own.
     void setReply();
+    void setKeyFrames(bool on);   // session 386: the box below the span
     QLabel *countLabel() const { return m_count; }
     StatusLine *status() const { return m_status; }
 
@@ -60,6 +61,7 @@ private:
     QRadioButton *m_all = nullptr, *m_range = nullptr;
     QDateTimeEdit *m_from = nullptr, *m_to = nullptr;
     QCheckBox *m_run = nullptr;
+    QCheckBox *m_keys = nullptr;
     QListWidget *m_attach = nullptr;
     QLabel *m_testerLabel = nullptr, *m_whatLabel = nullptr;
     QLabel *m_count = nullptr;

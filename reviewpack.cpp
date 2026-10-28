@@ -15,6 +15,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QMap>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QRegularExpression>
@@ -285,6 +286,9 @@ QString readme(const QJsonObject &m)
                  .arg(c.value(QStringLiteral("records")).toInt())
                  .arg(c.value(QStringLiteral("first")).toString(), c.value(QStringLiteral("last")).toString())
                  .arg(c.value(QStringLiteral("notes")).toInt());
+        if (c.contains(QStringLiteral("key_frames")))
+            t += QStringLiteral("      of them %1 key and config frame(s) from before the span (@auth_keys, @rand_num, @linfo):\n"
+                                "      they carry key material\n").arg(c.value(QStringLiteral("key_frames")).toInt());
     }
     const QJsonArray att = m.value(QStringLiteral("attachments")).toArray();
     if (!att.isEmpty()) {
@@ -305,6 +309,12 @@ QString readme(const QJsonObject &m)
 }
 
 }  // namespace
+
+bool isKeyFrame(const QString &text)
+{
+    return text.startsWith(QLatin1String("@auth_key")) || text.startsWith(QLatin1String("@rand_num"))
+        || text.startsWith(QLatin1String("@linfo"));
+}
 
 QString captureBase(const Capture &c)
 {
@@ -363,8 +373,26 @@ Written write(const QString &zipPath, const Input &in)
         h.sourceId = src;
         h.kvchId = kvch;
         dlr += SessionFile::encodeHeader(h);
-        int records = 0;
+        int records = 0, keyFrames = 0;
         qint64 first = 0, last = 0;
+        if (!all && in.keyFrames) {
+            // The newest of each kind before From, by its whole tag
+            // (@auth_keys1_1_1 and @auth_keys2_1_1 are both kept).
+            QMap<QString, LogEntryPtr> lastOf;
+            for (const LogEntryPtr &e : c.rows)
+                if (e && e->epochMs < in.fromMs && !e->rawBytes.isEmpty() && e->rawBytes.size() <= SessionFile::kMaxWireBytes
+                    && isKeyFrame(e->text))
+                    lastOf.insert(e->text.section(QLatin1Char(' '), 0, 0), e);
+            QVector<LogEntryPtr> keys = lastOf.values().toVector();
+            std::stable_sort(keys.begin(), keys.end(), [](const LogEntryPtr &a, const LogEntryPtr &b) { return a->epochMs < b->epochMs; });
+            for (const LogEntryPtr &e : keys) {
+                dlr += SessionFile::encodeRecord(e->epochMs, e->rawBytes);
+                if (!records) first = e->epochMs;
+                last = e->epochMs;
+                ++records;
+                ++keyFrames;
+            }
+        }
         for (const LogEntryPtr &e : c.rows) {
             if (!e || e->rawBytes.isEmpty() || e->rawBytes.size() > SessionFile::kMaxWireBytes) continue;
             if (!all && (e->epochMs < in.fromMs || e->epochMs > in.toMs)) continue;
@@ -378,7 +406,7 @@ Written write(const QString &zipPath, const Input &in)
                 return w;
             }
         }
-        if (!records) continue;   // nothing recorded in the span: no empty .dlr
+        if (records == keyFrames) continue;   // nothing recorded in the span: no empty .dlr
         QString base = captureBase(c);
         for (int n = 2; used.contains(base); ++n) base = captureBase(c) + QStringLiteral("_%1").arg(n);
         used.insert(base);
@@ -386,6 +414,7 @@ Written write(const QString &zipPath, const Input &in)
         files.append({ dlrName, dlr });
         total += dlr.size();
         w.records += records;
+        w.keyFrames += keyFrames;
 
         const QVector<Bookmark> marks = NotesSidecar::marksIn(c.marks, c.tabKey, all ? first : qMax(first, in.fromMs),
                                                               all ? last : qMin(last, in.toMs));
@@ -422,6 +451,7 @@ Written write(const QString &zipPath, const Input &in)
         o.insert(QStringLiteral("notes_file"), notesName);
         o.insert(QStringLiteral("records"), records);
         o.insert(QStringLiteral("notes"), marks.size());
+        if (keyFrames) o.insert(QStringLiteral("key_frames"), keyFrames);
         o.insert(QStringLiteral("first_ms"), double(first));
         o.insert(QStringLiteral("last_ms"), double(last));
         o.insert(QStringLiteral("first"), timeText(first));

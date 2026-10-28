@@ -85,6 +85,9 @@ public:
     // offer. Its own field panel shows no live MAC row: a recorded frame
     // checked against today's live keys says nothing true.
     void setSessionKeys(class SessionKeyStore *keys) { m_sessionKeys = keys; }
+    // Session 386: the keys derived from the loaded frames when they hold
+    // any (@auth_keys + @rand_num + a station id), else those handed in.
+    class SessionKeyStore *keys() const;
 
     // Load every given .dlr. Returns the number of records loaded across all
     // files; per-file problems are collected and reported in the status
@@ -322,6 +325,7 @@ private:
     QPointer<PacketMakerDialog> m_packetMaker;
     class FrameNumberWatch *m_frameWatch = nullptr;   // not owned
     class SessionKeyStore *m_sessionKeys = nullptr;   // not owned
+    class SessionKeyStore *m_ownKeys = nullptr;       // session 386: from this recording's frames
 };
 
 #endif // SESSIONWINDOW_H

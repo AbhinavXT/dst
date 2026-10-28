@@ -135,6 +135,13 @@ ReviewPackDialog::ReviewPackDialog(const QVector<ReviewPack::Capture> &captures,
         refreshCount();
     });
 
+    // Session 386: off by default and not remembered, each pack is a choice.
+    m_keys = new QCheckBox(tr("Key and config frames from before the span (@auth_keys, @rand_num, @linfo), "
+                              "so the reviewer can check MACs: they carry key material"), this);
+    m_keys->setObjectName(QStringLiteral("reviewPackKeyFrames"));
+    m_keys->setToolTip(tr("For a From / To span only: the last frame of each kind before From goes into "
+                          "the .dlr. With Everything, every frame is in already."));
+
     auto *also = new QLabel(tr("Always in: each tab's notes, the kavach.xml in force (%1), the colour rules, "
                                "names and field map, the program and Qt versions.")
                                 .arg(m_base.schemaFrom.isEmpty() ? tr("built in") : m_base.schemaFrom),
@@ -163,6 +170,7 @@ ReviewPackDialog::ReviewPackDialog(const QVector<ReviewPack::Capture> &captures,
     span->addWidget(m_all);
     span->addLayout(spanRow);
     form->addRow(tr("Span:"), span);
+    form->addRow(QString(), m_keys);
     form->addRow(QString(), m_run);
     form->addRow(tr("Attachments:"), attachRow);
     auto *buttons = new QHBoxLayout;
@@ -180,6 +188,7 @@ ReviewPackDialog::ReviewPackDialog(const QVector<ReviewPack::Capture> &captures,
     connect(m_all, &QRadioButton::toggled, this, &ReviewPackDialog::refreshCount);
     connect(m_from, &QDateTimeEdit::dateTimeChanged, this, [this]() { m_range->setChecked(true); refreshCount(); });
     connect(m_to, &QDateTimeEdit::dateTimeChanged, this, [this]() { m_range->setChecked(true); refreshCount(); });
+    connect(m_keys, &QCheckBox::toggled, this, &ReviewPackDialog::refreshCount);
     connect(close, &QPushButton::clicked, this, &QDialog::reject);
     connect(m_export, &QPushButton::clicked, this, [this]() {
         const QString site = m_site->text().trimmed().replace(QRegularExpression(QStringLiteral("[^A-Za-z0-9_-]+")),
@@ -218,6 +227,8 @@ void ReviewPackDialog::setSpan(qint64 fromMs, qint64 toMs)
     m_range->setChecked(true);
     refreshCount();
 }
+
+void ReviewPackDialog::setKeyFrames(bool on) { m_keys->setChecked(on); }
 
 void ReviewPackDialog::setReply()
 {
@@ -258,6 +269,7 @@ ReviewPack::Input ReviewPackDialog::input() const
         in.toMs = m_to->dateTime().toMSecsSinceEpoch();
     }
     if (!m_run->isChecked()) in.testRunPath.clear();
+    in.keyFrames = m_keys->isChecked();
     in.attachments.clear();
     for (int i = 0; i < m_attach->count(); ++i) in.attachments << m_attach->item(i)->data(Qt::UserRole).toString();
     in.captures.clear();
@@ -289,6 +301,7 @@ void ReviewPackDialog::refreshCount()
             if (b.tabKey == c.tabKey && frames && b.epochMs >= first && b.epochMs <= last) ++notes;
     }
     for (const QString &p : in.attachments) bytes += QFileInfo(p).size();
+    m_keys->setEnabled(!all);
     const bool bad = !all && in.toMs <= in.fromMs;
     m_export->setEnabled(frames > 0 && !bad);
     if (bad) {
@@ -322,8 +335,10 @@ bool ReviewPackDialog::exportTo(const QString &path)
         m_status->fail(tr("Not exported: %1").arg(w.error));
         return false;
     }
-    m_status->ok(tr("Wrote %1 (%2): %3 frames, %4 note(s), %5 files. Send it as it is; "
+    m_status->ok(tr("Wrote %1 (%2): %3 frames%4, %5 note(s), %6 files. Send it as it is; "
                     "File ▸ Open review pack… opens it.")
-                     .arg(QFileInfo(path).fileName(), mb(w.bytes)).arg(w.records).arg(w.notes).arg(w.files.size()));
+                     .arg(QFileInfo(path).fileName(), mb(w.bytes)).arg(w.records)
+                     .arg(w.keyFrames ? tr(" (%1 key and config frames)").arg(w.keyFrames) : QString())
+                     .arg(w.notes).arg(w.files.size()));
     return true;
 }

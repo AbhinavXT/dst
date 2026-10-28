@@ -4,6 +4,7 @@
 #include "uistyle.h"
 #include "bookmarks.h"
 #include "reviewpackdialog.h"
+#include "sessionkeystore.h"
 #include "gototimestampdialog.h"
 #include "markerscrollbar.h"
 #include "timelineribbon.h"
@@ -747,6 +748,11 @@ void SessionWindow::buildTab(const QString &tabKey, LogModel *model)
     m_tabUi.insert(tabKey, ui);
 }
 
+SessionKeyStore *SessionWindow::keys() const
+{
+    return m_ownKeys && !m_ownKeys->snapshots().isEmpty() ? m_ownKeys : m_sessionKeys;
+}
+
 qint64 SessionWindow::loadFiles(const QStringList &paths)
 {
     m_warnings.clear();
@@ -786,6 +792,10 @@ qint64 SessionWindow::loadFiles(const QStringList &paths)
             if (!loaded.firstMs || e->epochMs < loaded.firstMs) loaded.firstMs = e->epochMs;
             loaded.lastMs = qMax(loaded.lastMs, e->epochMs);
 
+            // A recording from elsewhere carries its own session: its keys,
+            // not the live window's, check its MACs.
+            if (!m_ownKeys) m_ownKeys = new SessionKeyStore(this);
+            m_ownKeys->observe(e);
             batch.append(e);
             if (batch.size() >= kChunk) {
                 model->appendEntries(batch);
@@ -860,10 +870,12 @@ qint64 SessionWindow::loadFiles(const QStringList &paths)
 
     QApplication::restoreOverrideCursor();
     rebuildSummary();
+    m_fieldPanel->setSessionKeys(keys());   // session 386: MACs checked with the recording's own keys
 
     QString summary = tr("%1 from %2")
                           .arg(countOf(grandTotal, "record", "records"),
                                countOf(paths.size(), "file", "files"));
+    if (keys() && keys() == m_ownKeys) summary += tr("  ·  session key from the recording");
     if (skipped > 0) {
         summary += tr("  ·  %1 skipped").arg(countOf(skipped, "undersized record", "undersized records"));
     }
@@ -1326,7 +1338,7 @@ void SessionWindow::onFind()
 void SessionWindow::onToolWorkbench()
 {
     if (!m_workbench) {
-        m_workbench = new DecodeWorkbench(this, m_sessionKeys);
+        m_workbench = new DecodeWorkbench(this, keys());
         m_workbench->setAttribute(Qt::WA_DeleteOnClose);
     }
     m_workbench->show();
@@ -1357,7 +1369,7 @@ void SessionWindow::onToolRowToPacketMaker()
     // no warning. That one gets a window of its own.
     if (m_packetMaker && m_packetMaker->isSending()) { m_packetMaker = nullptr; }
     if (!m_packetMaker) {
-        m_packetMaker = new PacketMakerDialog(this, m_frameWatch, m_sessionKeys);
+        m_packetMaker = new PacketMakerDialog(this, m_frameWatch, keys());
         m_packetMaker->setAttribute(Qt::WA_DeleteOnClose);
     }
     m_packetMaker->loadBuffer(buf);
