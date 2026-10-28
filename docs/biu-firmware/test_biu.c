@@ -10,26 +10,26 @@
 LocoParams loco_params;
 uint64_t fake_usec = 1000000;
 static uint8_t sent[64]; static uint16_t sent_len, sent_port; static uint32_t sent_ip; static int sends;
-static uint8_t last_hb[16]; static int heartbeats;
-ip_addr_t set_pc_ipAddr(ipAddress a) { ip_addr_t r = { ((uint32_t)a.ip_addr0 << 24) | ((uint32_t)a.ip_addr1 << 16) | ((uint32_t)a.ip_addr2 << 8) | a.ip_addr3 }; return r; }
-void UDP_Send(const char *b, ip_addr_t *ip, uint16_t port, uint16_t len)
+static uint8_t last_heartbeat[16]; static int heartbeats;
+ip_addr_t set_pc_ipAddr(ipAddress address) { ip_addr_t packed = { ((uint32_t)address.ip_addr0 << 24) | ((uint32_t)address.ip_addr1 << 16) | ((uint32_t)address.ip_addr2 << 8) | address.ip_addr3 }; return packed; }
+void UDP_Send(const char *buffer, ip_addr_t *ip_address, uint16_t port, uint16_t length)
 {
-    if ((uint8_t)b[0] == 0x20 && (uint8_t)b[1] == 0x07) { memcpy(last_hb, b, len); ++heartbeats; return; }
-    memcpy(sent, b, len); sent_len = len; sent_port = port; sent_ip = ip->addr; ++sends;
+    if ((uint8_t)buffer[0] == 0x20 && (uint8_t)buffer[1] == 0x07) { memcpy(last_heartbeat, buffer, length); ++heartbeats; return; }
+    memcpy(sent, buffer, length); sent_len = length; sent_port = port; sent_ip = ip_address->addr; ++sends;
 }
 
-static uint16_t can_cob[64]; static uint8_t can_dlc[64], can_data[64][8]; static int can_sends;
-void test_can_send(uint16_t cob, const uint8_t *data, uint8_t n)
+static uint16_t can_cob_id[64]; static uint8_t can_dlc[64], can_data[64][8]; static int can_sends;
+void test_can_send(uint16_t cob_id, const uint8_t *data, uint8_t length)
 {
     if (can_sends >= 64) return;
-    can_cob[can_sends] = cob; can_dlc[can_sends] = n; memcpy(can_data[can_sends], data, n); ++can_sends;
+    can_cob_id[can_sends] = cob_id; can_dlc[can_sends] = length; memcpy(can_data[can_sends], data, length); ++can_sends;
 }
 
 static int fails, checks;
-#define CHECK(c, what) do { ++checks; if (!(c)) { ++fails; printf("FAIL %s (line %d)\n", what, __LINE__); } } while (0)
-static void advance_s(double s) { fake_usec += (uint64_t)(s * 1e6); }
-static void frame(uint16_t cob, const uint8_t *d, uint8_t n) { uint8_t b[11] = { (uint8_t)cob, (uint8_t)(cob >> 8), (uint8_t)(3 + n) }; memcpy(b + 3, d, n); process_biu_udp_frame(b, (uint16_t)(3 + n)); }
-static void nmt(uint8_t cs, uint8_t node) { const uint8_t d[2] = { cs, node }; frame(0x000, d, 2); }
+#define CHECK(condition, what) do { ++checks; if (!(condition)) { ++fails; printf("FAIL %s (line %d)\n", what, __LINE__); } } while (0)
+static void advance_s(double seconds) { fake_usec += (uint64_t)(seconds * 1e6); }
+static void frame(uint16_t cob_id, const uint8_t *data, uint8_t length) { uint8_t datagram[11] = { (uint8_t)cob_id, (uint8_t)(cob_id >> 8), (uint8_t)(3 + length) }; memcpy(datagram + 3, data, length); process_biu_udp_frame(datagram, (uint16_t)(3 + length)); }
+static void nmt(uint8_t command_specifier, uint8_t node) { const uint8_t data[2] = { command_specifier, node }; frame(0x000, data, 2); }
 
 int main(void)
 {
@@ -42,26 +42,26 @@ int main(void)
 
     /* ---- network management ---- */
     biu_link_init();
-    CHECK(heartbeats == 1 && last_hb[2] == 4 && last_hb[3] == 0x00, "boot-up: 0x720 [00], 1 data byte, length byte 4");
+    CHECK(heartbeats == 1 && last_heartbeat[2] == 4 && last_heartbeat[3] == 0x00, "boot-up: 0x720 [00], 1 data byte, length byte 4");
     CHECK(biu_nmt_state() == 0x7F, "then pre-operational");
     send_biu_command(LOCO_WAP7, TRAIN_MODE_FORMATION, NORMAL_BRAKE);
     CHECK(sends == 0, "pre-operational: no command frame");
     advance_s(0.3); biu_link_tick();
     CHECK(heartbeats == 1, "no heartbeat before 500 ms");
     advance_s(0.25); biu_link_tick();
-    CHECK(heartbeats == 2 && last_hb[3] == 0x7F, "heartbeat at 500 ms says pre-operational (7F)");
+    CHECK(heartbeats == 2 && last_heartbeat[3] == 0x7F, "heartbeat at 500 ms says pre-operational (7F)");
     nmt(0x01, 0x30);
     CHECK(biu_nmt_state() == 0x7F, "start for another node (0x30) ignored");
     nmt(0x01, 0x20);
     CHECK(biu_nmt_state() == 0x05, "start remote node 0x20: operational");
     advance_s(0.5); biu_link_tick();
-    CHECK(last_hb[3] == 0x05, "heartbeat says operational (05)");
+    CHECK(last_heartbeat[3] == 0x05, "heartbeat says operational (05)");
     CHECK(!biu_link_up(), "BIU link not up before its heartbeat");
-    { const uint8_t hb = 0x05; frame(0x710, &hb, 1); }
+    { const uint8_t biu_state = 0x05; frame(0x710, &biu_state, 1); }
     CHECK(biu_link_up(), "BIU heartbeat operational: link up");
     advance_s(1.6);
     CHECK(!biu_link_up(), "BIU heartbeat 1.6 s old: link down");
-    { const uint8_t hb = 0x05; frame(0x710, &hb, 1); }
+    { const uint8_t biu_state = 0x05; frame(0x710, &biu_state, 1); }
 
     /* ---- command frame ---- */
     send_biu_command(LOCO_WAP7, TRAIN_MODE_FORMATION, NORMAL_BRAKE);
@@ -134,18 +134,18 @@ int main(void)
     CHECK(validate_brake_pressure(LOCO_WAG9, 1, FULL_SERVICE_BRAKE, CMD_BC, 2.4f) == 1, "validate FSB BC 2.4 (formation)");
 
     /* ---- status frames ---- */
-    const uint8_t p[8] = { 100, 24, 180, 88, 24, 0, 0, 0x07 };
-    frame(0x220, p, 8);
-    const BiuStatus *st = biu_status_get();
-    CHECK(fabsf(st->pressure[BIU_P_BP].kgcm2 - 5.0f) < 1e-4f && st->pressure[BIU_P_BP].valid, "BP 100 -> 5.0, valid");
-    CHECK(fabsf(st->pressure[BIU_P_MR].kgcm2 - 9.0f) < 1e-4f && st->pressure[BIU_P_MR].valid, "MR 180 -> 9.0, valid");
-    CHECK(!st->pressure[BIU_P_A9_REF].valid, "A9 ref not valid (bit 3 clear)");
+    const uint8_t pressures[8] = { 100, 24, 180, 88, 24, 0, 0, 0x07 };
+    frame(0x220, pressures, 8);
+    const BiuStatus *status = biu_status_get();
+    CHECK(fabsf(status->pressure[BIU_P_BP].kgcm2 - 5.0f) < 1e-4f && status->pressure[BIU_P_BP].valid, "BP 100 -> 5.0, valid");
+    CHECK(fabsf(status->pressure[BIU_P_MR].kgcm2 - 9.0f) < 1e-4f && status->pressure[BIU_P_MR].valid, "MR 180 -> 9.0, valid");
+    CHECK(!status->pressure[BIU_P_A9_REF].valid, "A9 ref not valid (bit 3 clear)");
     const uint8_t codes[8] = { 3, 0, 0x40, 0x10, 0x05, 0x20, 0, 0 };
     frame(0x320, codes, 8);
-    CHECK(st->isolation_counter == 3 && st->fault_code == 0x1040 && st->display_code == 0x2005, "codes lower byte first");
-    const uint8_t disc[8] = { 0x01, 0x04, 0xF0, 0, 0, 0, 0, 0 };
-    frame(0x420, disc, 8);
-    CHECK((st->discrete[0] & BIU_ST_D1_HEALTHY) && (st->discrete[1] & BIU_ST_D2_PANEL_TEST_PROGRESS), "discretes");
+    CHECK(status->isolation_counter == 3 && status->fault_code == 0x1040 && status->display_code == 0x2005, "codes lower byte first");
+    const uint8_t discretes[8] = { 0x01, 0x04, 0xF0, 0, 0, 0, 0, 0 };
+    frame(0x420, discretes, 8);
+    CHECK((status->discrete[0] & BIU_ST_D1_HEALTHY) && (status->discrete[1] & BIU_ST_D2_PANEL_TEST_PROGRESS), "discretes");
 
     send_biu_command(LOCO_WAG9, TRAIN_MODE_FORMATION, NO_BRAKE_T);
     CHECK((sent[6] & 0x03) == 0x03, "fault and display code acked on the next command");
@@ -159,7 +159,7 @@ int main(void)
     send_biu_command(LOCO_WAG9, TRAIN_MODE_FORMATION, NO_BRAKE_T);
     CHECK((sent[6] & 0x03) == 0x01, "a new fault code (0x1028) is acked; display 0 not");
     { const uint8_t bad[11] = { 0x20, 0x02, 12 }; CHECK(process_biu_udp_frame(bad, 11) == 0, "length byte past the buffer refused"); }
-    { const uint8_t shortp[6] = { 0x20, 0x02, 6, 1, 2, 3 }; CHECK(process_biu_udp_frame(shortp, 6) == 0, "pressure frame with 3 bytes refused"); }
+    { const uint8_t short_pressures[6] = { 0x20, 0x02, 6, 1, 2, 3 }; CHECK(process_biu_udp_frame(short_pressures, 6) == 0, "pressure frame with 3 bytes refused"); }
 
     /* ---- stop, reset ---- */
     nmt(0x02, 0x00);
@@ -167,43 +167,43 @@ int main(void)
     int before = sends;
     send_biu_command(LOCO_WAG9, TRAIN_MODE_FORMATION, NO_BRAKE_T);
     CHECK(sends == before, "stopped: no command frame");
-    int hb = heartbeats;
+    int heartbeats_before_reset = heartbeats;
     nmt(0x81, 0x20);
-    CHECK(heartbeats == hb + 1 && last_hb[3] == 0x00 && biu_nmt_state() == 0x7F, "reset node: boot-up again, pre-operational");
+    CHECK(heartbeats == heartbeats_before_reset + 1 && last_heartbeat[3] == 0x00 && biu_nmt_state() == 0x7F, "reset node: boot-up again, pre-operational");
 
     /* ---- codec edges ---- */
     CHECK(biu_kgcm2_to_byte(-1.0f) == 0 && biu_kgcm2_to_byte(13.0f) == 255 && biu_kgcm2_to_byte(NAN) == 0, "clamped, NaN -> 0");
     CHECK(biu_kgcm2_to_byte(2.16f) == 43, "2.16 -> 43 (rounded)");
-    PressureReading r = current_to_pressure(12.0f, 10.0f);
-    CHECK(r.status == SENSE_OK && fabsf(r.value_kgcm2 - 5.1f) < 1e-4f, "12 mA on 10 bar = 5.1 kg/cm2");
+    PressureReading reading = current_to_pressure(12.0f, 10.0f);
+    CHECK(reading.status == SENSE_OK && fabsf(reading.value_kgcm2 - 5.1f) < 1e-4f, "12 mA on 10 bar = 5.1 kg/cm2");
     CHECK(current_to_pressure(3.0f, 10.0f).status == SENSE_FAULT_OPEN, "3 mA open");
 
     /* ---- the CAN link: the same frames, no header, nothing on UDP ---- */
     biu_link_select(BIU_LINK_CAN);
     nmt(0x01, 0x20);
     CHECK(biu_nmt_state() == 0x7F, "CAN link: a UDP datagram from the bench is not taken");
-    { const uint8_t d[2] = { 0x01, 0x20 }; CHECK(process_biu_can_frame(0x000, d, 2) == 1 && biu_nmt_state() == 0x05,
+    { const uint8_t nmt_start[2] = { 0x01, 0x20 }; CHECK(process_biu_can_frame(0x000, nmt_start, 2) == 1 && biu_nmt_state() == 0x05,
                                                  "CAN link: NMT start as a CAN frame (id 0x000, DLC 2): operational"); }
-    const int udp_before = sends, hb_before = heartbeats;
+    const int udp_before = sends, heartbeats_before = heartbeats;
     can_sends = 0;
     advance_s(0.5); biu_link_tick();
-    CHECK(can_sends == 1 && can_cob[0] == 0x720 && can_dlc[0] == 1 && can_data[0][0] == 0x05,
+    CHECK(can_sends == 1 && can_cob_id[0] == 0x720 && can_dlc[0] == 1 && can_data[0][0] == 0x05,
           "CAN heartbeat: id 0x720, DLC 1, [05]");
     loco_params.sensor_speed = 10.0f;
     send_biu_command(LOCO_WAP7, TRAIN_MODE_FORMATION, NORMAL_BRAKE);
-    CHECK(can_sends == 2 && can_cob[1] == 0x190 && can_dlc[1] == 8, "CAN command: id 0x190, DLC 8");
+    CHECK(can_sends == 2 && can_cob_id[1] == 0x190 && can_dlc[1] == 8, "CAN command: id 0x190, DLC 8");
     { const uint8_t want[8] = { 0xE8, 0x03, 0x12, 0x0C, 88, 24, 0, 0 };
       CHECK(memcmp(can_data[1], want, 8) == 0, "CAN command data: the 8 bytes of Annexure-1, no 3-byte header"); }
-    CHECK(sends == udp_before && heartbeats == hb_before, "CAN link: nothing sent on UDP");
-    { const uint8_t pc[8] = { 90, 30, 170, 88, 24, 0, 0, 0x7F };
-      CHECK(process_biu_can_frame(0x220, pc, 8) == 1 && fabsf(st->pressure[BIU_P_BP].kgcm2 - 4.5f) < 1e-4f
-                && fabsf(st->pressure[BIU_P_BC].kgcm2 - 1.5f) < 1e-4f, "CAN status 0x220: BP 4.5, BC 1.5");
-      CHECK(process_biu_can_frame(0x220, pc, 3) == 0, "CAN: a 3-byte pressure frame refused");
-      CHECK(process_biu_can_frame(0x220, pc, 9) == 0, "CAN: DLC above 8 refused"); }
-    { const uint8_t hbc = 0x05; CHECK(process_biu_can_frame(0x710, &hbc, 1) == 1 && biu_link_up(), "CAN: BIU heartbeat, link up"); }
+    CHECK(sends == udp_before && heartbeats == heartbeats_before, "CAN link: nothing sent on UDP");
+    { const uint8_t can_pressures[8] = { 90, 30, 170, 88, 24, 0, 0, 0x7F };
+      CHECK(process_biu_can_frame(0x220, can_pressures, 8) == 1 && fabsf(status->pressure[BIU_P_BP].kgcm2 - 4.5f) < 1e-4f
+                && fabsf(status->pressure[BIU_P_BC].kgcm2 - 1.5f) < 1e-4f, "CAN status 0x220: BP 4.5, BC 1.5");
+      CHECK(process_biu_can_frame(0x220, can_pressures, 3) == 0, "CAN: a 3-byte pressure frame refused");
+      CHECK(process_biu_can_frame(0x220, can_pressures, 9) == 0, "CAN: DLC above 8 refused"); }
+    { const uint8_t biu_state = 0x05; CHECK(process_biu_can_frame(0x710, &biu_state, 1) == 1 && biu_link_up(), "CAN: BIU heartbeat, link up"); }
     biu_link_select(BIU_LINK_UDP);
-    { const uint8_t pc[8] = { 100, 0, 180, 0, 0, 0, 0, 0x7F };
-      CHECK(process_biu_can_frame(0x220, pc, 8) == 0, "UDP link: a CAN frame is not taken"); }
+    { const uint8_t can_pressures[8] = { 100, 0, 180, 0, 0, 0, 0, 0x7F };
+      CHECK(process_biu_can_frame(0x220, can_pressures, 8) == 0, "UDP link: a CAN frame is not taken"); }
 
     printf("%d checks, %d failed\n", checks, fails);
     return fails != 0;

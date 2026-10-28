@@ -10,6 +10,60 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-388"></a>
+## Session 388 — BIU firmware: full variable names, how it works, a loco simulator
+
+Abhinav 2026-10-28: *"In the brake pressure and biu and analog firmware code name
+the variables bigger do not use d, c etc name them for what they are"*, *"include
+a detailed markdown file telling me how the code works and what each command etc
+do"*, and *"make a simulation code that can act as loco to test dlconsole biu and
+analog code"*.
+
+**Names.** In `docs/biu-firmware/` every short name is now what it holds:
+`command` (was `c`), `discrete_byte1/2` (`d1/d2`), `cob_id` (`cob`), `length`
+(`n`), `data` (`d`), `reading` (`r`), `spec` (`s`), `range`, `now_ms`,
+`speed_cm_per_s` (`cms`), `pressure_index` (`i`), `previous_spec` /
+`previous_target` / `new_target` (`prev` / `from` / `to`), `read_le16`
+(`le16`), `fraction_of_full_scale`, and the macro arguments
+(`RANGE_TOL(nominal, tolerance)`, `BIU_CAN_SEND(cob_id, data, length)`, ...).
+The test and its stand-in headers too. No behaviour changes; `CHANGES.md`
+follows the new macro argument names.
+
+**How it works.** `docs/biu-firmware/HOW_IT_WORKS.md`: the call order, every
+build hook, every public function, the command frame byte by byte, what each
+received COB-ID does, the brake table, settling, the 4-20 mA conversion and
+the analog card's frame, the two links, the host test, and the loco simulator.
+
+**Loco simulator.** `docs/biu-firmware/loco_sim/`: the real
+`brake_pressure_interface_user.c` built on a PC (Mac / Linux, POSIX sockets)
+with stand-in headers on a real clock and real UDP. It plays the VCC against
+the Brake Test Bench: boot-up, heartbeat and the 0x190 command every 250 ms to
+UDP 51234, the bench's NMT / heartbeat / status frames on 50001. It reads the
+analog card's 34-byte frames on 20000 (CRC checked as JAMCRC/0) through
+`current_to_pressure`. Once a second it prints, per BP / BC / MR, the BIU's
+pressure and the analog one with `check_brake_malfunction`'s answer for each.
+Options set the loco, mode, brake, speed, ports and sensor full scale; 0-5,
+i (isolate), s (speed valid) and q work while it runs.
+
+**Files.** `docs/biu-firmware/{brake_pressure_interface_user.c,.h,
+test_biu.c, test_common_include.h, test_enet_user.h, CHANGES.md,
+HOW_IT_WORKS.md}`, `docs/biu-firmware/loco_sim/{loco_sim.c,
+common_include.h, enet_user.h}`, `.gitignore`.
+
+**Tests.** The host test: 74 checks, 0 failed (gcc `-Wall -Wextra -Wpedantic
+-Wconversion -Wshadow -Werror`). `loco_sim` builds with `-Wconversion -Wshadow
+-Werror`. It was run against a stand-in bench script: boot-up `0x720 [00]`, then
+operational after NMT start; `0x190` = `E8 03 12 0C 58 18 00 00` for WAP7 NB at
+10 m/s; `0x220` read; an analog frame with DLConsole's CRC read as 4.40 / 1.20 /
+9.00; wait then ok; link DOWN once the bench stopped.
+
+**Gate:** not run (DLConsole does not build `docs/`); gated with the bundle at push.
+
+**Not tested:** loco_sim against the DLConsole Brake Test Bench window itself;
+on Windows; the firmware on the TI compiler or on target.
+
+---
+
 <a id="session-387"></a>
 ## Session 387 — NMS fault code type reads Faulty / Recovered, in colour
 

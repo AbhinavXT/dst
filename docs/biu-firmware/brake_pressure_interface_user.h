@@ -4,9 +4,9 @@
 #include <stdint.h>
 #include "biu_can_messages.h"
 
-#define RANGE_TOL(nom, t)   { (float)((nom) - (t)), (float)((nom) + (t)) }
-#define RANGE_UPPER(m)      { 0.0f, (float)(m) }
-#define RANGE_BETWEEN(a, b) { (float)(a), (float)(b) }
+#define RANGE_TOL(nominal, tolerance)  { (float)((nominal) - (tolerance)), (float)((nominal) + (tolerance)) }
+#define RANGE_UPPER(upper_limit)       { 0.0f, (float)(upper_limit) }
+#define RANGE_BETWEEN(lower, upper)    { (float)(lower), (float)(upper) }
 
 #define LOCO_TYPE_COUNT     3
 #define TRAIN_MODE_COUNT    2
@@ -62,7 +62,7 @@ typedef enum {
  *   0.01 m/s on the wire (Annexure-1 2.2.2).
  * BIU_DYNAMIC_BRAKING() defaults to 0 (no dynamic-braking input known).
  * BIU_NOW_MS() defaults to the TI DPL clock in milliseconds.
- * BIU_CAN_SEND(cob, data, n): your CAN driver's send, for the CAN link (see
+ * BIU_CAN_SEND(cob_id, data, length): your CAN driver's send, for the CAN link (see
  *   biu_can_send_frame in the .c). Empty until you put it there.
  * BIU_SIM_IP0..3 / BIU_SIM_PORT: the DLConsole Brake Test Bench, for the UDP
  *   link (default 192.168.25.126:51234).
@@ -97,9 +97,9 @@ void send_biu_command(uint8_t loco_type, uint8_t train_mode, uint8_t brake_type)
  *
  * CAN link: call from your CAN receive with each frame: its 11-bit identifier,
  * DLC and data bytes. */
-uint8_t process_biu_can_frame(uint16_t cob, const uint8_t *data, uint8_t dlc);
+uint8_t process_biu_can_frame(uint16_t cob_id, const uint8_t *data, uint8_t dlc);
 /* UDP link: call with each datagram from the DLConsole Brake Test Bench:
- * [COB-ID lo][COB-ID hi][3 + n][n data bytes]. */
+ * [COB-ID lo][COB-ID hi][3 + length][length data bytes]. */
 uint8_t process_biu_udp_frame(const uint8_t *buffer, uint16_t len);
 
 /* The BIU's last status (pressures with validity, codes, discretes). */
@@ -119,7 +119,7 @@ uint8_t validate_brake_pressure(uint8_t loco_type, uint8_t train_mode, uint8_t b
 BrakeCheck check_brake_malfunction(PressureCmd which, float value);
 
 /* Frame codec, exposed for tests and the DLConsole BIU simulator. */
-void    biu_encode_command(const BiuCommand *c, uint8_t out[BIU_FRAME_LEN]);
+void    biu_encode_command(const BiuCommand *command, uint8_t out[BIU_FRAME_LEN]);
 uint8_t biu_kgcm2_to_byte(float kgcm2);
 float   biu_byte_to_kgcm2(uint8_t raw);
 

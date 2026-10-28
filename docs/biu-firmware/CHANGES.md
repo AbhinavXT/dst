@@ -65,8 +65,8 @@ recorded" means none was written down, and "not from the spec" means a code defe
   selected link (`biu_link_select`, CAN by default) is sent on and listened to; the frames are the same.
   - **CAN:** `biu_can_send_frame` hands over identifier = COB-ID (11-bit), DLC = n, and the n data bytes, with
     no header (the heartbeat has DLC 1, NMT 2, data frames 8). The send itself is the one marked line in that
-    function: put your CAN driver's send there, or define `BIU_CAN_SEND(cob, data, n)`. Until then nothing goes
-    on the bus. Your CAN receive calls `process_biu_can_frame(cob, data, dlc)`.
+    function: put your CAN driver's send there, or define `BIU_CAN_SEND(cob_id, data, length)`. Until then nothing goes
+    on the bus. Your CAN receive calls `process_biu_can_frame(cob_id, data, dlc)`.
     *Spec: Annexure-1 2.2 (COB-IDs and frame data); the identifier and length are CAN's own fields.*
   - **UDP (DLConsole bench):** `biu_udp_send_frame` / `process_biu_udp_frame`, one frame per datagram,
     `[COB-ID lo][COB-ID hi][3 + n][n bytes]`, to 192.168.25.126:51234 by default (`BIU_SIM_IP0..3` /
@@ -81,8 +81,8 @@ recorded" means none was written down, and "not from the spec" means a code defe
 3. **`check_brake_malfunction(which, value)`** judges against the command last sent and returns `BrakeCheck`.
    Treat `BRAKE_CHECK_NO_SPEC` like `BRAKE_CHECK_MALFUNCTION`.
 4. **CAN send:** put your CAN driver's send on the marked line in `biu_can_send_frame` (or define
-   `BIU_CAN_SEND(cob, data, n)`): standard 11-bit identifier `cob`, DLC `n`, `data[0..n-1]`.
-5. **CAN receive:** call `process_biu_can_frame(cob, data, dlc)` with every CAN frame from the BIU (ids 0x000,
+   `BIU_CAN_SEND(cob_id, data, length)`): standard 11-bit identifier `cob_id`, DLC `length`, `data[0..length-1]`.
+5. **CAN receive:** call `process_biu_can_frame(cob_id, data, dlc)` with every CAN frame from the BIU (ids 0x000,
    0x710, 0x220, 0x320, 0x420; a filter on those is enough). `process_biu_reply` is gone.
 6. **Bench testing over UDP:** `biu_link_select(BIU_LINK_UDP)` before `biu_link_init()`, and give
    `process_biu_udp_frame(buffer, len)` every datagram from the DLConsole Brake Test Bench.

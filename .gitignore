@@ -50,3 +50,6 @@ tests/fixtures/station_layout/
 # macOS Finder / Qt Creator clangd (per machine)
 .DS_Store
 .qtc_clangd/
+
+# BIU loco simulator build (docs/biu-firmware/HOW_IT_WORKS.md)
+docs/biu-firmware/loco_sim/loco_sim
