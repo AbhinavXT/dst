@@ -10,6 +10,29 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-379"></a>
+## Session 379 — Packet Maker: loco 1 and loco 2 as the default destinations
+
+**What the operator sees.** Packet Maker opens with **Dest
+192.168.25.16, Port 50001** (Loco 1 · VCC 1 controller 1) instead of
+127.0.0.1:20000. Under **Also send to**, **Destination 2** is filled with
+**192.168.25.77:50001** (Loco 2 · VCC 1 controller 1). Its box stays
+unticked, so a send goes to loco 2 only after the operator ticks it.
+Destinations 3 and 4 default to port 50001 with no host. The addresses
+come from the 2.6 loco table (session 300).
+
+**Files.** `packetmakerdialog.cpp`: the defaults. The host and port are
+named `pmDestHost` / `pmDestPort`.
+
+**Tests.** `test_session241`, `243`, `378`, `test_headerextras`: these
+used to find the port spin by its old value 20000. They now find the
+controls by name and set the host to 127.0.0.1 themselves, so no test
+sends to a real loco address.
+
+**Gate.** `verify.sh` green on Qt 6 and Qt 5.15.
+
+---
+
 <a id="session-378"></a>
 ## Session 378 — Packet Maker answers the loco: ARP → AAP, LSRP → SLRP
 

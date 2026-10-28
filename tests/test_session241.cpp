@@ -40,9 +40,10 @@ TEST_SUITE(session241)
     dlg.loadBuffer(QString::fromLatin1(kSlrpRef6));
     QCoreApplication::processEvents();
 
+    dlg.findChild<QLineEdit *>(QStringLiteral("pmDestHost"))->setText(QStringLiteral("127.0.0.1"));
     QSpinBox *portSpin = nullptr;
     for (QSpinBox *sb : dlg.findChildren<QSpinBox *>())
-        if (sb->parent() == &dlg && sb->maximum() == 65535 && sb->value() == 20000) { portSpin = sb; break; }
+        if (sb->parent() == &dlg && sb->maximum() == 65535 && sb->objectName() == QLatin1String("pmDestPort")) { portSpin = sb; break; }
     QPushButton *build = nullptr, *sendOnce = nullptr;
     for (QPushButton *b : dlg.findChildren<QPushButton *>()) {
         if (b->text().contains(QStringLiteral("Verify")))    build = b;

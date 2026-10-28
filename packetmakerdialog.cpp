@@ -435,13 +435,17 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     top->addWidget(m_packetCombo);
     top->addSpacing(12);
     top->addWidget(new QLabel(tr("Dest:"), this));
-    m_destEdit = new QLineEdit(QStringLiteral("127.0.0.1"), this);
+    // Defaults: loco 1 here, loco 2 as Destination 2 (VCC 1 controller 1, session 300).
+    m_destEdit = new QLineEdit(QStringLiteral("192.168.25.16"), this);
+    m_destEdit->setObjectName(QStringLiteral("pmDestHost"));
+    m_destEdit->setToolTip(tr("Loco 1 · VCC 1 controller 1 by default"));
     m_destEdit->setMaximumWidth(140);
     top->addWidget(m_destEdit);
     top->addWidget(new QLabel(tr("Port:"), this));
     m_portSpin = new QSpinBox(this);
     m_portSpin->setRange(1, 65535);
-    m_portSpin->setValue(20000);
+    m_portSpin->setValue(50001);
+    m_portSpin->setObjectName(QStringLiteral("pmDestPort"));
     top->addWidget(m_portSpin);
     top->addStretch();
     root->addLayout(top);
@@ -465,7 +469,11 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
         m_destHost[i]->setMaximumWidth(160);
         m_destPort[i] = new QSpinBox(destBody);
         m_destPort[i]->setRange(1, 65535);
-        m_destPort[i]->setValue(20000);
+        m_destPort[i]->setValue(50001);
+        if (i == 1) {
+            m_destHost[i]->setText(QStringLiteral("192.168.25.77"));
+            m_destHost[i]->setToolTip(tr("Loco 2 · VCC 1 controller 1 by default"));
+        }
         destGrid->addWidget(m_destOn[i],   i - 1, 0);
         destGrid->addWidget(m_destHost[i], i - 1, 1);
         destGrid->addWidget(new QLabel(tr("Port:"), destBody), i - 1, 2);

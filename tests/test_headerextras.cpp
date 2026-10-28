@@ -187,11 +187,11 @@ TEST_SUITE(headerextras)
 
         QLineEdit *host = nullptr;
         for (QLineEdit *le : dlg.findChildren<QLineEdit *>()) {
-            if (le->text() == QLatin1String("127.0.0.1")) { host = le; break; }
+            if (le->objectName() == QLatin1String("pmDestHost")) { host = le; break; }
         }
         QSpinBox *portSpin = nullptr;
         for (QSpinBox *sb : dlg.findChildren<QSpinBox *>()) {
-            if (sb->parent() == &dlg && sb->maximum() == 65535 && sb->value() == 20000) {
+            if (sb->parent() == &dlg && sb->maximum() == 65535 && sb->objectName() == QLatin1String("pmDestPort")) {
                 portSpin = sb; break;
             }
         }
@@ -206,6 +206,7 @@ TEST_SUITE(headerextras)
         }
         CHECK(host && portSpin && build && sendOnce && arm, "the send controls are all found");
         if (!(host && portSpin && build && sendOnce && arm)) { return; }
+        host->setText(QStringLiteral("127.0.0.1"));
         portSpin->setValue(port);
 
         Extra st = MessageHeader::defaultExtras()[0];

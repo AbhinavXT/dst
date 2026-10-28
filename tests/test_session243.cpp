@@ -7,6 +7,7 @@
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QElapsedTimer>
+#include <QLineEdit>
 #include <QNetworkDatagram>
 #include <QPushButton>
 #include <QSpinBox>
@@ -56,9 +57,10 @@ TEST_SUITE(session243)
     CHECK(rx.bind(QHostAddress(QHostAddress::LocalHost), 0), "loopback receiver binds");
     PacketMakerDialog dlg;
     dlg.loadBuffer(QString::fromLatin1(kSlrpRef6));
+    dlg.findChild<QLineEdit *>(QStringLiteral("pmDestHost"))->setText(QStringLiteral("127.0.0.1"));
     QSpinBox *portSpin = nullptr;
     for (QSpinBox *sb : dlg.findChildren<QSpinBox *>())
-        if (sb->parent() == &dlg && sb->maximum() == 65535 && sb->value() == 20000) { portSpin = sb; break; }
+        if (sb->parent() == &dlg && sb->maximum() == 65535 && sb->objectName() == QLatin1String("pmDestPort")) { portSpin = sb; break; }
     QPushButton *build = nullptr, *sendOnce = nullptr;
     for (QPushButton *b : dlg.findChildren<QPushButton *>()) {
         if (b->text().contains(QStringLiteral("Verify")))    build = b;

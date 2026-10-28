@@ -147,8 +147,9 @@ TEST_SUITE(session378)
 
     PacketMakerDialog dlg(nullptr, nullptr, &keys);
     dlg.loadBuffer(slrp18);
+    dlg.findChild<QLineEdit *>(QStringLiteral("pmDestHost"))->setText(QStringLiteral("127.0.0.1"));
     for (QSpinBox *sb : dlg.findChildren<QSpinBox *>())
-        if (sb->parent() == &dlg && sb->maximum() == 65535 && sb->value() == 20000) sb->setValue(rx.localPort());
+        if (sb->parent() == &dlg && sb->maximum() == 65535 && sb->objectName() == QLatin1String("pmDestPort")) sb->setValue(rx.localPort());
     QCheckBox *arm = nullptr;
     for (QCheckBox *cb : dlg.findChildren<QCheckBox *>())
         if (cb->text().contains(QStringLiteral("Arm"), Qt::CaseInsensitive)) arm = cb;
