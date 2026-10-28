@@ -10,6 +10,57 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-383"></a>
+## Session 383 — summary.html: the review pack in any browser
+
+The third review-pack follow-up (see session 381). The person who reads a
+pack first is not always at a PC with DLConsole: the manager on a phone,
+the signatory who wants the gist before the frames. README.txt had who and
+what, but not the notes, the DMI or the test run.
+
+**What is in the pack now.** `summary.html`, beside README.txt, written at
+export. One page, no scripts, no outside files:
+- **What to look at**, then site, tester, loco, when, span, program,
+  schema;
+- **Captures**: file, tab, frames, from, to, notes;
+- **Notes (N)**: every note in the span, in time order, to the millisecond,
+  with its tab and the start of its row;
+- **What changed on the DMI (N)**: the same list as Tools ▸ What changed on
+  the DMI… (session 375), every loco in every capture, speed, distances and
+  location left out;
+- **The test run, as recorded at the site**: each clause with a result, the
+  result, who set it, remarks, evidence. These are the site tester's
+  verdicts, shown as theirs;
+- **Attachments** (session 382): images shown on the page, other files
+  linked. The links work once the zip is unpacked, and the page says so.
+- It ends with *"This page shows what was recorded. It makes no pass/fail
+  judgement."* Every value from the site is HTML-escaped.
+
+A section with nothing to show says so (*"No notes in the span."*), or is
+left out (no test run, no attachments). Like README.txt, summary.html is
+not in the manifest's CRC list: it is made from the files that are.
+
+**Files.** `reviewpack.{h,cpp}` (`summaryHtml`; the DMI changes per capture
+at write; `summary.html` allowed on unpack); `tests/test_session383.cpp`,
+`tests/test_session370.cpp` (the file list has summary.html third),
+`tests/test_contrastaudit.cpp` (`reviewpack.cpp` joins the standalone HTML
+reports allowed colour literals: the page has its own white background;
+its greys are 7.5:1 or better), `tests/tests.pro`.
+
+**Tests.** New `session383` (14 checks) on the real 2026-10-08 run
+`replay/2026-10-08/loco_1_1_08102026_105200.cap` (the DMI changes mode and
+brake). Checked: a complete page; what to look at and the site escaped; the
+note with its time; as many DMI changes as `DmiChanges::list` finds; the
+test run's Fail by its tester; the image inline; no judgement of its own;
+unpacked and not counted as damaged; a quiet span says "no notes" and "no
+change" and has no run or attachment section.
+
+**Not tested.** How the page looks in a browser.
+
+**Gate.** Gated with the bundle at push.
+
+---
+
 <a id="session-382"></a>
 ## Session 382 — attachments in the review pack
 

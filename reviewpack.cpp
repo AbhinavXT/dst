@@ -1,8 +1,13 @@
 #include "reviewpack.h"
 
+#include "dmichanges.h"
+#include "logmodel.h"
 #include "notessidecar.h"
 #include "sessionfile.h"
+#include "testrun.h"
 #include "xlsxbook.h"
+
+#include <algorithm>
 
 #include <QCoreApplication>
 #include <QDateTime>
@@ -105,6 +110,137 @@ void idsOf(const QString &tabKey, quint8 *src, quint16 *kvch)
     *kvch = us > 0 ? quint16(tabKey.mid(us + 1).toInt()) : 0;
 }
 
+// What summary.html shows beyond the manifest: per capture, its notes and
+// what changed on each loco's DMI.
+struct CaptureSummary {
+    QString file;
+    QVector<Bookmark> marks;
+    QVector<QPair<QString, DmiChanges::Change>> dmi;   // (loco, change)
+};
+
+QString esc(const QString &s) { return s.toHtmlEscaped(); }
+
+// summary.html (session 383): the pack for a reader without DLConsole, in
+// any browser. Times are the frames' own, as on the rows.
+QString summaryHtml(const QJsonObject &m, const QVector<CaptureSummary> &caps, const QString &testRunPath)
+{
+    QString h;
+    h += QStringLiteral("<!doctype html>\n<html><head><meta charset=\"utf-8\"><title>Review pack%1</title>\n"
+                        "<style>body{font:14px/1.45 sans-serif;margin:24px;max-width:1100px;color:#1a1a1a;background:#fff}"
+                        "h1{font-size:20px}h2{font-size:16px;margin-top:28px;border-bottom:1px solid #bbb}"
+                        "table{border-collapse:collapse;margin:6px 0}td,th{border:1px solid #ccc;padding:3px 8px;"
+                        "text-align:left;vertical-align:top}th{background:#eee}.what{background:#fff6d6;padding:10px;"
+                        "border:1px solid #d9c27a;white-space:pre-wrap}.muted{color:#555}img{max-width:480px;"
+                        "border:1px solid #ccc;margin:4px}</style></head><body>\n")
+             .arg(m.value(QStringLiteral("site")).toString().isEmpty() ? QString()
+                                                                       : QStringLiteral(" — ") + esc(m.value(QStringLiteral("site")).toString()));
+    h += QStringLiteral("<h1>DLConsole review pack</h1>\n");
+    const QString what = m.value(QStringLiteral("what_to_look_at")).toString();
+    h += QStringLiteral("<p><b>What to look at</b></p><div class=\"what\">%1</div>\n")
+             .arg(what.isEmpty() ? QStringLiteral("(not given)") : esc(what));
+    h += QStringLiteral("<table>");
+    auto row = [&h](const QString &k, const QString &v) {
+        if (!v.isEmpty()) h += QStringLiteral("<tr><th>%1</th><td>%2</td></tr>").arg(k, esc(v));
+    };
+    row(QStringLiteral("Site"), m.value(QStringLiteral("site")).toString());
+    row(QStringLiteral("Tester"), m.value(QStringLiteral("tester")).toString());
+    row(QStringLiteral("Loco"), m.value(QStringLiteral("loco")).toString());
+    row(QStringLiteral("Made"), m.value(QStringLiteral("created")).toString());
+    const QJsonObject span = m.value(QStringLiteral("span")).toObject();
+    row(QStringLiteral("Span"), span.value(QStringLiteral("from")).toString().isEmpty()
+                                    ? QStringLiteral("everything in the chosen tabs")
+                                    : span.value(QStringLiteral("from")).toString() + QStringLiteral(" to ")
+                                          + span.value(QStringLiteral("to")).toString());
+    const QJsonObject prog = m.value(QStringLiteral("program")).toObject();
+    row(QStringLiteral("Program"), QStringLiteral("%1 %2, Qt %3, %4").arg(prog.value(QStringLiteral("name")).toString(),
+                                                                          prog.value(QStringLiteral("version")).toString(),
+                                                                          prog.value(QStringLiteral("qt")).toString(),
+                                                                          prog.value(QStringLiteral("os")).toString()));
+    row(QStringLiteral("Schema"), m.value(QStringLiteral("schema")).toObject().value(QStringLiteral("from")).toString());
+    h += QStringLiteral("</table>\n");
+
+    h += QStringLiteral("<h2>Captures</h2>\n<table><tr><th>File</th><th>Tab</th><th>Frames</th><th>From</th><th>To</th>"
+                        "<th>Notes</th></tr>");
+    for (const QJsonValue &v : m.value(QStringLiteral("captures")).toArray()) {
+        const QJsonObject c = v.toObject();
+        h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td><td>%4</td><td>%5</td><td>%6</td></tr>")
+                 .arg(esc(c.value(QStringLiteral("file")).toString()), esc(c.value(QStringLiteral("tab")).toString()))
+                 .arg(c.value(QStringLiteral("records")).toInt())
+                 .arg(c.value(QStringLiteral("first")).toString(), c.value(QStringLiteral("last")).toString())
+                 .arg(c.value(QStringLiteral("notes")).toInt());
+    }
+    h += QStringLiteral("</table>\n");
+
+    QVector<QPair<QString, Bookmark>> notes;
+    for (const CaptureSummary &c : caps)
+        for (const Bookmark &b : c.marks) notes.append({ c.file, b });
+    std::sort(notes.begin(), notes.end(), [](const auto &a, const auto &b) { return a.second.epochMs < b.second.epochMs; });
+    h += QStringLiteral("<h2>Notes (%1)</h2>\n").arg(notes.size());
+    if (notes.isEmpty()) {
+        h += QStringLiteral("<p class=\"muted\">No notes in the span.</p>\n");
+    } else {
+        h += QStringLiteral("<table><tr><th>Time</th><th>Tab</th><th>Note</th><th>Row</th></tr>");
+        for (const auto &n : notes)
+            h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td><td class=\"muted\">%4</td></tr>")
+                     .arg(timeText(n.second.epochMs) + QStringLiteral(".%1").arg(n.second.epochMs % 1000, 3, 10, QLatin1Char('0')),
+                          esc(n.second.tabKey), esc(n.second.note.isEmpty() ? QStringLiteral("(marked, no note)") : n.second.note),
+                          esc(n.second.messageSnippet.left(160)));
+        h += QStringLiteral("</table>\n");
+    }
+
+    int dmiCount = 0;
+    for (const CaptureSummary &c : caps) dmiCount += c.dmi.size();
+    h += QStringLiteral("<h2>What changed on the DMI (%1)</h2>\n").arg(dmiCount);
+    if (!dmiCount) {
+        h += QStringLiteral("<p class=\"muted\">No change on a DMI in the span (or no @dmi frames).</p>\n");
+    } else {
+        h += QStringLiteral("<p class=\"muted\">Each @dmi frame compared with the one before; speed, distances and "
+                            "location left out.</p>\n<table><tr><th>Time</th><th>Loco</th><th>Change</th></tr>");
+        for (const CaptureSummary &c : caps)
+            for (const auto &d : c.dmi)
+                h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td></tr>")
+                         .arg(timeText(d.second.ms), esc(d.first), esc(d.second.text()));
+        h += QStringLiteral("</table>\n");
+    }
+
+    TestRun::Run run;
+    if (!testRunPath.isEmpty() && TestRun::load(testRunPath, &run)) {
+        h += QStringLiteral("<h2>The test run, as recorded at the site</h2>\n<p>%1%2</p>\n")
+                 .arg(esc(run.title), run.testers.isEmpty() ? QString() : QStringLiteral(" — ") + esc(run.testers));
+        QStringList ids = run.results.keys();
+        ids.sort();
+        if (ids.isEmpty()) {
+            h += QStringLiteral("<p class=\"muted\">No clause has a result yet.</p>\n");
+        } else {
+            h += QStringLiteral("<table><tr><th>Clause</th><th>Result</th><th>By</th><th>Remarks</th><th>Evidence</th></tr>");
+            for (const QString &id : ids) {
+                const TestRun::Result r = run.results.value(id);
+                h += QStringLiteral("<tr><td>%1</td><td>%2</td><td>%3</td><td>%4</td><td>%5</td></tr>")
+                         .arg(esc(id), esc(TestRun::verdictName(r.verdict)), esc(r.tester), esc(r.remarks), esc(r.evidence));
+            }
+            h += QStringLiteral("</table>\n");
+        }
+    }
+
+    const QJsonArray att = m.value(QStringLiteral("attachments")).toArray();
+    if (!att.isEmpty()) {
+        h += QStringLiteral("<h2>Attachments</h2>\n<p>");
+        static const QStringList images = { QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("jpeg"),
+                                            QStringLiteral("gif"), QStringLiteral("svg") };
+        for (const QJsonValue &v : att) {
+            const QString n = esc(v.toString());
+            h += images.contains(QFileInfo(v.toString()).suffix().toLower())
+                     ? QStringLiteral("<a href=\"%1\"><img src=\"%1\" alt=\"%1\"></a> ").arg(n)
+                     : QStringLiteral("<a href=\"%1\">%1</a><br>").arg(n);
+        }
+        h += QStringLiteral("</p><p class=\"muted\">Unzip the pack first: the links point at its files.</p>\n");
+    }
+    h += QStringLiteral("<p class=\"muted\">This page shows what was recorded. It makes no pass/fail judgement. "
+                        "Open the pack with DLConsole (File &gt; Open review pack...) for the frames themselves.</p>\n"
+                        "</body></html>\n");
+    return h;
+}
+
 QString readme(const QJsonObject &m)
 {
     QString t;
@@ -149,7 +285,9 @@ QString readme(const QJsonObject &m)
     const QJsonObject schema = m.value(QStringLiteral("schema")).toObject();
     t += QStringLiteral("Schema:   %1 (the site's: %2)\n\n")
              .arg(schema.value(QStringLiteral("file")).toString(), schema.value(QStringLiteral("from")).toString());
-    t += QStringLiteral("Open it with DLConsole: File > Open review pack...\n"
+    t += QStringLiteral("summary.html: the same, with the notes, what changed on the DMI and the test run,\n"
+                        "for any browser.\n"
+                        "Open it with DLConsole: File > Open review pack...\n"
                         "Each .dlr also opens on its own with File > Open recorded session...\n"
                         "This pack holds what was recorded. It makes no pass/fail judgement.\n");
     return t;
@@ -187,6 +325,7 @@ Written write(const QString &zipPath, const Input &in)
     QVector<Entry> files;
     qint64 total = 0;
     QJsonArray caps;
+    QVector<CaptureSummary> summaries;
     QSet<QString> used;
     for (const Capture &c : in.captures) {
         QByteArray dlr;
@@ -237,6 +376,19 @@ Written write(const QString &zipPath, const Input &in)
             files.append({ notesName, f.readAll() });
             w.notes += marks.size();
         }
+        CaptureSummary cs;
+        cs.file = dlrName;
+        cs.marks = marks;
+        {
+            LogModel model(nullptr, records + 1);
+            QVector<LogEntryPtr> span;
+            for (const LogEntryPtr &e : c.rows)
+                if (e && (all || (e->epochMs >= in.fromMs && e->epochMs <= in.toMs))) span.append(e);
+            model.appendEntries(span);
+            for (const QString &loco : DmiChanges::locos(&model))
+                for (const DmiChanges::Change &ch : DmiChanges::list(&model, loco)) cs.dmi.append({ loco, ch });
+        }
+        summaries.append(cs);
         QJsonObject o;
         o.insert(QStringLiteral("tab"), c.tabKey);
         o.insert(QStringLiteral("name"), c.name);
@@ -337,6 +489,7 @@ Written write(const QString &zipPath, const Input &in)
     }
     m.insert(QStringLiteral("files"), list);
 
+    files.prepend({ QStringLiteral("summary.html"), summaryHtml(m, summaries, in.testRunPath).toUtf8() });
     files.prepend({ QStringLiteral("README.txt"), readme(m).toUtf8() });
     files.prepend({ QStringLiteral("manifest.json"), QJsonDocument(m).toJson(QJsonDocument::Indented) });
 
@@ -378,7 +531,7 @@ Opened open(const QString &zipPath, const QString &intoDir)
     // Only the pack's own folders, one level deep: a name with "..", a
     // drive or a leading slash would write outside the folder.
     static const QRegularExpression okName(
-        QStringLiteral("^(manifest\\.json|README\\.txt|(captures|testrun|config|attachments)/[A-Za-z0-9._ -]+)$"));
+        QStringLiteral("^(manifest\\.json|README\\.txt|summary\\.html|(captures|testrun|config|attachments)/[A-Za-z0-9._ -]+)$"));
     QDir dir(intoDir);
     if (!dir.mkpath(QStringLiteral("."))) {
         o.error = QStringLiteral("cannot make the folder %1").arg(intoDir);
@@ -398,6 +551,7 @@ Opened open(const QString &zipPath, const QString &intoDir)
         if (!okName.match(name).hasMatch() || name.contains(QLatin1String(".."))) continue;
         const QJsonObject l = listed.value(name);
         if (name != QLatin1String("manifest.json") && name != QLatin1String("README.txt")
+            && name != QLatin1String("summary.html")
             && (l.isEmpty() || qint64(l.value(QStringLiteral("bytes")).toDouble()) != it.value().size()
                 || l.value(QStringLiteral("crc32")).toString() != hex8(XlsxBook::crc32(it.value())))) {
             o.damaged << name;

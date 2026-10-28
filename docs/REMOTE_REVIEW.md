@@ -71,7 +71,9 @@ picture: it adds the test run and the kavach.xml the site decoded with.
 
 ## What a pack is
 
-A plain zip, readable without DLConsole: `README.txt` says what is in it,
+A plain zip, readable without DLConsole: `summary.html` opens in any
+browser with what to look at, the notes, what changed on the DMI, the test
+run and the attachments (patch 383); `README.txt` says what is in it,
 and `manifest.json` lists every file with its size and CRC-32. A file that
 does not match is reported as damaged and not opened. The pack records what
 was observed; it makes no pass/fail judgement.

@@ -126,7 +126,7 @@ TEST_SUITE(session370)
     CHECK(w.records == inSpan21 + inSpan81 && w.notes == 2,
           QByteArray("the frames in the span, and the two notes inside it: ") + QByteArray::number(w.records)
               + " frames, " + QByteArray::number(w.notes) + " notes");
-    const QStringList want = { QStringLiteral("manifest.json"), QStringLiteral("README.txt"),
+    const QStringList want = { QStringLiteral("manifest.json"), QStringLiteral("README.txt"), QStringLiteral("summary.html"),
                                QStringLiteral("captures/Loco_1_21_1.dlr"), QStringLiteral("captures/Loco_1_21_1.notes.json"),
                                QStringLiteral("captures/81_1.dlr"), QStringLiteral("captures/81_1.notes.json"),
                                QStringLiteral("testrun/brakes.testrun.json"), QStringLiteral("config/kavach.xml"),
@@ -223,7 +223,7 @@ TEST_SUITE(session370)
         bad.insert(QStringLiteral("files"), files);
         QVector<QPair<QString, QByteArray>> entries = { { QStringLiteral("manifest.json"), QJsonDocument(bad).toJson() },
                                                        { QStringLiteral("../evil.txt"), QByteArray("x") } };
-        for (const QString &name : want.mid(2)) entries.append({ name, raw.value(name) });
+        for (const QString &name : want.mid(3)) entries.append({ name, raw.value(name) });
         QFile f(tmp.filePath(QStringLiteral("bad.zip")));
         f.open(QIODevice::WriteOnly);
         f.write(XlsxBook::zipFiles(entries));

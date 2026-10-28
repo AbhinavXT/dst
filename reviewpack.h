@@ -14,6 +14,8 @@
 //
 //    manifest.json             what is in it, from where, for what (below)
 //    README.txt                the same, for a person without the program
+//    summary.html              the same with the notes, the DMI's changes and the
+//                              test run, for any browser (session 383)
 //    captures/<name>.dlr       each chosen tab's raw frames, as Save writes them
 //    captures/<name>.notes.json  that tab's bookmarks and notes (session 369)
 //    testrun/<run>.testrun.json  the open test run, when there is one
