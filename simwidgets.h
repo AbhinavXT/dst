@@ -48,6 +48,11 @@ void paintLamp(QPainter &p, const QRectF &lamp, const QString &colour, bool know
 
 QFont scaled(const QFont &base, double factor, int weight = -1);
 
+// A dial's scale number centred on `centre` (session 396): the box its text
+// takes in `font`, not a fixed one. The dials' fonts grow with the dial, so a
+// fixed 32 x 16 box cut the numbers off on a large window.
+QRectF labelBox(const QFont &font, const QPointF &centre, const QString &text);
+
 // The rules both simulator windows start their style sheet with: segmented
 // buttons, primary buttons, id chips, muted / heading / mono labels, cards.
 QString baseStyleSheet();

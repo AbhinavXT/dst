@@ -10,6 +10,33 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-396"></a>
+## Session 396 — the dials' numbers are no longer cut off
+
+Abhinav 2026-10-29, a screenshot of the Loco Simulator's speedometer on a
+large window: the scale read "2(", "6(", "3(", "1(".
+
+**Why.** Each scale number was drawn into a fixed 32 x 16 px box (24 x 16 on
+the pressure dial) while its font grows with the dial (radius x 0.085 pt).
+On a large dial the text was wider than the box and clipped.
+
+**What the operator sees.** The speedometer, the speed sensors' dials and the
+Brake Test Bench's pressure dials print their numbers whole at any size.
+
+**Files:** `simwidgets.{h,cpp}` (`SimUi::labelBox`: the box the text takes in
+the font), `speedgauge.cpp`, `pressuregauge.cpp`, `tests/test_session396.cpp`,
+`tests/tests.pro`.
+
+**Tests:** `session396` (6 checks): at a 1000 px dial the box holds "120"
+and is bigger than the old one; centred on its point; the widest number
+stays inside the tick ring anywhere round the dial; both dials paint at
+1000 px. Looked at a 1000 px speedometer rendered offscreen.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11: every stage green; `dltests` 412
+suites / 10376 checks, 0 failed; menu audit and headless smoke ok.
+
+---
+
 <a id="session-395"></a>
 ## Session 395 — Loco Simulator, step 2: the RFID readers over serial
 

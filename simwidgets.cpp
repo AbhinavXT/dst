@@ -4,6 +4,7 @@
 #include "uicolors.h"
 
 #include <QButtonGroup>
+#include <QFontMetricsF>
 #include <QGuiApplication>
 #include <QHBoxLayout>
 #include <QPainter>
@@ -56,6 +57,14 @@ QColor lampRim(const QString &lamp)
 }  // namespace CabIoColors
 
 namespace SimUi {
+
+QRectF labelBox(const QFont &font, const QPointF &centre, const QString &text)
+{
+    const QFontMetricsF metrics(font);
+    const double width = metrics.horizontalAdvance(text) + 2;
+    const double height = metrics.height();
+    return QRectF(centre.x() - width / 2, centre.y() - height / 2, width, height);
+}
 
 QColor fill()
 {

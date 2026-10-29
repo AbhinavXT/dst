@@ -166,7 +166,8 @@ void PressureGauge::paintEvent(QPaintEvent *)
         p.drawLine(at(v, major ? 0.70 : 0.75), at(v, 0.80));
         if (major && (int(v) % (m_max > 12 ? 2 : 1) == 0)) {
             const QPointF t = at(v, 0.57);
-            p.drawText(QRectF(t.x() - 12, t.y() - 8, 24, 16), Qt::AlignCenter, QString::number(int(v)));
+            const QString number = QString::number(int(v));
+            p.drawText(SimUi::labelBox(small, t, number), Qt::AlignCenter, number);
         }
     }
 

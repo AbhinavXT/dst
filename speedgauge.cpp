@@ -186,7 +186,8 @@ void SpeedGauge::paintEvent(QPaintEvent *)
         painter.drawLine(at(kmh, major ? 0.70 : 0.75), at(kmh, 0.80));
         if (kmh % labelEvery == 0) {
             const QPointF text = at(kmh, 0.57);
-            painter.drawText(QRectF(text.x() - 16, text.y() - 8, 32, 16), Qt::AlignCenter, QString::number(kmh));
+            const QString number = QString::number(kmh);
+            painter.drawText(SimUi::labelBox(small, text, number), Qt::AlignCenter, number);
         }
     }
 
