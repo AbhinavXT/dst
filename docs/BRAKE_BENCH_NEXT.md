@@ -61,6 +61,10 @@ then CHANGELOG sessions 363 back to 359.
 
 ## Gaps found (2026-10-24) that block real testing
 
+- **Done in patch 404:** Record (on the bench and the Loco Simulator) saves
+  every BIU, analog, speed and tag frame, unfiltered and timestamped, to a
+  `.benchrec` file; Tools ▸ Simulators ▸ Test recording… reads it back.
+  What follows was the gap as found:
 - **The bench's traffic is not saved.** The Frames tab keeps the last 2000 rows
   in memory (`kLogCap`, `brakebenchwindow.cpp`); there is no save or export.
   A test leaves no record of what the bench injected, or of what the VCC

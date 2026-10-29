@@ -1,5 +1,6 @@
 #include "locosimwindow.h"
 #include "brakebenchwindow.h"
+#include "benchrecord.h"
 #include "tagbuilderwindow.h"
 #include "routestrip.h"
 #include "biusim.h"
@@ -133,6 +134,12 @@ LocoSimWindow::LocoSimWindow(SerialManager *serial, QWidget *parent)
     m_linkChip = labelNamed(QString(), "mono", this);
     m_linkChip->setTextInteractionFlags(Qt::TextSelectableByMouse);
     top->addWidget(m_linkChip);
+    m_record = new QPushButton(tr("\u25CF Record"), this);
+    m_record->setObjectName(QStringLiteral("locoSimRecord"));
+    m_record->setToolTip(tr("Record a whole test: this window's and the Brake Test Bench's frames to one file, "
+                            "both simulators started (and stopped) with it"));
+    m_record->setCursor(Qt::PointingHandCursor);
+    top->addWidget(m_record);
     m_startStop = new QPushButton(tr("Start"), this);
     m_startStop->setObjectName(QStringLiteral("primary"));
     m_startStop->setToolTip(tr("Send the speed sensors' messages to the VCCs every interval"));
@@ -162,6 +169,7 @@ LocoSimWindow::LocoSimWindow(SerialManager *serial, QWidget *parent)
         else start();
     });
     connect(m_timer, &QTimer::timeout, this, &LocoSimWindow::tick);
+    connect(m_record, &QPushButton::clicked, this, [this]() { toggleRecording(); });
 
     loadSettings();
     pullFromUi();
@@ -188,7 +196,8 @@ void LocoSimWindow::restyle()
     setStyleSheet(SimUi::baseStyleSheet()
                   + QStringLiteral("QLabel#bigValue { font-size: 15pt; font-weight: 600; }"
                                    "QCheckBox#cardTitle { font-size: 13pt; font-weight: 600; }"
-                                   "QPushButton#primary[running=\"true\"] { background: %1; border-color: %1; }")
+                                   "QPushButton#primary[running=\"true\"] { background: %1; border-color: %1; }"
+                                   "QPushButton#locoSimRecord[running=\"true\"] { color: %1; font-weight: 600; }")
                         .arg(UiColor::error().name()));
 }
 
@@ -900,6 +909,10 @@ void LocoSimWindow::sendTag(const SimPreview::Readers::Send &send)
     }
 #endif
     const QString portName = port == 0 ? tr("port A") : tr("port B");
+    if (m_recorder && m_recorder->recording())
+        record(QStringLiteral("tag"), portName, frame,
+               tr("reader %1 \u00B7 tag %2 \u00B7 at %3 m").arg(send.reader).arg(RfidTag::nameOf(send.tag)).arg(m_routeD, 0, 'f', 1),
+               sent ? QString() : tr("not sent: %1 closed").arg(portName));
     QTableWidgetItem *cell = m_tags->item(send.row, send.reader == 1 ? ColReader1 : ColReader2);
     if (cell) {
         cell->setText(sent ? tr("%1 · %2 m").arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss.zzz")))
@@ -1477,11 +1490,78 @@ void LocoSimWindow::advance(double seconds)
         if (m_sink) m_sink(message);
         else m_udp->sendOnce(message, targets);
         ++m_sent;
+        if (m_recorder && m_recorder->recording())
+            record(QStringLiteral("speed"), QStringLiteral("%1 : %2").arg(m_hostList.join(QStringLiteral(", "))).arg(m_port->value()),
+                   message, tr("sensor %1 \u00B7 dir %2 \u00B7 ch1 %3 \u00B7 ch2 %4").arg(sensor + 1).arg(int(m_motion.direction()))
+                                .arg(step.pulses[sensor][0]).arg(step.pulses[sensor][1]));
         logMessage(message, kmhOf(step.pulses[sensor][0]), kmhOf(step.pulses[sensor][1]));
     }
     showStep(step, seconds);
     stepRoute(step);
     showMotion();
+}
+
+// ---- the test recording (session 404) ---------------------------------------------
+
+void LocoSimWindow::setRecorder(BenchRecord::Recorder *recorder)
+{
+    if (m_recorder == recorder) return;
+    if (m_recorder) disconnect(m_recorder, nullptr, this, nullptr);
+    m_recorder = recorder;
+    if (recorder) {
+        connect(recorder, &BenchRecord::Recorder::started, this, [this]() {
+            if (!running()) start();
+            refreshRecordButton();
+        });
+        connect(recorder, &BenchRecord::Recorder::stopped, this, [this](const QString &path, int count) {
+            if (running()) stop();
+            refreshRecordButton();
+            m_status->ok(tr("Recording saved: %1 frames in %2.").arg(count).arg(QDir::toNativeSeparators(path)));
+        });
+        if (recorder->recording() && !running()) start();
+    }
+    refreshRecordButton();
+}
+
+bool LocoSimWindow::toggleRecording()
+{
+    if (!m_recorder) {
+        m_status->fail(tr("No recorder: open the Loco Simulator from Tools \u25B8 Simulators to record."));
+        return false;
+    }
+    if (m_recorder->recording()) {
+        m_recorder->stop(m_clock());
+        return true;
+    }
+    QString why;
+    const QString path = BenchRecord::defaultPath(m_clock());
+    if (!m_recorder->start(path, m_clock(), tr("Loco Simulator and Brake Test Bench"), &why)) {
+        m_status->fail(tr("Cannot record to %1: %2").arg(QDir::toNativeSeparators(path), why));
+        return false;
+    }
+    m_status->ok(tr("Recording to %1.").arg(QDir::toNativeSeparators(path)));
+    return true;
+}
+
+void LocoSimWindow::record(const QString &kind, const QString &peer, const QByteArray &bytes, const QString &says,
+                           const QString &note)
+{
+    BenchRecord::Item item;
+    item.ms = m_clock();
+    item.kind = kind;
+    item.peer = peer;
+    item.bytes = bytes;
+    item.says = says;
+    item.note = note;
+    m_recorder->append(item);
+}
+
+void LocoSimWindow::refreshRecordButton()
+{
+    const bool on = m_recorder && m_recorder->recording();
+    m_record->setText(on ? tr("\u25A0 Stop recording") : tr("\u25CF Record"));
+    m_record->setProperty("running", on);
+    restyle();
 }
 
 // ---- the brake (session 398) ------------------------------------------------------

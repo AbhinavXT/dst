@@ -97,6 +97,8 @@
 #include "dmitimetravel.h"
 #include "brakebenchwindow.h"
 #include "locosimwindow.h"
+#include "benchrecord.h"
+#include "benchrecordwindow.h"
 #ifdef DL_HAVE_SERIAL
 #include "cabiosimwindow.h"
 #include "serialconsolewindow.h"
@@ -820,6 +822,7 @@ void MainWindow::openBrakeBench()
 {
     if (!m_brakeBench) {
         m_brakeBench = new BrakeBenchWindow(this);
+        static_cast<BrakeBenchWindow *>(m_brakeBench.data())->setRecorder(benchRecorder());
         linkCabIoToBench();
         linkLocoSimToBench();
     }
@@ -832,6 +835,7 @@ void MainWindow::openLocoSimulator()
 {
     if (!m_locoSim) {
         m_locoSim = new LocoSimWindow(m_serial, this);
+        static_cast<LocoSimWindow *>(m_locoSim.data())->setRecorder(benchRecorder());
         linkLocoSimToBench();
         // Session 402: the RFID tab can run a Tag Builder's open route.
         static_cast<LocoSimWindow *>(m_locoSim.data())->setTagBuilders([this]() { return findChildren<TagBuilderWindow *>(); });
@@ -854,6 +858,32 @@ void MainWindow::linkCabIoToBench()
     bench->setWireFormat(sim->wireFormat());
     if (sim->outputSeen()) bench->observeOutputWord(int(sim->cab()), sim->outputWord());
 #endif
+}
+
+// Session 404: one recorder for both simulators. A recording started from
+// either opens the other, so one Record starts the whole test.
+BenchRecord::Recorder *MainWindow::benchRecorder()
+{
+    if (!m_benchRecorder) {
+        m_benchRecorder = new BenchRecord::Recorder(this);
+        connect(m_benchRecorder, &BenchRecord::Recorder::started, this, [this]() {
+            if (!m_locoSim) openLocoSimulator();
+            if (!m_brakeBench) openBrakeBench();
+        });
+    }
+    return m_benchRecorder;
+}
+
+void MainWindow::openBenchRecording()
+{
+    const QString path = QFileDialog::getOpenFileName(this, tr("Open a test recording"),
+                                                      QDir(Settings::diskLogRoot()).filePath(QStringLiteral("bench")),
+                                                      tr("Test recordings (*.benchrec);;All files (*)"));
+    if (path.isEmpty()) return;
+    auto *w = new BenchRecordWindow(this);
+    w->openFile(path);
+    w->show();
+    w->raise();
 }
 
 // Session 398: the bench's air brakes the Loco Simulator's loco while both are open.

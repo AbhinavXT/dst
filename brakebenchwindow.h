@@ -22,6 +22,10 @@
 //                    output word.
 //    Frames          every BIU frame both ways and every analog frame, with
 //                    what each says and what is wrong with it.
+//    Record          (session 404) the top bar's Record button: a test
+//                    recording (benchrecord.h) of the bench's and the Loco
+//                    Simulator's frames, unfiltered; it starts the BIU (and
+//                    stops it) with the recording.
 //  The BIU's protocol is biuprotocol.h, its behaviour biusim.h, the air
 //  brakeplant.h.
 // =============================================================================
@@ -36,6 +40,7 @@
 #include <functional>
 
 class BiuSimulator;
+namespace BenchRecord { class Recorder; }
 class PressureGauge;
 class QButtonGroup;
 class QCheckBox;
@@ -129,6 +134,10 @@ public:
     void startClean();                            // the fault setup as the window opens
     QString activePreset() const { return m_activePreset; }   // "" until one is loaded or saved
 
+    // ---- the test recording (session 404) ------------------------------------------
+    void setRecorder(BenchRecord::Recorder *recorder);   // MainWindow's, shared with the Loco Simulator
+    bool toggleRecording();             // the Record button; false (and said) when it cannot
+
     void flushLog();                    // the Frames tab's pending rows, now
     int  logRows() const;
 
@@ -180,6 +189,11 @@ private:
 
     // top bar
     QPushButton *m_startBtn = nullptr;
+    QPushButton *m_recordBtn = nullptr;
+    QPointer<BenchRecord::Recorder> m_recorder;
+    void record(qint64 ms, const QString &kind, bool tx, const QString &peer, const QByteArray &bytes,
+                const QString &says, const QString &note);
+    void refreshRecordButton();
     QToolButton *m_presetBtn = nullptr;   // session 362
     BenchPreset  m_clean;
     QString      m_activePreset;

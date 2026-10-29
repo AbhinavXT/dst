@@ -699,6 +699,9 @@ int main(int argc, char **argv) {
                 if (window->isVisible()) { ++count; opened = window; }
         CHECK(count == 1, "Simulators > Loco Simulator opens one window, raised again on a second trigger");
         CHECK(opened && !opened->running(), "and does not send until Start");
+        // Session 404: the test recording, read back from the same menu.
+        CHECK(findAction(simulators, "Test recording") && opened && opened->findChild<QPushButton *>(QStringLiteral("locoSimRecord")),
+              "Simulators > Test recording…, and the Loco Simulator's Record button");
         // Session 402: the RFID tab follows a Tag Builder opened from the menu.
         if (QAction *tagBuilder = tools ? findAction(tools, "RFID Tag Builder") : nullptr) {
             tagBuilder->trigger();

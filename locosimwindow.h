@@ -24,6 +24,9 @@
 //              edited route no longer has its place).
 //    Frames    every speed message sent, decoded, with its bytes.
 //    Settings  the wheel, the VCCs, how often.
+//    Record    (session 404) the top bar's Record button: a test recording
+//              (benchrecord.h) of this window's and the Brake Test Bench's
+//              frames; starting it starts both, stopping it stops both.
 //    Brake     (session 398) the Brake Test Bench's air slows the loco
 //              (LocoSim::brakeDeceleration): the VCC commands the BIU, the
 //              bench's BP and BC move, the loco brakes; the rates are on
@@ -40,6 +43,7 @@
 #include <memory>
 
 class BrakeBenchWindow;
+namespace BenchRecord { class Recorder; }
 class TagBuilderWindow;
 class QButtonGroup;
 class QCheckBox;
@@ -82,6 +86,12 @@ public:
     bool running() const;
     int  sentCount() const { return m_sent; }
     void setHosts(const QString &hosts);
+
+    // ---- the test recording (session 404) ------------------------------------
+    // MainWindow's recorder, shared with the Brake Test Bench. Recording on:
+    // this window starts sending if it was not; off: it stops.
+    void   setRecorder(BenchRecord::Recorder *recorder);
+    bool   toggleRecording();                  // the Record button; false (and said) when it cannot
 
     // ---- the brake (session 398) --------------------------------------------
     void   followBench(BrakeBenchWindow *bench);    // its air brakes the loco while it is open
@@ -129,6 +139,9 @@ private:
     QWidget *buildSettingsTab();
     QWidget *buildRfidTab();
     void   applyBrake();
+    void   record(const QString &kind, const QString &peer, const QByteArray &bytes, const QString &says,
+                  const QString &note = QString());
+    void   refreshRecordButton();
     void   fillRouteBox();
     void   showRoute(int index);                // the route on the tab, the loco left where it is
     void   builderRouteChanged();
@@ -154,6 +167,8 @@ private:
     QStringList     m_hostList;
 
     QPushButton    *m_startStop = nullptr;
+    QPushButton    *m_record = nullptr;
+    QPointer<BenchRecord::Recorder> m_recorder;
     QLabel         *m_state = nullptr;
     QLabel         *m_linkChip = nullptr;
     SpeedGauge     *m_speedometer = nullptr;

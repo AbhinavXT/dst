@@ -147,6 +147,8 @@ SOURCES += \
     $$PWD/taglibrary.cpp \
     $$PWD/tagbuilderwindow.cpp \
     $$PWD/tageditdialog.cpp \
+    $$PWD/benchrecord.cpp \
+    $$PWD/benchrecordwindow.cpp \
     $$PWD/twolocowindow.cpp \
     $$PWD/trackdiagram.cpp \
     $$PWD/trackdiagramwindow.cpp \
@@ -360,6 +362,8 @@ HEADERS += \
     $$PWD/taglibrary.h \
     $$PWD/tagbuilderwindow.h \
     $$PWD/tageditdialog.h \
+    $$PWD/benchrecord.h \
+    $$PWD/benchrecordwindow.h \
     $$PWD/twolocowindow.h \
     $$PWD/trackdiagram.h \
     $$PWD/trackdiagramwindow.h \

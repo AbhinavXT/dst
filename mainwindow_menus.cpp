@@ -823,6 +823,13 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                               "speed sensors' tachometer pulses to the VCCs every 100 ms"));
     connect(actLocoSim, &QAction::triggered, this, &MainWindow::openLocoSimulator);
 
+    // Session 404: a recording of both simulators' frames, read back.
+    QAction *actBenchRec = simulatorsMenu->addAction(tr("&Test recording…"));
+    actBenchRec->setObjectName(QStringLiteral("actBenchRecording"));
+    actBenchRec->setToolTip(tr("Open a .benchrec file: every frame the Loco Simulator and the Brake Test Bench sent "
+                               "and received during a recorded test, filtered, found, exported as CSV"));
+    connect(actBenchRec, &QAction::triggered, this, &MainWindow::openBenchRecording);
+
     // With the schema commands, not with the transmitting tools: it answers
     // a question about the schema, and the loop it belongs to is edit
     // kavach.xml → reload → validate against real traffic.

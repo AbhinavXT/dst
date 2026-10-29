@@ -10,6 +10,77 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-404"></a>
+## Session 404 — record a whole test: both simulators' frames in one file
+
+Abhinav 2026-10-29, the first of the four next-phase items (*"1,2,3,4"*). His
+answer: both simulators, and a viewer. The `@dlcount` message he asked for in
+between went first, as 403.
+
+**What the operator sees.**
+- **● Record** in the top bar of the Loco Simulator and of the Brake Test Bench
+  (one recorder, shared). Pressing it starts a recording in
+  `<log folder>/bench/bench_yyyyMMdd_HHmmss.benchrec`:
+  - it opens whichever of the two windows is closed;
+  - it starts the Loco Simulator sending and the bench's BIU if either was
+    stopped;
+  - both buttons read **■ Stop recording**.
+- Stopping stops the recording **and both simulators**: one Start, one Stop
+  for the test. The status line says how many frames were saved, and where.
+- **What is in it:** every speed message, every tag frame (or why it could
+  not go), every BIU frame both ways (the VCC's commands, heartbeat and NMT
+  in; the BIU's status, heartbeat and NMT out), every analog frame, and
+  started / stopped marks. Each has the PC time (the clock the VCC logs'
+  `.dlr` files use), sent or received, the peer, the bytes, and what the
+  sender's decoder says. The bench's Frames-tab filters (heartbeats, pause)
+  do not apply to it.
+- **Tools ▸ Simulators ▸ Test recording…** opens a `.benchrec` in a table:
+  - time and seconds since the start, kind, sent / received, peer, says,
+    note, bytes;
+  - a check box per kind with its count, find (every word, anywhere in the
+    row), Go to a second;
+  - Export CSV (the rows shown).
+
+**The file:** one JSON object a line, a header line first (`format`,
+`version` 1, `createdMs`, `note`), flushed each line. A crash costs the last
+line at most; the viewer reads up to it and says the file was cut short.
+
+**Choices made:** the VCC's own logs stay in their `.dlr` (not copied in): the
+two are lined up by time. No replay (re-sending a recording) yet. It was not
+asked for.
+
+**Files:** new `benchrecord.{h,cpp}` (`Item`, `File`, `read`, `Recorder`),
+`benchrecordwindow.{h,cpp}`, `tests/test_session404.cpp`; `locosimwindow.{h,cpp}`,
+`brakebenchwindow.{h,cpp}` (Record, `setRecorder`), `mainwindow.h`,
+`mainwindow_tools.cpp` (`benchRecorder`, `openBenchRecording`),
+`mainwindow_menus.cpp`, `dlcore.pri`, `tests/tests.pro`,
+`tests/menuaudit_main.cpp`, `docs/BRAKE_BENCH_NEXT.md` (the gap closed).
+
+**Tests:** `session404` (31 checks):
+- **The file:** start (its folder made), a frame with every field (a comma
+  and quotes in it) read back as written, the started / stopped marks, a line
+  cut short (the rest read, marked torn), a file that is not a recording
+  refused, the default place.
+- **Both simulators:** Record without a recorder refused; Record starts
+  both; the button says Stop. 5 s with the VCC commanding FSB (session 360's
+  frames) and the loco on the simulator's own route; Stop stops both.
+- **In the file:** every speed message, as sent; tag frames; the VCC's
+  frames received (from its address, 0x190); the BIU's own; its heartbeats;
+  analog; two marks; in time order.
+- **The viewer:** a row per frame; a kind off; find; Go to 2 s; CSV header
+  and rows; export.
+- **Menu audit:** Simulators ▸ Test recording…, and the Record button.
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 420
+suites / 10549 checks, 0 failed; menu audit and headless smoke ok. Linux
+(Ubuntu 22.04 container): `dltests` 420 / 10549, 0 failed; menu audit ok.
+
+**Not tested:** with a real VCC, BIU or serial port; a long recording (hours)
+for size; Record pressed from the real window (the tests call the recorder
+and the windows' functions).
+
+---
+
 <a id="session-403"></a>
 ## Session 403 — @dlcount: LKAVACH's counter message to the LDLU
 

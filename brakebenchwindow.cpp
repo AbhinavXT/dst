@@ -1,4 +1,6 @@
 #include "brakebenchwindow.h"
+#include "benchrecord.h"
+#include <QDir>
 
 #include "biusim.h"
 #include "brakebenchpreset.h"
@@ -157,6 +159,9 @@ BrakeBenchWindow::BrakeBenchWindow(QWidget *parent)
                         || i.frame.cob == Biu::kCobNmt;
         logRow(i.ms, i.tx, hexN(i.frame.cob, 3), Biu::frameName(i.frame.cob), i.frame.data,
                Biu::describe(i.frame), i.note, hb);
+        if (m_recorder && m_recorder->recording())
+            record(i.ms, QStringLiteral("biu"), i.tx, i.peer, Biu::toDatagram(i.frame),
+                   QStringLiteral("%1 %2: %3").arg(hexN(i.frame.cob, 3), Biu::frameName(i.frame.cob), Biu::describe(i.frame)), i.note);
     });
     connect(m_biu, &BiuSimulator::problem, this, [this](const QString &what) { m_status->warn(what); });
     connect(m_anUdp, &UdpSender::error, this, [this](const QString &what) {
@@ -211,7 +216,9 @@ void BrakeBenchWindow::restyle()
 {
     setStyleSheet(SimUi::baseStyleSheet()
                   + QStringLiteral("QLabel#bigValue { font-size: 15pt; font-weight: 600; }"
-                                   "QLabel#gaugeNote { font-size: 9pt; }"));
+                                   "QLabel#gaugeNote { font-size: 9pt; }"
+                                   "QPushButton#benchRecord[running=\"true\"] { color: %1; font-weight: 600; }")
+                        .arg(UiColor::error().name()));
     for (QLabel *c : m_cmdBits1) styleChip(c, c->property("on").toBool(), c->property("known").toBool());
     for (QLabel *c : m_cmdBits2) styleChip(c, c->property("on").toBool(), c->property("known").toBool());
     for (auto &byte : m_bitNow)
@@ -257,6 +264,14 @@ QWidget *BrakeBenchWindow::buildTopBar()
                               "status frames. Leave stopped while a real BIU is on the line."));
     connect(m_startBtn, &QPushButton::clicked, this, [this]() { if (biuRunning()) stopBiu(); else startBiu(); });
     h->addWidget(m_startBtn);
+    // Session 404: one recording of the bench and the Loco Simulator.
+    m_recordBtn = new QPushButton(tr("\u25CF Record"), bar);
+    m_recordBtn->setObjectName(QStringLiteral("benchRecord"));
+    m_recordBtn->setCursor(Qt::PointingHandCursor);
+    m_recordBtn->setToolTip(tr("Record a whole test: the bench's and the Loco Simulator's frames to one file, "
+                               "both simulators started (and stopped) with it"));
+    connect(m_recordBtn, &QPushButton::clicked, this, [this]() { toggleRecording(); });
+    h->addWidget(m_recordBtn);
     // Session 362: the fault setup saved under a name, loaded on request.
     m_presetBtn = new QToolButton(bar);
     m_presetBtn->setObjectName(QStringLiteral("benchPresets"));
@@ -1271,6 +1286,69 @@ void BrakeBenchWindow::stopBiu()
 
 bool BrakeBenchWindow::biuRunning() const { return m_biu->running(); }
 
+// ---- the test recording (session 404) ------------------------------------------------------
+
+void BrakeBenchWindow::setRecorder(BenchRecord::Recorder *recorder)
+{
+    if (m_recorder == recorder) return;
+    if (m_recorder) disconnect(m_recorder, nullptr, this, nullptr);
+    m_recorder = recorder;
+    if (recorder) {
+        connect(recorder, &BenchRecord::Recorder::started, this, [this]() {
+            if (!biuRunning()) startBiu();
+            refreshRecordButton();
+        });
+        connect(recorder, &BenchRecord::Recorder::stopped, this, [this](const QString &path, int count) {
+            if (biuRunning()) stopBiu();
+            refreshRecordButton();
+            m_status->ok(tr("Recording saved: %1 frames in %2.").arg(count).arg(QDir::toNativeSeparators(path)));
+        });
+        if (recorder->recording() && !biuRunning()) startBiu();
+    }
+    refreshRecordButton();
+}
+
+bool BrakeBenchWindow::toggleRecording()
+{
+    if (!m_recorder) {
+        m_status->fail(tr("No recorder: open the bench from Tools \u25B8 Simulators to record."));
+        return false;
+    }
+    if (m_recorder->recording()) {
+        m_recorder->stop(now());
+        return true;
+    }
+    QString why;
+    const QString path = BenchRecord::defaultPath(now());
+    if (!m_recorder->start(path, now(), tr("Brake Test Bench and Loco Simulator"), &why)) {
+        m_status->fail(tr("Cannot record to %1: %2").arg(QDir::toNativeSeparators(path), why));
+        return false;
+    }
+    return true;
+}
+
+void BrakeBenchWindow::record(qint64 ms, const QString &kind, bool tx, const QString &peer, const QByteArray &bytes,
+                              const QString &says, const QString &note)
+{
+    BenchRecord::Item item;
+    item.ms = ms;
+    item.kind = kind;
+    item.tx = tx;
+    item.peer = peer;
+    item.bytes = bytes;
+    item.says = says;
+    item.note = note;
+    m_recorder->append(item);
+}
+
+void BrakeBenchWindow::refreshRecordButton()
+{
+    const bool on = m_recorder && m_recorder->recording();
+    m_recordBtn->setText(on ? tr("\u25A0 Stop recording") : tr("\u25CF Record"));
+    m_recordBtn->setProperty("running", on);
+    restyle();
+}
+
 void BrakeBenchWindow::setListenPort(quint16 port) { m_listenPort->setValue(port); }
 quint16 BrakeBenchWindow::listenPort() const { return quint16(m_listenPort->value()); }
 
@@ -1738,10 +1816,14 @@ void BrakeBenchWindow::sendAnalogNow()
         if (m_analogSink) m_analogSink(bytes);
         else if (!m_anUdp->sendOnce(bytes, analogHost(), analogPort())) continue;   // said by UdpSender::error
         ++m_analogSent;
-        if (m_logAnalog && m_logAnalog->isChecked()) {
+        const bool recording = m_recorder && m_recorder->recording();
+        if ((m_logAnalog && m_logAnalog->isChecked()) || recording) {
             QStringList ch;
             for (int i = 0; i < kAnalogChannels; ++i) ch << QStringLiteral("%1 mA").arg(CabIo::analogMa(raw.at(i)), 0, 'f', 2);
-            logRow(now(), true, QStringLiteral("\u2014"), tr("Analog %1").arg(id), bytes, ch.join(QStringLiteral(" \u00B7 ")),
+            if (recording)
+                record(now(), QStringLiteral("analog"), true, QStringLiteral("%1:%2").arg(analogHost()).arg(analogPort()), bytes,
+                       tr("Analog %1: %2").arg(id).arg(ch.join(QStringLiteral(" \u00B7 "))), QString());
+            if (m_logAnalog && m_logAnalog->isChecked()) logRow(now(), true, QStringLiteral("\u2014"), tr("Analog %1").arg(id), bytes, ch.join(QStringLiteral(" \u00B7 ")),
                    QString(), false);
         }
     }

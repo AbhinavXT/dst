@@ -53,6 +53,7 @@
 
 QT_BEGIN_NAMESPACE
 namespace Ui { class MainWindow; }
+namespace BenchRecord { class Recorder; }
 class DecodeWorkbench;
 class FlasherWindow;
 class LocoConfigWindow;
@@ -443,6 +444,7 @@ private:
     QPointer<QWidget>           m_cabIoSim;     // session 324: the Cab I/O Simulator
     QPointer<QWidget>           m_brakeBench;   // session 360: the Brake Test Bench
     QPointer<QWidget>           m_locoSim;      // session 391: the Loco Simulator
+    BenchRecord::Recorder      *m_benchRecorder = nullptr;   // session 404: shared by the two simulators
     MinimizedDock              *m_windowDock = nullptr;   // chips for minimised tool windows
     QMenu                      *m_recentMenu = nullptr;   // File ▸ Open Recent (session 287)
     class StatusPins           *m_statusPins = nullptr;   // live values pinned from the Loco Console
@@ -684,6 +686,8 @@ private:
     void openCabIoSimulator();                                   // mainwindow_tools.cpp
     void openBrakeBench();                                       // mainwindow_tools.cpp (session 360)
     void openLocoSimulator();                                    // mainwindow_tools.cpp (session 391)
+    BenchRecord::Recorder *benchRecorder();                      // session 404: made on first use
+    void openBenchRecording();                                   // session 404: Tools > Simulators > Test recording…
     void linkCabIoToBench();                                     // the bench hears the output word
     void linkLocoSimToBench();                                   // session 398: the bench brakes the loco
     void rebuildSerialChips();                                   // mainwindow_status.cpp
