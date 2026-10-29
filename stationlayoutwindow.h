@@ -32,6 +32,7 @@ class QPainter;
 class QListWidget;
 class QScrollArea;
 class TagBuilderWindow;
+class LocoSimWindow;
 class MessageDispatcher;
 class LogModel;
 class QMenu;
@@ -60,6 +61,17 @@ public:
     void setDiffTags(const QHash<QString, int> &kinds);   // name -> StationLayout::TagChange::Kind
     // Session 227: a loco's run over the layout: name -> PlanRun::State, ringed.
     void setRunStates(const QHash<QString, int> &states);
+    // Session 411: the Loco Simulator running one of the lines: the loco on
+    // that line's lane at `locM` (the tags' own locations), heading towards
+    // rising locations (sign 1) or falling (-1); its tags as the simulator
+    // has them: name -> RouteStrip::TagState flags (sent on reader 1 / 2,
+    // skipped, a fault). An empty line hides it all.
+    void setSimLoco(const QString &line, double locM, int sign);
+    void setSimTags(const QHash<QString, int> &states);
+    QString simLine() const { return m_simLine; }
+    double simLoco() const { return m_simLoc; }
+    const QHash<QString, int> &simTags() const { return m_simTags; }
+    QRectF simLocoRect() const;   // where the loco is drawn (tests); null when hidden
     // Session 223: the tags selected together (highlighted like the selected one).
     void setMarkedTags(const QSet<QString> &names);
     // The tags whose marks fall inside `r` (canvas coordinates).
@@ -174,6 +186,10 @@ private:
     QPoint m_hover;
     QHash<QString, int> m_diffKinds;   // session 226
     QHash<QString, int> m_runStates;   // session 227
+    QString m_simLine;                 // session 411
+    double  m_simLoc = 0;
+    int     m_simSign = 1;
+    QHash<QString, int> m_simTags;
     QPoint  m_bandFrom;                // Shift + drag: the box's corner (canvas)
     QRect   m_band;                    // the box while it is drawn; null = none
     QVector<Hit> m_hits;
@@ -283,11 +299,28 @@ public:
     // fix); one Undo step. *notFixed: the tags whose page_x / page_y do not
     // make a tag, left as they are.
     int fixAllCrcs(QStringList *notFixed = nullptr);
+    // Session 411: a line run by the Loco Simulator. The route is the line's
+    // tags (lineAsRoute) in the order a loco meets them going that way: by
+    // their own location, rising for dir 1 (Nominal), falling for dir 2
+    // (Reverse); its direction set. `open` gives MainWindow's simulator,
+    // opened. The simulator follows each edit here; this window draws the
+    // loco and the tags it sent (showSimulator). Sending starts at the
+    // simulator's own Start.
+    void setLocoSimulator(const std::function<LocoSimWindow *()> &open) { m_openSim = open; }
+    RfidTag::Route lineAsSimRoute(const QString &line, int dir) const;
+    LocoSimWindow *runLineInSimulator(const QString &line, int dir);   // null (and said) when refused
+    // What the simulator calls: `where` in words ("At 164410.0 m · next tag …").
+    void showSimulator(const QString &line, double locM, int sign, const QHash<QString, int> &tagStates,
+                       const QString &where);
+    void clearSimulator();             // the simulator went elsewhere, or closed
+    QString simulatorLine() const { return m_canvas->simLine(); }
+    QLabel *simulatorState() const { return m_simState; }
     // The menu a right-click on the drawing opens (built, not shown: tests).
     QMenu *contextMenuFor(const QString &tag, const QString &line, qint64 locM, bool aboveLanes);
 
 signals:
     void jumpRequested(const QString &tabKey, qint64 ms);   // session 227: a read, in its log
+    void stationChanged();             // session 411: the layout as it is now (an edit, Undo, a file)
 
 protected:
     void closeEvent(QCloseEvent *e) override;
@@ -332,6 +365,10 @@ private:
     StationLayout::Diff m_diff;
     void fillCompare();
     QLabel *m_other = nullptr;
+    std::function<LocoSimWindow *()> m_openSim;   // session 411
+    QPointer<LocoSimWindow> m_sim;
+    bool m_simInView = false;          // the loco was in view at its last move
+    QLabel *m_simState = nullptr;
     StatusLine *m_status = nullptr;
     UndoLog *m_undo = nullptr;
 };

@@ -31,6 +31,9 @@
 //              (session 410) Send a tag…: one tag now, by hand, from its
 //              page_x / page_y, on reader 1 and / or 2 (the simulator's SPAD
 //              scenario RFID interface; tagsenddialog.h).
+//              (session 411) a line of a Station Layout, the same way: its
+//              tags in the order a loco meets them, each edit there followed,
+//              the loco and the tags sent drawn on the layout.
 //              (session 402) Tag Builder: the route open in a Tag Builder,
 //              as it is now, saved or not; each edit there comes here and
 //              the loco stays where it is (back to the start tag when the
@@ -65,6 +68,7 @@ class BrakeBenchWindow;
 class TagSendDialog;
 namespace BenchRecord { class Recorder; }
 class TagBuilderWindow;
+class StationLayoutWindow;
 class QButtonGroup;
 class QCheckBox;
 class QComboBox;
@@ -140,6 +144,16 @@ public:
     bool   followBuilder(TagBuilderWindow *builder);   // false (and said) for none
     bool   followsBuilder() const { return !m_builder.isNull(); }
     void   chooseBuilder();                     // the Tag Builder button: one builder, or a menu of them
+    // Session 411: a line of a Station Layout, live (StationLayoutWindow::
+    // lineAsSimRoute): each edit there comes here as a Tag Builder's does (the
+    // loco stays where it is), and the layout draws the loco and the tags sent.
+    bool   followLayout(StationLayoutWindow *layout, const QString &line, int dir);   // false (and said) when refused
+    void   unfollowLayout();                    // the route stays; the layout no longer draws the loco
+    bool   followsLayout() const { return !m_layout.isNull(); }
+    QString layoutLine() const { return m_layoutLine; }
+    // The loco among the tags' own locations (an adjustment tag's renumbering
+    // undone), where the layout draws it; NaN off the route.
+    double layoutLocation() const;
     void   setStartRow(int row);                // and places the loco there
     bool   placeAtStart();                      // false (and said) without a route whose direction is set
     double routePosition() const { return m_routeD; }
@@ -214,6 +228,9 @@ private:
     void   showRoute(int index);                // the route on the tab, the loco left where it is
     void   builderRouteChanged();
     void   stopFollowingBuilder();
+    void   routeEdited(const RfidTag::Route &route, const QString &source);   // the loco stays where it is
+    void   layoutRouteChanged();
+    void   showOnLayout();
     void   fillTagTable();
     void   stepRoute(const LocoSim::Step &step);
     void   sendTag(const SimPreview::Readers::Send &send, const QString &note = QString());
@@ -300,6 +317,10 @@ private:
     QPushButton    *m_fromBuilder = nullptr;
     QPointer<TagBuilderWindow> m_builder;
     std::function<QList<TagBuilderWindow *>()> m_builders;
+    QPointer<StationLayoutWindow> m_layout;   // session 411
+    QString         m_layoutLine;
+    int             m_layoutDir = 0;
+    QVector<double> m_ownLoc;           // per route row: the tag's own location
     QComboBox      *m_routeBox = nullptr;
     QComboBox      *m_startTag = nullptr;
     QLabel         *m_routeWhere = nullptr;

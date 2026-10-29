@@ -8,6 +8,7 @@
 #include "settings.h"
 #include "simwidgets.h"
 #include "speedgauge.h"
+#include "stationlayoutwindow.h"
 #include "statusline.h"
 #include "taglibrary.h"
 #include "udpsender.h"
@@ -198,6 +199,7 @@ LocoSimWindow::LocoSimWindow(SerialManager *serial, QWidget *parent)
 LocoSimWindow::~LocoSimWindow()
 {
     saveSettings();
+    if (m_layout) m_layout->clearSimulator();   // session 411: its loco goes with this window
 #ifdef DL_HAVE_SERIAL
     for (int which = 0; which < 2; ++which)
         if (m_serial && m_tagLink[which] && m_weOpened[which]) m_serial->close(m_tagLink[which]->config().portName);
@@ -671,6 +673,7 @@ bool LocoSimWindow::loadRouteFile(const QString &path)
         return false;
     }
     stopFollowingBuilder();
+    unfollowLayout();
     m_routes = routes;
     m_routeFile = path;
     m_routeIndex = -1;
@@ -711,6 +714,10 @@ void LocoSimWindow::showRoute(int index)
         const QSignalBlocker block(m_routeBox);
         m_routeBox->setCurrentIndex(index);
     }
+    m_ownLoc.clear();   // session 411: where the layout draws the loco
+    if (m_routes.at(index).dir == RfidTag::DirNominal || m_routes.at(index).dir == RfidTag::DirReverse)
+        for (const RfidTag::RouteRow &row : RfidTag::routeRows(m_routes.at(index).tags, m_routes.at(index).dir))
+            m_ownLoc << double(row.ownLoc);
     fillTagTable();
     m_wholeStrip->setRoute(m_routes.at(index));
     m_followStrip->setRoute(m_routes.at(index));
@@ -757,6 +764,7 @@ bool LocoSimWindow::followBuilder(TagBuilderWindow *builder)
         return false;
     }
     stopFollowingBuilder();
+    unfollowLayout();
     m_builder = builder;
     connect(builder, &TagBuilderWindow::routeChanged, this, &LocoSimWindow::builderRouteChanged);
     connect(builder, &QObject::destroyed, this, [this]() {
@@ -783,11 +791,15 @@ void LocoSimWindow::stopFollowingBuilder()
 // An edit in the builder: the route as it is now, the loco where it was.
 void LocoSimWindow::builderRouteChanged()
 {
-    if (!m_builder) return;
+    if (m_builder) routeEdited(m_builder->route(), tr("the Tag Builder"));
+}
+
+void LocoSimWindow::routeEdited(const RfidTag::Route &edited, const QString &source)
+{
     const QStringList skipped = skippedTags();
     const int startRow = m_startTag->currentIndex();
     const QString startName = startRow >= 0 && startRow < m_tags->rowCount() ? m_tags->item(startRow, ColTag)->text() : QString();
-    m_routes = { m_builder->route() };
+    m_routes = { edited };
     fillRouteBox();
     showRoute(0);
     for (const QString &name : skipped) setSkipped(name, true);
@@ -822,7 +834,109 @@ void LocoSimWindow::builderRouteChanged()
             if (m_tags->item(r, ColTag)->text() == name) m_tagStates[r] = RouteStrip::Skipped;
     markFaultedRows();
     showRoutePosition();
-    m_status->state(tr("Route updated from the Tag Builder: the loco stays at %1 m.").arg(m_routeD, 0, 'f', 1));
+    m_status->state(tr("Route updated from %1: the loco stays at %2 m.").arg(source).arg(m_routeD, 0, 'f', 1));
+}
+
+// ---- session 411: a line of a Station Layout, live ---------------------------------------
+
+bool LocoSimWindow::followLayout(StationLayoutWindow *layout, const QString &line, int dir)
+{
+    if (!layout) {
+        m_status->warn(tr("No Station Layout to follow."));
+        return false;
+    }
+    const RfidTag::Route route = layout->lineAsSimRoute(line, dir);
+    if (route.tags.isEmpty()) {
+        m_status->fail(tr("Line %1 of the Station Layout has no tag that decodes.").arg(line));
+        return false;
+    }
+    stopFollowingBuilder();
+    unfollowLayout();
+    m_layout = layout;
+    m_layoutLine = line;
+    m_layoutDir = dir;
+    connect(layout, &StationLayoutWindow::stationChanged, this, &LocoSimWindow::layoutRouteChanged);
+    connect(layout, &QObject::destroyed, this, [this]() {
+        m_routeFileLabel->setText(tr("Station Layout (closed)"));
+        m_status->warn(tr("The Station Layout closed: its last route stays here."));
+    });
+    m_routeFile.clear();
+    m_routes = { route };
+    m_routeIndex = -1;
+    m_routeFileLabel->setText(tr("Station Layout \u00B7 line %1").arg(line));
+    m_routeFileLabel->setToolTip(tr("Line %1 of the open Station Layout, followed as it is edited").arg(line));
+    fillRouteBox();
+    setRoute(0);
+    m_status->ok(tr("Following line %1 of the Station Layout, dir %2: each edit there comes here.").arg(line).arg(dir));
+    return true;
+}
+
+void LocoSimWindow::unfollowLayout()
+{
+    if (m_layout) {
+        disconnect(m_layout, nullptr, this, nullptr);
+        m_layout->clearSimulator();
+    }
+    m_layout.clear();
+    m_layoutLine.clear();
+}
+
+// An edit in the layout. One elsewhere (another line, a text) leaves this
+// line's route as it was: nothing changes here.
+void LocoSimWindow::layoutRouteChanged()
+{
+    if (!m_layout) return;
+    const RfidTag::Route route = m_layout->lineAsSimRoute(m_layoutLine, m_layoutDir);
+    if (route.tags.isEmpty()) {
+        m_status->warn(tr("Line %1 is no longer in the Station Layout (or none of its tags decodes): its last route stays "
+                          "here.").arg(m_layoutLine));
+        unfollowLayout();
+        return;
+    }
+    auto same = [](const RfidTag::Route &a, const RfidTag::Route &b) {
+        if (a.name != b.name || a.dir != b.dir || a.tags.size() != b.tags.size() || a.signalList.size() != b.signalList.size())
+            return false;
+        for (int i = 0; i < a.tags.size(); ++i)
+            if (a.tags.at(i).name != b.tags.at(i).name || a.tags.at(i).bytes != b.tags.at(i).bytes) return false;
+        for (int i = 0; i < a.signalList.size(); ++i)
+            if (a.signalList.at(i).footTag != b.signalList.at(i).footTag || a.signalList.at(i).name != b.signalList.at(i).name)
+                return false;
+        return true;
+    };
+    if (m_routes.size() == 1 && m_routeIndex == 0 && same(m_routes.first(), route)) {
+        showOnLayout();   // the layout redrew: the loco back on it
+        return;
+    }
+    routeEdited(route, tr("the Station Layout"));
+}
+
+double LocoSimWindow::layoutLocation() const
+{
+    if (!m_readers) return std::numeric_limits<double>::quiet_NaN();
+    const QVector<SimPreview::Row> &rows = m_readers->rows();
+    if (rows.isEmpty() || m_ownLoc.size() != rows.size()) return m_routeD;
+    // Between the row the loco is in and the next, in proportion.
+    const int r = qBound(0, m_routeRow, rows.size() - 1);
+    const double a = rows.at(r).absLoc;
+    if (r + 1 < rows.size() && rows.at(r + 1).absLoc != a)
+        return m_ownLoc.at(r) + (m_routeD - a) / (rows.at(r + 1).absLoc - a) * (m_ownLoc.at(r + 1) - m_ownLoc.at(r));
+    return m_ownLoc.at(r) + (m_routeD - a);
+}
+
+void LocoSimWindow::showOnLayout()
+{
+    if (!m_layout) return;
+    if (m_routeIndex < 0 || !m_readers) {
+        m_layout->showSimulator(m_layoutLine, std::numeric_limits<double>::quiet_NaN(), m_layoutDir == RfidTag::DirReverse ? -1 : 1,
+                                {}, m_routeWhere ? m_routeWhere->text() : QString());
+        return;
+    }
+    const RfidTag::Route &route = m_routes.at(m_routeIndex);
+    QHash<QString, int> byName;
+    for (auto it = m_tagStates.cbegin(); it != m_tagStates.cend(); ++it)
+        if (it.key() >= 0 && it.key() < route.tags.size() && it.value()) byName[route.tags.at(it.key()).name] |= it.value();
+    m_layout->showSimulator(m_layoutLine, layoutLocation(), route.dir == RfidTag::DirReverse ? -1 : 1, byName,
+                            m_routeWhere->text());
 }
 
 void LocoSimWindow::setStartRow(int row)
@@ -1518,6 +1632,7 @@ bool LocoSimWindow::chainOn()
     if (next.file != m_routeFile) {
         const QVector<RfidTag::Route> routes = routesIn(next.file);
         if (next.index < 0 || next.index >= routes.size()) return false;
+        unfollowLayout();   // session 411: off the layout's line, into another file's route
         m_routes = routes;
         m_routeFile = next.file;
         m_routeFileLabel->setText(QFileInfo(next.file).fileName());
@@ -1787,6 +1902,7 @@ void LocoSimWindow::showRoutePosition()
             strip->setTagStates({});
             strip->setReader2Window(none, none);
         }
+        showOnLayout();
         return;
     }
     const RfidTag::Route &route = m_routes.at(m_routeIndex);
@@ -1832,6 +1948,7 @@ void LocoSimWindow::showRoutePosition()
         if (m_routeRow + 1 < rows.size()) text += tr(" (%1)").arg(rows.at(m_routeRow + 1).id);
     }
     m_routeWhere->setText(text + tr(" · %1 tag frame(s) sent").arg(m_tagsSent));
+    showOnLayout();
 }
 
 // ---- the tag ports ---------------------------------------------------------------------

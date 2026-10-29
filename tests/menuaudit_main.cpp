@@ -42,6 +42,8 @@
 #include "capturedecoder.h"
 #include <QDateTime>
 #include <QMouseEvent>
+#include "rfidtag.h"
+#include "stationlayoutwindow.h"
 #include "uicolors.h"
 #include "brakebenchwindow.h"
 #ifdef DL_HAVE_SERIAL
@@ -714,6 +716,27 @@ int main(int argc, char **argv) {
             if (builder) builder->close();
         } else {
             CHECK(false, "Tools > RFID Tag Builder");
+        }
+        // Session 411: a line of a Station Layout opened from the menu, in this Loco Simulator.
+        if (QAction *layoutAct = tools ? findAction(tools, "Station Layout") : nullptr) {
+            layoutAct->trigger();
+            StationLayoutWindow *layout = nullptr;
+            for (QWidget *top : QApplication::topLevelWidgets())
+                if (auto *l = qobject_cast<StationLayoutWindow *>(top))
+                    if (l->isVisible()) layout = l;
+            QString line;
+            int most = 0;
+            for (const StationLayout::Line &ln : layout ? layout->station().lines : QVector<StationLayout::Line>())
+                if (ln.tags.size() > most) { most = ln.tags.size(); line = ln.line; }
+            CHECK(layout && layout->findChild<QPushButton *>(QStringLiteral("stationLayoutSimulator")),
+                  "Tools > Station Layout…, with its Simulator button");
+            CHECK(layout && opened && layout->runLineInSimulator(line, RfidTag::DirNominal) == opened && opened->followsLayout(),
+                  "a line of it runs in the Loco Simulator, which follows the layout");
+            if (layout) layout->close();
+            QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+            CHECK(opened && !opened->followsLayout(), "and stops following when the layout closes");
+        } else {
+            CHECK(false, "Tools > Station Layout");
         }
         // Session 398: the Brake Test Bench's air brakes its loco while both are open.
         if (QAction *bench = findAction(simulators, "Brake Test Bench")) {

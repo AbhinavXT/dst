@@ -10,6 +10,105 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-411"></a>
+## Session 411 — a line of the Station Layout, run in the Loco Simulator
+
+Abhinav 2026-10-29: *"Something tht includes rfid sim, tag builder and
+layout..."*. Of the four readings offered he picked two, *"1,2"*: this is
+the first (the loco driven on the layout). The second, one workspace for
+all three, is 412.
+
+**What the operator sees.** Tools ▸ Station Layout…:
+- A **Simulator** button in the row under the tables, beside Fix CRCs:
+  **Line DM ▸ Dir 1, Nominal (locations rising) / Dir 2, Reverse
+  (locations falling)**, one entry per line. **Why there:** in the top bar
+  it took the bar past the room kept for wider fonts (sessions 210, 212,
+  233: 1039 px against 1000 on Qt 5). The same two are on the right-click menu of a line's lane
+  (**Line DM in the Loco Simulator ▸**).
+- Picking one opens the Loco Simulator on that line. The loco is placed at
+  the first tag it meets, and the status line says to press **Start**
+  there. **Sending starts only at the simulator's own Start**: nothing goes
+  to a VCC from the layout.
+- **On the drawing**, while the simulator runs:
+  - the loco, an arrow on the line's lane pointing the way it runs, with
+    "Loco 151.164 km" under it;
+  - a ring round each tag set as the simulator has it: solid ok colour once
+    sent, warning for a fault (405), dashed for a skipped tag;
+  - a line over the drawing: "Loco Simulator, line DM, dir 1: At … · next
+    tag in … · N tag frame(s) sent".
+  - The drawing scrolls to the loco when the run starts and follows it
+    while it is in view. Once the sheet is moved off it, it stays where
+    the operator put it.
+- **Edits on the layout are followed**, as a Tag Builder's are (402): move a
+  tag, change a field, Fix CRCs, Undo. The simulator's route changes and
+  the loco stays where it is. An edit on another line leaves the route as
+  it was.
+- **Simulator ▸ Stop** ends it: the simulator keeps the route, the layout no
+  longer draws the loco. So do: the line deleted, another route file or a
+  Tag Builder picked in the simulator, chaining (406) into another file's
+  route, a second layout taking it over, either window closing.
+- In the simulator, the RFID tab's route label reads "Station Layout ·
+  line DM".
+
+**The route** (`StationLayoutWindow::lineAsSimRoute`): the line as
+`lineAsRoute` (224) makes it (its tags, each main tag's duplicate, the
+signals at them). The tags are put in the order a loco meets them: by each
+tag's own location (abs_loc_1 on an adjustment tag), rising for dir 1,
+falling for dir 2. Tags at one place keep the line's order. The direction is
+set, so `routeRows` gives the rows as for any route. **Chosen:** the order is
+by location, not the line's own order, because a dir 2 route in the
+simulator's Configuration1.xml (`2_REV_DN`) runs from high locations to low,
+908D before 908.
+
+**Where the loco is drawn** (`LocoSimWindow::layoutLocation`): the simulator
+moves in the route's numbering, which an adjustment tag (197) renumbers. The
+drawing puts each tag at its own location. So the loco is placed between the
+row it is in and the next one, in proportion, among the tags' own
+locations. Past the last row it runs on at 1 m per metre.
+
+**Files:** `stationlayoutwindow.{h,cpp}` (`lineAsSimRoute`,
+`runLineInSimulator`, `showSimulator`, `clearSimulator`, the
+`stationChanged` signal, the Simulator button and lane submenu; the canvas's
+`setSimLoco`, `setSimTags`, `simLocoRect`), `locosimwindow.{h,cpp}`
+(`followLayout`, `unfollowLayout`, `layoutLocation`; `routeEdited` now
+shared by the Tag Builder and the layout), `mainwindow_tools.cpp` (the
+layout gets the Loco Simulator), `tests/test_session411.cpp`,
+`tests/tests.pro`, `tests/menuaudit_main.cpp`, `tests/screenshot_main.cpp`
+(`SHOT_SIM=<line>[,2]`, `*` for the longest line; `SHOT_SIM_S` seconds).
+
+**Tests:** `session411` (24 checks), on the built-in station.xlsx:
+- **The route:** dir 1 is the line's tags with their duplicates, by
+  location rising, the direction set. Dir 2 is the same tags, falling. No
+  direction, or no such line: no route.
+- **Running it:** refused with no simulator. Run: the simulator follows,
+  the loco is at the first tag, and the layout draws it on that lane, at
+  that tag's own location, and says where it is.
+- **Driving** at 60 km/h: every tag sent is marked on the layout as sent on
+  reader 1; the loco is drawn further on.
+- **Edits:** a tag ahead moved 3 m: the simulator has its new bytes and the
+  loco stays. An edit on another line changes nothing. Undo twice: the tag
+  is back, in the simulator too.
+- **The lane menu:** Dir 1 / Dir 2; Dir 2 puts the loco at the line's other
+  end.
+- **Leaving:** the line deleted, another route file, a second layout, that
+  layout destroyed: each ends the following and the route stays.
+- **Menu audit:** Tools ▸ Station Layout… has the Simulator button; a line
+  of it runs in the main window's Loco Simulator, which stops following
+  when the layout closes.
+- **Looked at:** the screenshot harness on station.xlsx, line DM, 25 s:
+  Light, Dark and High Contrast, the loco and its label readable.
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 426
+suites / 10667 checks, 0 failed; menu audit 203 ok; headless smoke ok. Linux:
+left to CI.
+
+**Not tested:** with a real VCC, over a real serial port; a line with an
+adjustment tag driven past it (the loco's place on the drawing there is by
+proportion, not checked against a real run); dragging the sheet by hand
+during a run (the "left alone" rule).
+
+---
+
 <a id="session-410"></a>
 ## Session 410 — Send a tag…: one RFID tag by hand, from its page_x and page_y
 

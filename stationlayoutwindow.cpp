@@ -2,6 +2,8 @@
 
 #include "logmodel.h"
 #include "messagedispatcher.h"
+#include "locosimwindow.h"
+#include "routestrip.h"
 #include "settings.h"
 #include "statusline.h"
 #include "tagbuilderwindow.h"
@@ -438,6 +440,29 @@ void StationLayoutCanvas::setRunStates(const QHash<QString, int> &states)
 {
     m_runStates = states;
     update();
+}
+
+void StationLayoutCanvas::setSimLoco(const QString &line, double locM, int sign)
+{
+    m_simLine = line;
+    m_simLoc = locM;
+    m_simSign = sign < 0 ? -1 : 1;
+    if (line.isEmpty()) m_simTags.clear();
+    update();
+}
+
+void StationLayoutCanvas::setSimTags(const QHash<QString, int> &states)
+{
+    m_simTags = states;
+    update();
+}
+
+QRectF StationLayoutCanvas::simLocoRect() const
+{
+    if (m_simLine.isEmpty() || !m_laneOfLine.contains(m_simLine) || !std::isfinite(m_simLoc)) return QRectF();
+    const double x = xOf(qint64(std::llround(m_simLoc)));
+    const double y = laneY(m_laneOfLine.value(m_simLine));
+    return QRectF(x - 15, y - 7, 30, 14);
 }
 
 void StationLayoutCanvas::setDiffTags(const QHash<QString, int> &kinds)
@@ -884,6 +909,15 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
             p.setBrush(Qt::NoBrush);
             p.drawEllipse(QPointF(x, y), 20, 20);
         }
+        // Session 411: the Loco Simulator's tags: sent (ok), a fault on it
+        // (warning), skipped (muted, dashed); a duplicate's state on its set.
+        if (const int st = m_simTags.value(t.name) | (dup.isEmpty() ? 0 : m_simTags.value(dup))) {
+            const bool sent = st & (RouteStrip::SentOn1 | RouteStrip::SentOn2);
+            const QColor c = st & RouteStrip::Faulted ? UiColor::warning() : sent ? UiColor::ok() : ink;
+            p.setPen(QPen(c, 2, sent || (st & RouteStrip::Faulted) ? Qt::SolidLine : Qt::DashLine));
+            p.setBrush(Qt::NoBrush);
+            p.drawEllipse(QPointF(x, y), 24, 24);
+        }
         // Session 226: a tag that differs from the compared file (added: ok; moved / changed: warning).
         if (m_diffKinds.contains(t.name) || (!dup.isEmpty() && m_diffKinds.contains(dup))) {
             const int k = m_diffKinds.value(t.name, m_diffKinds.value(dup));
@@ -976,6 +1010,28 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
             p.drawText(QRectF(x - 50, sy + 5, 100, lh), Qt::AlignCenter, km(qint64(m)));
             p.setPen(QPen(UiColor::frame(), 1));
         }
+    }
+    // Session 411: the Loco Simulator's loco, on its line, pointing the way it runs.
+    if (const QRectF r = simLocoRect(); !r.isNull()) {
+        const double y = r.center().y(), nose = m_simSign * 7;
+        const double back = m_simSign > 0 ? r.left() : r.right(), front = m_simSign > 0 ? r.right() : r.left();
+        QPolygonF body;
+        body << QPointF(back, r.top()) << QPointF(front - nose, r.top()) << QPointF(front, y)
+             << QPointF(front - nose, r.bottom()) << QPointF(back, r.bottom());
+        p.setPen(QPen(text, 1.2));
+        p.setBrush(UiColor::accent());
+        p.drawPolygon(body);
+        p.setBrush(Qt::NoBrush);
+        const QString label = tr("Loco %1").arg(km(qint64(std::llround(m_simLoc))));
+        const int w = fm.horizontalAdvance(label) + 6;
+        const QRectF box(r.center().x() - w / 2.0, r.bottom() + 3, w, lh);
+        p.setPen(Qt::NoPen);
+        p.setBrush(palette().color(QPalette::Base));
+        p.drawRect(box);
+        p.setBrush(Qt::NoBrush);
+        p.setPen(UiColor::accent());
+        p.drawText(box, Qt::AlignCenter, label);
+        m_hits << Hit{ r, QString(), tr("Loco Simulator: line %1 at %2").arg(m_simLine, km(qint64(std::llround(m_simLoc)))) };
     }
     // Session 223: the box being drawn (Shift + drag).
     if (!m_band.isNull()) {
@@ -1201,6 +1257,28 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     tableAct->setToolTip(tr("Every tag by line and location: id, km, kind, TIN nominal / reverse, signals, CRC-30"));
     drawingAct->setToolTip(tr("The drawing as a sheet: A3 landscape PDF, or a PNG image"));
     exportBtn->setMenu(exportMenu);
+    // Session 411: a line in the Loco Simulator, one menu entry per line and direction.
+    auto *simBtn = new QPushButton(tr("Simulator"), this);
+    simBtn->setObjectName(QStringLiteral("stationLayoutSimulator"));
+    simBtn->setToolTip(tr("Run a line in the Loco Simulator: its tags in the order a loco meets them, the loco "
+                          "drawn here as it goes, each edit here followed there"));
+    auto *simMenu = new QMenu(simBtn);
+    connect(simMenu, &QMenu::aboutToShow, this, [this, simMenu]() {
+        simMenu->clear();
+        for (const StationLayout::Line &ln : m_layout.lines) {
+            const QString label = ln.name.isEmpty() || ln.name == ln.line ? ln.line : tr("%1 (%2)").arg(ln.line, ln.name);
+            QMenu *sub = simMenu->addMenu(tr("Line %1").arg(label));
+            sub->addAction(tr("Dir 1, Nominal (locations rising)"), this, [this, ln]() { runLineInSimulator(ln.line, RfidTag::DirNominal); });
+            sub->addAction(tr("Dir 2, Reverse (locations falling)"), this, [this, ln]() { runLineInSimulator(ln.line, RfidTag::DirReverse); });
+        }
+        if (m_layout.lines.isEmpty()) simMenu->addAction(tr("(no lines in this layout)"))->setEnabled(false);
+        simMenu->addSeparator();
+        simMenu->addAction(tr("Stop: the simulator keeps the route, no longer this layout"), this, [this]() {
+            if (m_sim) m_sim->unfollowLayout();
+            clearSimulator();
+        })->setEnabled(!m_canvas->simLine().isEmpty());
+    });
+    simBtn->setMenu(simMenu);
     auto *zoomIn = new QPushButton(QStringLiteral("+"), this);
     auto *zoomOut = new QPushButton(QStringLiteral("\u2212"), this);
     auto *fit = new QPushButton(tr("Fit"), this);
@@ -1300,6 +1378,7 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     fixCrcBtn->setToolTip(tr("Every tag whose CRC-30 does not match its contents gets the one they give "
                              "(only the CRC bits change; one Undo step)"));
     rowBar->addWidget(fixCrcBtn);
+    rowBar->addWidget(simBtn);   // session 411 (here: the top bar has no room for wider fonts)
     connect(fixCrcBtn, &QPushButton::clicked, this, [this]() { fixAllCrcs(); });
     rowBar->addStretch(1);
     auto *bottom = new QWidget(this);
@@ -1316,8 +1395,12 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     split->setSizes({ 430, 230 });
 
     m_status = new StatusLine;
+    m_simState = new QLabel(this);   // session 411: where the simulator's loco is
+    m_simState->setWordWrap(true);
+    m_simState->hide();
     auto *root = new QVBoxLayout(this);
     root->addLayout(bar);
+    root->addWidget(m_simState);
     root->addWidget(split, 1);
     root->addWidget(m_status);
 
@@ -1487,6 +1570,7 @@ void StationLayoutWindow::refreshAll()
                                           "them; relaymap is NMS field-input data):\n") + other.join(QLatin1Char('\n')));
     m_status->state(tr("%1 tags · %2 signals · %3 lines · %4 points").arg(m_layout.tags.size())
                         .arg(m_layout.signalList.size()).arg(m_layout.lines.size()).arg(m_layout.points.size()));
+    emit stationChanged();
 }
 
 void StationLayoutWindow::fillTags()
@@ -1802,6 +1886,9 @@ QMenu *StationLayoutWindow::contextMenuFor(const QString &tag, const QString &li
     if (!line.isEmpty()) {
         menu->addAction(tr("New tag here (line %1, %2 m)…").arg(line).arg(locM), this, [this, line, locM]() { openNewTagAt(line, locM); });
         menu->addAction(tr("Line %1 as a route in Tag Builder…").arg(line), this, [this, line]() { openLineInTagBuilder(line); });
+        QMenu *sim = menu->addMenu(tr("Line %1 in the Loco Simulator").arg(line));   // session 411
+        sim->addAction(tr("Dir 1, Nominal (locations rising)"), this, [this, line]() { runLineInSimulator(line, RfidTag::DirNominal); });
+        sim->addAction(tr("Dir 2, Reverse (locations falling)"), this, [this, line]() { runLineInSimulator(line, RfidTag::DirReverse); });
         menu->addAction(tr("New point here (from line %1, %2 m)…").arg(line).arg(locM), this, [this, line, locM, station]() {
             QStringList v{ QString(), QString(), QString::number(locM), QString() };
             if (!askFields(this, tr("New point on line %1 at %2 m").arg(line).arg(locM),
@@ -1988,6 +2075,70 @@ TagBuilderWindow *StationLayoutWindow::openLineInTagBuilder(const QString &line)
     m_status->ok(tr("Line %1 opened as a route (%2 tags). Set its direction in the builder, then Save or Export")
                      .arg(line).arg(r.tags.size()));
     return tb;
+}
+
+// ---- session 411: a line in the Loco Simulator ------------------------------------------
+
+RfidTag::Route StationLayoutWindow::lineAsSimRoute(const QString &line, int dir) const
+{
+    if (dir != RfidTag::DirNominal && dir != RfidTag::DirReverse) return RfidTag::Route();
+    RfidTag::Route r = lineAsRoute(line);
+    if (r.tags.isEmpty()) return r;
+    // The order a loco meets them: by each tag's own location (abs_loc_1 on
+    // an adjustment tag); tags at one place keep the line's order.
+    const QHash<QString, qint64> loc = StationLayout::tagLocations(m_layout);
+    std::stable_sort(r.tags.begin(), r.tags.end(), [&](const RfidTag::Tag &a, const RfidTag::Tag &b) {
+        return dir == RfidTag::DirNominal ? loc.value(a.name) < loc.value(b.name) : loc.value(a.name) > loc.value(b.name);
+    });
+    r.dir = dir;
+    return r;
+}
+
+LocoSimWindow *StationLayoutWindow::runLineInSimulator(const QString &line, int dir)
+{
+    const RfidTag::Route r = lineAsSimRoute(line, dir);
+    if (r.tags.size() < 2) {
+        m_status->fail(tr("Line %1 is not run: the simulator needs two tags that decode, it has %2").arg(line).arg(r.tags.size()));
+        return nullptr;
+    }
+    LocoSimWindow *sim = m_openSim ? m_openSim() : nullptr;
+    if (!sim) {
+        m_status->fail(tr("No Loco Simulator to run line %1 in").arg(line));
+        return nullptr;
+    }
+    if (!sim->followLayout(this, line, dir)) return nullptr;
+    m_sim = sim;
+    m_status->ok(tr("Line %1 in the Loco Simulator, dir %2: the loco at its first tag. Press Start there to send.")
+                     .arg(line).arg(dir));
+    return sim;
+}
+
+void StationLayoutWindow::showSimulator(const QString &line, double locM, int sign, const QHash<QString, int> &tagStates,
+                                        const QString &where)
+{
+    const bool fresh = m_canvas->simLine() != line;
+    m_canvas->setSimLoco(line, locM, sign);
+    m_canvas->setSimTags(tagStates);
+    // Keep the loco in view: brought into it when the run starts, followed
+    // while it was in view; left alone once the sheet is moved off it.
+    const QRectF r = m_canvas->simLocoRect();
+    if (!r.isNull()) {
+        const QRect seen(m_scroll->horizontalScrollBar()->value(), m_scroll->verticalScrollBar()->value(),
+                         m_scroll->viewport()->width(), m_scroll->viewport()->height());
+        if (fresh || (m_simInView && !seen.contains(r.toRect())))
+            m_scroll->ensureVisible(int(r.center().x()), int(r.center().y()), 160, 90);
+        m_simInView = QRect(m_scroll->horizontalScrollBar()->value(), m_scroll->verticalScrollBar()->value(),
+                            m_scroll->viewport()->width(), m_scroll->viewport()->height()).contains(r.toRect());
+    }
+    m_simState->setText(tr("Loco Simulator, line %1, dir %2: %3").arg(line).arg(sign < 0 ? 2 : 1).arg(where));
+    m_simState->show();
+}
+
+void StationLayoutWindow::clearSimulator()
+{
+    m_canvas->setSimLoco(QString(), 0, 1);
+    m_simState->clear();
+    m_simState->hide();
 }
 
 bool StationLayoutWindow::addLineFromRoute(const RfidTag::Route &r, const QString &lineId, const QString &name)

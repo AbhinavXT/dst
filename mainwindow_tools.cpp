@@ -703,6 +703,11 @@ void MainWindow::onActionStationLayout()
 {
     auto *w = new StationLayoutWindow(this);
     w->setDispatcher(m_dispatcher);
+    // Session 411: a line of the layout in the Loco Simulator.
+    w->setLocoSimulator([this]() {
+        openLocoSimulator();
+        return qobject_cast<LocoSimWindow *>(m_locoSim.data());
+    });
     connect(w, &StationLayoutWindow::jumpRequested, this, [this](const QString &tabKey, qint64 ms) { jumpToEntry(tabKey, ms); });
     w->reopenLast();
     w->show();

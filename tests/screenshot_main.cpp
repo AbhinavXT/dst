@@ -579,6 +579,32 @@ int main(int argc, char **argv)
                                 : qEnvironmentVariable("SHOT_FILE"));
                 if (!qEnvironmentVariableIsEmpty("SHOT_EXPORT")) w->exportXlsx(qEnvironmentVariable("SHOT_EXPORT"));
                 if (!qEnvironmentVariableIsEmpty("SHOT_DRAWING")) w->exportDrawing(qEnvironmentVariable("SHOT_DRAWING"));   // session 212
+                // Session 411: SHOT_SIM=<line>[,2] runs that line in a Loco Simulator
+                // (dir 1, or 2) for SHOT_SIM_S seconds at 60 km/h (default 20).
+                if (!qEnvironmentVariableIsEmpty("SHOT_SIM")) {
+                    const QStringList a = qEnvironmentVariable("SHOT_SIM").split(QLatin1Char(','));
+                    auto *sim = new LocoSimWindow(nullptr);
+                    sim->setAttribute(Qt::WA_DeleteOnClose, false);
+                    sim->setSendSink([](const QByteArray &) {});
+                    sim->setTagSink([](int, const QByteArray &) {});
+                    static qint64 simT = 1000;
+                    sim->setClock([]() { return simT; });
+                    w->setLocoSimulator([sim]() { return sim; });
+                    QString simLine = a.value(0);   // "*": the longest line
+                    int most = 0;
+                    if (simLine == QLatin1String("*"))
+                        for (const StationLayout::Line &ln : w->station().lines)
+                            if (ln.tags.size() > most) { most = ln.tags.size(); simLine = ln.line; }
+                    w->runLineInSimulator(simLine, a.value(1) == QLatin1String("2") ? 2 : 1);
+                    sim->motion().setSpeed(60);
+                    sim->start();
+                    const int ticks = 10 * (qEnvironmentVariableIsEmpty("SHOT_SIM_S") ? 20 : qEnvironmentVariable("SHOT_SIM_S").toInt());
+                    for (int i = 0; i < ticks; ++i) {
+                        simT += 100;
+                        sim->tick();
+                    }
+                    sim->stop();
+                }
                 // Session 233: SHOT_MEASURE=910,981 measures between two tags; SHOT_POINT=3 selects a point.
                 if (!qEnvironmentVariableIsEmpty("SHOT_MEASURE") || !qEnvironmentVariableIsEmpty("SHOT_POINT")) {
                     w->resize(1200, 760);
