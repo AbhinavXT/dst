@@ -1229,7 +1229,11 @@ int main(int argc, char **argv)
                 win = w;
             }
             // The small dialogs, at their own size (SHOT_SIZE=WxH to force one).
-            if (which == QLatin1String("settings")) win = new SettingsDialog(nullptr);
+            if (which == QLatin1String("settings")) {
+                win = new SettingsDialog(nullptr);
+                // SHOT_TAB=1 (session 414): the Row clicks tab.
+                if (auto *tabs = win->findChild<QTabWidget *>()) tabs->setCurrentIndex(qEnvironmentVariableIntValue("SHOT_TAB"));
+            }
             if (which == QLatin1String("export"))
                 win = new ExportDialog(QStringLiteral("/Users/operator/Documents/DLConsole/loco_1_1_export.csv"),
                                        Exporter::CSV, Exporter::ColAll, nullptr);

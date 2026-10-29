@@ -1,6 +1,7 @@
 #include "dmipanel.h"
 #include "dmitimetravel.h"
 #include "sessionwindow.h"
+#include "rowclicks.h"
 #include "uistyle.h"
 #include "bookmarks.h"
 #include "reviewpackdialog.h"
@@ -703,6 +704,10 @@ void SessionWindow::buildTab(const QString &tabKey, LogModel *model)
     view->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(view, &QWidget::customContextMenuRequested,
             this, &SessionWindow::onRowContextMenu);
+    // Session 414: the row clicks set in Settings, as in the live window.
+    RowClickFilter::install(view, [this](QTableView *v, const QModelIndex &, const QString &id) {
+        rowMenu(v, QPoint(), id);
+    });
 
     // The same find bar the live window has, with the same shape preference:
     // Ctrl+F opens it as a floating window or as a bar in the tab, whichever
@@ -1432,23 +1437,31 @@ void SessionWindow::onRowContextMenu(const QPoint &pos)
     if (under.isValid() && !view->selectionModel()->isSelected(under)) {
         view->setCurrentIndex(under);
     }
+    rowMenu(view, view->viewport()->mapToGlobal(pos), QString());
+}
+
+void SessionWindow::rowMenu(QTableView *view, const QPoint &globalPos, const QString &runId)
+{
 
     const QVector<LogEntryPtr> sel = selectedEntries();
     const bool haveBytes = !entryBufferText(currentEntry()).isEmpty();
 
     QMenu menu(this);
     QAction *wb = menu.addAction(tr("Open in Decode Workbench"));
+    wb->setData(QStringLiteral("workbench"));
     wb->setEnabled(haveBytes);
     connect(wb, &QAction::triggered, this, &SessionWindow::onToolRowToWorkbench);
 
     QAction *diff = menu.addAction(
         sel.size() > 2 ? tr("Compare these %1 frames").arg(sel.size())
                        : tr("Compare these two frames"));
+    diff->setData(QStringLiteral("diff"));
     diff->setEnabled(sel.size() >= 2 && sel.size() <= FrameDiffWindow::maxFrames());
     connect(diff, &QAction::triggered, this, &SessionWindow::onToolFrameDiff);
 
     menu.addSeparator();
     QAction *pm = menu.addAction(tr("Open in Packet Maker"));
+    pm->setData(QStringLiteral("packetMaker"));
     pm->setEnabled(haveBytes);
     connect(pm, &QAction::triggered, this, &SessionWindow::onToolRowToPacketMaker);
 
@@ -1458,6 +1471,7 @@ void SessionWindow::onRowContextMenu(const QPoint &pos)
     if (cur && !dmiKeyOfText(cur->text).isEmpty()) {
         menu.addSeparator();
         QAction *dmi = menu.addAction(tr("Show on DMI"));
+        dmi->setData(QStringLiteral("dmi"));
         dmi->setObjectName(QStringLiteral("rowShowOnDmi"));
         connect(dmi, &QAction::triggered, this, [this, view]() {
             for (auto it = m_tabUi.constBegin(); it != m_tabUi.constEnd(); ++it) {
@@ -1475,6 +1489,7 @@ void SessionWindow::onRowContextMenu(const QPoint &pos)
         menu.addSeparator();
         QAction *note = menu.addAction(noteOf(key, cur).isEmpty() && !cur->bookmarked
                                            ? tr("Add &note…") : tr("Edit &note…"));
+        note->setData(QStringLiteral("note"));
         note->setObjectName(QStringLiteral("rowNote"));
         connect(note, &QAction::triggered, this, [this, key, cur]() {
             bool ok = false;
@@ -1485,6 +1500,7 @@ void SessionWindow::onRowContextMenu(const QPoint &pos)
             if (ok) setRowNote(key, cur, text);
         });
         QAction *clip = menu.addAction(tr("DMI c&lip around here…"));
+        clip->setData(QStringLiteral("dmiClip"));
         clip->setObjectName(QStringLiteral("rowDmiClip"));
         clip->setToolTip(tr("The DMI as the loco pilot saw it, ±30 s around this row, as an animated GIF"));
         connect(clip, &QAction::triggered, this, [this, key, cur]() {
@@ -1495,6 +1511,7 @@ void SessionWindow::onRowContextMenu(const QPoint &pos)
             delete dlg;
         });
         QAction *radio = menu.addAction(tr("Radio ch&art around here…"));
+        radio->setData(QStringLiteral("radioChart"));
         radio->setObjectName(QStringLiteral("rowRadioChart"));
         radio->setToolTip(tr("SLRP, LSRP and ARP ±30 s around this row as a sequence diagram (PNG or SVG)"));
         connect(radio, &QAction::triggered, this, [this, key, cur]() {
@@ -1504,6 +1521,7 @@ void SessionWindow::onRowContextMenu(const QPoint &pos)
             delete dlg;
         });
         QAction *pack = menu.addAction(tr("&Incident report around here…"));
+        pack->setData(QStringLiteral("incidentReport"));
         pack->setObjectName(QStringLiteral("rowIncidentReport"));
         connect(pack, &QAction::triggered, this, [this, key, cur]() {
             const LogModel *m = m_models.value(key);
@@ -1514,7 +1532,22 @@ void SessionWindow::onRowContextMenu(const QPoint &pos)
         });
     }
 
-    menu.exec(view->viewport()->mapToGlobal(pos));
+    if (runId.isEmpty()) {
+        menu.exec(globalPos);
+        return;
+    }
+    // Session 414: a row click runs the action of that id, as picked here.
+    for (QAction *a : menu.actions()) {
+        if (a->data().toString() != runId) continue;
+        if (!a->isEnabled()) {
+            statusBar()->showMessage(tr("Row click: \u201C%1\u201D: not for this row").arg(RowClicks::actionLabel(runId)), 5000);
+            return;
+        }
+        a->trigger();
+        return;
+    }
+    statusBar()->showMessage(tr("Row click: \u201C%1\u201D is not offered in the .dlr viewer for this row")
+                                 .arg(RowClicks::actionLabel(runId)), 5000);
 }
 
 QString SessionWindow::tabName(const QString &tabKey) const

@@ -211,6 +211,9 @@ private slots:
     void onIncidentReport();          // session 368: Tools ▸ Incident report…
 
 private:
+    // Session 414: the row menu at globalPos, or (runId set) its action of
+    // that id run on the current row, as a row click set in Settings does.
+    void rowMenu(QTableView *view, const QPoint &globalPos, const QString &runId);
     void rememberMade(const QString &path);
     LogModel *modelForKey(const QString &tabKey);
     void      buildTab(const QString &tabKey, LogModel *model);

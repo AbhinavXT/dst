@@ -12,9 +12,13 @@
 //  dialog shows a small "(restart required)" hint next to those fields and
 //  the apply path writes the new value to the INI without trying to apply
 //  it live.
+//
+//  Session 414: two tabs, General (the above) and Row clicks: what a double,
+//  triple, Ctrl/Shift+double or middle click on a log row runs.
 // =============================================================================
 
 #include <QDialog>
+#include <QVector>
 
 class QCheckBox;
 class QSpinBox;
@@ -73,6 +77,8 @@ private:
     QSpinBox    *m_offlineWarn     = nullptr;
     QSpinBox    *m_offlineErr      = nullptr;
     QComboBox   *m_themeBox        = nullptr;
+    // Session 414: Row clicks, one per gesture (RowClicks::Gesture order).
+    QVector<QComboBox *> m_rowClicks;
 };
 
 #endif // SETTINGSDIALOG_H

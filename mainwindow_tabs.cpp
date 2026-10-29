@@ -5,6 +5,7 @@
 // =============================================================================
 #include "followpill.h"
 #include "mainwindow.h"
+#include "rowclicks.h"
 #include <QSettings>
 #include "frameclock.h"
 #include "pinpanel.h"
@@ -178,6 +179,11 @@ void MainWindow::buildOrShowTab(const QString &tabKey,
     view->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(view, &QWidget::customContextMenuRequested,
             this, &MainWindow::onLogRowContextMenu);
+    // Session 414: double, triple, Ctrl/Shift+double and middle clicks, as
+    // set in Settings ▸ Row clicks: a row-menu action each.
+    RowClickFilter::install(view, [this](QTableView *v, const QModelIndex &idx, const QString &id) {
+        rowMenu(v, idx, QPoint(), id);
+    });
     view->verticalHeader()->setVisible(false);
 
     QHeaderView *hh = view->horizontalHeader();

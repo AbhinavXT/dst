@@ -10,6 +10,85 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-414"></a>
+## Session 414 — row clicks: double, triple, Ctrl/Shift+double and middle click, each a row action
+
+Abhinav 2026-10-29, the third of three (*"Add configurable actions like
+double click, triple click etc that can be mapped by users to things like
+opening a packet in decode workbench, or open it in packet maker etc."*).
+Scope as confirmed: the five gestures below; any row-menu action; the live
+window's log tabs (popped out too) and the .dlr viewer; set in Settings.
+
+**What the operator sees.** Settings has two tabs now: **General** (as
+before) and **Row clicks**, one choice per gesture:
+- **Double-click, Triple-click, Ctrl + double-click, Shift + double-click,
+  Middle-click.**
+- Each can run **Nothing** (the default for all five: a click did nothing
+  before, and still does until one is set) or one of the row menu's actions:
+  Open in Decode Workbench, Open in Packet Maker, Add / remove bookmark,
+  Add / edit note…, Show on DMI, DMI clip around here…, Radio chart around
+  here…, Diff the selected rows, Copy message, Copy row, Copy rows with
+  header, Why is this row coloured?, Filter to this source, Incident report
+  around here… (.dlr viewer).
+- **A gesture runs the menu's own action**, on the row clicked (it becomes
+  the current row; a selection that already holds it is kept, so Shift +
+  double-click on "Diff the selected rows" diffs the span just made). The
+  same checks as the menu: a row with no bytes gets no workbench, Show on DMI
+  only for an @dmi row; when the action is not for that row, the status line
+  says so and nothing opens.
+- **Triple-click** set: a double-click waits the system's double-click
+  interval before it acts, so a triple-click runs only its own action. With
+  Triple-click on Nothing, a double-click acts at once.
+- Changes apply at once (Apply / OK), to every open tab and viewer.
+
+**How.** rowclicks.{h,cpp}: the gestures, the action list, the bindings in
+the ini (`row_clicks/<gesture>`, Settings::rowClickAction), and
+`RowClickFilter`, an event filter on a table's viewport that tells the
+gestures apart. The main window's row menu became `rowMenu(view, row, pos,
+runId)`: shown at a point, or not shown and its action `runId` run, so a
+click and the menu share one code path. It finds the tab by its view, so a
+popped-out tab acts on its own rows (`toggleBookmarkIn(key)` likewise). The
+.dlr viewer's `rowMenu` does the same through its actions' ids.
+
+**Found on the way.** A third press just after a double-click's wait had run
+out still counted as a triple (two Packet Makers from one triple-click, 1 run
+in 5): the triple's window now closes once the double-click has acted.
+
+**Files.** rowclicks.h, rowclicks.cpp (new; dlcore.pri), settings.h,
+settingsdialog.{h,cpp}, mainwindow.{h,cpp}, mainwindow_tabs.cpp,
+sessionwindow.{h,cpp}; tests/test_session414.cpp, tests/tests.pro,
+tests/screenshot_main.cpp (`SHOT_WINDOW=settings SHOT_TAB=1`).
+
+**Tests.** `session414`, 29 checks, real rows from
+replay/loco_1_1_27062026_151052.cap:
+- Plain table: all on Nothing, nothing runs; each gesture its own action on
+  the row clicked; a middle press and release on different rows, nothing;
+  triple set: the double waits, a third press runs the triple alone, no third
+  press runs the double after the wait.
+- Settings: the Row clicks tab, a choice per gesture with every action; opens
+  on what is set; Apply writes the ini.
+- Live window, 400 real rows: double-click opens a Decode Workbench; triple a
+  Packet Maker and no second workbench; Ctrl + double toggles the bookmark;
+  middle copies the message; Show on DMI on a non-@dmi row opens nothing.
+- .dlr viewer, a .dlr of those rows: middle-click opens a workbench of the
+  row clicked; Ctrl + double a Packet Maker.
+- Run 12 times alone and in a group with 412, 413, 151, 368, 343 and
+  `assertions`: no failure.
+- **Not tested:** the Shift span itself (Qt reads Shift for the selection
+  from the keyboard, which a synthetic event cannot hold): the test checks
+  that Shift + double-click runs its action on the row; a real mouse is
+  needed for the span. The actions that open modal dialogs (note, DMI clip,
+  radio chart, incident report) by gesture: their menu code is unchanged and
+  the gesture reaches it by the same id.
+- **Looked at:** Settings, both tabs (offscreen shot): General as before, Row
+  clicks with the five choices.
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 429
+suites / 10716 checks, 0 failed; menu audit 203 ok; headless smoke ok. Linux:
+left to CI.
+
+---
+
 <a id="session-413"></a>
 ## Session 413 — the minimised windows' chips side by side, the rest in "+N more"
 

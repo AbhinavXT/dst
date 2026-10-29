@@ -2,6 +2,7 @@
 #include "followpill.h"
 #include "rowwhy.h"
 #include "mainwindow.h"
+#include "rowclicks.h"
 #include <QSettings>
 #include "frameclock.h"
 #include "pinpanel.h"
@@ -1022,8 +1023,20 @@ void MainWindow::onLogRowContextMenu(const QPoint &pos)
 
     const QModelIndex idx = view->indexAt(pos);
     if (!idx.isValid()) return;
+    rowMenu(view, idx, view->viewport()->mapToGlobal(pos), QString());
+}
 
-    const QString key = currentTabKey();
+QString MainWindow::tabKeyOfView(const QTableView *view) const
+{
+    for (auto it = m_tabs.constBegin(); it != m_tabs.constEnd(); ++it)
+        if (it->view == view) return it.key();
+    return currentTabKey();
+}
+
+void MainWindow::rowMenu(QTableView *view, const QModelIndex &idx, const QPoint &globalPos, const QString &runId)
+{
+    // The view's own tab: a popped-out tab is not the tab widget's current.
+    const QString key = tabKeyOfView(view);
     auto it = m_tabs.find(key);
     if (it == m_tabs.end() || !it->filterBar) return;
 
@@ -1105,7 +1118,35 @@ void MainWindow::onLogRowContextMenu(const QPoint &pos)
     QAction *actFilterSrc = menu.addAction(
         tr("Filter to this source (%1)").arg(key));
 
-    QAction *chosen = menu.exec(view->viewport()->mapToGlobal(pos));
+    // Session 414: each action by its id, so a row click can run it.
+    {
+        const QVector<QPair<QAction *, const char *>> ids{
+            { actCopy, "copy" }, { actCopyRow, "copyRow" }, { actCopyHdr, "copyHeader" },
+            { actBookmark, "bookmark" }, { actNote, "note" }, { actDiff, "diff" },
+            { actToWb, "workbench" }, { actToPm, "packetMaker" }, { actDmi, "dmi" },
+            { actClip, "dmiClip" }, { actRadio, "radioChart" }, { actWhy, "why" },
+            { actFilterSrc, "filterSource" } };
+        for (const auto &p : ids)
+            if (p.first) p.first->setData(QString::fromLatin1(p.second));
+    }
+
+    QAction *chosen = nullptr;
+    if (runId.isEmpty()) {
+        chosen = menu.exec(globalPos);
+    } else {
+        for (QAction *a : menu.actions())
+            if (a->data().toString() == runId) chosen = a;
+        const QString what = RowClicks::actionLabel(runId);
+        if (!chosen) {
+            notify(NoteLevel::Info, tr("Row click: \u201C%1\u201D is not offered for this row").arg(what));
+            return;
+        }
+        if (!chosen->isEnabled()) {
+            notify(NoteLevel::Info, tr("Row click: \u201C%1\u201D: %2").arg(what,
+                       chosen->toolTip().isEmpty() ? tr("not for this row") : chosen->toolTip()));
+            return;
+        }
+    }
     if (!chosen) return;
 
     if (chosen == actCopy) {
@@ -1120,7 +1161,7 @@ void MainWindow::onLogRowContextMenu(const QPoint &pos)
                                       Settings::showUtc()));
         notify(NoteLevel::Info, tr("Copied %1 row(s)").arg(rows.size()));
     } else if (chosen == actBookmark) {
-        onActionToggleBookmark();
+        toggleBookmarkIn(key);
     } else if (chosen == actNote) {
         bool ok = false;
         int at = -1;
@@ -2704,7 +2745,11 @@ void MainWindow::setRowNote(const QString &tabKey, const LogEntryPtr &entry, con
 
 void MainWindow::onActionToggleBookmark()
 {
-    const QString key = currentTabKey();
+    toggleBookmarkIn(currentTabKey());
+}
+
+void MainWindow::toggleBookmarkIn(const QString &key)
+{
     auto it = m_tabs.find(key);
     if (it == m_tabs.end() || !it->view || !it->filterBar) return;
 

@@ -667,6 +667,11 @@ private:
     void   emitDropBanner(quint64 newMalformed, quint64 newQueueFull);
     QString currentTabKey() const;
     LogEntryPtr entryFromProxyIndex(const QModelIndex &proxyIndex) const;
+    // Session 414: the row menu, at a point (runId empty) or not shown, its
+    // action `runId` run on the row, as a row click set in Settings does.
+    void rowMenu(QTableView *view, const QModelIndex &idx, const QPoint &globalPos, const QString &runId);
+    QString tabKeyOfView(const QTableView *view) const;
+    void toggleBookmarkIn(const QString &key);
     // Session 84: tell the DMI time-travel broker where the cursor is.
     void offerDmiMoment(const QString &tabKey, const QModelIndex &proxyIndex);
 

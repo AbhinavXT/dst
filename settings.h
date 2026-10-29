@@ -236,6 +236,14 @@ public:
     static void setHideOwnArpRecv(bool on)
     { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("ui/hide_own_arprecv", on); }
 
+    // Session 414: what a gesture on a log row runs (a row-menu action's id,
+    // "" = nothing). Gestures: double, triple, ctrl_double, shift_double,
+    // middle. All nothing by default: a click did nothing before.
+    static QString rowClickAction(const QString &gesture)
+    { QSettings s(iniPath(), QSettings::IniFormat); return s.value("row_clicks/" + gesture).toString(); }
+    static void setRowClickAction(const QString &gesture, const QString &id)
+    { QSettings s(iniPath(), QSettings::IniFormat); s.setValue("row_clicks/" + gesture, id); }
+
     // ---- row density ----------------------------------------------------
     //
     // 0 = Compact, 1 = Normal, 2 = Comfortable. Default is Normal.

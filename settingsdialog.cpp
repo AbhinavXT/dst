@@ -2,6 +2,7 @@
 #include "theme.h"
 #include "uicolors.h"
 #include "settings.h"
+#include "rowclicks.h"
 
 #include <QComboBox>
 #include <QDialogButtonBox>
@@ -13,6 +14,7 @@
 #include <QLineEdit>
 #include <QPushButton>
 #include <QSpinBox>
+#include <QTabWidget>
 #include <QVBoxLayout>
 
 SettingsDialog::SettingsDialog(QWidget *parent)
@@ -185,8 +187,37 @@ SettingsDialog::SettingsDialog(QWidget *parent)
     connect(buttons->button(QDialogButtonBox::Apply),
             &QPushButton::clicked, this, &SettingsDialog::onApply);
 
+    // ---- Row clicks (session 414) --------------------------------------
+    auto *clicks = new QWidget;
+    clicks->setObjectName(QStringLiteral("settingsRowClicks"));
+    auto *clickForm = new QFormLayout(clicks);
+    auto *clickNote = new QLabel(tr("What a click on a row of a log tab, or of the .dlr viewer, does: "
+                                    "one of the row menu's actions, on the row clicked."));
+    clickNote->setWordWrap(true);
+    clickNote->setStyleSheet(UiColor::mutedStyle());
+    clickForm->addRow(clickNote);
+    for (int g = 0; g < RowClicks::GestureCount; ++g) {
+        auto *box = new QComboBox;
+        box->setObjectName(QStringLiteral("rowClick_") + RowClicks::gestureKey(RowClicks::Gesture(g)));
+        for (const RowClicks::Action &a : RowClicks::actions()) box->addItem(a.label, a.id);
+        clickForm->addRow(RowClicks::gestureLabel(RowClicks::Gesture(g)) + QLatin1Char(':'), box);
+        m_rowClicks << box;
+    }
+    auto *clickHint = new QLabel(tr("With Triple-click set, a double-click waits a moment before it acts, "
+                                    "to tell the two apart. Shift + double-click keeps the selection "
+                                    "made with Shift, so it can diff a span."));
+    clickHint->setWordWrap(true);
+    clickHint->setStyleSheet(UiColor::mutedStyle() + QStringLiteral(" font-style: italic;"));
+    clickForm->addRow(clickHint);
+
+    auto *general = new QWidget;
+    general->setLayout(form);
+    auto *tabs = new QTabWidget;
+    tabs->addTab(general, tr("General"));
+    tabs->addTab(clicks, tr("Row clicks"));
+
     auto *root = new QVBoxLayout(this);
-    root->addLayout(form);
+    root->addWidget(tabs);
     root->addWidget(buttons);
 
     loadFromSettings();
@@ -209,6 +240,10 @@ void SettingsDialog::loadFromSettings()
     m_offlineErr   ->setValue(Settings::offlineErrSeconds());
     const int tIdx = m_themeBox->findData(Settings::theme());
     if (tIdx >= 0) m_themeBox->setCurrentIndex(tIdx);
+    for (int g = 0; g < m_rowClicks.size(); ++g) {
+        const int at = m_rowClicks.at(g)->findData(RowClicks::binding(RowClicks::Gesture(g)));
+        m_rowClicks.at(g)->setCurrentIndex(qMax(0, at));
+    }
 }
 
 void SettingsDialog::writeToSettings()
@@ -226,6 +261,8 @@ void SettingsDialog::writeToSettings()
     Settings::setOfflineWarnSeconds(m_offlineWarn->value());
     Settings::setOfflineErrSeconds (m_offlineErr ->value());
     Settings::setTheme(m_themeBox->currentData().toString());
+    for (int g = 0; g < m_rowClicks.size(); ++g)
+        RowClicks::setBinding(RowClicks::Gesture(g), m_rowClicks.at(g)->currentData().toString());
 }
 
 void SettingsDialog::onApply()
