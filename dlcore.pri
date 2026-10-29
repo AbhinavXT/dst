@@ -149,6 +149,7 @@ SOURCES += \
     $$PWD/tageditdialog.cpp \
     $$PWD/benchrecord.cpp \
     $$PWD/benchrecordwindow.cpp \
+    $$PWD/scenario.cpp \
     $$PWD/twolocowindow.cpp \
     $$PWD/trackdiagram.cpp \
     $$PWD/trackdiagramwindow.cpp \
@@ -364,6 +365,7 @@ HEADERS += \
     $$PWD/tageditdialog.h \
     $$PWD/benchrecord.h \
     $$PWD/benchrecordwindow.h \
+    $$PWD/scenario.h \
     $$PWD/twolocowindow.h \
     $$PWD/trackdiagram.h \
     $$PWD/trackdiagramwindow.h \

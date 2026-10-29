@@ -10,6 +10,85 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-407"></a>
+## Session 407 — scripted scenarios: a test's steps, run the same way every time
+
+Abhinav 2026-10-29, the last of the four. His answer: a step table, saved as
+JSON.
+
+**What the operator sees.** Loco Simulator ▸ **Scenario**, a new tab:
+- **A name**, then **Add step / Remove / ▲ ▼ / Load… / Save…** and **Run**.
+- **A table of steps.** Each row: **When** (at a time, at a tag, at a
+  location), **At** (seconds after Run, the tag's name, or metres), **Do**,
+  **On**, **Kind**, **Value**, **Text**, and the step's **Status**.
+- **Actions:**
+
+| Do | On / Kind / Value |
+|---|---|
+| speed | value km/h (the drive to Hold) |
+| accelerate / decelerate | value km/h/s |
+| hold | |
+| skip a tag | on: the tag; value 1 skip, 0 send again |
+| a tag's fault (405) | on: the tag; kind none / late / twice / crc; value late's ms |
+| a reader on / off | on: 1 or 2; value 1 / 0 |
+| an air fault (bench) | on: BP / BC / MR; kind none / stuck / slow / leak; value slow's factor or leak's rate |
+| BIU silent (bench) | value 1 silent, 0 talking |
+| BIU fault code (bench) | text 0x1040 (or value) |
+| a note | text |
+
+- **Triggers:**
+  - **at a time:** that many seconds after Run;
+  - **at a tag:** the first time reader 1 sends it after Run;
+  - **at a location:** when the loco reaches or passes it. That is the route
+    position when a route is open, else the odometer, along the direction.
+- **Run:** checks the table first. A bad number or kind is refused by step
+  ("Step 3: …"). It starts the loco if it is not sending, and each step
+  fires once:
+  - the step's Status says "done at 12.3 s", or "not done: …" (a bench step
+    with no Brake Test Bench open, a tag not on the route);
+  - the status line says it;
+  - a recording (404) marks it: "Step 3: at 3 s: BC stuck".
+- **Stop,** or stopping the loco, stops it. The line under the table says how
+  many steps are still waiting.
+- **The file:** `.scenario.json` (`format` dlconsole-scenario, `version` 1,
+  `name`, `steps`).
+
+**Choices made:**
+- The bench actions reach the Brake Test Bench the Loco Simulator already
+  follows for its brake (398), so they need it open.
+- "At a tag" listens to reader 1 only.
+- A step fires once per Run.
+
+**Files:** new `scenario.{h,cpp}` (`Step`, `Script`, `describe`, `check`,
+`toJson`, `fromJson`), `tests/test_session407.cpp`; `locosimwindow.{h,cpp}`
+(the tab, `runScenario`, `scenarioTick`, `doStep`), `dlcore.pri`,
+`tests/tests.pro`, `tests/menuaudit_main.cpp`.
+
+**Tests:** `session407` (26 checks), on the simulator's own Configuration1.xml
+with a real Brake Test Bench:
+- **The file:** a script of every kind of step, written as JSON and read back
+  step for step; in words ("at 3 s: BC stuck"); a file that is not a
+  scenario, and an unknown action named, refused; a tag trigger with no tag
+  and an air fault "melt" refused by step.
+- **The tab:**
+  - the script into the table and out the same; saved and loaded;
+    "three" seconds refused;
+  - **Run:** 72 km/h at 0 s; tag 3D's bad CRC on reader 1 sending 981D;
+    BC stuck at 3 s; 30 km/h 150 m on; the BIU silent at 5 s; fault
+    0x1040 at 6 s; "not done: no tag NOPE on this route"; the note;
+  - stopping the loco stops it; the recording's marks;
+  - no bench: "not done: the Brake Test Bench is not open".
+- **Menu audit:** the Scenario tab.
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 423
+suites / 10609 checks, 0 failed; menu audit and headless smoke ok. Linux
+(Ubuntu 22.04 container): `dltests` 423 / 10609, 0 failed; menu audit ok.
+
+**Not tested:** with a real VCC; the table edited by hand (the tests fill it
+through `setScenario` and its cells); a long scenario against a long route.
+
+---
+
 <a id="session-406"></a>
 ## Session 406 — route chaining: at a route's end, on into the next
 

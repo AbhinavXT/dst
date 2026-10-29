@@ -34,16 +34,22 @@
 //    Record    (session 404) the top bar's Record button: a test recording
 //              (benchrecord.h) of this window's and the Brake Test Bench's
 //              frames; starting it starts both, stopping it stops both.
+//    Scenario  (session 407) a list of steps, each a trigger (a time, a tag,
+//              a location) and an action on the loco, its readers or the
+//              Brake Test Bench (scenario.h); Run / Stop; .scenario.json;
+//              each step marked in a recording.
 //    Brake     (session 398) the Brake Test Bench's air slows the loco
 //              (LocoSim::brakeDeceleration): the VCC commands the BIU, the
 //              bench's BP and BC move, the loco brakes; the rates are on
 //              Settings. The motion and the messages are locosim.h.
 // =============================================================================
 #include "locosim.h"
+#include "scenario.h"
 #include "rfidtag.h"
 #include "simpreview.h"
 
 #include <QPointer>
+#include <QSet>
 #include <QWidget>
 
 #include <functional>
@@ -99,6 +105,16 @@ public:
     // this window starts sending if it was not; off: it stops.
     void   setRecorder(BenchRecord::Recorder *recorder);
     bool   toggleRecording();                  // the Record button; false (and said) when it cannot
+
+    // ---- the scenario (session 407) -------------------------------------------
+    void   setScenario(const Scenario::Script &script);   // into the tab's table
+    Scenario::Script scenario(QString *why = nullptr) const;   // the table as a script; *why when a cell is not one
+    bool   loadScenario(const QString &path);   // false (and said)
+    bool   saveScenario(const QString &path);
+    bool   runScenario();                       // false (and said) when the table is not a script
+    void   stopScenario();
+    bool   scenarioRunning() const { return m_scenarioOn; }
+    QString stepStatus(int step) const;         // "", "done at 12.3 s", "not done: …"
 
     // ---- the brake (session 398) --------------------------------------------
     void   followBench(BrakeBenchWindow *bench);    // its air brakes the loco while it is open
@@ -165,6 +181,11 @@ private:
     QWidget *buildFramesTab();
     QWidget *buildSettingsTab();
     QWidget *buildRfidTab();
+    QWidget *buildScenarioTab();
+    void   addStepRow(const Scenario::Step &step);
+    void   scenarioTick();
+    bool   doStep(const Scenario::Step &step, QString *why);
+    bool   hasTag(const QString &name) const;
     void   applyBrake();
     void   record(const QString &kind, const QString &peer, const QByteArray &bytes, const QString &says,
                   const QString &note = QString());
@@ -288,6 +309,17 @@ private:
     QComboBox      *m_chainBox = nullptr;
     QPushButton    *m_chainOrder = nullptr;
     QLabel         *m_chainNoteLabel = nullptr;
+    // the scenario
+    QTableWidget   *m_steps = nullptr;
+    QLineEdit      *m_scenarioName = nullptr;
+    QPushButton    *m_scenarioRun = nullptr;
+    QLabel         *m_scenarioState = nullptr;
+    Scenario::Script m_script;          // what Run took from the table
+    QVector<int>    m_stepDone;         // per step: 0 waiting, 1 done, 2 not done
+    QStringList     m_stepNote;
+    qint64          m_scenarioStartMs = 0;
+    bool            m_scenarioOn = false;
+    QSet<QString>   m_tagsSeen;         // reader 1's tags since Run
 };
 
 #endif  // LOCOSIMWINDOW_H

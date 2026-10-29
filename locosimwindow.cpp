@@ -23,6 +23,7 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDateTime>
+#include <QFile>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QListWidget>
@@ -159,6 +160,7 @@ LocoSimWindow::LocoSimWindow(SerialManager *serial, QWidget *parent)
     tabs->setDocumentMode(true);
     tabs->addTab(buildDriveTab(), tr("Drive"));
     tabs->addTab(buildRfidTab(), tr("RFID"));
+    tabs->addTab(buildScenarioTab(), tr("Scenario"));
     tabs->addTab(buildFramesTab(), tr("Frames"));
     tabs->addTab(buildSettingsTab(), tr("Settings"));
     root->addWidget(tabs, 1);
@@ -992,6 +994,335 @@ void LocoSimWindow::flushLate()
     }
 }
 
+// ---- session 407: the scenario --------------------------------------------------------
+
+namespace {
+enum StepColumn { StepWhen, StepAt, StepDo, StepOn, StepKind, StepValue, StepText, StepStatus, StepColumns };
+}
+
+QWidget *LocoSimWindow::buildScenarioTab()
+{
+    auto *page = new QWidget(this);
+    auto *layout = new QVBoxLayout(page);
+    layout->setContentsMargins(0, 8, 0, 0);
+    layout->setSpacing(8);
+    auto *bar = new QHBoxLayout;
+    bar->addWidget(labelNamed(tr("Scenario"), "muted", page));
+    m_scenarioName = new QLineEdit(page);
+    m_scenarioName->setObjectName(QStringLiteral("locoSimScenarioName"));
+    m_scenarioName->setPlaceholderText(tr("its name"));
+    bar->addWidget(m_scenarioName, 1);
+    auto *add = new QPushButton(tr("Add step"), page);
+    auto *remove = new QPushButton(tr("Remove"), page);
+    auto *up = new QToolButton(page);
+    up->setArrowType(Qt::UpArrow);
+    up->setToolTip(tr("Move the step up"));
+    auto *down = new QToolButton(page);
+    down->setArrowType(Qt::DownArrow);
+    down->setToolTip(tr("Move the step down"));
+    auto *load = new QPushButton(tr("Load\u2026"), page);
+    auto *save = new QPushButton(tr("Save\u2026"), page);
+    for (QWidget *w : { static_cast<QWidget *>(add), static_cast<QWidget *>(remove), static_cast<QWidget *>(up),
+                        static_cast<QWidget *>(down), static_cast<QWidget *>(load), static_cast<QWidget *>(save) })
+        bar->addWidget(w);
+    bar->addSpacing(16);
+    m_scenarioRun = new QPushButton(tr("Run"), page);
+    m_scenarioRun->setObjectName(QStringLiteral("locoSimScenarioRun"));
+    m_scenarioRun->setToolTip(tr("Start the steps' clock now (and the loco, if it is not sending)"));
+    bar->addWidget(m_scenarioRun);
+    layout->addLayout(bar);
+
+    m_steps = new QTableWidget(0, StepColumns, page);
+    m_steps->setObjectName(QStringLiteral("locoSimSteps"));
+    m_steps->setHorizontalHeaderLabels({ tr("When"), tr("At (s, m or tag)"), tr("Do"), tr("On"), tr("Kind"), tr("Value"),
+                                         tr("Text"), tr("Status") });
+    m_steps->verticalHeader()->setVisible(true);
+    m_steps->horizontalHeader()->setStretchLastSection(true);
+    m_steps->setSelectionBehavior(QAbstractItemView::SelectRows);
+    m_steps->setToolTip(tr("On: the tag, the reader (1, 2) or the pressure (BP, BC, MR). Kind: a tag's fault (none, "
+                           "late, twice, crc) or an air fault (none, stuck, slow, leak). Value: the number the action "
+                           "takes. Text: a note, or a fault code as 0x1040."));
+    layout->addWidget(m_steps, 1);
+    m_scenarioState = labelNamed(tr("No scenario running."), "muted", page);
+    m_scenarioState->setObjectName(QStringLiteral("locoSimScenarioState"));
+    m_scenarioState->setWordWrap(true);
+    layout->addWidget(m_scenarioState);
+
+    connect(add, &QPushButton::clicked, this, [this]() { addStepRow(Scenario::Step()); });
+    connect(remove, &QPushButton::clicked, this, [this]() {
+        if (m_scenarioOn) return;
+        const int row = m_steps->currentRow();
+        if (row >= 0) m_steps->removeRow(row);
+    });
+    const auto move = [this](int delta) {
+        if (m_scenarioOn) return;
+        QString why;
+        Scenario::Script s = scenario(&why);
+        const int row = m_steps->currentRow(), to = row + delta;
+        if (!why.isEmpty() || row < 0 || to < 0 || to >= s.steps.size()) return;
+        std::swap(s.steps[row], s.steps[to]);
+        setScenario(s);
+        m_steps->selectRow(to);
+    };
+    connect(up, &QToolButton::clicked, this, [move]() { move(-1); });
+    connect(down, &QToolButton::clicked, this, [move]() { move(1); });
+    connect(load, &QPushButton::clicked, this, [this]() {
+        const QString path = QFileDialog::getOpenFileName(this, tr("Load a scenario"), QString(),
+                                                          tr("Scenarios (*.scenario.json);;All files (*)"));
+        if (!path.isEmpty()) loadScenario(path);
+    });
+    connect(save, &QPushButton::clicked, this, [this]() {
+        const QString name = m_scenarioName->text().trimmed().isEmpty() ? tr("scenario") : m_scenarioName->text().trimmed();
+        const QString path = QFileDialog::getSaveFileName(this, tr("Save the scenario"), name + QStringLiteral(".scenario.json"),
+                                                          tr("Scenarios (*.scenario.json)"));
+        if (!path.isEmpty()) saveScenario(path);
+    });
+    connect(m_scenarioRun, &QPushButton::clicked, this, [this]() {
+        if (m_scenarioOn) stopScenario();
+        else runScenario();
+    });
+    return page;
+}
+
+void LocoSimWindow::addStepRow(const Scenario::Step &step)
+{
+    const int row = m_steps->rowCount();
+    m_steps->insertRow(row);
+    auto *when = new QComboBox(m_steps);
+    when->addItems(Scenario::whenNames());
+    when->setCurrentIndex(int(step.when));
+    m_steps->setCellWidget(row, StepWhen, when);
+    auto *action = new QComboBox(m_steps);
+    action->addItems(Scenario::doNames());
+    action->setCurrentIndex(int(step.action));
+    m_steps->setCellWidget(row, StepDo, action);
+    const auto num = [](double v) { return QString::number(v, 'g', 10); };
+    const QStringList cells = { QString(), step.when == Scenario::When::Tag ? step.tag : num(step.at), QString(), step.on,
+                                step.kind, num(step.value), step.text, QString() };
+    for (int col = 0; col < StepColumns; ++col) {
+        if (col == StepWhen || col == StepDo) continue;
+        auto *item = new QTableWidgetItem(cells.at(col));
+        if (col == StepStatus) item->setFlags(item->flags() & ~Qt::ItemIsEditable);
+        m_steps->setItem(row, col, item);
+    }
+}
+
+void LocoSimWindow::setScenario(const Scenario::Script &script)
+{
+    if (m_scenarioOn) stopScenario();
+    m_steps->setRowCount(0);
+    m_scenarioName->setText(script.name);
+    for (const Scenario::Step &s : script.steps) addStepRow(s);
+    m_steps->resizeColumnsToContents();
+}
+
+Scenario::Script LocoSimWindow::scenario(QString *why) const
+{
+    Scenario::Script script;
+    script.name = m_scenarioName->text().trimmed();
+    if (why) why->clear();
+    for (int row = 0; row < m_steps->rowCount(); ++row) {
+        Scenario::Step s;
+        s.when = Scenario::When(qobject_cast<QComboBox *>(m_steps->cellWidget(row, StepWhen))->currentIndex());
+        s.action = Scenario::Do(qobject_cast<QComboBox *>(m_steps->cellWidget(row, StepDo))->currentIndex());
+        const QString at = m_steps->item(row, StepAt)->text().trimmed();
+        bool ok = true;
+        if (s.when == Scenario::When::Tag) s.tag = at;
+        else s.at = at.isEmpty() ? 0 : at.toDouble(&ok);
+        if (!ok && why && why->isEmpty()) *why = tr("Step %1: \"%2\" is not a number of %3").arg(row + 1).arg(at)
+                                                   .arg(s.when == Scenario::When::Time ? tr("seconds") : tr("metres"));
+        s.on = m_steps->item(row, StepOn)->text().trimmed();
+        s.kind = m_steps->item(row, StepKind)->text().trimmed().toLower();
+        const QString value = m_steps->item(row, StepValue)->text().trimmed();
+        s.value = value.isEmpty() ? 0 : value.toDouble(&ok);
+        if (!ok && why && why->isEmpty()) *why = tr("Step %1: the value \"%2\" is not a number").arg(row + 1).arg(value);
+        s.text = m_steps->item(row, StepText)->text().trimmed();
+        if (s.action == Scenario::Do::AirFault) s.on = s.on.toUpper();
+        script.steps.append(s);
+    }
+    QString rule;
+    if (why && why->isEmpty() && !Scenario::check(script, &rule)) *why = rule;
+    return script;
+}
+
+bool LocoSimWindow::loadScenario(const QString &path)
+{
+    QFile f(path);
+    QString why;
+    Scenario::Script script;
+    if (!f.open(QIODevice::ReadOnly) || !Scenario::fromJson(f.readAll(), &script, &why)) {
+        m_status->fail(tr("%1 not loaded: %2").arg(QFileInfo(path).fileName(), why.isEmpty() ? f.errorString() : why));
+        return false;
+    }
+    setScenario(script);
+    m_status->ok(tr("Scenario %1: %2 step(s).").arg(script.name).arg(script.steps.size()));
+    return true;
+}
+
+bool LocoSimWindow::saveScenario(const QString &path)
+{
+    QString why;
+    const Scenario::Script script = scenario(&why);
+    if (!why.isEmpty()) {
+        m_status->fail(tr("Not saved: %1").arg(why));
+        return false;
+    }
+    QFile f(path);
+    if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        m_status->fail(tr("Not saved: %1").arg(f.errorString()));
+        return false;
+    }
+    f.write(Scenario::toJson(script));
+    m_status->ok(tr("Saved: %1").arg(QDir::toNativeSeparators(path)));
+    return true;
+}
+
+bool LocoSimWindow::runScenario()
+{
+    QString why;
+    const Scenario::Script script = scenario(&why);
+    if (!why.isEmpty() || script.steps.isEmpty()) {
+        m_status->fail(why.isEmpty() ? tr("No step to run: add one.") : tr("Not run: %1").arg(why));
+        return false;
+    }
+    m_script = script;
+    m_stepDone = QVector<int>(script.steps.size(), 0);
+    m_stepNote = QStringList();
+    for (int i = 0; i < script.steps.size(); ++i) m_stepNote << QString();
+    for (int row = 0; row < m_steps->rowCount(); ++row) m_steps->item(row, StepStatus)->setText(tr("waiting"));
+    m_tagsSeen.clear();
+    m_scenarioStartMs = m_clock();
+    m_scenarioOn = true;
+    m_steps->setEnabled(false);
+    m_scenarioRun->setText(tr("Stop"));
+    if (m_recorder && m_recorder->recording())
+        m_recorder->mark(m_scenarioStartMs, tr("Scenario %1 started").arg(script.name.isEmpty() ? tr("(unnamed)") : script.name));
+    if (!running()) start();
+    scenarioTick();   // the steps at 0 s, now
+    return true;
+}
+
+void LocoSimWindow::stopScenario()
+{
+    if (!m_scenarioOn) return;
+    m_scenarioOn = false;
+    m_steps->setEnabled(true);
+    m_scenarioRun->setText(tr("Run"));
+    int waiting = 0;
+    for (int done : m_stepDone) waiting += done == 0 ? 1 : 0;
+    m_scenarioState->setText(tr("Stopped: %1 of %2 step(s) still waiting.").arg(waiting).arg(m_stepDone.size()));
+    if (m_recorder && m_recorder->recording()) m_recorder->mark(m_clock(), tr("Scenario stopped"));
+}
+
+QString LocoSimWindow::stepStatus(int step) const
+{
+    return step >= 0 && step < m_stepNote.size() ? m_stepNote.at(step) : QString();
+}
+
+bool LocoSimWindow::hasTag(const QString &name) const
+{
+    for (int row = 0; row < m_tags->rowCount(); ++row)
+        if (m_tags->item(row, ColTag)->text().compare(name, Qt::CaseInsensitive) == 0) return true;
+    return false;
+}
+
+// Each step whose trigger has come, once.
+void LocoSimWindow::scenarioTick()
+{
+    if (!m_scenarioOn) return;
+    const double seconds = (m_clock() - m_scenarioStartMs) / 1000.0;
+    const bool onRoute = bool(m_readers);
+    const double position = onRoute ? m_routeD : m_motion.position();
+    const double sign = onRoute ? (m_routes.at(m_routeIndex).dir == RfidTag::DirReverse ? -1 : 1)
+                                : (m_motion.direction() == LocoSim::Reverse ? -1 : 1);
+    int waiting = 0;
+    for (int i = 0; i < m_script.steps.size(); ++i) {
+        if (m_stepDone.at(i) != 0) continue;
+        const Scenario::Step &s = m_script.steps.at(i);
+        bool due = false;
+        switch (s.when) {
+        case Scenario::When::Time:     due = seconds + 1e-9 >= s.at; break;
+        case Scenario::When::Tag:      due = m_tagsSeen.contains(s.tag); break;
+        case Scenario::When::Location: due = (position - s.at) * sign >= 0; break;
+        }
+        if (!due) { ++waiting; continue; }
+        QString why;
+        const bool done = doStep(s, &why);
+        m_stepDone[i] = done ? 1 : 2;
+        m_stepNote[i] = done ? tr("done at %1 s").arg(seconds, 0, 'f', 1) : tr("not done: %1").arg(why);
+        m_steps->item(i, StepStatus)->setText(m_stepNote.at(i));
+        const QString said = tr("Step %1: %2").arg(i + 1).arg(Scenario::describe(s));
+        if (done) m_status->ok(said);
+        else m_status->warn(tr("%1, not done: %2").arg(said, why));
+        if (m_recorder && m_recorder->recording())
+            m_recorder->mark(m_clock(), done ? said : tr("%1 (not done: %2)").arg(said, why));
+    }
+    m_scenarioState->setText(waiting ? tr("Running %1 s: %2 of %3 step(s) waiting.").arg(seconds, 0, 'f', 1).arg(waiting)
+                                           .arg(m_script.steps.size())
+                                     : tr("Every step has fired (%1 s).").arg(seconds, 0, 'f', 1));
+}
+
+bool LocoSimWindow::doStep(const Scenario::Step &s, QString *why)
+{
+    using Scenario::Do;
+    if (Scenario::isBenchAction(s.action) && !m_bench) {
+        *why = tr("the Brake Test Bench is not open");
+        return false;
+    }
+    if ((s.action == Do::SkipTag || s.action == Do::TagFault) && !hasTag(s.on)) {
+        *why = tr("no tag %1 on this route").arg(s.on);
+        return false;
+    }
+    switch (s.action) {
+    case Do::Speed:
+        m_motion.setDrive(LocoSim::Motion::Drive::Hold);
+        m_motion.setSpeed(s.value);
+        break;
+    case Do::Accelerate:
+    case Do::Decelerate:
+        if (s.value > 0) m_rate->setValue(s.value);
+        m_motion.setRate(m_rate->value());
+        m_motion.setDrive(s.action == Do::Accelerate ? LocoSim::Motion::Drive::Accelerate : LocoSim::Motion::Drive::Decelerate);
+        break;
+    case Do::Hold:
+        m_motion.setDrive(LocoSim::Motion::Drive::Hold);
+        break;
+    case Do::SkipTag:
+        setSkipped(s.on, s.value != 0);
+        break;
+    case Do::TagFault: {
+        const LocoSim::TagFault kind = s.kind == QLatin1String("late")    ? LocoSim::TagFault::Late
+                                     : s.kind == QLatin1String("twice")   ? LocoSim::TagFault::Twice
+                                     : s.kind == QLatin1String("crc")     ? LocoSim::TagFault::BadCrc
+                                                                          : LocoSim::TagFault::None;
+        setTagFault(s.on, kind, 3, s.value > 0 ? int(s.value) : 500);
+        break;
+    }
+    case Do::Reader:
+        setReaderOn(s.on.toInt(), s.value != 0);
+        break;
+    case Do::AirFault: {
+        const int ch = s.on == QLatin1String("BP") ? BrakePlant::Bp : s.on == QLatin1String("BC") ? BrakePlant::Bc : BrakePlant::Mr;
+        const BrakePlant::Fault f = s.kind == QLatin1String("stuck") ? BrakePlant::Fault::Stuck
+                                  : s.kind == QLatin1String("slow")  ? BrakePlant::Fault::Slow
+                                  : s.kind == QLatin1String("leak")  ? BrakePlant::Fault::Leak
+                                                                     : BrakePlant::Fault::None;
+        m_bench->setPlantFault(ch, f, s.value);
+        break;
+    }
+    case Do::BiuSilent:
+        m_bench->biu()->setSilent(s.value != 0);
+        break;
+    case Do::BiuFault:
+        m_bench->biu()->raiseFault(quint16(s.text.isEmpty() ? quint32(s.value) : s.text.toUInt(nullptr, 0)));
+        break;
+    case Do::Note:
+        break;
+    }
+    showMotion();
+    return true;
+}
+
 // ---- session 406: on into the next route --------------------------------------------
 
 QString LocoSimWindow::routeName() const
@@ -1297,6 +1628,7 @@ void LocoSimWindow::sendTag(const SimPreview::Readers::Send &send, const QString
                            : tr("not sent: %1 closed").arg(portName));
         cell->setToolTip(QString::fromLatin1(frame.toHex(' ')));
     }
+    if (sent && send.reader == 1 && m_scenarioOn) m_tagsSeen.insert(RfidTag::nameOf(send.tag));
     if (sent) {
         ++m_tagsSent;
         m_tagStates[send.row] |= send.reader == 1 ? RouteStrip::SentOn1 : RouteStrip::SentOn2;
@@ -1829,6 +2161,7 @@ void LocoSimWindow::stop()
 {
     m_timer->stop();
     m_late.clear();   // a late tag due after the stop is not sent
+    stopScenario();   // session 407: its clock is the loco's run
     m_startStop->setText(tr("Start"));
     m_startStop->setProperty("running", false);
     restyle();
@@ -1878,6 +2211,7 @@ void LocoSimWindow::advance(double seconds)
     showStep(step, seconds);
     stepRoute(step);
     flushLate();
+    scenarioTick();
     showMotion();
 }
 

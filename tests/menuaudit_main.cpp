@@ -740,6 +740,9 @@ int main(int argc, char **argv) {
         bool rfidTab = false;
         for (int i = 0; locoTabs && i < locoTabs->count(); ++i) rfidTab = rfidTab || locoTabs->tabText(i) == QLatin1String("RFID");
         CHECK(rfidTab, "with an RFID tab");
+        bool scenarioTab = false;   // session 407
+        for (int i = 0; locoTabs && i < locoTabs->count(); ++i) scenarioTab = scenarioTab || locoTabs->tabText(i) == QLatin1String("Scenario");
+        CHECK(scenarioTab, "and a Scenario tab");
 #ifdef DL_HAVE_SERIAL
         auto *tagPortA = opened ? opened->findChild<QComboBox *>(QStringLiteral("locoSimTagPortA")) : nullptr;
         CHECK(tagPortA && tagPortA->isEnabled(), "whose tag port A can be picked: it has the serial ports");
