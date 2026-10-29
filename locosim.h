@@ -38,6 +38,10 @@
 //          which gives them back in the order the tag holds them
 //    20-21 end_byte     BB BB
 //
+//  TAG FAULTS (session 405): per tag, for reader 1, reader 2 or both, each
+//    time the loco passes: Late (sent N ms after the reader would have),
+//    Twice (the frame twice, back to back), Bad CRC (badCrcTag).
+//
 //  THE BRAKE (session 398, step 3: braking from the BIU's command)
 //    The VCC commands the BIU; the Brake Test Bench's air (brakeplant.h)
 //    moves toward it; the loco slows by what the air does. BC sets the rate:
@@ -88,6 +92,13 @@ struct BrakeRates {
 };
 // m/s^2 the air in the brake gives, 0 for none.
 double brakeDeceleration(const BrakeRates &rates, double bpKgcm2, double bcKgcm2);
+
+// Session 405: a tag frame's fault, set per tag on the RFID tab.
+enum class TagFault { None, Late, Twice, BadCrc };
+QString tagFaultName(TagFault fault);          // "late", "sent twice", "bad CRC"
+// The tag with its CRC-30 no longer matching: the last byte's lowest bit,
+// inside the CRC, flipped. Everything the loco decodes stays as it was.
+QByteArray badCrcTag(const QByteArray &tag);
 
 // What one step sent: pulses[sensor 0/1][channel 0/1], and the metres moved.
 struct Step {

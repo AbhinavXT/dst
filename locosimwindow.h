@@ -18,6 +18,9 @@
 //              port for both, or reader 2 on its own. A reader can be off, a
 //              tag skipped. No chaining to the next station's route.
 //              (session 400) the loco's speed: read and set here too.
+//              (session 405) a fault per tag: Late (N ms), Sent twice or
+//              Bad CRC, for reader 1, 2 or both, each time the loco passes;
+//              its word on the tag's chip in the track view.
 //              (session 402) Tag Builder: the route open in a Tag Builder,
 //              as it is now, saved or not; each edit there comes here and
 //              the loco stays where it is (back to the start tag when the
@@ -120,6 +123,15 @@ public:
     RouteStrip *followView() const { return m_followStrip; }
     void   setReaderOn(int reader, bool on);
     void   setSkipped(const QString &tag, bool skip);   // tag as the rows name it ("904", "904D")
+    // Session 405: a fault on a tag (as the rows name it); readers 1, 2 or 3 (both).
+    struct TagFaultSetting {
+        LocoSim::TagFault kind = LocoSim::TagFault::None;
+        int readers = 3;
+        int delayMs = 500;
+    };
+    void   setTagFault(const QString &tag, LocoSim::TagFault kind, int readers = 3, int delayMs = 500);
+    TagFaultSetting tagFault(const QString &tag) const { return m_faults.value(tag); }
+    int    lateQueued() const { return m_late.size(); }
     void   setReader2OwnPort(bool own);
     int    tagsSent() const { return m_tagsSent; }
     // Tests: tag frames go here (port 0 = A, 1 = B) instead of the serial ports.
@@ -148,7 +160,12 @@ private:
     void   stopFollowingBuilder();
     void   fillTagTable();
     void   stepRoute(const LocoSim::Step &step);
-    void   sendTag(const SimPreview::Readers::Send &send);
+    void   sendTag(const SimPreview::Readers::Send &send, const QString &note = QString());
+    void   sendWithFault(const SimPreview::Readers::Send &send);
+    void   flushLate();
+    void   markFaultedRows();
+    void   showFaultRow(int row);
+    QHash<int, QString> faultLabels() const;
     void   showRoutePosition();
     QStringList skippedTags() const;
     void   refreshTagPorts();
@@ -240,6 +257,9 @@ private:
     QLabel         *m_rfidBrake = nullptr;
     double          m_pulseD = 0;       // where speed sensor 1's pulses put the loco
     QHash<int, int> m_tagStates;        // route row -> RouteStrip::TagState
+    QHash<QString, TagFaultSetting> m_faults;   // session 405: by tag name
+    struct Late { qint64 dueMs; SimPreview::Readers::Send send; QString note; };
+    QVector<Late>   m_late;             // late tags waiting for their time
 };
 
 #endif  // LOCOSIMWINDOW_H

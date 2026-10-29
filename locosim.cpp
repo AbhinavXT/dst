@@ -30,6 +30,24 @@ QByteArray speedMessage(int sensor, quint8 direction, quint32 tachometer1, quint
     return message;                           // crc (15-18) stays 0
 }
 
+QString tagFaultName(TagFault fault)
+{
+    switch (fault) {
+    case TagFault::None:   return QString();
+    case TagFault::Late:   return QStringLiteral("late");
+    case TagFault::Twice:  return QStringLiteral("sent twice");
+    case TagFault::BadCrc: return QStringLiteral("bad CRC");
+    }
+    return QString();
+}
+
+QByteArray badCrcTag(const QByteArray &tag)
+{
+    QByteArray bad = tag;
+    if (bad.size() == 16) bad[15] = char(bad.at(15) ^ 0x01);
+    return bad;
+}
+
 QByteArray tagFrame(int reader, const QByteArray &tag)
 {
     if (tag.size() != 16) return QByteArray();

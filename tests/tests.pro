@@ -304,6 +304,7 @@ SOURCES += \
     test_session402.cpp \
     test_session403.cpp \
     test_session404.cpp \
+    test_session405.cpp \
     test_session213.cpp \
     test_session214.cpp \
     test_session215.cpp \

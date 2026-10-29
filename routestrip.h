@@ -61,9 +61,12 @@ public:
     void setLoco(double loc, double pulsesLoc);
     double loco() const { return m_loco; }
     double pulsesLoco() const { return m_pulsesLoco; }
-    enum TagState { SentOn1 = 1, SentOn2 = 2, Skipped = 4 };
+    enum TagState { SentOn1 = 1, SentOn2 = 2, Skipped = 4, Faulted = 8 };
     void setTagStates(const QHash<int, int> &states);   // route row -> TagState flags
     int  tagState(int row) const { return m_states.value(row); }
+    // Session 405: a Faulted tag's word on its chip ("late", "×2", "crc").
+    void setTagLabels(const QHash<int, QString> &labels);
+    QString tagLabel(int row) const { return m_labels.value(row); }
     void setReader2Window(double from, double to);      // NaN: none
     double xAt(double loc) const;                        // the widget x of a location
 
@@ -101,6 +104,7 @@ private:
     double m_viewLo = 0, m_viewHi = 0;
     double m_loco, m_pulsesLoco, m_window2From, m_window2To;   // NaN until set (routestrip.cpp)
     QHash<int, int> m_states;
+    QHash<int, QString> m_labels;
 };
 
 #endif  // ROUTESTRIP_H

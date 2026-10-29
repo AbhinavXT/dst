@@ -10,6 +10,65 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-405"></a>
+## Session 405 — RFID faults per tag: late, sent twice, bad CRC
+
+Abhinav 2026-10-29, the second of the four (the faults he left for later in
+step 2, session 395). His answer: per tag, in the table.
+
+**What the operator sees.** Loco Simulator ▸ RFID ▸ Tags, three more columns
+on each tag's row:
+- **Fault:** — / **Late** / **Sent twice** / **Bad CRC**.
+- **On:** 1 + 2, 1, or 2: the reader(s) whose frame it is on.
+- **Delay:** for Late, in ms (500 by default).
+
+Each fault acts every time the loco passes the tag:
+- **Late:** the frame goes out that long after the reader would have sent
+  it. The reader's cell says "due in … ms" until then. A late frame still
+  waiting when the loco stops, or goes back to the start, is dropped.
+- **Sent twice:** the same frame twice, back to back.
+- **Bad CRC:** the tag with the lowest bit of its last byte flipped. That
+  bit is inside the CRC-30, so the CRC fails and everything the loco
+  decodes from the tag stays as it was.
+
+Where the faults show:
+- **The track view:** the tag's chip shows the fault before the loco gets
+  there ("late", "×2", "crc", then the readers that sent it), outlined like
+  skip.
+- **The reader cell:** after the time and place, "late by 500 ms",
+  "sent twice (2nd)" or "bad CRC".
+- **A recording (404):** the same words, as the frame's note.
+
+Faults are kept by tag name: they stay through a Tag Builder edit (402).
+Picking a route afresh clears them.
+
+**Files:** `locosim.{h,cpp}` (`TagFault`, `tagFaultName`, `badCrcTag`),
+`locosimwindow.{h,cpp}` (`setTagFault`, `sendWithFault`, `flushLate`, the
+three columns), `routestrip.{h,cpp}` (`Faulted`, `setTagLabels`),
+`tests/test_session405.cpp`, `tests/tests.pro`.
+
+**Tests:** `session405` (17 checks). The same 60 s run on the simulator's own
+Configuration1.xml, clean and then with faults, compared frame by frame:
+- **Bad CRC:** one bit, the CRC fails, the decode is unchanged. Every frame
+  of that tag on both readers carries it.
+- **Sent twice on reader 1:** twice on reader 1, back to back; once on
+  reader 2.
+- **Late 500 ms:** sent 500-600 ms after the clean run's time, the frame
+  itself unchanged.
+- **The rest:** every other tag as in the clean run; the row's box and the
+  track view's "crc" chip; the recording's notes; a late frame due after
+  Stop dropped; None clearing the fault and its mark; a route picked again
+  with no faults.
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 421
+suites / 10566 checks, 0 failed; menu audit and headless smoke ok. Linux
+(Ubuntu 22.04 container): `dltests` 421 / 10566, 0 failed; menu audit ok.
+
+**Not tested:** what a real VCC does with these frames, over a real serial
+port.
+
+---
+
 <a id="session-404"></a>
 ## Session 404 — record a whole test: both simulators' frames in one file
 

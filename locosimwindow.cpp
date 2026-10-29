@@ -54,7 +54,8 @@ namespace {
 constexpr int kMaxFrameRows = 500;
 constexpr double kFollowMetres = 500;   // the RFID tab's view that follows the loco
 // The RFID tab's tag table.
-enum TagColumn { ColAt, ColTag, ColType, ColLoc, ColNext, ColSkip, ColReader1, ColReader2, TagColumns };
+enum TagColumn { ColAt, ColTag, ColType, ColLoc, ColNext, ColSkip, ColReader1, ColReader2, ColFault, ColFaultOn, ColDelay,
+                 TagColumns };
 // The drive's segmented buttons, left to right, as the motion's drives.
 const LocoSim::Motion::Drive kDriveOfButton[3] = { LocoSim::Motion::Drive::Decelerate, LocoSim::Motion::Drive::Hold,
                                                    LocoSim::Motion::Drive::Accelerate };
@@ -547,7 +548,7 @@ QWidget *LocoSimWindow::buildRfidTab()
     m_tags = new QTableWidget(0, TagColumns, page);
     m_tags->setObjectName(QStringLiteral("locoSimTags"));
     m_tags->setHorizontalHeaderLabels({ QString(), tr("Tag"), tr("Type"), tr("abs_loc"), tr("Next"), tr("Skip"),
-                                        tr("Reader 1"), tr("Reader 2") });
+                                        tr("Reader 1"), tr("Reader 2"), tr("Fault"), tr("On"), tr("Delay") });
     m_tags->verticalHeader()->setVisible(false);
     m_tags->setEditTriggers(QAbstractItemView::NoEditTriggers);
     m_tags->setSelectionBehavior(QAbstractItemView::SelectRows);
@@ -633,6 +634,7 @@ void LocoSimWindow::fillRouteBox()
 void LocoSimWindow::setRoute(int index)
 {
     if (index < 0 || index >= m_routes.size()) return;
+    m_faults.clear();   // session 405: a route picked afresh starts without faults
     showRoute(index);
     placeAtStart();
 }
@@ -752,6 +754,7 @@ void LocoSimWindow::builderRouteChanged()
     for (const QString &name : skippedTags())
         for (int r = 0; r < m_tags->rowCount(); ++r)
             if (m_tags->item(r, ColTag)->text() == name) m_tagStates[r] = RouteStrip::Skipped;
+    markFaultedRows();
     showRoutePosition();
     m_status->state(tr("Route updated from the Tag Builder: the loco stays at %1 m.").arg(m_routeD, 0, 'f', 1));
 }
@@ -784,7 +787,7 @@ void LocoSimWindow::fillTagTable()
             known ? QString::number(rows.at(i).tagType) : QString(),
             known ? QString::number(rows.at(i).absLoc, 'f', 0) : QString(),
             known ? QString::number(rows.at(i).nextAbsLoc, 'f', 0) : QString(),
-            QString(), QString(), QString(),
+            QString(), QString(), QString(), QString(), QString(), QString(),
         };
         for (int column = 0; column < TagColumns; ++column) {
             auto *item = new QTableWidgetItem(cells.at(column));
@@ -797,6 +800,41 @@ void LocoSimWindow::fillTagTable()
             }
             m_tags->setItem(i, column, item);
         }
+    }
+    // Session 405: the fault, which reader it is on, how late.
+    for (int i = 0; i < route.tags.size(); ++i) {
+        const QString name = m_tags->item(i, ColTag)->text();
+        const TagFaultSetting f = m_faults.value(name);
+        auto *kind = new QComboBox(m_tags);
+        kind->setObjectName(QStringLiteral("locoSimFault_%1").arg(name));
+        kind->addItem(tr("\u2014"), int(LocoSim::TagFault::None));
+        kind->addItem(tr("Late"), int(LocoSim::TagFault::Late));
+        kind->addItem(tr("Sent twice"), int(LocoSim::TagFault::Twice));
+        kind->addItem(tr("Bad CRC"), int(LocoSim::TagFault::BadCrc));
+        kind->setCurrentIndex(kind->findData(int(f.kind)));
+        kind->setToolTip(tr("What goes wrong with this tag's frame, each time the loco passes it"));
+        auto *on = new QComboBox(m_tags);
+        on->addItem(tr("1 + 2"), 3);
+        on->addItem(tr("1"), 1);
+        on->addItem(tr("2"), 2);
+        on->setCurrentIndex(on->findData(f.readers));
+        on->setToolTip(tr("The reader(s) whose frame the fault is on"));
+        auto *delay = new QSpinBox(m_tags);
+        delay->setRange(10, 60000);
+        delay->setSingleStep(100);
+        delay->setSuffix(tr(" ms"));
+        delay->setValue(f.delayMs);
+        delay->setToolTip(tr("Late: sent this long after the reader would have sent it"));
+        m_tags->setCellWidget(i, ColFault, kind);
+        m_tags->setCellWidget(i, ColFaultOn, on);
+        m_tags->setCellWidget(i, ColDelay, delay);
+        const auto changed = [this, name, kind, on, delay]() {
+            setTagFault(name, LocoSim::TagFault(kind->currentData().toInt()), on->currentData().toInt(), delay->value());
+        };
+        connect(kind, QOverload<int>::of(&QComboBox::currentIndexChanged), this, changed);
+        connect(on, QOverload<int>::of(&QComboBox::currentIndexChanged), this, changed);
+        connect(delay, QOverload<int>::of(&QSpinBox::valueChanged), this, changed);
+        showFaultRow(i);
     }
     m_tags->resizeColumnsToContents();
     // The reader columns fill in as the loco runs: share the room.
@@ -819,6 +857,110 @@ void LocoSimWindow::setSkipped(const QString &tag, bool skip)
             m_tags->item(row, ColSkip)->setCheckState(skip ? Qt::Checked : Qt::Unchecked);
 }
 
+// ---- session 405: tag faults ----------------------------------------------------------
+
+void LocoSimWindow::setTagFault(const QString &tag, LocoSim::TagFault kind, int readers, int delayMs)
+{
+    TagFaultSetting f;
+    f.kind = kind;
+    f.readers = qBound(1, readers, 3);
+    f.delayMs = qMax(10, delayMs);
+    if (kind == LocoSim::TagFault::None) m_faults.remove(tag);
+    else m_faults.insert(tag, f);
+    for (int row = 0; row < m_tags->rowCount(); ++row) {
+        if (m_tags->item(row, ColTag)->text() != tag) continue;
+        // The row's controls say it too (set from code, or by the operator).
+        if (auto *box = qobject_cast<QComboBox *>(m_tags->cellWidget(row, ColFault))) {
+            const QSignalBlocker block(box);
+            box->setCurrentIndex(box->findData(int(kind)));
+        }
+        if (auto *box = qobject_cast<QComboBox *>(m_tags->cellWidget(row, ColFaultOn))) {
+            const QSignalBlocker block(box);
+            box->setCurrentIndex(box->findData(f.readers));
+        }
+        if (auto *spin = qobject_cast<QSpinBox *>(m_tags->cellWidget(row, ColDelay))) {
+            const QSignalBlocker block(spin);
+            spin->setValue(f.delayMs);
+        }
+        showFaultRow(row);
+    }
+    markFaultedRows();
+    showRoutePosition();
+}
+
+void LocoSimWindow::showFaultRow(int row)
+{
+    const TagFaultSetting f = m_faults.value(m_tags->item(row, ColTag)->text());
+    const bool any = f.kind != LocoSim::TagFault::None;
+    if (QWidget *w = m_tags->cellWidget(row, ColFaultOn)) w->setEnabled(any);
+    if (QWidget *w = m_tags->cellWidget(row, ColDelay)) w->setEnabled(f.kind == LocoSim::TagFault::Late);
+}
+
+void LocoSimWindow::markFaultedRows()
+{
+    for (int row = 0; row < m_tags->rowCount(); ++row) {
+        int &state = m_tagStates[row];
+        if (m_faults.contains(m_tags->item(row, ColTag)->text())) state |= RouteStrip::Faulted;
+        else state &= ~RouteStrip::Faulted;
+        if (!state) m_tagStates.remove(row);
+    }
+}
+
+QHash<int, QString> LocoSimWindow::faultLabels() const
+{
+    QHash<int, QString> labels;
+    for (int row = 0; row < m_tags->rowCount(); ++row) {
+        const TagFaultSetting f = m_faults.value(m_tags->item(row, ColTag)->text());
+        switch (f.kind) {
+        case LocoSim::TagFault::None:   break;
+        case LocoSim::TagFault::Late:   labels.insert(row, tr("late")); break;
+        case LocoSim::TagFault::Twice:  labels.insert(row, tr("\u00D72")); break;
+        case LocoSim::TagFault::BadCrc: labels.insert(row, tr("crc")); break;
+        }
+    }
+    return labels;
+}
+
+// What the readers send, with the tag's fault when it is on that reader.
+void LocoSimWindow::sendWithFault(const SimPreview::Readers::Send &send)
+{
+    const QString name = send.row < m_tags->rowCount() ? m_tags->item(send.row, ColTag)->text() : QString();
+    const TagFaultSetting f = m_faults.value(name);
+    if (f.kind == LocoSim::TagFault::None || !(f.readers & (1 << (send.reader - 1)))) {
+        sendTag(send);
+        return;
+    }
+    switch (f.kind) {
+    case LocoSim::TagFault::Late:
+        m_late.append({ m_clock() + f.delayMs, send, tr("late by %1 ms").arg(f.delayMs) });
+        if (QTableWidgetItem *cell = m_tags->item(send.row, send.reader == 1 ? ColReader1 : ColReader2))
+            cell->setText(tr("due in %1 ms").arg(f.delayMs));
+        break;
+    case LocoSim::TagFault::Twice:
+        sendTag(send, tr("sent twice (1st)"));
+        sendTag(send, tr("sent twice (2nd)"));
+        break;
+    case LocoSim::TagFault::BadCrc: {
+        SimPreview::Readers::Send bad = send;
+        bad.tag = LocoSim::badCrcTag(send.tag);
+        sendTag(bad, tr("bad CRC"));
+        break;
+    }
+    case LocoSim::TagFault::None:
+        break;
+    }
+}
+
+void LocoSimWindow::flushLate()
+{
+    const qint64 now = m_clock();
+    for (int i = 0; i < m_late.size();) {
+        if (m_late.at(i).dueMs > now) { ++i; continue; }
+        const Late late = m_late.takeAt(i);
+        sendTag(late.send, late.note);
+    }
+}
+
 void LocoSimWindow::setReaderOn(int reader, bool on)
 {
     if (reader == 1 || reader == 2) m_readerOn[reader - 1]->setChecked(on);
@@ -836,10 +978,12 @@ bool LocoSimWindow::placeAtStart()
     m_routeRow = -1;
     m_routeEnded = false;
     m_portWarned = false;
+    m_late.clear();
     m_tagStates.clear();
     for (const QString &name : skippedTags())
         for (int row = 0; row < m_tags->rowCount(); ++row)
             if (m_tags->item(row, ColTag)->text() == name) m_tagStates[row] = RouteStrip::Skipped;
+    markFaultedRows();
     const QSignalBlocker block(m_tags);
     for (int row = 0; row < m_tags->rowCount(); ++row) {
         m_tags->item(row, ColAt)->setText(QString());
@@ -889,11 +1033,11 @@ void LocoSimWindow::stepRoute(const LocoSim::Step &step)
     } else {
         m_routeRow = row;
     }
-    for (const SimPreview::Readers::Send &send : sends) sendTag(send);
+    for (const SimPreview::Readers::Send &send : sends) sendWithFault(send);
     showRoutePosition();
 }
 
-void LocoSimWindow::sendTag(const SimPreview::Readers::Send &send)
+void LocoSimWindow::sendTag(const SimPreview::Readers::Send &send, const QString &note)
 {
     const QByteArray frame = LocoSim::tagFrame(send.reader, send.tag);
     if (frame.isEmpty()) return;
@@ -912,11 +1056,12 @@ void LocoSimWindow::sendTag(const SimPreview::Readers::Send &send)
     if (m_recorder && m_recorder->recording())
         record(QStringLiteral("tag"), portName, frame,
                tr("reader %1 \u00B7 tag %2 \u00B7 at %3 m").arg(send.reader).arg(RfidTag::nameOf(send.tag)).arg(m_routeD, 0, 'f', 1),
-               sent ? QString() : tr("not sent: %1 closed").arg(portName));
+               sent ? note : tr("not sent: %1 closed").arg(portName));
     QTableWidgetItem *cell = m_tags->item(send.row, send.reader == 1 ? ColReader1 : ColReader2);
     if (cell) {
         cell->setText(sent ? tr("%1 · %2 m").arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss.zzz")))
-                                 .arg(m_routeD, 0, 'f', 1)
+                                     .arg(m_routeD, 0, 'f', 1)
+                                 + (note.isEmpty() ? QString() : tr(" · %1").arg(note))
                            : tr("not sent: %1 closed").arg(portName));
         cell->setToolTip(QString::fromLatin1(frame.toHex(' ')));
     }
@@ -967,6 +1112,7 @@ void LocoSimWindow::showRoutePosition()
     for (RouteStrip *strip : { m_wholeStrip, m_followStrip }) {
         strip->setLoco(m_routeD, m_pulseD);
         strip->setTagStates(m_tagStates);
+        strip->setTagLabels(faultLabels());
         strip->setReader2Window(from, to);
     }
     const double gap = m_pulseD - m_routeD;
@@ -1450,6 +1596,7 @@ bool LocoSimWindow::start()
 void LocoSimWindow::stop()
 {
     m_timer->stop();
+    m_late.clear();   // a late tag due after the stop is not sent
     m_startStop->setText(tr("Start"));
     m_startStop->setProperty("running", false);
     restyle();
@@ -1498,6 +1645,7 @@ void LocoSimWindow::advance(double seconds)
     }
     showStep(step, seconds);
     stepRoute(step);
+    flushLate();
     showMotion();
 }
 

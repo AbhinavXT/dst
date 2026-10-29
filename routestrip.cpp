@@ -125,6 +125,12 @@ void RouteStrip::setTagStates(const QHash<int, int> &states)
     update();
 }
 
+void RouteStrip::setTagLabels(const QHash<int, QString> &labels)
+{
+    m_labels = labels;
+    update();
+}
+
 void RouteStrip::setReader2Window(double from, double to)
 {
     m_window2From = from;
@@ -321,17 +327,21 @@ void RouteStrip::paintOverlay(QPainter &p)
         if (state & Skipped) text = tr("skip");
         else text = QString((state & SentOn1) ? QStringLiteral("1") : QString())
                     + ((state & SentOn2) ? QStringLiteral("2") : QString());
+        // Session 405: a fault set on the tag, before what was sent.
+        if (!(state & Skipped) && (state & Faulted))
+            text = (m_labels.value(m.row, tr("fault")) + QLatin1Char(' ') + text).trimmed();
+        const bool warn = state & (Skipped | Faulted);
         const int line = m.dup ? 1 : 0;
         const double w = fm.horizontalAdvance(text) + 8, h = fm.height() + 2;
         const QRectF chip(x - w / 2, kStateY + line * (h + 2) - h / 2, w, h);
         if (chip.left() < lastEnd[line] + 2) continue;
         lastEnd[line] = chip.right();
-        const QColor fill = (state & Skipped) ? UiColor::warning() : UiColor::ok();
+        const QColor fill = warn ? UiColor::warning() : UiColor::ok();
         p.setPen(QPen(fill, 1.2));
-        p.setBrush((state & Skipped) ? base : fill);
+        p.setBrush(warn ? base : fill);
         p.drawRoundedRect(chip, 3, 3);
-        p.setPen((state & Skipped) ? UiColor::withContrast(fill, base, 4.5)
-                                   : UiColor::withContrast(base, fill, 4.5));
+        p.setPen(warn ? UiColor::withContrast(fill, base, 4.5)
+                      : UiColor::withContrast(base, fill, 4.5));
         p.drawText(chip, Qt::AlignCenter, text);
     }
 
