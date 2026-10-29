@@ -57,6 +57,7 @@ SOURCES += \
     $$PWD/dialogfocus.cpp \
     $$PWD/minimizeddock.cpp \
     $$PWD/rowclicks.cpp \
+    $$PWD/simsentlog.cpp \
     $$PWD/textzoom.cpp \
     $$PWD/presentationmode.cpp \
     $$PWD/tabtags.cpp \
@@ -281,6 +282,7 @@ HEADERS += \
     $$PWD/dialogfocus.h \
     $$PWD/minimizeddock.h \
     $$PWD/rowclicks.h \
+    $$PWD/simsentlog.h \
     $$PWD/textzoom.h \
     $$PWD/presentationmode.h \
     $$PWD/tabtags.h \

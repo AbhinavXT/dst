@@ -67,6 +67,7 @@
 class BrakeBenchWindow;
 class TagSendDialog;
 namespace BenchRecord { class Recorder; }
+class SimSentLog;
 class TagBuilderWindow;
 class StationLayoutWindow;
 class QButtonGroup;
@@ -199,6 +200,9 @@ public:
     int    tagsSent() const { return m_tagsSent; }
     // Tests: tag frames go here (port 0 = A, 1 = B) instead of the serial ports.
     void   setTagSink(const std::function<void(int, const QByteArray &)> &sink) { m_tagSink = sink; }
+    // Session 415: the RFID frames sent, listed in the RFID frames tab.
+    SimSentLog *sentLog() const { return m_sentLog; }
+    void   setOpenInWorkbench(std::function<void(const QString &, const QString &)> open);
 
 private:
     void   pullFromUi();                // the controls into the motion
@@ -337,6 +341,7 @@ private:
     std::function<void(int, const QByteArray &)> m_healthSink;
     QTableWidget   *m_tags = nullptr;
     QToolButton    *m_tagsToggle = nullptr;
+    SimSentLog     *m_sentLog = nullptr;      // session 415: the RFID frames tab
     QPointer<TagSendDialog> m_tagSend;
     RouteStrip     *m_wholeStrip = nullptr;
     RouteStrip     *m_followStrip = nullptr;

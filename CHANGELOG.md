@@ -10,6 +10,76 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-415"></a>
+## Session 415 — the RFID frames the Loco Simulator sent, in a tab of their own
+
+Abhinav 2026-10-29 (*"Also show rfid frames sent in the loco simulator"*).
+Scope as confirmed: a list of the frames sent, in the simulator; the tag
+frames and the readers' health frames; double-click a tag to open it in the
+Decode Workbench. Until now a sent tag showed only as a time in its row of
+the Tags table, its bytes on the tooltip, and health frames not at all.
+
+**What the operator sees.** Loco Simulator ▸ **RFID frames**, a tab after
+Frames (which lists the speed messages), counted in its name: "RFID frames
+(49)".
+- **A row per frame, newest at the bottom** (the list follows it unless
+  scrolled up): Time, Reader, Port, Frame (tag / health), Tag / health (the
+  tag's name, or OK (1) / fail (2)), At (where the loco was, for the route's
+  tags), Note, Bytes.
+- **Every tag frame:** the route's, Send a tag… (noted "by hand"), and the
+  faults as they went out: "late by 500 ms", "sent twice (1st)" / "(2nd)",
+  "bad CRC". A frame whose port was closed is listed in the error colour,
+  "not sent: port A closed".
+- **A tag row's tooltip:** the tag's type, abs_loc, whether its CRC is good,
+  and every field as the decoder reads it.
+- **Double-click a tag row:** a Decode Workbench of its own (412) with the
+  frame as the @rfid line a VCC log has: the reader byte and the 16 tag
+  bytes (`@rfid_0_0 <time> <n> 01 19 8C …`; loco and cab 0_0, the
+  simulator's, no real loco's). A health frame has no packet in the schema:
+  nothing opens.
+- **Health frames** ticked by default; unticked, their rows are hidden, not
+  dropped. **Clear** empties the list. The last 5000 are kept.
+
+**Why a tab.** The list was first a toggle under the Tags table on the RFID
+page: at 1120 × 720 it had room for one row, and a taller window brings back
+the Linux height problem of 409. A tab has the window's height.
+
+**Files.** simsentlog.h, simsentlog.cpp (new; dlcore.pri),
+locosimwindow.{h,cpp} (the tab; sendTag, sendTagByHand and healthTick add
+their frames; `setOpenInWorkbench`), mainwindow_tools.cpp (the simulator's
+tags open through `openBufferInWorkbench`); tests/test_session415.cpp,
+tests/tests.pro, tests/screenshot_main.cpp (`SHOT_WINDOW=locosim SHOT_TAB=4
+SHOT_SENT=1`).
+
+**Tests.** `session415`, 21 checks, the simulator's own route
+(tag_scenarios/LocoTcasSimulator/Configuration1.xml):
+- the tab after Frames, empty; 30 s run at 72 km/h with both readers on: a
+  row per frame written, tags and health, in the order sent, each row's
+  bytes the frame; the tab counts them;
+- a tag row: name, reader 1, port A, where; its tooltip the tag's abs_loc; a
+  health row OK (1);
+- Health frames unticked: hidden, still held;
+- double-click: an @rfid line the decoder parses as RFID, the reader byte
+  and the tag; the workbench named by the tag; a health row opens nothing;
+- Sent twice on reader 1 for the first tag: two rows, "sent twice (1st)" /
+  "(2nd)";
+- by hand: reader 2, "by hand"; port A closed: "not sent";
+- kept to 5000; Clear empties it;
+- from the main window (Tools ▸ Simulators ▸ Loco Simulator…): a tag sent,
+  double-clicked: a Decode Workbench titled by the tag.
+- Run 3 times with 405, 409, 410, 411, 412 and `assertions`: no failure.
+- **Not tested:** the frames on a real serial port (no reader hardware here;
+  the tests use the simulator's tag and health sinks, as 405-410 do).
+- **Looked at:** the RFID frames tab after a 34 s run (offscreen shot): 4
+  tags then 45 health frames, reader 1 every 1 s, reader 2 every 2 s.
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 430
+suites / 10737 checks, 0 failed; menu audit 203 ok; headless smoke ok. Linux:
+left to CI, which has failed since 411 on Linux font widths (session210, 212,
+233, 413): fixed in 416.
+
+---
+
 <a id="session-414"></a>
 ## Session 414 — row clicks: double, triple, Ctrl/Shift+double and middle click, each a row action
 

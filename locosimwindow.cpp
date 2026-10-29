@@ -2,6 +2,7 @@
 #include "brakebenchwindow.h"
 #include "benchrecord.h"
 #include "tagbuilderwindow.h"
+#include "simsentlog.h"
 #include "tagsenddialog.h"
 #include "routestrip.h"
 #include "biusim.h"
@@ -158,12 +159,23 @@ LocoSimWindow::LocoSimWindow(SerialManager *serial, QWidget *parent)
     m_timer = new QTimer(this);
     m_timer->setTimerType(Qt::PreciseTimer);
 
+    // Session 415: made before the tabs, which may send as they are built.
+    m_sentLog = new SimSentLog(this);
+    m_sentLog->layout()->setContentsMargins(0, 8, 0, 0);
+
     auto *tabs = new QTabWidget(this);
     tabs->setDocumentMode(true);
     tabs->addTab(buildDriveTab(), tr("Drive"));
     tabs->addTab(buildRfidTab(), tr("RFID"));
     tabs->addTab(buildScenarioTab(), tr("Scenario"));
     tabs->addTab(buildFramesTab(), tr("Frames"));
+    // Session 415: every RFID frame sent, the tags and the readers' health.
+    const int rfidFrames = tabs->addTab(m_sentLog, tr("RFID frames"));
+    tabs->setTabToolTip(rfidFrames, tr("Every RFID frame sent: the tags (route, by hand, with their faults) and the "
+                                       "readers' health frames, with their bytes"));
+    connect(m_sentLog, &SimSentLog::countChanged, tabs, [tabs, rfidFrames](int rows) {
+        tabs->setTabText(rfidFrames, rows > 0 ? tr("RFID frames (%1)").arg(rows) : tr("RFID frames"));
+    });
     tabs->addTab(buildSettingsTab(), tr("Settings"));
     root->addWidget(tabs, 1);
 
@@ -1712,6 +1724,16 @@ bool LocoSimWindow::sendTagByHand(int reader, const QString &pageX, const QStrin
     if (m_recorder && m_recorder->recording())
         record(QStringLiteral("tag"), portName, frame, tr("reader %1 \u00B7 tag %2 \u00B7 by hand").arg(reader).arg(name),
                sent ? QString() : tr("not sent: %1 closed").arg(portName));
+    {
+        SimSentLog::Frame f;
+        f.ms = m_clock();
+        f.reader = reader;
+        f.port = portName;
+        f.bytes = frame;
+        f.sent = sent;
+        f.note = sent ? tr("by hand") : tr("by hand, not sent: %1 closed").arg(portName);
+        m_sentLog->add(f);
+    }
     if (!sent) { whyNot = tr("%1 is not open").arg(portName); return false; }
     ++m_tagsSent;
     m_status->ok(tr("Tag %1 sent by hand on reader %2 (%3).").arg(name).arg(reader).arg(portName));
@@ -1759,10 +1781,24 @@ void LocoSimWindow::healthTick()
         }
         if (!sent) continue;   // its port closed: nothing to say it on
         ++m_healthSent[reader - 1];
+        {
+            SimSentLog::Frame f;
+            f.ms = now;
+            f.health = true;
+            f.reader = reader;
+            f.port = port == 0 ? tr("port A") : tr("port B");
+            f.bytes = frame;
+            m_sentLog->add(f);
+        }
         if (m_recorder && m_recorder->recording())
             record(QStringLiteral("health"), port == 0 ? tr("port A") : tr("port B"), frame,
                    tr("reader %1 \u00B7 health %2").arg(reader).arg(m_readerFail[reader - 1] ? tr("fail (2)") : tr("OK (1)")));
     }
+}
+
+void LocoSimWindow::setOpenInWorkbench(std::function<void(const QString &, const QString &)> open)
+{
+    m_sentLog->setOpenInWorkbench(std::move(open));
 }
 
 void LocoSimWindow::setReader2OwnPort(bool own)
@@ -1866,6 +1902,17 @@ void LocoSimWindow::sendTag(const SimPreview::Readers::Send &send, const QString
         record(QStringLiteral("tag"), portName, frame,
                tr("reader %1 \u00B7 tag %2 \u00B7 at %3 m").arg(send.reader).arg(RfidTag::nameOf(send.tag)).arg(m_routeD, 0, 'f', 1),
                sent ? note : tr("not sent: %1 closed").arg(portName));
+    {
+        SimSentLog::Frame f;
+        f.ms = m_clock();
+        f.reader = send.reader;
+        f.port = portName;
+        f.bytes = frame;
+        f.atM = m_routeD;
+        f.sent = sent;
+        f.note = sent ? note : tr("not sent: %1 closed").arg(portName);
+        m_sentLog->add(f);
+    }
     QTableWidgetItem *cell = m_tags->item(send.row, send.reader == 1 ? ColReader1 : ColReader2);
     if (cell) {
         cell->setText(sent ? tr("%1 · %2 m").arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss.zzz")))

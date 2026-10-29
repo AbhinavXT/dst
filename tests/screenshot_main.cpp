@@ -239,6 +239,12 @@ int main(int argc, char **argv)
                 w->motion().setDrive(LocoSim::Motion::Drive::Accelerate);
                 w->start();
                 for (int tick = 0; tick < 40; ++tick) { *t += 100; w->tick(); }
+                // Session 415, SHOT_SENT=1: 30 s more, health frames too (SHOT_TAB=4: RFID frames).
+                if (qEnvironmentVariableIsSet("SHOT_SENT")) {
+                    w->setHealthSink([](int, const QByteArray &) {});
+                    for (int r = 1; r <= 2; ++r) { w->setReaderOn(r, false); w->setReaderOn(r, true); }   // on the shot's clock
+                    for (int tick = 0; tick < 300; ++tick) { *t += 100; w->tick(); w->healthTick(); }
+                }
                 const int tab = qEnvironmentVariableIntValue("SHOT_TAB");
                 if (auto *tabs = w->findChild<QTabWidget *>()) tabs->setCurrentIndex(tab);
                 win = w;

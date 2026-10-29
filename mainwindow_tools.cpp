@@ -850,6 +850,10 @@ void MainWindow::openLocoSimulator()
         linkLocoSimToBench();
         // Session 402: the RFID tab can run a Tag Builder's open route.
         static_cast<LocoSimWindow *>(m_locoSim.data())->setTagBuilders([this]() { return findChildren<TagBuilderWindow *>(); });
+        // Session 415: a sent tag, double-clicked in Sent frames, in a workbench of its own.
+        static_cast<LocoSimWindow *>(m_locoSim.data())->setOpenInWorkbench([this](const QString &line, const QString &label) {
+            openBufferInWorkbench(line, label);
+        });
     }
     m_locoSim->show();
     m_locoSim->raise();
