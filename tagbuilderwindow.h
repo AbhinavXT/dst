@@ -45,6 +45,8 @@
 //                 tag…, Delete tag and New tag here… (the nearest main tag's
 //                 type and TINs, an unused id, the clicked metre). Each is one
 //                 Undo step.
+//    (session 402) routeChanged() on every change, saved or not: the Loco
+//                 Simulator's RFID tab can run the open route as it is.
 //    (session 203) a Simulator tab: what the RFID simulator (LocoTcasSimulator)
 //                 would send for this route, at a speed, from a start tag, tick
 //                 by tick, on reader 1 and reader 2 (simpreview.h).
@@ -204,6 +206,9 @@ public:
 
 signals:
     void jumpRequested(const QString &key, qint64 ms);
+    // Session 402: the route changed (opened, edited, undone, renamed), for
+    // the Loco Simulator's RFID tab, which runs the route as it is now.
+    void routeChanged();
     void applyRequested(const QByteArray &tag);
 
 protected:

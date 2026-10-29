@@ -10,6 +10,53 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-402"></a>
+## Session 402 — the RFID tab runs the Tag Builder's open route, live
+
+Abhinav 2026-10-29: *"make sure that the rfid sim can use any new and edited
+route from the tag builder"*. His answer: live from the builder, saved or not.
+
+**What the operator sees.** Loco Simulator ▸ RFID, a **Tag Builder** button
+beside Library… and Open…:
+- **One Tag Builder open:** the RFID tab takes its route as it is now, saved
+  or not, and the file label says "Tag Builder". **Several open:** a menu of
+  their routes. **None:** the status line says to open one.
+- **Every change in the builder comes across:** an edit, an added or
+  deleted tag, Undo, Shift, a rename, a whole new route opened there.
+  The loco stays where it is. The readers carry on from that place: tags it
+  has passed are not sent again, and the tags ahead go out as they are now.
+  Skipped tags and the start tag are kept by name.
+- If the edited route no longer covers the loco's place, the loco goes back
+  to the start tag and the status line says so.
+- Open… or Library… stops following. If the builder closes, its last route
+  stays ("Tag Builder (closed)").
+- Room for the button on the route bar: the route box is 18 characters wide
+  (was 24), the start tag 12 (was 14).
+
+**Files:** `tagbuilderwindow.{h,cpp}` (`routeChanged`), `locosimwindow.{h,cpp}`
+(`setTagBuilders`, `followBuilder`, `chooseBuilder`, `showRoute`),
+`mainwindow_tools.cpp`, `tests/test_session402.cpp`, `tests/tests.pro`,
+`tests/menuaudit_main.cpp`.
+
+**Tests:** `session402` (16 checks), on the simulator's own Configuration1.xml:
+no builder (nothing followed); one (followed, the loco at the first tag); 30 m
+on, a tag added 25 m ahead in the builder (patch 401's New tag here): the loco
+does not move, and the new tag goes out when the loco gets there; a tag
+further ahead moved 2 m in the builder: the edited bytes go out, not the
+file's; every tag shifted 500 km: back at the start tag; the builder closed:
+the route stays. Menu audit: a Tag Builder opened from Tools is followed by the
+Loco Simulator's button.
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 418
+suites / 10498 checks, 0 failed; menu audit and headless smoke ok. Linux
+(Ubuntu 22.04 container): `dltests` 418 suites / 10498 checks, 0 failed; menu
+audit ok.
+
+**Not tested:** over a real serial port or with a real VCC; a route followed
+for a long run while being edited by hand.
+
+---
+
 <a id="session-401"></a>
 ## Session 401 — the Tag Builder: change or add a tag straight on the route drawing
 

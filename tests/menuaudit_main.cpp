@@ -699,6 +699,19 @@ int main(int argc, char **argv) {
                 if (window->isVisible()) { ++count; opened = window; }
         CHECK(count == 1, "Simulators > Loco Simulator opens one window, raised again on a second trigger");
         CHECK(opened && !opened->running(), "and does not send until Start");
+        // Session 402: the RFID tab follows a Tag Builder opened from the menu.
+        if (QAction *tagBuilder = tools ? findAction(tools, "RFID Tag Builder") : nullptr) {
+            tagBuilder->trigger();
+            QWidget *builder = nullptr;
+            for (QWidget *top : QApplication::topLevelWidgets())
+                if (top->inherits("TagBuilderWindow") && top->isVisible()) builder = top;
+            auto *fromBuilder = opened ? opened->findChild<QPushButton *>(QStringLiteral("locoSimFromBuilder")) : nullptr;
+            if (fromBuilder) fromBuilder->click();
+            CHECK(builder && opened && opened->followsBuilder(), "the Loco Simulator's RFID tab follows the open Tag Builder's route");
+            if (builder) builder->close();
+        } else {
+            CHECK(false, "Tools > RFID Tag Builder");
+        }
         // Session 398: the Brake Test Bench's air brakes its loco while both are open.
         if (QAction *bench = findAction(simulators, "Brake Test Bench")) {
             bench->trigger();

@@ -833,6 +833,8 @@ void MainWindow::openLocoSimulator()
     if (!m_locoSim) {
         m_locoSim = new LocoSimWindow(m_serial, this);
         linkLocoSimToBench();
+        // Session 402: the RFID tab can run a Tag Builder's open route.
+        static_cast<LocoSimWindow *>(m_locoSim.data())->setTagBuilders([this]() { return findChildren<TagBuilderWindow *>(); });
     }
     m_locoSim->show();
     m_locoSim->raise();

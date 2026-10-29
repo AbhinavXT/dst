@@ -1,5 +1,6 @@
 #include "locosimwindow.h"
 #include "brakebenchwindow.h"
+#include "tagbuilderwindow.h"
 #include "routestrip.h"
 #include "biusim.h"
 #include "settings.h"
@@ -382,12 +383,17 @@ QWidget *LocoSimWindow::buildRfidTab()
     auto *openFile = new QPushButton(tr("Open\u2026"), page);
     openFile->setToolTip(tr("A route file: the Tag Builder's .tagroute.xml, a route.xml or a Configuration1.xml"));
     bar->addWidget(openFile);
+    m_fromBuilder = new QPushButton(tr("Tag Builder"), page);
+    m_fromBuilder->setObjectName(QStringLiteral("locoSimFromBuilder"));
+    m_fromBuilder->setToolTip(tr("The route open in the RFID Tag Builder, as it is now, saved or not: "
+                                 "each edit there comes here, the loco staying where it is"));
+    bar->addWidget(m_fromBuilder);
     bar->addSpacing(12);
     bar->addWidget(labelNamed(tr("Route"), "muted", page));
     m_routeBox = new QComboBox(page);
     m_routeBox->setObjectName(QStringLiteral("locoSimRoute"));
     m_routeBox->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    m_routeBox->setMinimumContentsLength(24);
+    m_routeBox->setMinimumContentsLength(18);
     bar->addWidget(m_routeBox, 2);
     bar->addSpacing(12);
     bar->addWidget(labelNamed(tr("Start tag"), "muted", page));
@@ -395,7 +401,7 @@ QWidget *LocoSimWindow::buildRfidTab()
     m_startTag->setObjectName(QStringLiteral("locoSimStartTag"));
     m_startTag->setToolTip(tr("The tag the loco starts at: its abs_loc. Clicking a tag on the whole route picks it too."));
     m_startTag->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
-    m_startTag->setMinimumContentsLength(14);
+    m_startTag->setMinimumContentsLength(12);
     bar->addWidget(m_startTag, 1);
     auto *back = new QPushButton(tr("Back to start"), page);
     back->setToolTip(tr("Put the loco at the start tag again; every tag can be sent again"));
@@ -561,6 +567,7 @@ QWidget *LocoSimWindow::buildRfidTab()
                                                           tr("Tag routes (*.xml);;All files (*)"));
         if (!path.isEmpty() && loadRouteFile(path)) setRoute(0);
     });
+    connect(m_fromBuilder, &QPushButton::clicked, this, &LocoSimWindow::chooseBuilder);
     connect(m_routeBox, QOverload<int>::of(&QComboBox::activated), this, [this](int index) { setRoute(index); });
     connect(m_startTag, QOverload<int>::of(&QComboBox::activated), this, [this](int row) { setStartRow(row); });
     connect(back, &QPushButton::clicked, this, [this]() { placeAtStart(); });
@@ -592,6 +599,7 @@ bool LocoSimWindow::loadRouteFile(const QString &path)
         m_status->fail(tr("No route in %1: %2").arg(QFileInfo(path).fileName(), why));
         return false;
     }
+    stopFollowingBuilder();
     m_routes = routes;
     m_routeFile = path;
     m_routeIndex = -1;
@@ -616,6 +624,13 @@ void LocoSimWindow::fillRouteBox()
 void LocoSimWindow::setRoute(int index)
 {
     if (index < 0 || index >= m_routes.size()) return;
+    showRoute(index);
+    placeAtStart();
+}
+
+void LocoSimWindow::showRoute(int index)
+{
+    if (index < 0 || index >= m_routes.size()) return;
     m_routeIndex = index;
     {
         const QSignalBlocker block(m_routeBox);
@@ -631,7 +646,105 @@ void LocoSimWindow::setRoute(int index)
         for (int row = 0; row < m_tags->rowCount(); ++row)
             m_startTag->addItem(tr("%1 at %2 m").arg(m_tags->item(row, ColTag)->text(), m_tags->item(row, ColLoc)->text()));
     }
-    placeAtStart();
+}
+
+// ---- session 402: the Tag Builder's route, live --------------------------------------
+
+void LocoSimWindow::chooseBuilder()
+{
+    QList<TagBuilderWindow *> builders;
+    if (m_builders)
+        for (TagBuilderWindow *builder : m_builders())
+            if (builder->isVisible()) builders << builder;   // a closed one waiting to be deleted is not "open"
+    if (builders.isEmpty()) {
+        m_status->warn(tr("No RFID Tag Builder is open: open one (Tools \u25B8 RFID Tag Builder\u2026), then press Tag Builder."));
+        return;
+    }
+    if (builders.size() == 1) {
+        followBuilder(builders.first());
+        return;
+    }
+    QMenu menu(this);
+    for (TagBuilderWindow *builder : builders) {
+        const QString name = builder->route().name.isEmpty() ? tr("(unnamed route)") : builder->route().name;
+        menu.addAction(tr("%1 \u00B7 %2 tags").arg(name).arg(builder->route().tags.size()), this,
+                       [this, builder]() { followBuilder(builder); });
+    }
+    menu.exec(m_fromBuilder->mapToGlobal(QPoint(0, m_fromBuilder->height())));
+}
+
+bool LocoSimWindow::followBuilder(TagBuilderWindow *builder)
+{
+    if (!builder) {
+        m_status->warn(tr("No RFID Tag Builder to follow."));
+        return false;
+    }
+    stopFollowingBuilder();
+    m_builder = builder;
+    connect(builder, &TagBuilderWindow::routeChanged, this, &LocoSimWindow::builderRouteChanged);
+    connect(builder, &QObject::destroyed, this, [this]() {
+        m_routeFileLabel->setText(tr("Tag Builder (closed)"));
+        m_status->warn(tr("The Tag Builder closed: its last route stays here."));
+    });
+    m_routeFile.clear();
+    m_routes = { builder->route() };
+    m_routeIndex = -1;
+    m_routeFileLabel->setText(tr("Tag Builder"));
+    m_routeFileLabel->setToolTip(tr("The route open in the RFID Tag Builder, followed as it is edited"));
+    fillRouteBox();
+    setRoute(0);
+    m_status->ok(tr("Following the Tag Builder's route %1: each edit there comes here.").arg(builder->route().name));
+    return true;
+}
+
+void LocoSimWindow::stopFollowingBuilder()
+{
+    if (m_builder) disconnect(m_builder, nullptr, this, nullptr);
+    m_builder.clear();
+}
+
+// An edit in the builder: the route as it is now, the loco where it was.
+void LocoSimWindow::builderRouteChanged()
+{
+    if (!m_builder) return;
+    const QStringList skipped = skippedTags();
+    const int startRow = m_startTag->currentIndex();
+    const QString startName = startRow >= 0 && startRow < m_tags->rowCount() ? m_tags->item(startRow, ColTag)->text() : QString();
+    m_routes = { m_builder->route() };
+    fillRouteBox();
+    showRoute(0);
+    for (const QString &name : skipped) setSkipped(name, true);
+    for (int row = 0; row < m_tags->rowCount(); ++row)
+        if (m_tags->item(row, ColTag)->text() == startName) {
+            const QSignalBlocker block(m_startTag);
+            m_startTag->setCurrentIndex(row);
+        }
+    const RfidTag::Route &route = m_routes.first();
+    if (!m_readers || (route.dir != RfidTag::DirNominal && route.dir != RfidTag::DirReverse)) {
+        placeAtStart();
+        return;
+    }
+    // The readers start again at the loco's place: what it has passed is not
+    // sent again; the tags ahead go out as they are now.
+    m_readers.reset(new SimPreview::Readers(SimPreview::rowsOf(route)));
+    m_readers->setReader(1, m_readerOn[0]->isChecked());
+    m_readers->setReader(2, m_readerOn[1]->isChecked());
+    m_readers->setMissing(skippedTags());
+    QVector<SimPreview::Readers::Send> passed;
+    const int row = m_readers->step(m_routeD, 0, &passed);
+    if (row < 0) {
+        m_status->warn(tr("The loco at %1 m is not on the edited route: back to the start tag.").arg(m_routeD, 0, 'f', 1));
+        placeAtStart();
+        return;
+    }
+    m_routeRow = row;
+    m_routeEnded = false;
+    m_tagStates.clear();
+    for (const QString &name : skippedTags())
+        for (int r = 0; r < m_tags->rowCount(); ++r)
+            if (m_tags->item(r, ColTag)->text() == name) m_tagStates[r] = RouteStrip::Skipped;
+    showRoutePosition();
+    m_status->state(tr("Route updated from the Tag Builder: the loco stays at %1 m.").arg(m_routeD, 0, 'f', 1));
 }
 
 void LocoSimWindow::setStartRow(int row)

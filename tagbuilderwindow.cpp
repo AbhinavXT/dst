@@ -511,6 +511,7 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     connect(m_routeName, &QLineEdit::textEdited, this, [this](const QString &t) {
         m_route.name = t;
         setModified(true);
+        emit routeChanged();
     });
     connect(m_dir, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
         if (!m_updating) setDirection(m_dir->currentData().toInt());
@@ -1033,6 +1034,7 @@ void TagBuilderWindow::refreshAll()
     fillChecks();
     m_strip->setRoute(m_route);
     m_strip->setSelectedRow(currentRow());
+    emit routeChanged();
 }
 
 void TagBuilderWindow::changed(const QString &label, const RfidTag::Route &before, int row)

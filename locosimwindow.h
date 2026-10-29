@@ -18,6 +18,10 @@
 //              port for both, or reader 2 on its own. A reader can be off, a
 //              tag skipped. No chaining to the next station's route.
 //              (session 400) the loco's speed: read and set here too.
+//              (session 402) Tag Builder: the route open in a Tag Builder,
+//              as it is now, saved or not; each edit there comes here and
+//              the loco stays where it is (back to the start tag when the
+//              edited route no longer has its place).
 //    Frames    every speed message sent, decoded, with its bytes.
 //    Settings  the wheel, the VCCs, how often.
 //    Brake     (session 398) the Brake Test Bench's air slows the loco
@@ -36,6 +40,7 @@
 #include <memory>
 
 class BrakeBenchWindow;
+class TagBuilderWindow;
 class QButtonGroup;
 class QCheckBox;
 class QComboBox;
@@ -90,6 +95,11 @@ public:
     bool   loadRouteFile(const QString &path);   // false (and said) if it holds no route
     int    routeCount() const { return m_routes.size(); }
     void   setRoute(int index);                 // and places the loco at its first tag
+    // Session 402: the open Tag Builders (MainWindow's), and following one.
+    void   setTagBuilders(const std::function<QList<TagBuilderWindow *>()> &list) { m_builders = list; }
+    bool   followBuilder(TagBuilderWindow *builder);   // false (and said) for none
+    bool   followsBuilder() const { return !m_builder.isNull(); }
+    void   chooseBuilder();                     // the Tag Builder button: one builder, or a menu of them
     void   setStartRow(int row);                // and places the loco there
     bool   placeAtStart();                      // false (and said) without a route whose direction is set
     double routePosition() const { return m_routeD; }
@@ -120,6 +130,9 @@ private:
     QWidget *buildRfidTab();
     void   applyBrake();
     void   fillRouteBox();
+    void   showRoute(int index);                // the route on the tab, the loco left where it is
+    void   builderRouteChanged();
+    void   stopFollowingBuilder();
     void   fillTagTable();
     void   stepRoute(const LocoSim::Step &step);
     void   sendTag(const SimPreview::Readers::Send &send);
@@ -191,6 +204,9 @@ private:
     int             m_tagsSent = 0;
     bool            m_portWarned = false;
     QLabel         *m_routeFileLabel = nullptr;
+    QPushButton    *m_fromBuilder = nullptr;
+    QPointer<TagBuilderWindow> m_builder;
+    std::function<QList<TagBuilderWindow *>()> m_builders;
     QComboBox      *m_routeBox = nullptr;
     QComboBox      *m_startTag = nullptr;
     QLabel         *m_routeWhere = nullptr;
