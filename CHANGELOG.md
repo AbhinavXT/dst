@@ -10,6 +10,63 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-397"></a>
+## Session 397 — the RFID tab draws the route, and the loco on it
+
+Abhinav 2026-10-29: *"can we make the UI for rfid better, like we have a great
+UI for tag builder and station simulator, that shows the track, tags and we
+can also show where loco is according to pulses"*. His answers: two loco
+markers (the loco, and where the pulses put it); the whole route plus a view
+that follows the loco, the tag table folded away.
+
+**What the operator sees.** The RFID tab, from the top:
+- **One line for the route:** the file, Library…, Open…, the route, the
+  start tag, Back to start.
+- **One card for the track, the readers beside it.** At the top, the **whole
+  route** drawn as the Tag Builder draws it (Annexure-H: TIN-coloured line,
+  one symbol per tag set with its letter, "R-…" ids, signals, the direction
+  arrow), the loco under it; click a tag to start there.
+- Under it, **near the loco (500 m):** the same drawing over the 500 m around the loco
+  (a third behind, two thirds ahead), following it. Under the line: each
+  tag's readers as chips ("1", "2", "12"; "skip" for a skipped tag; mains on
+  one row, duplicates under), reader 2's 20-24 m window shaded until the loco
+  is through it, the loco filled in the theme's colour with a line up to its
+  location, and a dashed outline where speed sensor 1's pulses put it. Under
+  the drawing: the loco's location and the next tag, and the pulses'
+  location and how far it is ahead of or behind the loco.
+- **Readers** beside the track card, as before; **Tags (N)** folded under,
+  opened with a click. One card, not two: two stacked cards made the window
+  743 px tall at its smallest on Qt 5, over session 393's laptop limit (700).
+
+**The pulses' location** moves by what speed sensor 1 channel 1 counted
+(pulses / pulses a metre, the way the VCC would count them). With no slip it
+stays within a pulse of the loco; a slipping or skidding channel 1 on the Drive
+tab moves it ahead or behind. Speed sensor 1 off: no pulses, and it says so.
+Tags are still sent at the loco's own location, as before.
+
+**Files:** `routestrip.{h,cpp}` (a view range, the overlay: loco, pulses,
+tag states, reader 2's window; nothing changes until it is used, so the Tag
+Builder's strip is as it was), `locosimwindow.{h,cpp}`,
+`tests/test_session397.cpp`, `tests/tests.pro`.
+
+**Tests:** `session397` (19 checks), on the simulator's Configuration1.xml:
+the strip as it was until the overlay is used; the whole route and a 500 m
+view across the width; the overlay taller, its states kept, the loco drawn
+under the line; the window: the loco at the start tag, the view following
+it, the tag table folded and opened; a tag clicked on the whole route starts
+there; after 20 s at 60 km/h the loco a third into the view, the pulses within
+a pulse of it, the first tag shown sent on reader 1; channel 1 skidding at
+30 km/h for 10 s puts the pulses 83.3 m behind; a skipped tag marked.
+Looked at the tab in Sage and Dark.
+
+**Gate** (macOS), Qt 5.15.19 and Qt 6.11: every stage green; `dltests` 413
+suites / 10395 checks, 0 failed; menu audit and headless smoke ok.
+
+**Not tested:** with a real VCC. Its own idea of where the loco is (from the
+pulses and the tags) is not shown: this draws the simulator's.
+
+---
+
 <a id="session-396"></a>
 ## Session 396 — the dials' numbers are no longer cut off
 

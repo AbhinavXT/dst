@@ -1,4 +1,5 @@
 #include "locosimwindow.h"
+#include "routestrip.h"
 #include "biusim.h"
 #include "settings.h"
 #include "simwidgets.h"
@@ -43,10 +44,12 @@
 #include <QVBoxLayout>
 
 #include <cmath>
+#include <limits>
 
 namespace {
 
 constexpr int kMaxFrameRows = 500;
+constexpr double kFollowMetres = 500;   // the RFID tab's view that follows the loco
 // The RFID tab's tag table.
 enum TagColumn { ColAt, ColTag, ColType, ColLoc, ColNext, ColSkip, ColReader1, ColReader2, TagColumns };
 // The drive's segmented buttons, left to right, as the motion's drives.
@@ -351,47 +354,66 @@ QWidget *LocoSimWindow::buildRfidTab()
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 8, 0, 0);
     layout->setSpacing(12);
+    // ---- the route: one line ----------------------------------------------------
+    auto *bar = new QHBoxLayout;
+    bar->setSpacing(8);
+    m_routeFileLabel = labelNamed(tr("No route open"), "mono", page);
+    m_routeFileLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    bar->addWidget(m_routeFileLabel);
+    auto *library = new QPushButton(tr("Library\u2026"), page);
+    library->setToolTip(tr("A route from the RFID Tag Builder's scenario library"));
+    bar->addWidget(library);
+    auto *openFile = new QPushButton(tr("Open\u2026"), page);
+    openFile->setToolTip(tr("A route file: the Tag Builder's .tagroute.xml, a route.xml or a Configuration1.xml"));
+    bar->addWidget(openFile);
+    bar->addSpacing(12);
+    bar->addWidget(labelNamed(tr("Route"), "muted", page));
+    m_routeBox = new QComboBox(page);
+    m_routeBox->setObjectName(QStringLiteral("locoSimRoute"));
+    m_routeBox->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    m_routeBox->setMinimumContentsLength(24);
+    bar->addWidget(m_routeBox, 2);
+    bar->addSpacing(12);
+    bar->addWidget(labelNamed(tr("Start tag"), "muted", page));
+    m_startTag = new QComboBox(page);
+    m_startTag->setObjectName(QStringLiteral("locoSimStartTag"));
+    m_startTag->setToolTip(tr("The tag the loco starts at: its abs_loc. Clicking a tag on the whole route picks it too."));
+    m_startTag->setSizeAdjustPolicy(QComboBox::AdjustToMinimumContentsLengthWithIcon);
+    m_startTag->setMinimumContentsLength(14);
+    bar->addWidget(m_startTag, 1);
+    auto *back = new QPushButton(tr("Back to start"), page);
+    back->setToolTip(tr("Put the loco at the start tag again; every tag can be sent again"));
+    bar->addWidget(back);
+    layout->addLayout(bar);
+
+    // ---- the track: the whole route, and near the loco; the readers beside it -----------
     auto *top = new QHBoxLayout;
     top->setSpacing(12);
-
-    // ---- the route -----------------------------------------------------------
-    QVBoxLayout *routeBody = nullptr;
-    QFrame *route = card(tr("Route"), page, &routeBody);
-    auto *routeGrid = new QGridLayout;
-    routeGrid->setHorizontalSpacing(10);
-    auto *fileRow = new QHBoxLayout;
-    m_routeFileLabel = labelNamed(tr("No route open"), "mono", route);
-    m_routeFileLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
-    fileRow->addWidget(m_routeFileLabel, 1);
-    auto *library = new QPushButton(tr("Library…"), route);
-    library->setToolTip(tr("A route from the RFID Tag Builder's scenario library"));
-    fileRow->addWidget(library);
-    auto *openFile = new QPushButton(tr("Open…"), route);
-    openFile->setToolTip(tr("A route file: the Tag Builder's .tagroute.xml, a route.xml or a Configuration1.xml"));
-    fileRow->addWidget(openFile);
-    routeGrid->addWidget(labelNamed(tr("File"), "muted", route), 0, 0);
-    routeGrid->addLayout(fileRow, 0, 1);
-    m_routeBox = new QComboBox(route);
-    m_routeBox->setObjectName(QStringLiteral("locoSimRoute"));
-    routeGrid->addWidget(labelNamed(tr("Route"), "muted", route), 1, 0);
-    routeGrid->addWidget(m_routeBox, 1, 1);
-    auto *startRow = new QHBoxLayout;
-    m_startTag = new QComboBox(route);
-    m_startTag->setObjectName(QStringLiteral("locoSimStartTag"));
-    m_startTag->setToolTip(tr("The tag the loco starts at: its abs_loc"));
-    startRow->addWidget(m_startTag, 1);
-    auto *back = new QPushButton(tr("Back to start"), route);
-    back->setToolTip(tr("Put the loco at the start tag again; every tag can be sent again"));
-    startRow->addWidget(back);
-    routeGrid->addWidget(labelNamed(tr("Start tag"), "muted", route), 2, 0);
-    routeGrid->addLayout(startRow, 2, 1);
-    routeGrid->setColumnStretch(1, 1);
-    routeBody->addLayout(routeGrid);
-    m_routeWhere = labelNamed(QString(), "bigValue", route);
+    QVBoxLayout *trackBody = nullptr;
+    QFrame *track = card(tr("Whole route"), page, &trackBody);
+    QFrame *whole = track;
+    QVBoxLayout *wholeBody = trackBody;
+    m_wholeStrip = new RouteStrip(whole);
+    m_wholeStrip->setObjectName(QStringLiteral("locoSimWholeRoute"));
+    m_wholeStrip->setToolTip(tr("The route as the Tag Builder draws it, the loco under it. Click a tag to start there."));
+    wholeBody->addWidget(m_wholeStrip);
+    QVBoxLayout *followBody = trackBody;
+    QFrame *follow = track;
+    auto *followTitle = labelNamed(tr("Near the loco (%1 m)").arg(int(kFollowMetres)), "cardTitle", follow);
+    followBody->addWidget(followTitle);
+    m_followStrip = new RouteStrip(follow);
+    m_followStrip->setObjectName(QStringLiteral("locoSimFollow"));
+    m_followStrip->setToolTip(tr("The stretch around the loco. Filled: the loco. Dashed: where speed sensor 1's pulses put "
+                                 "it. Under each tag: the readers that sent it. Shaded: reader 2's 20-24 m window."));
+    followBody->addWidget(m_followStrip);
+    m_routeWhere = labelNamed(QString(), "bigValue", follow);
     m_routeWhere->setWordWrap(true);
-    routeBody->addWidget(m_routeWhere);
-    routeBody->addStretch(1);
-    top->addWidget(route, 3);
+    followBody->addWidget(m_routeWhere);
+    m_pulseWhere = labelNamed(QString(), "muted", follow);
+    m_pulseWhere->setWordWrap(true);
+    followBody->addWidget(m_pulseWhere);
+    followBody->addStretch(1);
+    top->addWidget(follow, 3);
 
     // ---- the readers and their ports ---------------------------------------------
     QVBoxLayout *readerBody = nullptr;
@@ -432,6 +454,15 @@ QWidget *LocoSimWindow::buildRfidTab()
     layout->addLayout(top);
 
     // ---- the tags --------------------------------------------------------------
+    m_tagsToggle = new QToolButton(page);
+    m_tagsToggle->setObjectName(QStringLiteral("locoSimTagsToggle"));
+    m_tagsToggle->setCheckable(true);
+    m_tagsToggle->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    m_tagsToggle->setArrowType(Qt::RightArrow);
+    m_tagsToggle->setText(tr("Tags"));
+    m_tagsToggle->setToolTip(tr("The route's rows: skip a tag, see when each reader sent it"));
+    m_tagsToggle->setAutoRaise(true);
+    layout->addWidget(m_tagsToggle);
     m_tags = new QTableWidget(0, TagColumns, page);
     m_tags->setObjectName(QStringLiteral("locoSimTags"));
     m_tags->setHorizontalHeaderLabels({ QString(), tr("Tag"), tr("Type"), tr("abs_loc"), tr("Next"), tr("Skip"),
@@ -444,6 +475,13 @@ QWidget *LocoSimWindow::buildRfidTab()
     m_tags->setToolTip(tr("The route's rows as the simulator reads them. Skip: the tag is not sent "
                           "(the simulator then keeps the row before it)."));
     layout->addWidget(m_tags, 1);
+    m_tags->setVisible(false);
+    layout->addStretch(0);
+    connect(m_tagsToggle, &QToolButton::toggled, this, [this](bool open) {
+        m_tags->setVisible(open);
+        m_tagsToggle->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
+    });
+    connect(m_wholeStrip, &RouteStrip::rowClicked, this, [this](int row) { setStartRow(row); });
 
     // ---- wiring ----------------------------------------------------------------
     connect(library, &QPushButton::clicked, this, [this]() {
@@ -466,7 +504,12 @@ QWidget *LocoSimWindow::buildRfidTab()
         });
     connect(m_reader2Port, &QButtonGroup::idClicked, this, [this]() { refreshTagPortState(); });
     connect(m_tags, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
-        if (item->column() == ColSkip && m_readers) m_readers->setMissing(skippedTags());
+        if (item->column() != ColSkip) return;
+        if (m_readers) m_readers->setMissing(skippedTags());
+        int &state = m_tagStates[item->row()];
+        if (item->checkState() == Qt::Checked) state |= RouteStrip::Skipped;
+        else state &= ~RouteStrip::Skipped;
+        showRoutePosition();
     });
     for (int which = 0; which < 2; ++which)
         connect(m_tagPortOpen[which], &QPushButton::clicked, this, [this, which]() { openOrCloseTagPort(which); });
@@ -513,6 +556,9 @@ void LocoSimWindow::setRoute(int index)
         m_routeBox->setCurrentIndex(index);
     }
     fillTagTable();
+    m_wholeStrip->setRoute(m_routes.at(index));
+    m_followStrip->setRoute(m_routes.at(index));
+    m_tagsToggle->setText(tr("Tags (%1)").arg(m_routes.at(index).tags.size()));
     {
         const QSignalBlocker block(m_startTag);
         m_startTag->clear();
@@ -602,6 +648,10 @@ bool LocoSimWindow::placeAtStart()
     m_routeRow = -1;
     m_routeEnded = false;
     m_portWarned = false;
+    m_tagStates.clear();
+    for (const QString &name : skippedTags())
+        for (int row = 0; row < m_tags->rowCount(); ++row)
+            if (m_tags->item(row, ColTag)->text() == name) m_tagStates[row] = RouteStrip::Skipped;
     const QSignalBlocker block(m_tags);
     for (int row = 0; row < m_tags->rowCount(); ++row) {
         m_tags->item(row, ColAt)->setText(QString());
@@ -624,18 +674,24 @@ bool LocoSimWindow::placeAtStart()
     m_readers->setReader(1, m_readerOn[0]->isChecked());
     m_readers->setReader(2, m_readerOn[1]->isChecked());
     m_readers->setMissing(skippedTags());
-    m_routeD = rows.at(start).absLoc;
+    m_routeD = m_pulseD = rows.at(start).absLoc;
     m_routeRow = start;
     showRoutePosition();
     return true;
 }
 
-// The loco moved `metres` (always ahead along the route): what the readers send there.
-void LocoSimWindow::stepRoute(double metres)
+// The loco moved (always ahead along the route): what the readers send there.
+// The pulses' location follows what speed sensor 1 channel 1 counted, as the
+// VCC would; it parts from the loco's on a slip or a skid.
+void LocoSimWindow::stepRoute(const LocoSim::Step &step)
 {
+    const double metres = step.metres;
     if (!m_readers || m_routeEnded || metres <= 0) return;
     const RfidTag::Route &route = m_routes.at(m_routeIndex);
-    m_routeD += route.dir == RfidTag::DirReverse ? -metres : metres;
+    const double sign = route.dir == RfidTag::DirReverse ? -1 : 1;
+    m_routeD += sign * metres;
+    const double perMetre = LocoSim::pulsesPerMetre(m_motion.wheel());
+    if (m_sensorOn[0]->isChecked() && perMetre > 0) m_pulseD += sign * step.pulses[0][0] / perMetre;
     QVector<SimPreview::Readers::Send> sends;
     const int row = m_readers->step(m_routeD, metres, &sends);
     if (row < 0) {
@@ -674,6 +730,7 @@ void LocoSimWindow::sendTag(const SimPreview::Readers::Send &send)
     }
     if (sent) {
         ++m_tagsSent;
+        m_tagStates[send.row] |= send.reader == 1 ? RouteStrip::SentOn1 : RouteStrip::SentOn2;
     } else if (!m_portWarned) {
         m_portWarned = true;
         m_status->warn(tr("Reader %1's tag %2 was not sent: %3 is not open.")
@@ -689,10 +746,49 @@ void LocoSimWindow::showRoutePosition()
         for (int row = 0; row < m_tags->rowCount(); ++row)
             m_tags->item(row, ColAt)->setText(row == m_routeRow ? QStringLiteral("▶") : QString());
     }
+    const double none = std::numeric_limits<double>::quiet_NaN();
     if (!m_readers) {
         m_routeWhere->setText(m_routeIndex < 0 ? tr("Open a route to send its tags.") : tr("Not on the route."));
+        m_pulseWhere->clear();
+        for (RouteStrip *strip : { m_wholeStrip, m_followStrip }) {
+            strip->setLoco(none, none);
+            strip->setTagStates({});
+            strip->setReader2Window(none, none);
+        }
         return;
     }
+    const RfidTag::Route &route = m_routes.at(m_routeIndex);
+    const double sign = route.dir == RfidTag::DirReverse ? -1 : 1;
+    // The follow view keeps a third behind the loco and two thirds ahead.
+    const double behind = kFollowMetres / 3;
+    const double lo = sign > 0 ? m_routeD - behind : m_routeD - (kFollowMetres - behind);
+    m_followStrip->setView(lo, lo + kFollowMetres);
+    // Reader 2's window after the row the loco is in, while reader 2 is on.
+    double from = none, to = none;
+    if (m_readerOn[1]->isChecked() && !m_routeEnded && m_routeRow >= 0 && m_routeRow < m_readers->rows().size()) {
+        const double at = m_readers->rows().at(m_routeRow).absLoc;
+        if ((m_routeD - at) * sign < 24) {    // until the loco is through it
+            from = at + sign * 20;
+            to = at + sign * 24;
+        }
+    }
+    for (RouteStrip *strip : { m_wholeStrip, m_followStrip }) {
+        strip->setLoco(m_routeD, m_pulseD);
+        strip->setTagStates(m_tagStates);
+        strip->setReader2Window(from, to);
+    }
+    const double gap = m_pulseD - m_routeD;
+    QString pulses;
+    if (!m_sensorOn[0]->isChecked())
+        pulses = tr("Speed sensor 1 is off: no pulses to place the loco by");
+    else if (std::fabs(gap) < 0.05)
+        pulses = tr("By speed sensor 1's pulses: %1 m, with the loco").arg(m_pulseD, 0, 'f', 1);
+    else
+        pulses = tr("By speed sensor 1's pulses: %1 m, %2 m %3 the loco")
+                     .arg(m_pulseD, 0, 'f', 1)
+                     .arg(std::fabs(gap), 0, 'f', 1)
+                     .arg(gap * sign > 0 ? tr("ahead of") : tr("behind"));
+    m_pulseWhere->setText(pulses);
     const QVector<SimPreview::Row> &rows = m_readers->rows();
     QString text = tr("At %1 m").arg(m_routeD, 0, 'f', 1);
     if (m_routeEnded) {
@@ -1148,7 +1244,7 @@ void LocoSimWindow::advance(double seconds)
         logMessage(message, kmhOf(step.pulses[sensor][0]), kmhOf(step.pulses[sensor][1]));
     }
     showStep(step, seconds);
-    stepRoute(step.metres);
+    stepRoute(step);
     showMotion();
 }
 

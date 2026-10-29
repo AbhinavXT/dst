@@ -42,6 +42,8 @@ class QPushButton;
 class QSpinBox;
 class QTableWidget;
 class QTimer;
+class QToolButton;
+class RouteStrip;
 class SerialLink;
 class SerialManager;
 class SpeedGauge;
@@ -79,8 +81,11 @@ public:
     void   setStartRow(int row);                // and places the loco there
     bool   placeAtStart();                      // false (and said) without a route whose direction is set
     double routePosition() const { return m_routeD; }
+    double pulsePosition() const { return m_pulseD; }   // by speed sensor 1 channel 1's pulses
     int    routeRow() const { return m_routeRow; }   // the row whose span the loco is in, -1 none
     bool   routeEnded() const { return m_routeEnded; }
+    RouteStrip *wholeRoute() const { return m_wholeStrip; }
+    RouteStrip *followView() const { return m_followStrip; }
     void   setReaderOn(int reader, bool on);
     void   setSkipped(const QString &tag, bool skip);   // tag as the rows name it ("904", "904D")
     void   setReader2OwnPort(bool own);
@@ -103,7 +108,7 @@ private:
     QWidget *buildRfidTab();
     void   fillRouteBox();
     void   fillTagTable();
-    void   stepRoute(double metres);
+    void   stepRoute(const LocoSim::Step &step);
     void   sendTag(const SimPreview::Readers::Send &send);
     void   showRoutePosition();
     QStringList skippedTags() const;
@@ -170,6 +175,12 @@ private:
     QLabel         *m_tagPortState[2] = { nullptr, nullptr };
     QButtonGroup   *m_reader2Port = nullptr;
     QTableWidget   *m_tags = nullptr;
+    QToolButton    *m_tagsToggle = nullptr;
+    RouteStrip     *m_wholeStrip = nullptr;
+    RouteStrip     *m_followStrip = nullptr;
+    QLabel         *m_pulseWhere = nullptr;
+    double          m_pulseD = 0;       // where speed sensor 1's pulses put the loco
+    QHash<int, int> m_tagStates;        // route row -> RouteStrip::TagState
 };
 
 #endif  // LOCOSIMWINDOW_H

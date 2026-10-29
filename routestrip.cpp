@@ -5,6 +5,8 @@
 #include "uicolors.h"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 #include <QMouseEvent>
 #include <QPainter>
@@ -13,10 +15,14 @@
 namespace {
 constexpr int kMargin = 24;
 constexpr int kAxisY = 64;
+constexpr double kNone = std::numeric_limits<double>::quiet_NaN();
+// The overlay's rows under the line (session 397).
+constexpr int kStateY = kAxisY + 30;
+constexpr int kLocoY = kAxisY + 60;
 }  // namespace
 
 RouteStrip::RouteStrip(QWidget *parent)
-    : QWidget(parent)
+    : QWidget(parent), m_loco(kNone), m_pulsesLoco(kNone), m_window2From(kNone), m_window2To(kNone)
 {
     setToolTip(tr("The route by absolute location. Click a tag to select it"));
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
@@ -63,9 +69,59 @@ int RouteStrip::drawnTags() const { return m_marks.size(); }
 
 double RouteStrip::xOf(qint64 loc) const
 {
+    return xAt(double(loc));
+}
+
+double RouteStrip::xAt(double loc) const
+{
     const double w = qMax(1, width() - 2 * kMargin);
-    if (m_hi == m_lo) return kMargin + w / 2;
-    return kMargin + w * double(loc - m_lo) / double(m_hi - m_lo);
+    const double lo = viewLow(), hi = viewHigh();
+    if (hi == lo) return kMargin + w / 2;
+    return kMargin + w * (loc - lo) / (hi - lo);
+}
+
+void RouteStrip::useOverlay()
+{
+    if (m_overlay) return;
+    m_overlay = true;
+    setFixedHeight(sizeHint().height());
+    updateGeometry();
+}
+
+void RouteStrip::setView(double lo, double hi)
+{
+    m_viewSet = hi > lo;
+    m_viewLo = lo;
+    m_viewHi = hi;
+    update();
+}
+
+void RouteStrip::clearView()
+{
+    m_viewSet = false;
+    update();
+}
+
+void RouteStrip::setLoco(double loc, double pulsesLoc)
+{
+    useOverlay();
+    m_loco = loc;
+    m_pulsesLoco = pulsesLoc;
+    update();
+}
+
+void RouteStrip::setTagStates(const QHash<int, int> &states)
+{
+    useOverlay();
+    m_states = states;
+    update();
+}
+
+void RouteStrip::setReader2Window(double from, double to)
+{
+    m_window2From = from;
+    m_window2To = to;
+    update();
 }
 
 int RouteStrip::rowAt(const QPoint &p) const
@@ -102,8 +158,10 @@ void RouteStrip::paintEvent(QPaintEvent *)
     p.setPen(QPen(UiColor::frame(), 2));
     p.drawLine(kMargin, kAxisY, width() - kMargin, kAxisY);
     p.setPen(muted);
-    p.drawText(QRect(0, kAxisY + 6, width(), fm.height()), Qt::AlignLeft, QStringLiteral("%1 m").arg(m_lo));
-    p.drawText(QRect(0, kAxisY + 6, width(), fm.height()), Qt::AlignRight, QStringLiteral("%1 m").arg(m_hi));
+    const QString loText = QStringLiteral("%1 m").arg(qRound64(viewLow()));
+    const QString hiText = QStringLiteral("%1 m").arg(qRound64(viewHigh()));
+    p.drawText(QRect(0, kAxisY + 6, width(), fm.height()), Qt::AlignLeft, loText);
+    p.drawText(QRect(0, kAxisY + 6, width(), fm.height()), Qt::AlignRight, hiText);
 
     // Direction of travel: an arrow in the middle under the line.
     if (m_dir == RfidTag::DirNominal || m_dir == RfidTag::DirReverse) {
@@ -126,6 +184,7 @@ void RouteStrip::paintEvent(QPaintEvent *)
     int lastSignalEnd = -1000;
     for (const auto &sg : m_signals) {
         const int x = int(xOf(sg.first));
+        if (x < 0 || x > width()) continue;
         p.drawLine(x, kAxisY - 32, x, kAxisY - 46);
         p.drawEllipse(QPoint(x, kAxisY - 49), 3, 3);
         const int w = fm.horizontalAdvance(sg.second);
@@ -149,8 +208,8 @@ void RouteStrip::paintEvent(QPaintEvent *)
         }
     }
     // "(N-…)" under each run of one TIN, where it fits between the end labels.
-    int lastTinEnd = fm.horizontalAdvance(QStringLiteral("%1 m").arg(m_lo)) + 4;
-    const int tinRight = width() - fm.horizontalAdvance(QStringLiteral("%1 m").arg(m_hi)) - 4;
+    int lastTinEnd = fm.horizontalAdvance(loText) + 4;
+    const int tinRight = width() - fm.horizontalAdvance(hiText) - 4;
     for (int i = 0; i + 1 < m_marks.size();) {
         int j = i + 1;
         while (j + 1 < m_marks.size() && m_marks.at(j).tinNom == m_marks.at(i).tinNom) ++j;
@@ -178,6 +237,7 @@ void RouteStrip::paintEvent(QPaintEvent *)
     int lastLabelEnd = -1000;
     for (const Mark &m : m_marks) {
         const int x = int(xOf(m.loc));
+        if (x < -12 || x > width() + 12) continue;
         const QColor edge = !m.crcOk ? UiColor::error() : ink;
         const bool selected = m.row == m_selected;
         if (m.dup && mainLoc.contains(m.unique)) {
@@ -205,4 +265,82 @@ void RouteStrip::paintEvent(QPaintEvent *)
             p.drawEllipse(QPoint(x, kAxisY), 12, 12);
         }
     }
+    if (m_overlay) paintOverlay(p);
+}
+
+// Session 397: what the Loco Simulator adds under the line.
+void RouteStrip::paintOverlay(QPainter &p)
+{
+    const QColor ink = palette().color(QPalette::WindowText);
+    const QColor base = palette().color(QPalette::Base);
+    const QColor theme = UiColor::withContrast(palette().color(QPalette::Highlight), palette().color(QPalette::Window), 3.0);
+    QFont small = font();
+    small.setPointSizeF(qMax(6.5, small.pointSizeF() - 1.5));
+    p.setFont(small);
+    const QFontMetricsF fm(small);
+    const int sgn = m_dir == RfidTag::DirReverse ? -1 : 1;
+
+    // Reader 2's window: where it sends the main tag again, 20-24 m past it.
+    if (!std::isnan(m_window2From) && !std::isnan(m_window2To)) {
+        const double x1 = xAt(qMin(m_window2From, m_window2To)), x2 = xAt(qMax(m_window2From, m_window2To));
+        QColor band = theme;
+        band.setAlpha(70);
+        p.fillRect(QRectF(x1, kAxisY - 12, qMax(2.0, x2 - x1), 24), band);
+    }
+
+    // Each tag's state: which readers sent it, or skipped. Mains on one row,
+    // duplicates on the next; a chip that would overlap the one before is left off.
+    double lastEnd[2] = { -1000, -1000 };
+    for (const Mark &m : m_marks) {
+        const int state = m_states.value(m.row);
+        if (!state) continue;
+        const double x = xOf(m.loc);
+        if (x < 0 || x > width()) continue;
+        QString text;
+        if (state & Skipped) text = tr("skip");
+        else text = QString((state & SentOn1) ? QStringLiteral("1") : QString())
+                    + ((state & SentOn2) ? QStringLiteral("2") : QString());
+        const int line = m.dup ? 1 : 0;
+        const double w = fm.horizontalAdvance(text) + 8, h = fm.height() + 2;
+        const QRectF chip(x - w / 2, kStateY + line * (h + 2) - h / 2, w, h);
+        if (chip.left() < lastEnd[line] + 2) continue;
+        lastEnd[line] = chip.right();
+        const QColor fill = (state & Skipped) ? UiColor::warning() : UiColor::ok();
+        p.setPen(QPen(fill, 1.2));
+        p.setBrush((state & Skipped) ? base : fill);
+        p.drawRoundedRect(chip, 3, 3);
+        p.setPen((state & Skipped) ? UiColor::withContrast(fill, base, 4.5)
+                                   : UiColor::withContrast(base, fill, 4.5));
+        p.drawText(chip, Qt::AlignCenter, text);
+    }
+
+    // The loco: its nose at its location, pointing the way it runs; where the
+    // pulses put it as an outline.
+    const auto drawLoco = [&](double loc, bool filled) {
+        if (std::isnan(loc)) return;
+        const double nose = xAt(loc);
+        if (nose < -60 || nose > width() + 60) return;
+        const double len = 40, h = 14;
+        QPainterPath body;
+        body.moveTo(nose, kLocoY);
+        body.lineTo(nose - sgn * 8, kLocoY - h / 2);
+        body.lineTo(nose - sgn * len, kLocoY - h / 2);
+        body.lineTo(nose - sgn * len, kLocoY + h / 2);
+        body.lineTo(nose - sgn * 8, kLocoY + h / 2);
+        body.closeSubpath();
+        if (filled) {
+            p.setPen(QPen(theme, 1.5));
+            p.drawLine(QPointF(nose, kAxisY + 4), QPointF(nose, kLocoY - h / 2));
+            p.fillPath(body, theme);
+            p.setPen(QPen(ink, 1));
+            p.setBrush(Qt::NoBrush);
+            p.drawPath(body);
+        } else {
+            p.setPen(QPen(ink, 1.4, Qt::DashLine));
+            p.setBrush(Qt::NoBrush);
+            p.drawPath(body);
+        }
+    };
+    drawLoco(m_loco, true);
+    drawLoco(m_pulsesLoco, false);
 }
