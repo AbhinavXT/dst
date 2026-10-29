@@ -887,6 +887,13 @@ MainWindow::MenuRoots MainWindow::buildMenus()
     actStationLayout->setToolTip(tr("Draw and edit a station's lines, tags, signals, points and texts; "
                                     "import and export the Python tool's station .xlsx"));
     connect(actStationLayout, &QAction::triggered, this, &MainWindow::onActionStationLayout);
+    // Session 417: the layout, a tag editor and the Loco Simulator in one window.
+    QAction *actRfidWorkspace = toolsMenu->addAction(tr("RFID &Workspace\u2026"));
+    actRfidWorkspace->setObjectName(QStringLiteral("actRfidWorkspace"));
+    actRfidWorkspace->setToolTip(tr("The station layout, the selected tag's fields and the Loco Simulator in one "
+                                    "window: pick a tag in any of them and the others follow; Apply a tag and a "
+                                    "line the simulator runs follows"));
+    connect(actRfidWorkspace, &QAction::triggered, this, &MainWindow::onActionRfidWorkspace);
 
     // Session 231: every clause of SIF 0533 v4.22, by section, to read, edit,
     // add to and delete from. Beside the other "set up a test" tools.

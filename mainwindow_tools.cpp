@@ -4,6 +4,7 @@
 //  concern can be read, and recompiled, on its own. No behaviour change.
 // =============================================================================
 #include "mainwindow.h"
+#include "rfidworkspacewindow.h"
 #include <QSettings>
 #include "frameclock.h"
 #include "pinpanel.h"
@@ -844,6 +845,16 @@ void MainWindow::openBrakeBench()
 
 void MainWindow::openLocoSimulator()
 {
+    LocoSimWindow *sim = ensureLocoSimulator();
+    // Session 417: held by the RFID Workspace: that window, raised.
+    QWidget *w = sim->isWindow() ? static_cast<QWidget *>(sim) : sim->window();
+    w->show();
+    w->raise();
+    w->activateWindow();
+}
+
+LocoSimWindow *MainWindow::ensureLocoSimulator()
+{
     if (!m_locoSim) {
         m_locoSim = new LocoSimWindow(m_serial, this);
         static_cast<LocoSimWindow *>(m_locoSim.data())->setRecorder(benchRecorder());
@@ -855,9 +866,25 @@ void MainWindow::openLocoSimulator()
             openBufferInWorkbench(line, label);
         });
     }
-    m_locoSim->show();
-    m_locoSim->raise();
-    m_locoSim->activateWindow();
+    return static_cast<LocoSimWindow *>(m_locoSim.data());
+}
+
+void MainWindow::onActionRfidWorkspace()
+{
+    if (!m_rfidWorkspace) {
+        auto *w = new RfidWorkspaceWindow(this);
+        StationLayoutWindow *layout = w->layoutWindow();
+        layout->setDispatcher(m_dispatcher);
+        connect(layout, &StationLayoutWindow::jumpRequested, this,
+                [this](const QString &tabKey, qint64 ms) { jumpToEntry(tabKey, ms); });
+        w->setSimulatorSource([this]() { return ensureLocoSimulator(); });
+        layout->reopenLast();
+        w->takeSimulator();
+        m_rfidWorkspace = w;
+    }
+    m_rfidWorkspace->show();
+    m_rfidWorkspace->raise();
+    m_rfidWorkspace->activateWindow();
 }
 
 // The bench's brake relays follow the Cab I/O Simulator's output word, and

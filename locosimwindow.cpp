@@ -638,6 +638,11 @@ QWidget *LocoSimWindow::buildRfidTab()
         m_tagsToggle->setArrowType(open ? Qt::DownArrow : Qt::RightArrow);
     });
     connect(m_wholeStrip, &RouteStrip::rowClicked, this, [this](int row) { setStartRow(row); });
+    connect(m_tags, &QTableWidget::itemSelectionChanged, this, [this]() {
+        const int row = m_tags->currentRow();
+        if (m_selectingTag || row < 0 || !m_tags->item(row, ColTag)) return;
+        emit routeTagSelected(m_tags->item(row, ColTag)->text());
+    });
 
     // ---- wiring ----------------------------------------------------------------
     connect(library, &QPushButton::clicked, this, [this]() {
@@ -1794,6 +1799,20 @@ void LocoSimWindow::healthTick()
             record(QStringLiteral("health"), port == 0 ? tr("port A") : tr("port B"), frame,
                    tr("reader %1 \u00B7 health %2").arg(reader).arg(m_readerFail[reader - 1] ? tr("fail (2)") : tr("OK (1)")));
     }
+}
+
+bool LocoSimWindow::selectRouteTag(const QString &name)
+{
+    for (int row = 0; row < m_tags->rowCount(); ++row) {
+        if (!m_tags->item(row, ColTag) || m_tags->item(row, ColTag)->text() != name) continue;
+        m_selectingTag = true;
+        m_tagsToggle->setChecked(true);
+        m_tags->selectRow(row);
+        m_tags->scrollToItem(m_tags->item(row, ColTag));
+        m_selectingTag = false;
+        return true;
+    }
+    return false;
 }
 
 void LocoSimWindow::setOpenInWorkbench(std::function<void(const QString &, const QString &)> open)

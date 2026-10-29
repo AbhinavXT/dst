@@ -202,7 +202,14 @@ public:
     void   setTagSink(const std::function<void(int, const QByteArray &)> &sink) { m_tagSink = sink; }
     // Session 415: the RFID frames sent, listed in the RFID frames tab.
     SimSentLog *sentLog() const { return m_sentLog; }
+    // Session 417: a row of the Tags table by the tag's name (opened, scrolled
+    // to); false when the route has no such tag. routeTagSelected: the
+    // operator picked one there.
+    bool   selectRouteTag(const QString &name);
     void   setOpenInWorkbench(std::function<void(const QString &, const QString &)> open);
+
+signals:
+    void routeTagSelected(const QString &name);   // session 417
 
 private:
     void   pullFromUi();                // the controls into the motion
@@ -341,6 +348,7 @@ private:
     std::function<void(int, const QByteArray &)> m_healthSink;
     QTableWidget   *m_tags = nullptr;
     QToolButton    *m_tagsToggle = nullptr;
+    bool            m_selectingTag = false;   // session 417: selectRouteTag at work
     SimSentLog     *m_sentLog = nullptr;      // session 415: the RFID frames tab
     QPointer<TagSendDialog> m_tagSend;
     RouteStrip     *m_wholeStrip = nullptr;

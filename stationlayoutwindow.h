@@ -321,12 +321,14 @@ public:
 signals:
     void jumpRequested(const QString &tabKey, qint64 ms);   // session 227: a read, in its log
     void stationChanged();             // session 411: the layout as it is now (an edit, Undo, a file)
+    void tagSelected(const QString &name);   // session 417: the Tags table's current tag (drawing or table)
 
 protected:
     void closeEvent(QCloseEvent *e) override;
 
 private:
     QPushButton *m_measureBtn = nullptr;
+    bool m_selecting = false;          // session 417: selectTags at work
     void refreshAll();
     void fillRun();
     int  tagIndexOf(const QString &name) const;   // -1 when absent

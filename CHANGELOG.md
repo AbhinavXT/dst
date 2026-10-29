@@ -10,6 +10,82 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-417"></a>
+## Session 417 — the RFID Workspace: the Station Layout, a tag editor and the Loco Simulator in one window
+
+Abhinav 2026-10-29 (*"Something tht includes rfid sim, tag builder and
+layout..."*), the second of the two options picked then: one window with the
+layout's drawing, the tag editor and the simulator, the selection in step,
+edits flowing into the running simulator. (The first, a layout's line run in
+the simulator, was 411.)
+
+**What the operator sees.** Tools ▸ **RFID Workspace…** (one at a time):
+- **Left, above:** the Station Layout as its own window has it (drawing,
+  tables, Open / Save / Export, Simulator ▸ Line …), the last layout opened.
+- **Left, below:** the Loco Simulator, on its RFID tab.
+- **Right:** the selected tag's fields, the Tag Builder's tag editor (401):
+  the type, every field by name, the CRC-30, page_x / page_y. **Apply to the
+  layout** puts it in the layout (one Undo step there); **Cancel** shows the
+  layout's tag again.
+- **In step:**
+  - a tag picked in the drawing or the Tags table: its fields on the right,
+    and its row in the simulator's Tags table when the route has it;
+  - a tag picked in the simulator's Tags table: selected in the layout (the
+    drawing too), its fields on the right;
+  - Apply: a line the simulator runs from the layout (Simulator ▸ Line …)
+    has the tag as edited at once (411's following); Undo in the layout
+    likewise, and the editor shows the tag as it is again.
+- **The simulator is the main window's own** (its ports, its recorder, its
+  RFID frames): it moves into the workspace and goes back, as its own
+  window, hidden, when the workspace closes. Tools ▸ Simulators ▸ Loco
+  Simulator… raises the workspace meanwhile.
+- **Closing with layout edits not saved** asks first, as the Station
+  Layout window does.
+- Each pane scrolls when the window is smaller than it wants: at 1366 × 768
+  the three are there, the splitters share the room.
+
+**How.** rfidworkspacewindow.{h,cpp} (new): a StationLayoutWindow made a
+widget; the simulator taken with `MainWindow::ensureLocoSimulator()` (made,
+not shown; `openLocoSimulator` now uses it and raises the window that holds
+it); a TagEditDialog made a widget, rebuilt for each tag. Two signals for
+the step: `StationLayoutWindow::tagSelected` (the Tags table's current tag;
+`selectTags` sends one, at its end) and `LocoSimWindow::routeTagSelected`,
+with `LocoSimWindow::selectRouteTag(name)`.
+
+**Files.** rfidworkspacewindow.h, rfidworkspacewindow.cpp (new;
+dlcore.pri), stationlayoutwindow.{h,cpp}, locosimwindow.{h,cpp},
+mainwindow.h, mainwindow_menus.cpp, mainwindow_tools.cpp;
+tests/test_session417.cpp, tests/tests.pro, tests/screenshot_main.cpp
+(`SHOT_WINDOW=rfidworkspace`, `SHOT_SIZE=1366x768`).
+
+**Tests.** `session417`, 20 checks, the built-in station.xlsx (211 tags):
+- Tools ▸ RFID Workspace… opens it with the layout; the main window's Loco
+  Simulator inside it, not a window; Loco Simulator… meanwhile: the same
+  one, still inside;
+- Simulator ▸ Line (the longest) runs in it, following the layout;
+- a tag picked in the layout: in the editor, and its row in the
+  simulator's Tags; another picked in the simulator: selected in the layout,
+  in the editor;
+- TIN nominal changed, Apply: the layout's tag as edited, CRC-30 made; the
+  simulator's route has it; one Undo step; the editor shows it as it was;
+- closing with that edit not saved asks; then the workspace is gone, the
+  simulator is the main window's own window again, hidden; Loco Simulator…
+  shows it.
+- Run 3 times with 210, 212, 221, 222, 228, 233, 401, 411, 412, 415 and
+  `assertions`: no failure.
+- **Not tested:** dragging a tag on the drawing while the simulator runs
+  (411's suite covers the following itself); real reader ports.
+- **Looked at:** the workspace at 1500 × 940 and 1366 × 768 (offscreen):
+  line DM run, the loco on the layout, tag 150 in the editor (its stored
+  CRC-30 does not match: one of the layout's 87 Checks, as station.xlsx has
+  it).
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 431
+suites / 10757 checks, 0 failed; menu audit 203 ok; headless smoke ok. Linux
+(ubuntu:22.04 container, Qt 5.15.3): the full `dltests` green, 431 / 10757.
+
+---
+
 <a id="session-416"></a>
 ## Session 416 — CI green again on Linux: Station Layout's row, the first chip
 

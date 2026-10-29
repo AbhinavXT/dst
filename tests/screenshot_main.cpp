@@ -26,6 +26,7 @@
 #ifdef DL_HAVE_SERIAL
 #include "cabiosimwindow.h"
 #include "locosimwindow.h"
+#include "rfidworkspacewindow.h"
 #include "serialconsolewindow.h"
 #include "serialmanager.h"
 #endif
@@ -247,6 +248,28 @@ int main(int argc, char **argv)
                 }
                 const int tab = qEnvironmentVariableIntValue("SHOT_TAB");
                 if (auto *tabs = w->findChild<QTabWidget *>()) tabs->setCurrentIndex(tab);
+                win = w;
+            }
+            // Session 417: the RFID Workspace, the built-in layout, its longest line run, a tag picked.
+            if (which == QLatin1String("rfidworkspace")) {
+                Settings::setStationLayoutLastFile(QString());
+                auto *w = new RfidWorkspaceWindow(nullptr);
+                w->setSimulatorSource([]() {
+                    auto *sim = new LocoSimWindow(nullptr);
+                    sim->setSendSink([](const QByteArray &) {});
+                    sim->setTagSink([](int, const QByteArray &) {});
+                    return sim;
+                });
+                w->layoutWindow()->reopenLast();
+                w->takeSimulator();
+                QString line;
+                int most = 0;
+                for (const StationLayout::Line &ln : w->layoutWindow()->station().lines)
+                    if (ln.tags.size() > most) { most = ln.tags.size(); line = ln.line; }
+                w->layoutWindow()->runLineInSimulator(line, RfidTag::DirNominal);
+                const RfidTag::Route r = w->layoutWindow()->lineAsSimRoute(line, RfidTag::DirNominal);
+                if (r.tags.size() > 2) w->layoutWindow()->selectTags({ r.tags.at(2).name });
+                w->resize(1500, 940);
                 win = w;
             }
             if (which == QLatin1String("brakebench")) {
@@ -1344,6 +1367,10 @@ int main(int argc, char **argv)
             else if (which == QLatin1String("cabio")) win->resize(1240, 860);
             else if (which == QLatin1String("brakebench")) win->resize(1280, 820);
             else if (which == QLatin1String("locosim")) win->resize(1120, 720);
+            else if (which == QLatin1String("rfidworkspace")) {   // SHOT_SIZE=1366x768: a laptop
+                const QStringList wh = qEnvironmentVariable("SHOT_SIZE").split(QLatin1Char('x'));
+                win->resize(wh.size() == 2 ? wh.at(0).toInt() : 1500, wh.size() == 2 ? wh.at(1).toInt() : 940);
+            }
             else if (small) {
                 const QStringList wh = qEnvironmentVariable("SHOT_SIZE").split(QLatin1Char('x'));
                 if (wh.size() == 2) win->resize(wh.at(0).toInt(), wh.at(1).toInt());

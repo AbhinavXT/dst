@@ -1476,6 +1476,7 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
         m_canvas->setSelectedTag(r >= 0 && r < m_layout.tags.size() ? m_layout.tags.at(r).name : QString());
         const QStringList sel = selectedTags();
         m_canvas->setMarkedTags(QSet<QString>(sel.cbegin(), sel.cend()));
+        if (r >= 0 && r < m_layout.tags.size() && !m_updating && !m_selecting) emit tagSelected(m_layout.tags.at(r).name);
     });
     connect(m_canvas, &StationLayoutCanvas::tagsBoxed, this, [this](const QStringList &names) {
         selectTags(names);
@@ -1967,6 +1968,7 @@ void StationLayoutWindow::selectSheetRow(int sheet, int row)
 void StationLayoutWindow::selectTags(const QStringList &names)
 {
     QTableWidget *t = m_tables.at(0);
+    m_selecting = true;   // session 417: one tagSelected, at the end, for the current one
     t->clearSelection();
     QItemSelection sel;
     for (const QString &n : names) {
@@ -1978,6 +1980,8 @@ void StationLayoutWindow::selectTags(const QStringList &names)
         t->selectionModel()->setCurrentIndex(t->model()->index(tagIndexOf(names.last()), 0), QItemSelectionModel::NoUpdate);
         m_tabs->setCurrentIndex(0);
     }
+    m_selecting = false;
+    if (!names.isEmpty() && tagIndexOf(names.last()) >= 0 && !m_updating) emit tagSelected(names.last());
 }
 
 bool StationLayoutWindow::shiftTags(const QStringList &names, qint64 metres)

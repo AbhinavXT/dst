@@ -57,6 +57,7 @@ SOURCES += \
     $$PWD/dialogfocus.cpp \
     $$PWD/minimizeddock.cpp \
     $$PWD/rowclicks.cpp \
+    $$PWD/rfidworkspacewindow.cpp \
     $$PWD/simsentlog.cpp \
     $$PWD/textzoom.cpp \
     $$PWD/presentationmode.cpp \
@@ -282,6 +283,7 @@ HEADERS += \
     $$PWD/dialogfocus.h \
     $$PWD/minimizeddock.h \
     $$PWD/rowclicks.h \
+    $$PWD/rfidworkspacewindow.h \
     $$PWD/simsentlog.h \
     $$PWD/textzoom.h \
     $$PWD/presentationmode.h \

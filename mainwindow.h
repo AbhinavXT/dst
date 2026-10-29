@@ -253,6 +253,7 @@ private slots:
     void onActionLocoConfig();
     void onActionTagBuilder();       // Tools → RFID Tag Builder… (session 195)       // Tools → Loco Configuration…
     void onActionStationLayout();    // Tools → Station Layout… (session 208)
+    void onActionRfidWorkspace();    // Tools → RFID Workspace… (session 417)
     void onActionTestCatalog();      // Tools → Test Case Catalog… (session 231)
 
     // ---- Live-applied settings --------------------------------------
@@ -442,6 +443,7 @@ private:
     QPointer<QWidget>           m_cabIoSim;     // session 324: the Cab I/O Simulator
     QPointer<QWidget>           m_brakeBench;   // session 360: the Brake Test Bench
     QPointer<QWidget>           m_locoSim;      // session 391: the Loco Simulator
+    QPointer<QWidget>           m_rfidWorkspace;   // session 417: one at a time
     BenchRecord::Recorder      *m_benchRecorder = nullptr;   // session 404: shared by the two simulators
     MinimizedDock              *m_windowDock = nullptr;   // chips for minimised tool windows
     QMenu                      *m_recentMenu = nullptr;   // File ▸ Open Recent (session 287)
@@ -688,6 +690,7 @@ private:
     void openCabIoSimulator();                                   // mainwindow_tools.cpp
     void openBrakeBench();                                       // mainwindow_tools.cpp (session 360)
     void openLocoSimulator();                                    // mainwindow_tools.cpp (session 391)
+    class LocoSimWindow *ensureLocoSimulator();                  // made, not shown (session 417)
     BenchRecord::Recorder *benchRecorder();                      // session 404: made on first use
     void openBenchRecording();                                   // session 404: Tools > Simulators > Test recording…
     void linkCabIoToBench();                                     // the bench hears the output word
