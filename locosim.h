@@ -37,6 +37,19 @@
 //    4-19  the tag's 16 bytes: its buildTagPacket() reverses page_y + page_x,
 //          which gives them back in the order the tag holds them
 //    20-21 end_byte     BB BB
+//
+//  THE BRAKE (session 398, step 3: braking from the BIU's command)
+//    The VCC commands the BIU; the Brake Test Bench's air (brakeplant.h)
+//    moves toward it; the loco slows by what the air does. Deceleration is
+//    proportional to BC up to BC at full service (formation FSB / EB: 2.4,
+//    Annexure-4), and BP picks the ceiling: the full-service rate at the FSB
+//    BP (3.5) or above, rising to the emergency rate as BP falls to 0. NB
+//    (BC 1.2, BP 4.4) is half the full-service rate; FSB (2.4, 3.5) the full
+//    service rate; EB (2.4, 0) the emergency rate. BC at or under 0.1 (the
+//    released tolerance) is no brake. The rates are settings, not loco data:
+//    no per-loco-type figures are known yet.
+//    While a brake acts it wins over the drive; when it comes on and when it
+//    goes off the drive goes to Hold, so the loco keeps the speed it slowed to.
 // =============================================================================
 #include <QByteArray>
 #include <QtGlobal>
@@ -62,6 +75,16 @@ double     pulsesPerMetre(const Wheel &wheel);
 QByteArray speedMessage(int sensor, quint8 direction, quint32 tachometer1, quint32 tachometer2);
 // Empty unless `tag` is 16 bytes (the simulator sends nothing then either).
 QByteArray tagFrame(int reader, const QByteArray &tag);
+
+struct BrakeRates {
+    double fullServiceMps2 = 0.6;   // m/s^2 at BC full service, BP at FSB or above
+    double emergencyMps2   = 0.9;   // m/s^2 at BC full service, BP 0
+    double fullBcKgcm2     = 2.4;   // BC at full service (formation FSB / EB)
+    double fsbBpKgcm2      = 3.5;   // BP at FSB
+    double releasedBcKgcm2 = 0.1;   // BC at or under: no brake
+};
+// m/s^2 the air in the brake gives, 0 for none.
+double brakeDeceleration(const BrakeRates &rates, double bpKgcm2, double bcKgcm2);
 
 // What one step sent: pulses[sensor 0/1][channel 0/1], and the metres moved.
 struct Step {
@@ -93,6 +116,11 @@ public:
     void   setPosition(double metres) { m_position = metres; }
     double position() const { return m_position; }
     void   resetCounts();                        // drop the fractions carried
+    // The brake's deceleration, m/s^2 (0 none). It wins over the drive while
+    // it acts; coming on or going off sets the drive to Hold.
+    void   setBrake(double mps2);
+    double brake() const { return m_brake; }
+    bool   braking() const { return m_brake > 0; }
 
     Step step(double seconds);
 
@@ -106,6 +134,7 @@ private:
     double    m_channelSpeed[2][2] = { { -1, -1 }, { -1, -1 } };
     double    m_carry[2][2] = { { 0, 0 }, { 0, 0 } };
     double    m_position = 0;
+    double    m_brake = 0;
 };
 
 }  // namespace LocoSim

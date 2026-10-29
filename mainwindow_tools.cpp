@@ -821,6 +821,7 @@ void MainWindow::openBrakeBench()
     if (!m_brakeBench) {
         m_brakeBench = new BrakeBenchWindow(this);
         linkCabIoToBench();
+        linkLocoSimToBench();
     }
     m_brakeBench->show();
     m_brakeBench->raise();
@@ -829,7 +830,10 @@ void MainWindow::openBrakeBench()
 
 void MainWindow::openLocoSimulator()
 {
-    if (!m_locoSim) m_locoSim = new LocoSimWindow(m_serial, this);
+    if (!m_locoSim) {
+        m_locoSim = new LocoSimWindow(m_serial, this);
+        linkLocoSimToBench();
+    }
     m_locoSim->show();
     m_locoSim->raise();
     m_locoSim->activateWindow();
@@ -848,6 +852,14 @@ void MainWindow::linkCabIoToBench()
     bench->setWireFormat(sim->wireFormat());
     if (sim->outputSeen()) bench->observeOutputWord(int(sim->cab()), sim->outputWord());
 #endif
+}
+
+// Session 398: the bench's air brakes the Loco Simulator's loco while both are open.
+void MainWindow::linkLocoSimToBench()
+{
+    auto *loco = qobject_cast<LocoSimWindow *>(m_locoSim.data());
+    auto *bench = qobject_cast<BrakeBenchWindow *>(m_brakeBench.data());
+    if (loco && bench) loco->followBench(bench);
 }
 
 void MainWindow::openSerialProfiles(bool autoOpenOnly)

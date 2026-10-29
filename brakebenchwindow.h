@@ -132,6 +132,10 @@ public:
     void flushLog();                    // the Frames tab's pending rows, now
     int  logRows() const;
 
+signals:
+    // Session 398: the air after each step, for the Loco Simulator's brake.
+    void airChanged(double bpKgcm2, double bcKgcm2);
+
 protected:
     void closeEvent(QCloseEvent *e) override;
 

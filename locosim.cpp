@@ -41,6 +41,16 @@ QByteArray tagFrame(int reader, const QByteArray &tag)
     return frame;
 }
 
+double brakeDeceleration(const BrakeRates &rates, double bpKgcm2, double bcKgcm2)
+{
+    if (bcKgcm2 <= rates.releasedBcKgcm2 || rates.fullBcKgcm2 <= 0) return 0;
+    const double applied = qMin(1.0, bcKgcm2 / rates.fullBcKgcm2);
+    // BP under the FSB level: toward the emergency rate as it falls to 0.
+    const double belowFsb = rates.fsbBpKgcm2 > 0 ? qBound(0.0, (rates.fsbBpKgcm2 - bpKgcm2) / rates.fsbBpKgcm2, 1.0) : 0.0;
+    const double ceiling = rates.fullServiceMps2 + (rates.emergencyMps2 - rates.fullServiceMps2) * belowFsb;
+    return qMax(0.0, applied * ceiling);
+}
+
 void Motion::setSpeed(double kmh)
 {
     m_speed = qBound(0.0, kmh, m_maxSpeed);
@@ -58,13 +68,21 @@ void Motion::resetCounts()
         for (double &fraction : sensor) fraction = 0;
 }
 
+void Motion::setBrake(double mps2)
+{
+    const bool was = braking();
+    m_brake = qMax(0.0, mps2);
+    if (was != braking()) m_drive = Drive::Hold;
+}
+
 Step Motion::step(double seconds)
 {
     Step out;
     if (seconds <= 0) return out;
 
     const double startSpeed = m_speed;
-    if (m_drive == Drive::Accelerate) setSpeed(m_speed + m_rate * seconds);
+    if (braking()) setSpeed(m_speed - m_brake * 3.6 * seconds);
+    else if (m_drive == Drive::Accelerate) setSpeed(m_speed + m_rate * seconds);
     else if (m_drive == Drive::Decelerate) setSpeed(m_speed - m_rate * seconds);
     // The speed ramps through the step: its mean is what the wheel turned at.
     const double meanSpeed = (startSpeed + m_speed) / 2;

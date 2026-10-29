@@ -699,6 +699,26 @@ int main(int argc, char **argv) {
                 if (window->isVisible()) { ++count; opened = window; }
         CHECK(count == 1, "Simulators > Loco Simulator opens one window, raised again on a second trigger");
         CHECK(opened && !opened->running(), "and does not send until Start");
+        // Session 398: the Brake Test Bench's air brakes its loco while both are open.
+        if (QAction *bench = findAction(simulators, "Brake Test Bench")) {
+            bench->trigger();
+            BrakeBenchWindow *benchWindow = nullptr;
+            for (QWidget *top : QApplication::topLevelWidgets())
+                if (auto *b = qobject_cast<BrakeBenchWindow *>(top))
+                    if (b->isVisible()) benchWindow = b;
+            if (benchWindow && opened) {
+                benchWindow->setSource(BrakeBenchWindow::Source::Manual);
+                benchWindow->plant().setValue(BrakePlant::Bc, 2.4);
+                benchWindow->plant().setTarget(BrakePlant::Bc, 2.4);
+                benchWindow->advance(0.05);
+                CHECK(opened->motion().braking(), "the Loco Simulator's loco brakes on the Brake Test Bench's BC");
+                benchWindow->close();
+                QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+                CHECK(!opened->motion().braking(), "and stops braking when the bench closes");
+            } else {
+                CHECK(false, "the Brake Test Bench and the Loco Simulator both open");
+            }
+        }
         // Session 395: the RFID readers, on the main window's serial ports.
         QTabWidget *locoTabs = opened ? opened->findChild<QTabWidget *>() : nullptr;
         bool rfidTab = false;

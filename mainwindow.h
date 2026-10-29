@@ -685,6 +685,7 @@ private:
     void openBrakeBench();                                       // mainwindow_tools.cpp (session 360)
     void openLocoSimulator();                                    // mainwindow_tools.cpp (session 391)
     void linkCabIoToBench();                                     // the bench hears the output word
+    void linkLocoSimToBench();                                   // session 398: the bench brakes the loco
     void rebuildSerialChips();                                   // mainwindow_status.cpp
     void refreshSerialChips();                                   // tooltips and health, each second
     // Open saved serial profiles (all, or only the auto-open ones); a

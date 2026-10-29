@@ -1,4 +1,5 @@
 #include "locosimwindow.h"
+#include "brakebenchwindow.h"
 #include "routestrip.h"
 #include "biusim.h"
 #include "settings.h"
@@ -278,6 +279,20 @@ QWidget *LocoSimWindow::buildDriveTab()
     directionRow->addWidget(m_maxSpeed);
     directionRow->addStretch(1);
     controls->addLayout(directionRow, 2, 1);
+
+    controls->addWidget(labelNamed(tr("Brake"), "muted", loco), 3, 0);
+    auto *brakeRow = new QHBoxLayout;
+    m_brakeFollow = new QCheckBox(tr("From the Brake Test Bench"), loco);
+    m_brakeFollow->setObjectName(QStringLiteral("locoSimBrakeFollow"));
+    m_brakeFollow->setToolTip(tr("The bench's BP and BC (what the VCC commanded the BIU) slow the loco; "
+                                 "while it brakes, the brake wins over the drive"));
+    brakeRow->addWidget(m_brakeFollow);
+    brakeRow->addSpacing(8);
+    m_brakeState = labelNamed(QString(), "mono", loco);
+    m_brakeState->setObjectName(QStringLiteral("locoSimBrakeState"));
+    m_brakeState->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    brakeRow->addWidget(m_brakeState, 1);
+    controls->addLayout(brakeRow, 3, 1);
     controls->setColumnStretch(1, 1);
     locoBody->addLayout(controls);
     columns->addWidget(loco, 5);
@@ -338,6 +353,7 @@ QWidget *LocoSimWindow::buildDriveTab()
     connect(m_rate, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, pull);
     connect(m_drive, &QButtonGroup::idClicked, this, pull);
     connect(m_direction, &QButtonGroup::idClicked, this, pull);
+    connect(m_brakeFollow, &QCheckBox::toggled, this, [this]() { applyBrake(); showMotion(); });
     for (int sensor = 0; sensor < 2; ++sensor) {
         connect(m_sensorOn[sensor], &QCheckBox::toggled, this, pull);
         for (int channel = 0; channel < 2; ++channel)
@@ -1011,7 +1027,11 @@ QWidget *LocoSimWindow::buildSettingsTab()
     wheelGrid->addWidget(m_perMetre, 3, 1, 1, 2);
     wheelGrid->setColumnStretch(2, 1);
     wheelBody->addLayout(wheelGrid);
-    layout->addWidget(wheel);
+    wheelBody->addStretch(1);
+    auto *topRow = new QHBoxLayout;
+    topRow->setSpacing(12);
+    topRow->addWidget(wheel, 1);
+    layout->addLayout(topRow);
 
     QVBoxLayout *linkBody = nullptr;
     QFrame *link = card(tr("VCCs"), page, &linkBody);
@@ -1054,6 +1074,41 @@ QWidget *LocoSimWindow::buildSettingsTab()
     note->setWordWrap(true);
     linkBody->addWidget(note);
     layout->addWidget(link);
+
+    QVBoxLayout *brakeBody = nullptr;
+    QFrame *brakes = card(tr("Brake"), page, &brakeBody);
+    auto *brakeGrid = new QGridLayout;
+    const auto rateSpin = [brakes](const char *name, double max, const QString &suffix) {
+        auto *spin = new QDoubleSpinBox(brakes);
+        spin->setObjectName(QLatin1String(name));
+        spin->setRange(0.05, max);
+        spin->setDecimals(2);
+        spin->setSingleStep(0.05);
+        spin->setSuffix(suffix);
+        return spin;
+    };
+    m_fullService = rateSpin("locoSimFullService", 3, QStringLiteral(" m/s\u00B2"));
+    m_fullService->setToolTip(tr("BC at full service with BP at the FSB level (3.5) or above"));
+    m_emergency = rateSpin("locoSimEmergency", 3, QStringLiteral(" m/s\u00B2"));
+    m_emergency->setToolTip(tr("BC at full service with BP at 0"));
+    m_fullBc = rateSpin("locoSimFullBc", 6, QStringLiteral(" kg/cm\u00B2"));
+    m_fullBc->setToolTip(tr("Annexure-4: 2.4 in formation, 3.5 for a light engine"));
+    brakeGrid->addWidget(labelNamed(tr("Full service"), "muted", brakes), 0, 0);
+    brakeGrid->addWidget(m_fullService, 0, 1);
+    brakeGrid->addWidget(labelNamed(tr("Emergency"), "muted", brakes), 1, 0);
+    brakeGrid->addWidget(m_emergency, 1, 1);
+    brakeGrid->addWidget(labelNamed(tr("BC at full service"), "muted", brakes), 2, 0);
+    brakeGrid->addWidget(m_fullBc, 2, 1);
+    brakeGrid->setColumnStretch(2, 1);
+    brakeBody->addLayout(brakeGrid);
+    auto *brakeNote = labelNamed(tr("The loco slows in proportion to BC, up to BC at full service; BP picks the "
+                                    "ceiling, the full-service rate at BP 3.5 or above rising to the emergency "
+                                    "rate at BP 0. So NB (BC 1.2) is half full service, FSB full service, EB "
+                                    "emergency. These are settings, not loco data."), "muted", brakes);
+    brakeNote->setWordWrap(true);
+    brakeBody->addWidget(brakeNote);
+    brakeBody->addStretch(1);
+    topRow->addWidget(brakes, 1);
     layout->addStretch(1);
 
     const auto pull = [this]() { pullFromUi(); showMotion(); };
@@ -1066,6 +1121,8 @@ QWidget *LocoSimWindow::buildSettingsTab()
         refreshTop();
     });
     connect(m_hosts, &QLineEdit::editingFinished, this, [this]() { setHosts(m_hosts->text()); });
+    for (QDoubleSpinBox *spin : { m_fullService, m_emergency, m_fullBc })
+        connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this]() { applyBrake(); showMotion(); });
     return page;
 }
 
@@ -1099,8 +1156,11 @@ void LocoSimWindow::showMotion()
         || (drive == LocoSim::Motion::Drive::Decelerate && m_motion.speed() <= 0)) {
         // At the end of the ramp: hold.
         m_motion.setDrive(LocoSim::Motion::Drive::Hold);
-        m_drive->button(1)->setChecked(true);
     }
+    // The motion's drive on the buttons: a ramp's end or a brake sets it to Hold.
+    for (int button = 0; button < 3; ++button)
+        if (kDriveOfButton[button] == m_motion.drive()) m_drive->button(button)->setChecked(true);
+    for (QAbstractButton *button : m_drive->buttons()) button->setEnabled(!m_motion.braking());
     const double scale = scaleFor(m_motion.maxSpeed());
     m_speedometer->setScaleMaximum(scale);
     m_speedometer->setLimit(m_motion.maxSpeed());
@@ -1149,6 +1209,7 @@ void LocoSimWindow::refreshTop()
                             .arg(sensors).arg(m_sent).arg((m_clock() - m_startedMs) / 1000)
                       : tr("Stopped \u00B7 %1 messages sent").arg(m_sent);
     if (m_readers) text += tr(" \u00B7 %1 tag frame(s)").arg(m_tagsSent);
+    if (m_motion.braking()) text += tr(" \u00B7 braking %1 m/s\u00B2").arg(m_motion.brake(), 0, 'f', 2);
     m_state->setText(text);
     if (m_linkChip && m_port && m_intervalMs)
         m_linkChip->setText(tr("%1 VCC(s) \u00B7 UDP %2 \u00B7 every %3 ms")
@@ -1227,6 +1288,7 @@ bool LocoSimWindow::running() const
 
 void LocoSimWindow::advance(double seconds)
 {
+    applyBrake();
     const LocoSim::Step step = m_motion.step(seconds);
     const double perMetre = LocoSim::pulsesPerMetre(m_motion.wheel());
     const auto kmhOf = [&](quint32 pulses) {
@@ -1246,6 +1308,73 @@ void LocoSimWindow::advance(double seconds)
     showStep(step, seconds);
     stepRoute(step);
     showMotion();
+}
+
+// ---- the brake (session 398) ------------------------------------------------------
+
+void LocoSimWindow::followBench(BrakeBenchWindow *bench)
+{
+    if (!bench || bench == m_bench) return;
+    m_bench = bench;
+    connect(bench, &BrakeBenchWindow::airChanged, this, &LocoSimWindow::observeAir, Qt::UniqueConnection);
+    connect(bench, &QObject::destroyed, this, [this]() {
+        m_airKnown = false;
+        applyBrake();
+        showMotion();
+    });
+    observeAir(bench->pressure(BrakePlant::Bp), bench->pressure(BrakePlant::Bc));
+}
+
+void LocoSimWindow::observeAir(double bpKgcm2, double bcKgcm2)
+{
+    const bool same = m_airKnown && bpKgcm2 == m_airBp && bcKgcm2 == m_airBc;
+    m_airKnown = true;
+    m_airBp = bpKgcm2;
+    m_airBc = bcKgcm2;
+    if (same) return;
+    const bool was = m_motion.braking();
+    applyBrake();
+    if (was != m_motion.braking()) showMotion();
+}
+
+void LocoSimWindow::setBrakeFollows(bool on)
+{
+    m_brakeFollow->setChecked(on);
+}
+
+bool LocoSimWindow::brakeFollows() const
+{
+    return m_brakeFollow->isChecked();
+}
+
+LocoSim::BrakeRates LocoSimWindow::brakeRates() const
+{
+    LocoSim::BrakeRates rates;
+    rates.fullServiceMps2 = m_fullService->value();
+    rates.emergencyMps2 = m_emergency->value();
+    rates.fullBcKgcm2 = m_fullBc->value();
+    return rates;
+}
+
+void LocoSimWindow::setBrakeRates(const LocoSim::BrakeRates &rates)
+{
+    m_fullService->setValue(rates.fullServiceMps2);
+    m_emergency->setValue(rates.emergencyMps2);
+    m_fullBc->setValue(rates.fullBcKgcm2);
+}
+
+// The air into the motion's brake, and what the Drive tab says of it.
+void LocoSimWindow::applyBrake()
+{
+    if (!m_brakeState || !m_fullBc) return;
+    const bool follows = m_brakeFollow->isChecked();
+    const double mps2 = follows && m_airKnown ? LocoSim::brakeDeceleration(brakeRates(), m_airBp, m_airBc) : 0.0;
+    m_motion.setBrake(mps2);
+    const QString air = tr("BC %1 \u00B7 BP %2 kg/cm\u00B2").arg(m_airBc, 0, 'f', 2).arg(m_airBp, 0, 'f', 2);
+    if (!follows) m_brakeState->setText(tr("off: nothing slows the loco"));
+    else if (!m_airKnown) m_brakeState->setText(tr("open Tools \u25B8 Simulators \u25B8 Brake Test Bench"));
+    else if (m_motion.braking()) m_brakeState->setText(tr("braking %1 m/s\u00B2 \u00B7 %2").arg(mps2, 0, 'f', 2).arg(air));
+    else m_brakeState->setText(tr("released \u00B7 %1").arg(air));
 }
 
 // ---- settings ----------------------------------------------------------------------
@@ -1273,6 +1402,12 @@ void LocoSimWindow::loadSettings()
     m_intervalMs->setValue(settings.value(QStringLiteral("intervalMs"), 100).toInt());
     m_timer->setInterval(m_intervalMs->value());
     setHosts(settings.value(QStringLiteral("hosts"), defaultHosts()).toString());
+    const LocoSim::BrakeRates rates;
+    m_brakeFollow->setChecked(settings.value(QStringLiteral("brakeFollowsBench"), true).toBool());
+    m_fullService->setValue(settings.value(QStringLiteral("brakeFullService"), rates.fullServiceMps2).toDouble());
+    m_emergency->setValue(settings.value(QStringLiteral("brakeEmergency"), rates.emergencyMps2).toDouble());
+    m_fullBc->setValue(settings.value(QStringLiteral("brakeFullBc"), rates.fullBcKgcm2).toDouble());
+    applyBrake();
 
     for (int reader = 0; reader < 2; ++reader)
         m_readerOn[reader]->setChecked(settings.value(QStringLiteral("rfidReader%1").arg(reader + 1), true).toBool());
@@ -1307,6 +1442,10 @@ void LocoSimWindow::saveSettings() const
     settings.setValue(QStringLiteral("hosts"), m_hosts->text());
     settings.setValue(QStringLiteral("port"), m_port->value());
     settings.setValue(QStringLiteral("intervalMs"), m_intervalMs->value());
+    settings.setValue(QStringLiteral("brakeFollowsBench"), m_brakeFollow->isChecked());
+    settings.setValue(QStringLiteral("brakeFullService"), m_fullService->value());
+    settings.setValue(QStringLiteral("brakeEmergency"), m_emergency->value());
+    settings.setValue(QStringLiteral("brakeFullBc"), m_fullBc->value());
     for (int reader = 0; reader < 2; ++reader)
         settings.setValue(QStringLiteral("rfidReader%1").arg(reader + 1), m_readerOn[reader]->isChecked());
     settings.setValue(QStringLiteral("rfidReader2OwnPort"), m_reader2Port->checkedId() == 1);

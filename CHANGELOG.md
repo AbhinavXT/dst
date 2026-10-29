@@ -10,6 +10,65 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-398"></a>
+## Session 398 — Loco Simulator, step 3: the Brake Test Bench's air brakes the loco
+
+Abhinav 2026-10-29, the step sessions 391 and 395 queued (*"then full on braking
+algo"*). His answers: the brake comes from the Brake Test Bench (its BP and BC,
+which follow what the VCC commanded the BIU); deceleration in proportion to BC;
+the brake wins over the drive, and after release the loco holds the speed it
+slowed to.
+
+**What the operator sees.**
+- **Drive tab, a Brake row:** "From the Brake Test Bench" (on by default) and
+  what the brake is doing: *open Tools ▸ Simulators ▸ Brake Test Bench*,
+  *released · BC 0.00 · BP 5.00 kg/cm²*, or *braking 0.60 m/s² · BC 2.40 ·
+  BP 3.50 kg/cm²*. The top line adds "braking … m/s²".
+- While the loco brakes, Decelerate / Hold / Accelerate are greyed out. When
+  the brake comes on and when it goes off, the drive goes to Hold.
+- **Settings tab, a Brake card** beside the Wheel: full-service rate
+  (0.6 m/s²), emergency rate (0.9 m/s²), BC at full service (2.4 kg/cm²);
+  saved.
+- The loco follows the bench's air whoever moves it: the BIU's command, the
+  brake relays, or a hand on the bench's dials. When the bench closes, the
+  brake lets go.
+
+**The rule** (`LocoSim::brakeDeceleration`): a = min(BC / BC full, 1) ×
+ceiling. The ceiling is the full-service rate at BP 3.5 (FSB) or above and
+rises linearly to the emergency rate at BP 0. BC ≤ 0.1 (the firmware's
+released tolerance) is no brake. With the defaults: NB (BP 4.4, BC 1.2) gives
+0.3, FSB (3.5, 2.4) 0.6, EB (0, 2.4) 0.9, LE (5.0, 3.5) 0.6. FSB and EB share
+BC 2.4 in Annexure-4, so BC alone cannot tell them apart. That is why BP
+picks the ceiling.
+
+**Wiring:** `BrakeBenchWindow::airChanged(bp, bc)` after each step (every
+50 ms); `LocoSimWindow::followBench()`, called by `MainWindow::linkLocoSimToBench()`
+when either window opens with the other already open.
+
+**Files:** `locosim.{h,cpp}` (`BrakeRates`, `brakeDeceleration`,
+`Motion::setBrake`), `locosimwindow.{h,cpp}`, `brakebenchwindow.{h,cpp}`
+(`airChanged`), `mainwindow.h`, `mainwindow_tools.cpp`,
+`tests/test_session398.cpp`, `tests/tests.pro`, `tests/menuaudit_main.cpp`.
+
+**Tests:** `session398` (33 checks): the rule at NB / FSB / EB / LE and in
+between; the motion (brake wins over Accelerate, Hold on and off, metres at the
+mean speed, stops at 0); the window with a real Brake Test Bench: session 360's
+EB command frames into its BIU, BC rising through the 0.1 tolerance, the loco
+braking faster than full service as BP falls, the Drive tab's text, release
+and hold, a hand on the bench's dial, following off, the bench closed; the
+rates kept; the window still fits 1366 × 700. Menu audit: the bench, opened
+from the menu, brakes the Loco Simulator's loco and stops when closed.
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 414
+suites / 10428 checks, 0 failed; menu audit and headless smoke ok.
+
+**Not tested:** against a real VCC or BIU. The rates are placeholders, not
+loco data: per-loco-type figures (WAP7 / WAG9 / WAP5, load) are not known
+yet. No gradient, mass or brake-force build-up beyond what the bench's air
+already does.
+
+---
+
 <a id="session-397"></a>
 ## Session 397 — the RFID tab draws the route, and the loco on it
 

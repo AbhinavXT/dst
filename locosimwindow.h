@@ -19,8 +19,10 @@
 //              tag skipped. No chaining to the next station's route.
 //    Frames    every speed message sent, decoded, with its bytes.
 //    Settings  the wheel, the VCCs, how often.
-//  Next: braking from the BIU's command. The motion and the messages are
-//  locosim.h.
+//    Brake     (session 398) the Brake Test Bench's air slows the loco
+//              (LocoSim::brakeDeceleration): the VCC commands the BIU, the
+//              bench's BP and BC move, the loco brakes; the rates are on
+//              Settings. The motion and the messages are locosim.h.
 // =============================================================================
 #include "locosim.h"
 #include "rfidtag.h"
@@ -32,6 +34,7 @@
 #include <functional>
 #include <memory>
 
+class BrakeBenchWindow;
 class QButtonGroup;
 class QCheckBox;
 class QComboBox;
@@ -74,6 +77,14 @@ public:
     int  sentCount() const { return m_sent; }
     void setHosts(const QString &hosts);
 
+    // ---- the brake (session 398) --------------------------------------------
+    void   followBench(BrakeBenchWindow *bench);    // its air brakes the loco while it is open
+    void   observeAir(double bpKgcm2, double bcKgcm2);
+    void   setBrakeFollows(bool on);
+    bool   brakeFollows() const;
+    LocoSim::BrakeRates brakeRates() const;
+    void   setBrakeRates(const LocoSim::BrakeRates &rates);
+
     // ---- RFID (session 395) ------------------------------------------------
     bool   loadRouteFile(const QString &path);   // false (and said) if it holds no route
     int    routeCount() const { return m_routes.size(); }
@@ -106,6 +117,7 @@ private:
     QWidget *buildFramesTab();
     QWidget *buildSettingsTab();
     QWidget *buildRfidTab();
+    void   applyBrake();
     void   fillRouteBox();
     void   fillTagTable();
     void   stepRoute(const LocoSim::Step &step);
@@ -150,6 +162,17 @@ private:
     QSpinBox       *m_intervalMs = nullptr;
     QTableWidget   *m_frames = nullptr;
     StatusLine     *m_status = nullptr;
+
+    // the brake
+    QPointer<BrakeBenchWindow> m_bench;
+    bool            m_airKnown = false;
+    double          m_airBp = 0;
+    double          m_airBc = 0;
+    QCheckBox      *m_brakeFollow = nullptr;
+    QLabel         *m_brakeState = nullptr;
+    QDoubleSpinBox *m_fullService = nullptr;
+    QDoubleSpinBox *m_emergency = nullptr;
+    QDoubleSpinBox *m_fullBc = nullptr;
 
     // RFID
     SerialManager  *m_serial = nullptr;
