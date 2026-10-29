@@ -52,16 +52,25 @@ TEST_SUITE(session391)
         const Step first = motion.step(0.1);
         CHECK(first.pulses[0][0] == 16753 && first.pulses[1][1] == 16753,
               "60 km/h for 100 ms: 16753 on every channel (the simulator's 3.14 gave 16761)");
-        quint64 total = first.pulses[0][0];
-        for (int tick = 1; tick < 100; ++tick) total += motion.step(0.1).pulses[0][0];
-        CHECK(total == quint64(std::floor(motion.position() * perMetre)),
-              "100 ticks: the pulses add up to the distance (no truncation drift)");
+        // Session 408: every message one interval's (100 ms) pulses, truncated, as
+        // the simulator: the same count at a steady speed, whatever the clock did.
+        bool steady = true;
+        for (int tick = 1; tick < 100; ++tick) steady = steady && motion.step(0.1).pulses[0][0] == 16753;
+        CHECK(steady, "100 messages at 60 km/h: all 16753, no fraction carried from one to the next");
         CHECK(std::fabs(motion.position() - 166.6667) < 0.001, "60 km/h for 10 s: 166.67 m");
-
-        Motion late;
-        late.setSpeed(60);
-        CHECK(late.step(0.25).pulses[0][0] == quint32(std::floor(60 / 3.6 * 0.25 * perMetre)),
-              "a late tick carries the pulses of the time it took, not a nominal 100 ms");
+        bool jitter = true;
+        for (double ms : { 97.0, 103.0, 250.0, 100.0 }) jitter = jitter && motion.step(ms / 1000).pulses[0][0] == 16753;
+        CHECK(jitter, "a tick 97, 103 or 250 ms after the last: still 16753 (the interval's, not the clock's)");
+        Motion eighty;
+        eighty.setSpeed(80);
+        const quint32 at80 = eighty.step(0.1).pulses[0][0];
+        CHECK(at80 == quint32(std::floor(80 / 3.6 * 0.1 * perMetre)) && eighty.step(0.1).pulses[1][0] == at80
+                  && eighty.step(0.13).pulses[0][1] == at80,
+              QByteArray("80 km/h: ") + QByteArray::number(at80) + " on every channel, every message");
+        Motion slower;
+        slower.setSpeed(60);
+        slower.setPulseInterval(0.2);
+        CHECK(slower.step(0.2).pulses[0][0] == quint32(std::floor(60 / 3.6 * 0.2 * perMetre)), "a 200 ms interval: 200 ms of pulses");
     }
 
     // ---- driving -----------------------------------------------------------------
@@ -92,11 +101,11 @@ TEST_SUITE(session391)
         motion.setDirection(Forward);
         motion.setChannelSpeed(1, 1, 0);
         motion.setChannelSpeed(0, 1, 72);
-        const Step slip = motion.step(1);
+        const Step slip = motion.step(0.1);
         CHECK(slip.pulses[1][1] == 0, "a channel at 0 km/h (skid, dead): no pulses");
         CHECK(slip.pulses[0][1] > slip.pulses[0][0] * 1.99 && slip.pulses[0][1] < slip.pulses[0][0] * 2.01,
               "a channel at 72 km/h on a 36 km/h loco: twice the pulses (slip)");
-        CHECK(std::fabs(slip.metres - 10) < 1e-9, "the loco still moves at its own speed");
+        CHECK(std::fabs(slip.metres - 1) < 1e-9, "the loco still moves at its own speed");
     }
 
     // ---- the window ------------------------------------------------------------------

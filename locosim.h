@@ -22,12 +22,16 @@
 //  the one the VCC on the bench takes today (Abhinav, 2026-10-29).
 //
 //  THE PULSES
-//    A message carries the pulses counted since the last one, times the
-//    count scale: metres x scale x pulses-per-rev / (pi x wheel diameter).
-//    The simulator's defaults (950 mm, 30, x1000) with the real pi (it used
-//    3.14 for pulses and 3.1428571 for distance, 0.09 % apart). The fraction
-//    a message cannot carry is kept for the next, and the time is the clock's,
-//    not a nominal 100 ms, so the pulses add up to the distance travelled.
+//    A message carries one interval's pulses at the channel's speed now, times
+//    the count scale: speed x interval x scale x pulses-per-rev / (pi x wheel
+//    diameter), truncated, as LocoTcasSimulator computes them (0.1 s x v x
+//    ppr / (pi x d) x 1000, into a UINT_32). So at a steady speed every message
+//    carries the same count (session 408: Abhinav, "if I set the speed as 80
+//    why are the pulse counts changing"). The interval is the configured one
+//    (100 ms), not the clock's time since the last message: a late timer does
+//    not change the count, and no fraction is carried. The simulator's
+//    defaults (950 mm, 30, x1000) with the real pi (it used 3.14 for pulses).
+//    The loco's position still moves by the clock's time.
 //
 //  THE TAG FRAME (session 395, step 2: the RFID readers over serial)
 //    LocoTcasSimulator's LPIM_LTACS_NORMAL_TAG_PKT, 22 B packed, 38400 8N1:
@@ -129,7 +133,9 @@ public:
     // Metres along the line; forward counts up, reverse down.
     void   setPosition(double metres) { m_position = metres; }
     double position() const { return m_position; }
-    void   resetCounts();                        // drop the fractions carried
+    // Session 408: the interval one message's pulses are for (s; 0.1 by default).
+    void   setPulseInterval(double seconds) { m_pulseInterval = qMax(0.001, seconds); }
+    double pulseInterval() const { return m_pulseInterval; }
     // The brake's deceleration, m/s^2 (0 none). It wins over the drive while
     // it acts; coming on or going off sets the drive to Hold.
     void   setBrake(double mps2);
@@ -146,7 +152,7 @@ private:
     Drive     m_drive = Drive::Hold;
     Direction m_direction = Forward;
     double    m_channelSpeed[2][2] = { { -1, -1 }, { -1, -1 } };
-    double    m_carry[2][2] = { { 0, 0 }, { 0, 0 } };
+    double    m_pulseInterval = 0.1;
     double    m_position = 0;
     double    m_brake = 0;
 };

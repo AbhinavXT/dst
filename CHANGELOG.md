@@ -10,6 +10,55 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-408"></a>
+## Session 408 — the speed sensors' pulse counts stay put at a steady speed
+
+Abhinav 2026-10-29: *"If I set the speed as 80 why are the pulse count in the
+different sensor channels changing? It should remain constant."*
+
+**Why they changed.** Since session 391 each message carried the pulses for
+the clock's time since the last one, with the fraction carried over. The
+100 ms timer fires a few ms early or late, so the counts at 80 km/h moved by
+tens of pulses message to message, and by 1 on top from the carried
+fraction.
+
+**What LocoTcasSimulator does** (`locodialog.cpp`): `no_of_pulses =
+((0.1*v*pulsesPerRev)/(PI*diameter))*1000` into a `UINT_32`. That is one
+nominal 100 ms at the speed now, truncated, nothing carried.
+
+**Now the same.**
+- Each message carries one interval's pulses (Settings ▸ Every, 100 ms) at
+  each channel's speed now, truncated: at 80 km/h, 22337 on every channel,
+  every message.
+- A slipping or skidding channel is steady at its own speed.
+- The channel gauges and the Frames tab read the speed over the interval.
+- The loco's position still moves by the clock's time. The dashed "where the
+  pulses put it" loco (397) falls behind by under a pulse a message (about
+  0.1 mm), as the simulator's own count does.
+
+**Files:** `locosim.{h,cpp}` (`setPulseInterval`; `resetCounts` and the carry
+gone), `locosimwindow.cpp`, `tests/test_session391.cpp`,
+`tests/test_session397.cpp`.
+
+**Tests:** `session391` now checks:
+- 100 messages at 60 km/h all 16753;
+- ticks 97, 103 and 250 ms after the last still 16753;
+- 80 km/h the same on every channel;
+- a 200 ms interval giving 200 ms of pulses.
+
+Its old checks, that the pulses add up to the distance and that a late tick
+carries more, were 391's choice and are replaced. `session397`'s no-slip check
+now allows a pulse a message. Every other suite passes unchanged (393's 90 km/h
+channel is still 25129).
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 423
+suites / 10611 checks, 0 failed; menu audit and headless smoke ok. Linux
+(Ubuntu 22.04 container): `dltests` 423 / 10611, 0 failed.
+
+**Not tested:** with a real VCC: that it reads a steady speed from them.
+
+---
+
 <a id="session-407"></a>
 ## Session 407 — scripted scenarios: a test's steps, run the same way every time
 

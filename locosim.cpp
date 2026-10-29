@@ -90,12 +90,6 @@ void Motion::setMaxSpeed(double kmh)
     setSpeed(m_speed);
 }
 
-void Motion::resetCounts()
-{
-    for (auto &sensor : m_carry)
-        for (double &fraction : sensor) fraction = 0;
-}
-
 void Motion::setBrake(double mps2)
 {
     const bool was = braking();
@@ -118,15 +112,13 @@ Step Motion::step(double seconds)
     out.metres = meanSpeed / 3.6 * seconds;
     m_position += m_direction == Reverse ? -out.metres : out.metres;
 
+    // Session 408: one interval at the speed now, truncated, as the simulator.
     const double perMetre = pulsesPerMetre(m_wheel);
     for (int sensor = 0; sensor < 2; ++sensor) {
         for (int channel = 0; channel < 2; ++channel) {
             const double own = m_channelSpeed[sensor][channel];
-            const double metres = own < 0 ? out.metres : own / 3.6 * seconds;
-            const double counted = metres * perMetre + m_carry[sensor][channel];
-            const double whole = std::floor(counted);
-            m_carry[sensor][channel] = counted - whole;
-            out.pulses[sensor][channel] = quint32(whole);
+            const double kmh = own < 0 ? m_speed : own;
+            out.pulses[sensor][channel] = quint32(std::floor(kmh / 3.6 * m_pulseInterval * perMetre + 1e-9));
         }
     }
     return out;

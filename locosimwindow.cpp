@@ -2008,6 +2008,7 @@ QWidget *LocoSimWindow::buildSettingsTab()
     connect(m_port, QOverload<int>::of(&QSpinBox::valueChanged), this, [this]() { refreshTop(); });
     connect(m_intervalMs, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int ms) {
         m_timer->setInterval(ms);
+        m_motion.setPulseInterval(ms / 1000.0);
         refreshTop();
     });
     connect(m_hosts, &QLineEdit::editingFinished, this, [this]() { setHosts(m_hosts->text()); });
@@ -2036,6 +2037,7 @@ void LocoSimWindow::pullFromUi()
     wheel.pulsesPerRev = m_pulsesPerRev->value();
     wheel.countScale = m_countScale->value();
     m_motion.setWheel(wheel);
+    m_motion.setPulseInterval(m_intervalMs->value() / 1000.0);   // session 408: each message is one interval's
     m_perMetre->setText(tr("%1 counts a metre").arg(LocoSim::pulsesPerMetre(wheel), 0, 'f', 1));
 }
 
@@ -2091,7 +2093,8 @@ void LocoSimWindow::showStep(const LocoSim::Step &step, double seconds)
                 pulses->setText(tr("off"));
                 continue;
             }
-            gauge->setValue(step.pulses[sensor][channel] / perMetre / seconds * 3.6);
+            // Session 408: the pulses are one interval's, so the speed they say is over it.
+            gauge->setValue(step.pulses[sensor][channel] / perMetre / m_motion.pulseInterval() * 3.6);
             pulses->setText(tr("%1 pulses").arg(step.pulses[sensor][channel]));
         }
     }
@@ -2147,7 +2150,7 @@ bool LocoSimWindow::start()
         m_status->warn(tr("Tag port A is not open (RFID tab): the loco runs along the route but no tag is sent."));
 #endif
     pullFromUi();
-    m_motion.resetCounts();
+    m_motion.setPulseInterval(m_intervalMs->value() / 1000.0);
     m_lastTickMs = m_startedMs = m_clock();
     m_timer->start(m_intervalMs->value());
     m_startStop->setText(tr("Stop"));
@@ -2191,7 +2194,7 @@ void LocoSimWindow::advance(double seconds)
     const LocoSim::Step step = m_motion.step(seconds);
     const double perMetre = LocoSim::pulsesPerMetre(m_motion.wheel());
     const auto kmhOf = [&](quint32 pulses) {
-        return seconds > 0 && perMetre > 0 ? pulses / perMetre / seconds * 3.6 : 0.0;
+        return perMetre > 0 ? pulses / perMetre / m_motion.pulseInterval() * 3.6 : 0.0;
     };
     QVector<UdpSender::Target> targets;
     for (const QString &host : m_hostList) targets.append(UdpSender::Target{ host, quint16(m_port->value()) });
