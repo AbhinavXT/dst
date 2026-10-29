@@ -42,6 +42,13 @@
 //          which gives them back in the order the tag holds them
 //    20-21 end_byte     BB BB
 //
+//  READER HEALTH (session 409, LocoTcasSimulator's LPIM_LTCAS_RFID_READER_HEALTH)
+//    0-1 start_byte AA AA, 2 packet_length 7, 3 rfid_reader 1 / 2,
+//    4 health_status 1 OK / 2 fail, 5-6 end_byte BB BB. Reader 1's every
+//    1 s, reader 2's every 2 s, while the reader is on, whether the loco runs
+//    or not; reader 2's on port B when it has its own port. A reader at Fail
+//    sends its health (2) and no tags, as the simulator.
+//
 //  TAG FAULTS (session 405): per tag, for reader 1, reader 2 or both, each
 //    time the loco passes: Late (sent N ms after the reader would have),
 //    Twice (the frame twice, back to back), Bad CRC (badCrcTag).
@@ -71,6 +78,9 @@ constexpr quint8 kMsgSpeedInfo = 1;
 constexpr int    kSpeedMessageSize = 19;
 constexpr int    kTagFrameSize = 22;
 constexpr int    kTagBaud = 38400;
+constexpr int    kHealthFrameSize = 7;
+// Session 409: how often each reader's health goes out (the simulator's timers).
+constexpr int    kHealthPeriodMs[2] = { 1000, 2000 };
 
 enum Direction : quint8 { Forward = 1, Reverse = 2 };
 
@@ -84,6 +94,9 @@ double     pulsesPerMetre(const Wheel &wheel);
 QByteArray speedMessage(int sensor, quint8 direction, quint32 tachometer1, quint32 tachometer2);
 // Empty unless `tag` is 16 bytes (the simulator sends nothing then either).
 QByteArray tagFrame(int reader, const QByteArray &tag);
+// Session 409: LPIM_LTCAS_RFID_READER_HEALTH, 7 B packed: AA AA, length 7,
+// rfid_reader, health_status (1 OK, 2 fail), BB BB.
+QByteArray healthFrame(int reader, bool ok);
 
 struct BrakeRates {
     double normalMps2      = 0.3;   // m/s^2 at NB's BC, BP at FSB or above

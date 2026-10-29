@@ -16,7 +16,7 @@ constexpr int kVersion = 1;
 
 QStringList kinds()
 {
-    return { QStringLiteral("speed"), QStringLiteral("tag"), QStringLiteral("biu"), QStringLiteral("analog"),
+    return { QStringLiteral("speed"), QStringLiteral("tag"), QStringLiteral("health"), QStringLiteral("biu"), QStringLiteral("analog"),
              QStringLiteral("event") };
 }
 

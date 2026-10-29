@@ -176,6 +176,11 @@ LocoSimWindow::LocoSimWindow(SerialManager *serial, QWidget *parent)
         else start();
     });
     connect(m_timer, &QTimer::timeout, this, &LocoSimWindow::tick);
+    // Session 409: the readers' health, whether the loco runs or not.
+    m_healthTimer = new QTimer(this);
+    m_healthTimer->setInterval(100);
+    connect(m_healthTimer, &QTimer::timeout, this, &LocoSimWindow::healthTick);
+    m_healthTimer->start();
     connect(m_record, &QPushButton::clicked, this, [this]() { toggleRecording(); });
 
     loadSettings();
@@ -535,7 +540,20 @@ QWidget *LocoSimWindow::buildRfidTab()
         m_readerOn[reader]->setObjectName(QStringLiteral("locoSimReader%1").arg(reader + 1));
         m_readerOn[reader]->setToolTip(reader == 0 ? tr("Sends each tag as the loco reaches it")
                                                    : tr("Sends the main tag again 20-24 m past it, then its duplicate"));
-        readerGrid->addWidget(m_readerOn[reader], 0, reader);
+        // Session 409: OK / Fail beside it, as the simulator's.
+        auto *cell = new QHBoxLayout;
+        cell->setSpacing(6);
+        cell->addWidget(m_readerOn[reader]);
+        QWidget *health = SimUi::segmented({ tr("OK"), tr("Fail") }, &m_readerHealth[reader], readers);
+        health->setObjectName(QStringLiteral("locoSimReader%1Health").arg(reader + 1));
+        health->setToolTip(tr("Its health frame says OK (1) or fail (2), every %1 s; at Fail it sends no tags")
+                               .arg(LocoSim::kHealthPeriodMs[reader] / 1000));
+        m_readerHealth[reader]->button(0)->setChecked(true);
+        cell->addWidget(health);
+        cell->addStretch(1);
+        readerGrid->addLayout(cell, 0, reader);
+        connect(m_readerHealth[reader], &QButtonGroup::idClicked, this,
+                [this, reader](int id) { setReaderHealth(reader + 1, id == 0); });
     }
     readerGrid->addWidget(labelNamed(tr("Reader 2 on"), "muted", readers), 1, 0);
     readerGrid->addWidget(SimUi::segmented({ tr("Port A"), tr("Port B") }, &m_reader2Port, readers), 1, 1);
@@ -555,10 +573,10 @@ QWidget *LocoSimWindow::buildRfidTab()
     }
     readerGrid->setColumnStretch(1, 1);
     readerBody->addLayout(readerGrid);
-    auto *note = labelNamed(tr("Each tag goes out as LocoTcasSimulator's 22-byte frame: AA AA, length 22, reader, the "
-                               "16 tag bytes, BB BB, at %1 8N1.").arg(LocoSim::kTagBaud), "muted", readers);
-    note->setWordWrap(true);
-    readerBody->addWidget(note);
+    // The frames, said on the card's tooltip rather than under it (session 409: its height on Linux).
+    readers->setToolTip(tr("Each tag goes out as LocoTcasSimulator's 22-byte frame: AA AA, length 22, reader, the 16 tag "
+                           "bytes, BB BB, at %1 8N1. Each reader's health: AA AA 07, reader, 1 OK / 2 fail, BB BB, every "
+                           "1 s (reader 1) / 2 s (reader 2) while it is on.").arg(LocoSim::kTagBaud));
     readerBody->addStretch(1);
     rightColumn->addWidget(readers, 1);
     top->addLayout(rightColumn, 2);
@@ -612,7 +630,8 @@ QWidget *LocoSimWindow::buildRfidTab()
     connect(back, &QPushButton::clicked, this, [this]() { placeAtStart(); });
     for (int reader = 0; reader < 2; ++reader)
         connect(m_readerOn[reader], &QCheckBox::toggled, this, [this, reader](bool on) {
-            if (m_readers) m_readers->setReader(reader + 1, on);
+            if (m_readers) m_readers->setReader(reader + 1, readerSends(reader + 1));
+            if (on) resetHealthClock(reader + 1);
         });
     connect(m_reader2Port, &QButtonGroup::idClicked, this, [this]() { refreshTagPortState(); });
     connect(m_tags, &QTableWidget::itemChanged, this, [this](QTableWidgetItem *item) {
@@ -699,7 +718,7 @@ void LocoSimWindow::chooseBuilder()
     QList<TagBuilderWindow *> builders;
     if (m_builders)
         for (TagBuilderWindow *builder : m_builders())
-            if (builder->isVisible()) builders << builder;   // a closed one waiting to be deleted is not "open"
+            if (!builder->isClosed()) builders << builder;   // minimised (hidden in the dock) still counts; closed does not
     if (builders.isEmpty()) {
         m_status->warn(tr("No RFID Tag Builder is open: open one (Tools \u25B8 RFID Tag Builder\u2026), then press Tag Builder."));
         return;
@@ -771,8 +790,8 @@ void LocoSimWindow::builderRouteChanged()
     // The readers start again at the loco's place: what it has passed is not
     // sent again; the tags ahead go out as they are now.
     m_readers.reset(new SimPreview::Readers(SimPreview::rowsOf(route)));
-    m_readers->setReader(1, m_readerOn[0]->isChecked());
-    m_readers->setReader(2, m_readerOn[1]->isChecked());
+    m_readers->setReader(1, readerSends(1));
+    m_readers->setReader(2, readerSends(2));
     m_readers->setMissing(skippedTags());
     QVector<SimPreview::Readers::Send> passed;
     const int row = m_readers->step(m_routeD, 0, &passed);
@@ -1299,6 +1318,7 @@ bool LocoSimWindow::doStep(const Scenario::Step &s, QString *why)
         break;
     }
     case Do::Reader:
+        if (!s.kind.isEmpty()) setReaderHealth(s.on.toInt(), s.kind == QLatin1String("ok"));
         setReaderOn(s.on.toInt(), s.value != 0);
         break;
     case Do::AirFault: {
@@ -1494,8 +1514,8 @@ bool LocoSimWindow::chainOn()
     showRoute(next.index);
     const RfidTag::Route &route = m_routes.at(m_routeIndex);
     m_readers.reset(new SimPreview::Readers(SimPreview::rowsOf(route)));
-    m_readers->setReader(1, m_readerOn[0]->isChecked());
-    m_readers->setReader(2, m_readerOn[1]->isChecked());
+    m_readers->setReader(1, readerSends(1));
+    m_readers->setReader(2, readerSends(2));
     m_readers->setMissing(skippedTags());
     m_routeRow = -1;
     m_routeEnded = false;
@@ -1517,6 +1537,52 @@ bool LocoSimWindow::chainOn()
 void LocoSimWindow::setReaderOn(int reader, bool on)
 {
     if (reader == 1 || reader == 2) m_readerOn[reader - 1]->setChecked(on);
+}
+
+// ---- session 409: the readers' health ----------------------------------------------------
+
+bool LocoSimWindow::readerSends(int reader) const
+{
+    return (reader == 1 || reader == 2) && m_readerOn[reader - 1]->isChecked() && !m_readerFail[reader - 1];
+}
+
+void LocoSimWindow::setReaderHealth(int reader, bool ok)
+{
+    if (reader != 1 && reader != 2) return;
+    m_readerFail[reader - 1] = !ok;
+    m_readerHealth[reader - 1]->button(ok ? 0 : 1)->setChecked(true);
+    if (m_readers) m_readers->setReader(reader, readerSends(reader));
+}
+
+void LocoSimWindow::resetHealthClock(int reader)
+{
+    // As the simulator's timer: the first frame one period after the reader is set.
+    m_healthDue[reader - 1] = m_clock() + LocoSim::kHealthPeriodMs[reader - 1];
+}
+
+void LocoSimWindow::healthTick()
+{
+    const qint64 now = m_clock();
+    for (int reader = 1; reader <= 2; ++reader) {
+        if (!m_readerOn[reader - 1]->isChecked() || now < m_healthDue[reader - 1]) continue;
+        m_healthDue[reader - 1] = now + LocoSim::kHealthPeriodMs[reader - 1];
+        const QByteArray frame = LocoSim::healthFrame(reader, !m_readerFail[reader - 1]);
+        const int port = reader == 2 && m_reader2Port->checkedId() == 1 ? 1 : 0;
+        bool sent = false;
+        if (m_healthSink) {
+            m_healthSink(port, frame);
+            sent = true;
+        } else if (!m_tagSink) {
+#ifdef DL_HAVE_SERIAL
+            if (m_tagLink[port] && m_tagLink[port]->isOpen()) sent = m_tagLink[port]->write(frame) == frame.size();
+#endif
+        }
+        if (!sent) continue;   // its port closed: nothing to say it on
+        ++m_healthSent[reader - 1];
+        if (m_recorder && m_recorder->recording())
+            record(QStringLiteral("health"), port == 0 ? tr("port A") : tr("port B"), frame,
+                   tr("reader %1 \u00B7 health %2").arg(reader).arg(m_readerFail[reader - 1] ? tr("fail (2)") : tr("OK (1)")));
+    }
 }
 
 void LocoSimWindow::setReader2OwnPort(bool own)
@@ -1556,8 +1622,8 @@ bool LocoSimWindow::placeAtStart()
     const QVector<SimPreview::Row> rows = SimPreview::rowsOf(route);
     const int start = qBound(0, m_startTag->currentIndex(), rows.size() - 1);
     m_readers.reset(new SimPreview::Readers(rows));
-    m_readers->setReader(1, m_readerOn[0]->isChecked());
-    m_readers->setReader(2, m_readerOn[1]->isChecked());
+    m_readers->setReader(1, readerSends(1));
+    m_readers->setReader(2, readerSends(2));
     m_readers->setMissing(skippedTags());
     m_routeD = m_pulseD = rows.at(start).absLoc;
     m_routeRow = start;
@@ -2385,6 +2451,7 @@ void LocoSimWindow::loadSettings()
 
     for (int reader = 0; reader < 2; ++reader)
         m_readerOn[reader]->setChecked(settings.value(QStringLiteral("rfidReader%1").arg(reader + 1), true).toBool());
+    for (int reader = 1; reader <= 2; ++reader) resetHealthClock(reader);
     m_reader2Port->button(settings.value(QStringLiteral("rfidReader2OwnPort"), false).toBool() ? 1 : 0)->setChecked(true);
     for (int which = 0; which < 2; ++which)
         m_tagPort[which]->setEditText(settings.value(QStringLiteral("rfidPort%1").arg(QChar(QLatin1Char('A' + which)))).toString());

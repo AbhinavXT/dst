@@ -13,7 +13,8 @@
 //                         hold
 //            the readers: skip a tag (1 on, 0 off), a tag's fault (none,
 //                         late, twice, crc; value: late's ms), a reader on
-//                         or off (on: 1 or 2; value 1 / 0)
+//                         or off (on: 1 or 2; value 1 / 0; session 409:
+//                         kind ok or fail sets its health too)
 //            the bench:   an air fault (on: BP / BC / MR; kind: none, stuck,
 //                         slow, leak; value: slow's factor or leak's rate),
 //                         the BIU silent (1) or talking (0), a BIU fault

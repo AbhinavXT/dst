@@ -10,6 +10,64 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-409"></a>
+## Session 409 — the RFID readers' health frames, as the simulator sends them
+
+Abhinav 2026-10-29: *"We need to implement the rfid health packet sending for
+reader 1 and reader 2, just like the simulator"*; and *"if tag builder is
+minimized the rfid window shows no tag builder is open"*.
+
+**The frame** (LocoTcasSimulator's `LPIM_LTCAS_RFID_READER_HEALTH`,
+`sendRFidReader1Status` / `2Status`), 7 bytes packed: `AA AA`, length 7,
+`rfid_reader` 1 / 2, `health_status` 1 OK / 2 fail, `BB BB`.
+
+**What the operator sees.** Loco Simulator ▸ RFID ▸ Readers: **OK | Fail**
+beside Reader 1 and Reader 2.
+- **While a reader is on,** its health goes out: reader 1's every 1 s,
+  reader 2's every 2 s (the simulator's timers), the first one period after
+  the reader is set. That is whether the loco runs or not, while its port
+  is open.
+- **Reader 2's** goes on port B when it has its own port, as its tags do.
+- **A reader at Fail** says 2 and sends no tags, as the simulator (it sends
+  tags only at OK).
+- **A recording** (404) has them as `health` frames ("reader 1 · health OK
+  (1)").
+- **A scenario** (407) "a reader on / off" step takes kind ok or fail.
+- **The Readers card's frame notes** are on its tooltip now: on Linux the
+  wrapped note and the new OK / Fail made the window 708 px tall.
+
+**The minimised Tag Builder.** The main window's dock minimises a tool
+window by hiding it, and the RFID tab's Tag Builder button counted only
+builders on screen (402). It now counts every builder not closed:
+`TagBuilderWindow::isClosed()` is set when its close goes through.
+
+**Files:** `locosim.{h,cpp}` (`healthFrame`, `kHealthPeriodMs`),
+`locosimwindow.{h,cpp}` (`setReaderHealth`, `healthTick`, `readerSends`, OK /
+Fail), `tagbuilderwindow.{h,cpp}` (`isClosed`), `benchrecord.{h,cpp}`
+(`health`), `scenario.{h,cpp}`, `tests/test_session409.cpp`, `tests/tests.pro`.
+
+**Tests:** `session409` (15 checks):
+- the frames byte by byte (`AA AA 07 01 01 BB BB`, `AA AA 07 02 02 BB BB`);
+- 6 s with the loco stopped: reader 1 six frames, reader 2 three, the first
+  1 s after being set, all on port A;
+- reader 2 at Fail on its own port: port B, status 2;
+- reader 1 at Fail on a 60 s run: none of its tags, reader 2's still sent;
+- both off: none; recorded; a scenario step setting Fail, and an unknown
+  kind refused;
+- a hidden (minimised) builder still followed, a closed one marked closed.
+
+Sessions 393 to 407 pass unchanged.
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 424
+suites / 10626 checks, 0 failed; menu audit and headless smoke ok. Linux
+(Ubuntu 22.04 container): `dltests` 424 / 10626, 0 failed (the window fits
+again); menu audit ok.
+
+**Not tested:** what a real VCC does with them, over a real serial port; the
+dock's minimise by hand (the test hides the window as the dock does).
+
+---
+
 <a id="session-408"></a>
 ## Session 408 — the speed sensors' pulse counts stay put at a steady speed
 

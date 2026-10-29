@@ -2010,6 +2010,10 @@ bool TagBuilderWindow::confirmDiscard()
 
 void TagBuilderWindow::closeEvent(QCloseEvent *e)
 {
-    if (confirmDiscard()) e->accept();
-    else e->ignore();
+    if (confirmDiscard()) {
+        m_closed = true;   // session 409: deleted once the event loop gets to it
+        e->accept();
+    } else {
+        e->ignore();
+    }
 }

@@ -25,6 +25,9 @@
 //              the next route, found by location (same direction, its first
 //              tag nearest ahead of the last one, in the same file or folder);
 //              or the routes set in an order.
+//              (session 409) each reader OK or Fail, and its health frame
+//              every 1 s / 2 s while it is on, as the simulator; at Fail it
+//              sends no tags.
 //              (session 402) Tag Builder: the route open in a Tag Builder,
 //              as it is now, saved or not; each edit there comes here and
 //              the loco stays where it is (back to the start tag when the
@@ -142,6 +145,13 @@ public:
     RouteStrip *wholeRoute() const { return m_wholeStrip; }
     RouteStrip *followView() const { return m_followStrip; }
     void   setReaderOn(int reader, bool on);
+    // Session 409: a reader's health (OK or Fail); at Fail it sends no tags.
+    void   setReaderHealth(int reader, bool ok);
+    bool   readerHealthOk(int reader) const { return reader == 2 ? !m_readerFail[1] : !m_readerFail[0]; }
+    void   healthTick();                        // what the health timer does: each reader's frame when due
+    int    healthSent(int reader) const { return reader == 2 ? m_healthSent[1] : m_healthSent[0]; }
+    // Tests: health frames go here (port 0 = A, 1 = B). With only a tag sink, none is sent.
+    void   setHealthSink(const std::function<void(int, const QByteArray &)> &sink) { m_healthSink = sink; }
     void   setSkipped(const QString &tag, bool skip);   // tag as the rows name it ("904", "904D")
     // Session 405: a fault on a tag (as the rows name it); readers 1, 2 or 3 (both).
     struct TagFaultSetting {
@@ -187,6 +197,8 @@ private:
     bool   doStep(const Scenario::Step &step, QString *why);
     bool   hasTag(const QString &name) const;
     void   applyBrake();
+    bool   readerSends(int reader) const;       // on, and at OK
+    void   resetHealthClock(int reader);
     void   record(const QString &kind, const QString &peer, const QByteArray &bytes, const QString &says,
                   const QString &note = QString());
     void   refreshRecordButton();
@@ -288,6 +300,12 @@ private:
     QPushButton    *m_tagPortOpen[2] = { nullptr, nullptr };
     QLabel         *m_tagPortState[2] = { nullptr, nullptr };
     QButtonGroup   *m_reader2Port = nullptr;
+    QButtonGroup   *m_readerHealth[2] = { nullptr, nullptr };   // session 409: 0 OK, 1 Fail
+    bool            m_readerFail[2] = { false, false };
+    QTimer         *m_healthTimer = nullptr;
+    qint64          m_healthDue[2] = { 0, 0 };
+    int             m_healthSent[2] = { 0, 0 };
+    std::function<void(int, const QByteArray &)> m_healthSink;
     QTableWidget   *m_tags = nullptr;
     QToolButton    *m_tagsToggle = nullptr;
     RouteStrip     *m_wholeStrip = nullptr;

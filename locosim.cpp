@@ -30,6 +30,15 @@ QByteArray speedMessage(int sensor, quint8 direction, quint32 tachometer1, quint
     return message;                           // crc (15-18) stays 0
 }
 
+QByteArray healthFrame(int reader, bool ok)
+{
+    QByteArray frame;
+    frame.reserve(kHealthFrameSize);
+    frame.append(char(0xAA)).append(char(0xAA)).append(char(kHealthFrameSize)).append(char(reader)).append(char(ok ? 1 : 2));
+    frame.append(char(0xBB)).append(char(0xBB));
+    return frame;
+}
+
 QString tagFaultName(TagFault fault)
 {
     switch (fault) {

@@ -10,6 +10,7 @@
 //    speed    each speed sensor message the Loco Simulator sends (UDP)
 //    tag      each RFID tag frame its readers send (serial), or why one
 //             could not go
+//    health   (session 409) each reader's health frame
 //    biu      every BIU frame, both ways (the VCC's commands, heartbeats and
 //             NMT in; the BIU's status, heartbeat and NMT out)
 //    analog   every analog card frame the bench sends

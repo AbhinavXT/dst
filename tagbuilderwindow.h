@@ -204,6 +204,10 @@ public:
     QLineEdit *pageYEdit() const { return m_pageY; }
     StatusLine *status() const { return m_status; }
 
+    // Session 409: closed (deleted on close, so gone soon). A minimised builder
+    // is hidden in the main window's dock but still open.
+    bool isClosed() const { return m_closed; }
+
 signals:
     void jumpRequested(const QString &key, qint64 ms);
     // Session 402: the route changed (opened, edited, undone, renamed), for
@@ -271,6 +275,7 @@ private:
     QTableWidget *m_simTable = nullptr;
     QLabel *m_simSummary = nullptr;
     StatusLine *m_status = nullptr;
+    bool m_closed = false;
 };
 
 #endif  // TAGBUILDERWINDOW_H

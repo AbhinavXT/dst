@@ -90,7 +90,10 @@ QString describe(const Step &s)
         what = s.kind == QLatin1String("late") ? QObject::tr("tag %1 late by %2 ms").arg(s.on).arg(num(s.value))
                                                : QObject::tr("tag %1 %2").arg(s.on, s.kind);
         break;
-    case Do::Reader:     what = QObject::tr("reader %1 %2").arg(s.on, s.value != 0 ? QObject::tr("on") : QObject::tr("off")); break;
+    case Do::Reader:
+        what = QObject::tr("reader %1 %2").arg(s.on, s.value != 0 ? QObject::tr("on") : QObject::tr("off"))
+               + (s.kind.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(s.kind));
+        break;
     case Do::AirFault:
         what = s.kind == QLatin1String("none") ? QObject::tr("%1 fault cleared").arg(s.on)
                                                : QObject::tr("%1 %2").arg(s.on, s.kind)
@@ -115,6 +118,8 @@ bool check(const Script &script, QString *why)
         else if ((s.action == Do::SkipTag || s.action == Do::TagFault) && s.on.trimmed().isEmpty()) wrong = QObject::tr("no tag to act on");
         else if (s.action == Do::TagFault && !tagKinds.contains(s.kind)) wrong = QObject::tr("a tag's fault is none, late, twice or crc");
         else if (s.action == Do::Reader && s.on != QLatin1String("1") && s.on != QLatin1String("2")) wrong = QObject::tr("reader 1 or 2");
+        else if (s.action == Do::Reader && !s.kind.isEmpty() && s.kind != QLatin1String("ok") && s.kind != QLatin1String("fail"))
+            wrong = QObject::tr("a reader's kind is ok or fail (or empty)");
         else if (s.action == Do::AirFault && !air.contains(s.on)) wrong = QObject::tr("an air fault is on BP, BC or MR");
         else if (s.action == Do::AirFault && !airKinds.contains(s.kind)) wrong = QObject::tr("an air fault is none, stuck, slow or leak");
         else if (s.action == Do::BiuFault && !s.text.isEmpty()) {
