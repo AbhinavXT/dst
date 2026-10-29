@@ -10,6 +10,70 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-412"></a>
+## Session 412 — each packet in a Decode Workbench or Packet Maker of its own
+
+Abhinav 2026-10-29, the first of three (*"Bug: when i open a packet in
+decode workbench than minimize it and open another packet in decode
+workbench than the decode workbench rrmains minimized and does not open on
+clicking maxmize. There shiuld be new decode workbench window for the new
+packet and both can be opened and minimized"*). His order: this, then the
+minimised chips side by side (413), then configurable row clicks (414).
+
+**What the operator sees.**
+- **Open in Decode Workbench / Open in Packet Maker** on a row (the row
+  menu, the raw bytes panel, the .dlr viewer's Tools, Compare's workbench)
+  opens **a new window each time**. Each is titled by its row, e.g.
+  "Decode Workbench · @dop1_1_1 14:33:20.000", so two of them, and their
+  chips in the status bar, can be told apart. Each minimises to its own
+  chip and comes back from it on its own. The time is in UTC when the log
+  shows UTC.
+- **A minimised window shown again some other way** (its menu item
+  reopened it, a single-window tool such as the Flasher or Loco
+  Configuration) **comes back as it was before it was minimised**. Until
+  now its chip went but the window stayed minimised, which on Windows is the
+  stub whose Maximize does nothing.
+- Tools ▸ Decode Workbench in the .dlr viewer opens a new window too, as
+  it already did in the main window.
+
+**Why it happened.** The row reused the window last opened that way, on
+purpose (the old comment: "a right-click that spawns a new window every
+time buries the desktop"). Abhinav now wants one per packet. The reused
+window was hidden by the dock (minimizeddock.h) with its state left
+minimised. `show()` from the next row brought it back as a minimised window.
+The dock now gives a window it held its earlier state when the window is
+shown again from outside it. **A Packet Maker mid-send** was already given a
+new window rather than being written over; now every row gets one.
+
+**Files:** `mainwindow.h`, `mainwindow_tools.cpp` (`openBufferInWorkbench` /
+`openBufferInPacketMaker` return the new window and take a label;
+`entryLabel`; `m_bufferWorkbench` and `m_bufferPacketMaker` gone),
+`sessionwindow.cpp`, `comparewindow.cpp`, `minimizeddock.cpp`,
+`tests/test_session412.cpp`, `tests/tests.pro`.
+
+**Tests:** `session412` (11 checks), three real rows from
+`replay/loco_1_1_27062026_140226.cap`:
+- **the dock:** a minimised window shown again from outside: its chip goes
+  and it is no longer minimised;
+- **the workbench**, in a real MainWindow through the raw bytes panel's
+  request: a window titled by its row; that one minimised and a second row
+  opened: a second window, the first still minimised; the first one's chip
+  brings it back with both open; both minimised: a chip each, and each
+  comes back on its own;
+- **the Packet Maker:** two rows, two windows, each titled by its row.
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 427
+suites / 10678 checks, 0 failed; menu audit 203 ok; headless smoke ok. Linux:
+left to CI. The first run had `assertions` failing after `session412`: the
+MainWindow the test builds loads the field catalogue; the test now clears it
+again, as session 287 does.
+
+**Not tested:** on Windows itself, where the stub was seen (CI's Windows job
+runs the suite on the native platform); the .dlr viewer's and Compare's
+openers (changed the same way, no test of their own).
+
+---
+
 <a id="session-411"></a>
 ## Session 411 — a line of the Station Layout, run in the Loco Simulator
 

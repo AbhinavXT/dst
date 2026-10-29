@@ -68,7 +68,22 @@ bool MinimizedDock::eventFilter(QObject *watched, QEvent *event)
         // Brought back some other way (its menu item reopened it): the chip
         // has nothing left to stand for. isVisible() matters: Qt also sends
         // Show to a HIDDEN window whose state changes, without showing it.
+        // Session 412: its state was left minimised while it was docked, so
+        // it came back as a minimised window that Maximize would not open.
+        // It gets the state it had before, as from its chip (deferred: not
+        // inside its own Show).
+        const Qt::WindowStates state = m_chips.at(indexOf(window)).restoreState;
         undock(window);
+        if (window->windowState() & Qt::WindowMinimized) {
+            QPointer<QWidget> guarded(window);
+            QTimer::singleShot(0, this, [guarded, state]() {
+                if (!guarded || !(guarded->windowState() & Qt::WindowMinimized)) return;
+                guarded->setWindowState(state);
+                guarded->show();
+                guarded->raise();
+                guarded->activateWindow();
+            });
+        }
     }
     return QWidget::eventFilter(watched, event);
 }

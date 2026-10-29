@@ -1337,10 +1337,9 @@ void SessionWindow::onFind()
 
 void SessionWindow::onToolWorkbench()
 {
-    if (!m_workbench) {
-        m_workbench = new DecodeWorkbench(this, keys());
-        m_workbench->setAttribute(Qt::WA_DeleteOnClose);
-    }
+    // Session 412: a new window each time, as in the main window.
+    m_workbench = new DecodeWorkbench(this, keys());
+    m_workbench->setAttribute(Qt::WA_DeleteOnClose);
     m_workbench->show();
     m_workbench->raise();
     m_workbench->activateWindow();
@@ -1364,14 +1363,10 @@ void SessionWindow::onToolRowToPacketMaker()
         statusBar()->showMessage(tr("That row carries no bytes to load."), 4000);
         return;
     }
-    // A maker that is mid-send is doing something the operator started and is
-    // watching; overwriting its fields would change what goes on the wire with
-    // no warning. That one gets a window of its own.
-    if (m_packetMaker && m_packetMaker->isSending()) { m_packetMaker = nullptr; }
-    if (!m_packetMaker) {
-        m_packetMaker = new PacketMakerDialog(this, m_frameWatch, keys());
-        m_packetMaker->setAttribute(Qt::WA_DeleteOnClose);
-    }
+    // Session 412: a new window for each row, so one that is mid-send is
+    // never written over, and each can be minimised and brought back alone.
+    m_packetMaker = new PacketMakerDialog(this, m_frameWatch, keys());
+    m_packetMaker->setAttribute(Qt::WA_DeleteOnClose);
     m_packetMaker->loadBuffer(buf);
     m_packetMaker->show();
     m_packetMaker->raise();

@@ -50,6 +50,7 @@
 #include <QActionGroup>
 #include <QCoreApplication>
 #include <QDateTime>
+#include <QTimeZone>
 #include <QClipboard>
 #include <QCloseEvent>
 #include <QResizeEvent>
@@ -297,43 +298,48 @@ void MainWindow::onActionPacketMaker()
 // ---------------------------------------------------------------------------
 //  Taking a buffer to the Decode Workbench / Packet Maker
 // ---------------------------------------------------------------------------
-void MainWindow::openBufferInWorkbench(const QString &bufferText)
+DecodeWorkbench *MainWindow::openBufferInWorkbench(const QString &bufferText, const QString &label)
 {
     if (bufferText.trimmed().isEmpty()) {
         notify(NoteLevel::Warning, tr("Nothing to decode — the buffer is empty."));
-        return;
+        return nullptr;
     }
-    if (!m_bufferWorkbench) {
-        m_bufferWorkbench = new DecodeWorkbench(this, m_sessionKeys);
-        m_bufferWorkbench->setAttribute(Qt::WA_DeleteOnClose);
-    }
-    m_bufferWorkbench->loadBuffer(bufferText);
-    m_bufferWorkbench->show();
-    m_bufferWorkbench->raise();
-    m_bufferWorkbench->activateWindow();
+    auto *wb = new DecodeWorkbench(this, m_sessionKeys);
+    wb->setAttribute(Qt::WA_DeleteOnClose);
+    wb->loadBuffer(bufferText);
+    if (!label.isEmpty()) wb->setWindowTitle(tr("Decode Workbench \u00B7 %1").arg(label));
+    wb->show();
+    wb->raise();
+    wb->activateWindow();
+    return wb;
 }
 
-void MainWindow::openBufferInPacketMaker(const QString &bufferText)
+PacketMakerDialog *MainWindow::openBufferInPacketMaker(const QString &bufferText, const QString &label)
 {
     if (bufferText.trimmed().isEmpty()) {
         notify(NoteLevel::Warning, tr("Nothing to load — the buffer is empty."));
-        return;
+        return nullptr;
     }
-    // A maker that is mid-send is doing something the operator started and
-    // is watching. Overwriting its fields under it would change what goes on
-    // the wire with no warning, so that one gets a window of its own.
-    if (m_bufferPacketMaker && m_bufferPacketMaker->isSending()) {
-        m_bufferPacketMaker = nullptr;
-    }
-    if (!m_bufferPacketMaker) {
-        m_bufferPacketMaker = new PacketMakerDialog(this, m_frameWatch, m_sessionKeys);
-        m_bufferPacketMaker->setAttribute(Qt::WA_DeleteOnClose);
-        connectLoopback(m_bufferPacketMaker);
-    }
-    m_bufferPacketMaker->loadBuffer(bufferText);
-    m_bufferPacketMaker->show();
-    m_bufferPacketMaker->raise();
-    m_bufferPacketMaker->activateWindow();
+    // A new window each time, so one that is mid-send is never written over.
+    auto *pm = new PacketMakerDialog(this, m_frameWatch, m_sessionKeys);
+    pm->setAttribute(Qt::WA_DeleteOnClose);
+    connectLoopback(pm);
+    pm->loadBuffer(bufferText);
+    if (!label.isEmpty()) pm->setWindowTitle(tr("Packet Maker \u00B7 %1").arg(label));
+    pm->show();
+    pm->raise();
+    pm->activateWindow();
+    return pm;
+}
+
+// Session 412: "@dmi 14:02:26.120", the row a window was opened from.
+static QString entryLabel(const LogEntryPtr &entry)
+{
+    const QString first = entry->text.section(QLatin1Char(' '), 0, 0, QString::SectionSkipEmpty);
+    const QDateTime at = Settings::showUtc() ? QDateTime::fromMSecsSinceEpoch(entry->epochMs, QTimeZone::utc())
+                                             : QDateTime::fromMSecsSinceEpoch(entry->epochMs);
+    const QString time = at.toString(QStringLiteral("HH:mm:ss.zzz"));
+    return first.startsWith(QLatin1Char('@')) ? first + QLatin1Char(' ') + time : time;
 }
 
 void MainWindow::openEntryInWorkbench(const LogEntryPtr &entry)
@@ -343,7 +349,7 @@ void MainWindow::openEntryInWorkbench(const LogEntryPtr &entry)
         notify(NoteLevel::Warning, tr("That row carries no bytes to decode."));
         return;
     }
-    openBufferInWorkbench(buf);
+    openBufferInWorkbench(buf, entryLabel(entry));
 }
 
 void MainWindow::openEntryInPacketMaker(const LogEntryPtr &entry)
@@ -353,7 +359,7 @@ void MainWindow::openEntryInPacketMaker(const LogEntryPtr &entry)
         notify(NoteLevel::Warning, tr("That row carries no bytes to load."));
         return;
     }
-    openBufferInPacketMaker(buf);
+    openBufferInPacketMaker(buf, entryLabel(entry));
 }
 
 void MainWindow::openFrameDiff(const LogEntryPtr &a, const LogEntryPtr &b)
@@ -776,7 +782,7 @@ void MainWindow::onActionCompareTabs()
                 plotFieldIn(sourceKey, field);
             });
     connect(cmp, &CompareWindow::packetMakerRequested,
-            this, &MainWindow::openBufferInPacketMaker);
+            this, [this](const QString &buffer) { openBufferInPacketMaker(buffer); });
     connect(cmp, &CompareWindow::locateFieldRequested,
             this, [this](const QString &f) { showFieldIndex(f); });
 

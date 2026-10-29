@@ -346,13 +346,12 @@ private:
     // (logentry.h), so the row menu, the raw-bytes panel and anything else
     // that grows this feature all send the same thing.
     //
-    // Open (or raise) the workbench / packet maker on `bufferText`. Both
-    // reuse the window last opened this way while it is still alive: a
-    // right-click that spawns a new window every time buries the desktop,
-    // and the whole point is to look at one frame after another. The Tools
-    // menu still opens fresh, independent windows.
-    void openBufferInWorkbench(const QString &bufferText);
-    void openBufferInPacketMaker(const QString &bufferText);
+    // Open a workbench / packet maker on `bufferText`: a new window each
+    // time (session 412, Abhinav: each packet its own window, each minimised
+    // and brought back on its own). `label` ("@dmi 14:02:26.120") goes in
+    // its title, so two of them, or their chips, can be told apart.
+    DecodeWorkbench *openBufferInWorkbench(const QString &bufferText, const QString &label = QString());
+    PacketMakerDialog *openBufferInPacketMaker(const QString &bufferText, const QString &label = QString());
     // Same two, from an entry; report through the notification centre when
     // the entry carries no bytes worth sending.
     void openEntryInWorkbench(const LogEntryPtr &entry);
@@ -434,7 +433,6 @@ private:
     QPointer<FieldSweepDialog>  m_fieldSweep;
     QPointer<RoundTripWindow>   m_roundTrip;
     QPointer<SchemaEditorWindow> m_schemaEditor;
-    QPointer<DecodeWorkbench>   m_bufferWorkbench;
     // One flasher at a time: two windows flashing the same chassis would
     // interleave their META/DATA on the wire. Reopening raises this one.
     QPointer<FlasherWindow>     m_flasher;
@@ -464,7 +462,6 @@ private:
     // ---- tab colour tags --------------------------------------------------------
     void applyTabTag(const QString &key);    // empty key: every tab
     void applyAllTabTags();
-    QPointer<PacketMakerDialog> m_bufferPacketMaker;
     void connectLoopback(PacketMakerDialog *pm);   // session 242: Show in tab
 
 

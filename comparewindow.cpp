@@ -465,10 +465,9 @@ void CompareWindow::onRowToWorkbench()
     const QString buf = entryBufferText(model->entryAt(cur.row()));
     if (buf.isEmpty()) { return; }
 
-    if (!m_workbench) {
-        m_workbench = new DecodeWorkbench(this, m_sessionKeys);
-        m_workbench->setAttribute(Qt::WA_DeleteOnClose);
-    }
+    // Session 412: a new window for each frame.
+    m_workbench = new DecodeWorkbench(this, m_sessionKeys);
+    m_workbench->setAttribute(Qt::WA_DeleteOnClose);
     m_workbench->loadBuffer(buf);
     m_workbench->show();
     m_workbench->raise();
