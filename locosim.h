@@ -40,14 +40,15 @@
 //
 //  THE BRAKE (session 398, step 3: braking from the BIU's command)
 //    The VCC commands the BIU; the Brake Test Bench's air (brakeplant.h)
-//    moves toward it; the loco slows by what the air does. Deceleration is
-//    proportional to BC up to BC at full service (formation FSB / EB: 2.4,
-//    Annexure-4), and BP picks the ceiling: the full-service rate at the FSB
-//    BP (3.5) or above, rising to the emergency rate as BP falls to 0. NB
-//    (BC 1.2, BP 4.4) is half the full-service rate; FSB (2.4, 3.5) the full
-//    service rate; EB (2.4, 0) the emergency rate. BC at or under 0.1 (the
-//    released tolerance) is no brake. The rates are settings, not loco data:
-//    no per-loco-type figures are known yet.
+//    moves toward it; the loco slows by what the air does. BC sets the rate:
+//    0 at the released tolerance (0.1) and under, the NB rate at NB's BC
+//    (1.2, Annexure-4), the full-service rate at BC full service (formation
+//    FSB / EB: 2.4) and above, straight lines between (session 399: the NB
+//    point has its own rate, so NB can be set without moving FSB or EB).
+//    BP under the FSB level (3.5) raises it, up to emergency / full service
+//    times at BP 0. So NB (BC 1.2, BP 4.4) gives the NB rate, FSB (2.4, 3.5)
+//    the full-service rate, EB (2.4, 0) the emergency rate. The rates are
+//    settings, not loco data: no per-loco-type figures are known yet.
 //    While a brake acts it wins over the drive; when it comes on and when it
 //    goes off the drive goes to Hold, so the loco keeps the speed it slowed to.
 // =============================================================================
@@ -77,8 +78,10 @@ QByteArray speedMessage(int sensor, quint8 direction, quint32 tachometer1, quint
 QByteArray tagFrame(int reader, const QByteArray &tag);
 
 struct BrakeRates {
+    double normalMps2      = 0.3;   // m/s^2 at NB's BC, BP at FSB or above
     double fullServiceMps2 = 0.6;   // m/s^2 at BC full service, BP at FSB or above
     double emergencyMps2   = 0.9;   // m/s^2 at BC full service, BP 0
+    double nbBcKgcm2       = 1.2;   // BC at NB
     double fullBcKgcm2     = 2.4;   // BC at full service (formation FSB / EB)
     double fsbBpKgcm2      = 3.5;   // BP at FSB
     double releasedBcKgcm2 = 0.1;   // BC at or under: no brake

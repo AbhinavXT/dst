@@ -44,11 +44,21 @@ QByteArray tagFrame(int reader, const QByteArray &tag)
 double brakeDeceleration(const BrakeRates &rates, double bpKgcm2, double bcKgcm2)
 {
     if (bcKgcm2 <= rates.releasedBcKgcm2 || rates.fullBcKgcm2 <= 0) return 0;
-    const double applied = qMin(1.0, bcKgcm2 / rates.fullBcKgcm2);
+    // BC alone: up to the NB rate at NB's BC, then on to full service.
+    double base = rates.fullServiceMps2;
+    if (bcKgcm2 < rates.fullBcKgcm2) {
+        if (rates.nbBcKgcm2 <= 0 || rates.nbBcKgcm2 >= rates.fullBcKgcm2)
+            base = rates.fullServiceMps2 * bcKgcm2 / rates.fullBcKgcm2;
+        else if (bcKgcm2 <= rates.nbBcKgcm2)
+            base = rates.normalMps2 * bcKgcm2 / rates.nbBcKgcm2;
+        else
+            base = rates.normalMps2 + (rates.fullServiceMps2 - rates.normalMps2) * (bcKgcm2 - rates.nbBcKgcm2)
+                                          / (rates.fullBcKgcm2 - rates.nbBcKgcm2);
+    }
     // BP under the FSB level: toward the emergency rate as it falls to 0.
     const double belowFsb = rates.fsbBpKgcm2 > 0 ? qBound(0.0, (rates.fsbBpKgcm2 - bpKgcm2) / rates.fsbBpKgcm2, 1.0) : 0.0;
-    const double ceiling = rates.fullServiceMps2 + (rates.emergencyMps2 - rates.fullServiceMps2) * belowFsb;
-    return qMax(0.0, applied * ceiling);
+    const double boost = rates.fullServiceMps2 > 0 ? (rates.emergencyMps2 / rates.fullServiceMps2 - 1) * belowFsb : 0.0;
+    return qMax(0.0, base * (1 + boost));
 }
 
 void Motion::setSpeed(double kmh)

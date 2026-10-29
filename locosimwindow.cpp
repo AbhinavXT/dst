@@ -1087,24 +1087,28 @@ QWidget *LocoSimWindow::buildSettingsTab()
         spin->setSuffix(suffix);
         return spin;
     };
+    m_normal = rateSpin("locoSimNormal", 3, QStringLiteral(" m/s\u00B2"));
+    m_normal->setToolTip(tr("NB: BC 1.2 with BP at the FSB level (3.5) or above"));
     m_fullService = rateSpin("locoSimFullService", 3, QStringLiteral(" m/s\u00B2"));
     m_fullService->setToolTip(tr("BC at full service with BP at the FSB level (3.5) or above"));
     m_emergency = rateSpin("locoSimEmergency", 3, QStringLiteral(" m/s\u00B2"));
     m_emergency->setToolTip(tr("BC at full service with BP at 0"));
     m_fullBc = rateSpin("locoSimFullBc", 6, QStringLiteral(" kg/cm\u00B2"));
     m_fullBc->setToolTip(tr("Annexure-4: 2.4 in formation, 3.5 for a light engine"));
-    brakeGrid->addWidget(labelNamed(tr("Full service"), "muted", brakes), 0, 0);
-    brakeGrid->addWidget(m_fullService, 0, 1);
-    brakeGrid->addWidget(labelNamed(tr("Emergency"), "muted", brakes), 1, 0);
-    brakeGrid->addWidget(m_emergency, 1, 1);
-    brakeGrid->addWidget(labelNamed(tr("BC at full service"), "muted", brakes), 2, 0);
-    brakeGrid->addWidget(m_fullBc, 2, 1);
+    brakeGrid->addWidget(labelNamed(tr("Normal (NB)"), "muted", brakes), 0, 0);
+    brakeGrid->addWidget(m_normal, 0, 1);
+    brakeGrid->addWidget(labelNamed(tr("Full service"), "muted", brakes), 1, 0);
+    brakeGrid->addWidget(m_fullService, 1, 1);
+    brakeGrid->addWidget(labelNamed(tr("Emergency"), "muted", brakes), 2, 0);
+    brakeGrid->addWidget(m_emergency, 2, 1);
+    brakeGrid->addWidget(labelNamed(tr("BC at full service"), "muted", brakes), 3, 0);
+    brakeGrid->addWidget(m_fullBc, 3, 1);
     brakeGrid->setColumnStretch(2, 1);
     brakeBody->addLayout(brakeGrid);
-    auto *brakeNote = labelNamed(tr("The loco slows in proportion to BC, up to BC at full service; BP picks the "
-                                    "ceiling, the full-service rate at BP 3.5 or above rising to the emergency "
-                                    "rate at BP 0. So NB (BC 1.2) is half full service, FSB full service, EB "
-                                    "emergency. These are settings, not loco data."), "muted", brakes);
+    auto *brakeNote = labelNamed(tr("BC sets the rate: the NB rate at BC 1.2, the full-service rate at BC full "
+                                    "service, straight lines between. BP under 3.5 raises it, to the emergency "
+                                    "rate at BP 0. So NB gives the NB rate, FSB full service, EB emergency. "
+                                    "These are settings, not loco data."), "muted", brakes);
     brakeNote->setWordWrap(true);
     brakeBody->addWidget(brakeNote);
     brakeBody->addStretch(1);
@@ -1121,7 +1125,7 @@ QWidget *LocoSimWindow::buildSettingsTab()
         refreshTop();
     });
     connect(m_hosts, &QLineEdit::editingFinished, this, [this]() { setHosts(m_hosts->text()); });
-    for (QDoubleSpinBox *spin : { m_fullService, m_emergency, m_fullBc })
+    for (QDoubleSpinBox *spin : { m_normal, m_fullService, m_emergency, m_fullBc })
         connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this]() { applyBrake(); showMotion(); });
     return page;
 }
@@ -1350,6 +1354,7 @@ bool LocoSimWindow::brakeFollows() const
 LocoSim::BrakeRates LocoSimWindow::brakeRates() const
 {
     LocoSim::BrakeRates rates;
+    rates.normalMps2 = m_normal->value();
     rates.fullServiceMps2 = m_fullService->value();
     rates.emergencyMps2 = m_emergency->value();
     rates.fullBcKgcm2 = m_fullBc->value();
@@ -1358,6 +1363,7 @@ LocoSim::BrakeRates LocoSimWindow::brakeRates() const
 
 void LocoSimWindow::setBrakeRates(const LocoSim::BrakeRates &rates)
 {
+    m_normal->setValue(rates.normalMps2);
     m_fullService->setValue(rates.fullServiceMps2);
     m_emergency->setValue(rates.emergencyMps2);
     m_fullBc->setValue(rates.fullBcKgcm2);
@@ -1404,6 +1410,7 @@ void LocoSimWindow::loadSettings()
     setHosts(settings.value(QStringLiteral("hosts"), defaultHosts()).toString());
     const LocoSim::BrakeRates rates;
     m_brakeFollow->setChecked(settings.value(QStringLiteral("brakeFollowsBench"), true).toBool());
+    m_normal->setValue(settings.value(QStringLiteral("brakeNormal"), rates.normalMps2).toDouble());
     m_fullService->setValue(settings.value(QStringLiteral("brakeFullService"), rates.fullServiceMps2).toDouble());
     m_emergency->setValue(settings.value(QStringLiteral("brakeEmergency"), rates.emergencyMps2).toDouble());
     m_fullBc->setValue(settings.value(QStringLiteral("brakeFullBc"), rates.fullBcKgcm2).toDouble());
@@ -1443,6 +1450,7 @@ void LocoSimWindow::saveSettings() const
     settings.setValue(QStringLiteral("port"), m_port->value());
     settings.setValue(QStringLiteral("intervalMs"), m_intervalMs->value());
     settings.setValue(QStringLiteral("brakeFollowsBench"), m_brakeFollow->isChecked());
+    settings.setValue(QStringLiteral("brakeNormal"), m_normal->value());
     settings.setValue(QStringLiteral("brakeFullService"), m_fullService->value());
     settings.setValue(QStringLiteral("brakeEmergency"), m_emergency->value());
     settings.setValue(QStringLiteral("brakeFullBc"), m_fullBc->value());

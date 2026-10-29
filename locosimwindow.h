@@ -170,6 +170,7 @@ private:
     double          m_airBc = 0;
     QCheckBox      *m_brakeFollow = nullptr;
     QLabel         *m_brakeState = nullptr;
+    QDoubleSpinBox *m_normal = nullptr;
     QDoubleSpinBox *m_fullService = nullptr;
     QDoubleSpinBox *m_emergency = nullptr;
     QDoubleSpinBox *m_fullBc = nullptr;

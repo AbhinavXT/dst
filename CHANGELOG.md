@@ -10,6 +10,45 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-399"></a>
+## Session 399 — the normal brake: its own rate, tested from the VCC's command
+
+Abhinav 2026-10-29, after 398: *"what about normal brake"*, then *"do 1 and 2"*:
+(1) NB run all the way through, from command frame to the loco slowing; (2) an NB
+rate of its own, so NB can be set without moving FSB or EB.
+
+**What the operator sees.** Loco Simulator ▸ Settings ▸ Brake has a new first
+row, **Normal (NB)**, 0.3 m/s² by default (what 398 gave: half full
+service), saved. Changing it changes the loco's braking at once and the
+Drive tab's "braking … m/s²" line.
+
+**The rule** (`LocoSim::brakeDeceleration`). BC sets the rate: 0 at BC 0.1 and
+below, the NB rate at NB's BC (1.2, Annexure-4), the full-service rate at BC
+full service (2.4) and above, with straight lines between. BP under 3.5 raises
+it, up to emergency ÷ full service times at BP 0. The NB point is keyed on
+NB's BC, not on BP: NB and FSB differ in both, and BC is what brakes the loco.
+With the defaults every value is 398's. If BC at full service is set at or
+below 1.2, the NB point is left out and the rate runs straight to full service.
+
+**Files:** `locosim.{h,cpp}` (`BrakeRates::normalMps2`, `nbBcKgcm2`),
+`locosimwindow.{h,cpp}`, `tests/test_session399.cpp`, `tests/tests.pro`.
+
+**Tests:** `session399` (20 checks): the rule with NB at 0.4 (NB 0.4; FSB and
+EB unchanged; the points between; EB's BP with NB's BC; BC full set under
+1.2); NB end to end: session 360's NB command frames (A9 88, SA9 24) into the
+Brake Test Bench's BIU, the air at BP 4.4 / BC 1.2 after 2 s, the loco at
+0.3 m/s² (1.08 km/h in 1 s), then 0.4 at once when the rate is changed
+(1.44 km/h in 1 s), release and hold; the rate kept; the window fits 1366 × 700.
+Session 398 passes unchanged.
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 415
+suites / 10448 checks, 0 failed; menu audit and headless smoke ok.
+
+**Not tested:** against a real VCC or BIU; the 0.3 m/s² default is not loco
+data.
+
+---
+
 <a id="session-398"></a>
 ## Session 398 — Loco Simulator, step 3: the Brake Test Bench's air brakes the loco
 
