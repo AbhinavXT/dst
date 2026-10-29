@@ -17,6 +17,7 @@
 //              serial as LocoTcasSimulator does (SimPreview::Readers): one
 //              port for both, or reader 2 on its own. A reader can be off, a
 //              tag skipped. No chaining to the next station's route.
+//              (session 400) the loco's speed: read and set here too.
 //    Frames    every speed message sent, decoded, with its bytes.
 //    Settings  the wheel, the VCCs, how often.
 //    Brake     (session 398) the Brake Test Bench's air slows the loco
@@ -203,6 +204,9 @@ private:
     RouteStrip     *m_wholeStrip = nullptr;
     RouteStrip     *m_followStrip = nullptr;
     QLabel         *m_pulseWhere = nullptr;
+    QLabel         *m_rfidSpeedValue = nullptr;   // session 400: the speed on the RFID tab
+    QDoubleSpinBox *m_rfidSpeed = nullptr;
+    QLabel         *m_rfidBrake = nullptr;
     double          m_pulseD = 0;       // where speed sensor 1's pulses put the loco
     QHash<int, int> m_tagStates;        // route row -> RouteStrip::TagState
 };

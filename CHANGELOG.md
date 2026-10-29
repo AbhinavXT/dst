@@ -10,6 +10,49 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-400"></a>
+## Session 400 — the RFID tab shows and sets the speed; Linux CI green again
+
+Abhinav 2026-10-29: *"show speed value in the rfid sim window"*. His answer:
+show it and set it there.
+
+**What the operator sees.**
+- **Loco Simulator ▸ RFID, a Speed card** above the Readers card: the speed
+  in large figures ("60.0 km/h"), −10 / −5, a speed box, +5 / +10, and
+  "braking … m/s²" while the brake acts. It is the same speed as the Drive
+  tab's, held to 0 and the max speed.
+- The speedometer and pressure dials' scale numbers stay clear of the tick
+  ring whatever the fonts are.
+
+**CI had been red on Linux since patch 396.** Windows and Qt 6 were green, so
+396-399 were never released. Two failures, both reproduced in an Ubuntu
+22.04 container before fixing:
+- `session396`: with Linux's fonts the widest scale number reached 0.704 of
+  the dial's radius, into the ticks at 0.70. `SimUi::fitLabelFont` now shrinks
+  the font in 5 % steps until the widest number's box clears the ring. Both
+  dials use it. On the Mac it does not shrink.
+- `session393` (since 397): the Loco Simulator was 1307 × 702 on Linux, over
+  700. The RFID tab is the tallest tab there (558 px). Its spacing went from
+  12 to 6 and the window's from 10 to 6.
+
+**Files:** `locosimwindow.{h,cpp}`, `simwidgets.{h,cpp}` (`fitLabelFont`),
+`speedgauge.cpp`, `pressuregauge.cpp`, `tests/test_session400.cpp`,
+`tests/test_session396.cpp`, `tests/tests.pro`.
+
+**Tests:** `session400` (12 checks): the Drive tab's speed on the RFID tab and
+back, the four steps, held to 0 and to the max, the brake line on and off, the
+window fits 1366 × 700. `session396` checks the fitted font (and that it is not
+shrunk far).
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 416
+suites / 10461 checks, 0 failed; menu audit and headless smoke ok. **Linux**
+(Ubuntu 22.04 container, Qt 5.15.3, offscreen): `dltests` 416 suites / 10461
+checks, 0 failed.
+
+**Not tested:** Windows locally (CI runs it).
+
+---
+
 <a id="session-399"></a>
 ## Session 399 — the normal brake: its own rate, tested from the VCC's command
 

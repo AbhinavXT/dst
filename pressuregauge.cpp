@@ -154,6 +154,7 @@ void PressureGauge::paintEvent(QPaintEvent *)
     }
     QFont small = font();
     small.setPointSizeF(qMax(6.0, rad * 0.09));
+    small = SimUi::fitLabelFont(small, rad, 0.57, 0.70, QString::number(int(m_max)));
     p.setFont(small);
     const auto at = [&](double v, double k) {
         const double a = (kStartDeg - kSpanDeg * v / m_max) * kPi / 180;

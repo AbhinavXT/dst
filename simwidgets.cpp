@@ -1,5 +1,7 @@
 #include "simwidgets.h"
 
+#include <cmath>
+
 #include "theme.h"
 #include "uicolors.h"
 
@@ -64,6 +66,18 @@ QRectF labelBox(const QFont &font, const QPointF &centre, const QString &text)
     const double width = metrics.horizontalAdvance(text) + 2;
     const double height = metrics.height();
     return QRectF(centre.x() - width / 2, centre.y() - height / 2, width, height);
+}
+
+QFont fitLabelFont(QFont font, double radius, double labelAt, double ringAt, const QString &widest)
+{
+    // The box's farthest corner from the dial's centre is at most its centre's
+    // distance plus its half diagonal.
+    for (int round = 0; round < 40 && font.pointSizeF() > 4; ++round) {
+        const QRectF box = labelBox(font, QPointF(), widest);
+        if (labelAt * radius + std::hypot(box.width() / 2, box.height() / 2) < ringAt * radius) break;
+        font.setPointSizeF(font.pointSizeF() * 0.95);
+    }
+    return font;
 }
 
 QColor fill()

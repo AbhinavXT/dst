@@ -118,7 +118,7 @@ LocoSimWindow::LocoSimWindow(SerialManager *serial, QWidget *parent)
 
     auto *root = new QVBoxLayout(this);
     root->setContentsMargins(14, 12, 14, 10);
-    root->setSpacing(10);
+    root->setSpacing(6);
 
     // ---- the top bar: what it is, what it is doing, Start --------------------
     auto *top = new QHBoxLayout;
@@ -369,7 +369,7 @@ QWidget *LocoSimWindow::buildRfidTab()
     auto *page = new QWidget(this);
     auto *layout = new QVBoxLayout(page);
     layout->setContentsMargins(0, 8, 0, 0);
-    layout->setSpacing(12);
+    layout->setSpacing(6);   // session 400: room for Linux's taller fonts under 700 px
     // ---- the route: one line ----------------------------------------------------
     auto *bar = new QHBoxLayout;
     bar->setSpacing(8);
@@ -432,6 +432,55 @@ QWidget *LocoSimWindow::buildRfidTab()
     top->addWidget(follow, 3);
 
     // ---- the readers and their ports ---------------------------------------------
+    // Session 400: the loco's speed, read and set without the Drive tab (its
+    // own card above the readers: beside the track, where there is height).
+    auto *speedRow = new QHBoxLayout;
+    speedRow->setSpacing(6);
+    m_rfidSpeedValue = labelNamed(QString(), "bigValue", page);
+    m_rfidSpeedValue->setObjectName(QStringLiteral("locoSimRfidSpeedValue"));
+    m_rfidSpeedValue->setAccessibleName(tr("Speed"));
+    for (int step : { -10, -5 }) {
+        auto *button = new QToolButton(page);
+        button->setText(QString::number(step));
+        button->setToolTip(tr("%1 km/h now").arg(step));
+        connect(button, &QToolButton::clicked, this, [this, step]() {
+            m_motion.setSpeed(m_motion.speed() + step);
+            showMotion();
+        });
+        speedRow->addWidget(button);
+    }
+    m_rfidSpeed = kmhSpin(page, 250);
+    m_rfidSpeed->setObjectName(QStringLiteral("locoSimRfidSpeed"));
+    m_rfidSpeed->setToolTip(tr("The loco's speed now, the same as the Drive tab's"));
+    speedRow->addWidget(m_rfidSpeed);
+    for (int step : { 5, 10 }) {
+        auto *button = new QToolButton(page);
+        button->setText(QStringLiteral("+%1").arg(step));
+        button->setToolTip(tr("+%1 km/h now").arg(step));
+        connect(button, &QToolButton::clicked, this, [this, step]() {
+            m_motion.setSpeed(m_motion.speed() + step);
+            showMotion();
+        });
+        speedRow->addWidget(button);
+    }
+    speedRow->addStretch(1);
+    m_rfidBrake = labelNamed(QString(), "muted", page);
+    m_rfidBrake->setObjectName(QStringLiteral("locoSimRfidBrake"));
+    connect(m_rfidSpeed, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double kmh) {
+        m_motion.setSpeed(kmh);
+        showMotion();
+    });
+    auto *rightColumn = new QVBoxLayout;
+    rightColumn->setSpacing(12);
+    QVBoxLayout *speedBody = nullptr;
+    QFrame *speedCard = card(tr("Speed"), page, &speedBody);
+    auto *speedHead = new QHBoxLayout;
+    speedHead->addWidget(m_rfidSpeedValue);
+    speedHead->addStretch(1);
+    speedHead->addWidget(m_rfidBrake);
+    speedBody->addLayout(speedHead);
+    speedBody->addLayout(speedRow);
+    rightColumn->addWidget(speedCard);
     QVBoxLayout *readerBody = nullptr;
     QFrame *readers = card(tr("Readers"), page, &readerBody);
     auto *readerGrid = new QGridLayout;
@@ -466,7 +515,8 @@ QWidget *LocoSimWindow::buildRfidTab()
     note->setWordWrap(true);
     readerBody->addWidget(note);
     readerBody->addStretch(1);
-    top->addWidget(readers, 2);
+    rightColumn->addWidget(readers, 1);
+    top->addLayout(rightColumn, 2);
     layout->addLayout(top);
 
     // ---- the tags --------------------------------------------------------------
@@ -1172,6 +1222,13 @@ void LocoSimWindow::showMotion()
     {
         const QSignalBlocker block(m_speed);
         m_speed->setValue(m_motion.speed());
+    }
+    if (m_rfidSpeed) {
+        const QSignalBlocker block(m_rfidSpeed);
+        m_rfidSpeed->setValue(m_motion.speed());
+        m_rfidSpeedValue->setText(tr("%1 km/h").arg(m_motion.speed(), 0, 'f', 1));
+        m_rfidBrake->setText(m_motion.braking() ? tr("braking %1 m/s\u00B2").arg(m_motion.brake(), 0, 'f', 2)
+                                                : QString());
     }
     for (int sensor = 0; sensor < 2; ++sensor)
         for (int channel = 0; channel < 2; ++channel) {

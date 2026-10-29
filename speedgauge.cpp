@@ -178,8 +178,10 @@ void SpeedGauge::paintEvent(QPaintEvent *)
 
     QFont small = font();
     small.setPointSizeF(qMax(6.0, radius * 0.085));
-    painter.setFont(small);
     const int labelEvery = m_scaleMax > 200 ? 40 : (m_scaleMax > 60 ? 20 : 10);
+    small = SimUi::fitLabelFont(small, radius, 0.57, 0.70,
+                                QString::number(int(m_scaleMax + 1e-9) / labelEvery * labelEvery));
+    painter.setFont(small);
     for (int kmh = 0; kmh <= int(m_scaleMax + 1e-9); kmh += 5) {
         const bool major = kmh % 10 == 0;
         painter.setPen(QPen(major ? ink : UiColor::muted(), major ? 1.5 : 1));

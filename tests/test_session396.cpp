@@ -32,7 +32,10 @@ TEST_SUITE(session396)
     CHECK(qAbs(box.center().x() - 300) < 1e-9 && qAbs(box.center().y() - 200) < 1e-9, "centred on the point");
 
     // The labels sit at 0.57 of the radius; the ticks start at 0.70. The
-    // corners of the widest label, anywhere round the dial, stay inside.
+    // corners of the widest label, anywhere round the dial, stay inside, in
+    // the font the dial fits to them (session 400: Linux's fonts ran over).
+    font = SimUi::fitLabelFont(font, radius, 0.57, 0.70, widest);
+    CHECK(font.pointSizeF() > radius * 0.085 * 0.8, "and the font is not shrunk far to do it");
     double farthest = 0;
     for (int deg = 0; deg < 360; deg += 5) {
         const double a = deg * 3.14159265358979323846 / 180;

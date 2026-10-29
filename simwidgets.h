@@ -52,6 +52,10 @@ QFont scaled(const QFont &base, double factor, int weight = -1);
 // takes in `font`, not a fixed one. The dials' fonts grow with the dial, so a
 // fixed 32 x 16 box cut the numbers off on a large window.
 QRectF labelBox(const QFont &font, const QPointF &centre, const QString &text);
+// Session 400: `font` made small enough that `widest`'s box, centred at
+// `labelAt` of `radius` anywhere round the dial, keeps clear of the tick ring
+// at `ringAt` (fonts differ: Linux's ran 0.004 of the radius into it).
+QFont fitLabelFont(QFont font, double radius, double labelAt, double ringAt, const QString &widest);
 
 // The rules both simulator windows start their style sheet with: segmented
 // buttons, primary buttons, id chips, muted / heading / mono labels, cards.
