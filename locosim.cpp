@@ -1,6 +1,7 @@
 #include "locosim.h"
 
 #include <QtEndian>
+#include <algorithm>
 #include <cmath>
 
 namespace LocoSim {
@@ -28,6 +29,17 @@ QByteArray speedMessage(int sensor, quint8 direction, quint32 tachometer1, quint
     qToLittleEndian<quint32>(tachometer1, bytes + 7);
     qToLittleEndian<quint32>(tachometer2, bytes + 11);
     return message;                           // crc (15-18) stays 0
+}
+
+QByteArray simulatorTagFrame(int reader, const QString &pageX, const QString &pageY)
+{
+    const QString hex = pageY + pageX;
+    if (hex.size() != 32) return QByteArray();
+    for (const QChar c : hex)
+        if (!c.isDigit() && !(c.toLower() >= QLatin1Char('a') && c.toLower() <= QLatin1Char('f'))) return QByteArray();
+    QByteArray payload = QByteArray::fromHex(hex.toLatin1());
+    std::reverse(payload.begin(), payload.end());
+    return tagFrame(reader, payload);
 }
 
 QByteArray healthFrame(int reader, bool ok)

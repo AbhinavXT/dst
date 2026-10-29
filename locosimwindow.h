@@ -28,6 +28,9 @@
 //              (session 409) each reader OK or Fail, and its health frame
 //              every 1 s / 2 s while it is on, as the simulator; at Fail it
 //              sends no tags.
+//              (session 410) Send a tag…: one tag now, by hand, from its
+//              page_x / page_y, on reader 1 and / or 2 (the simulator's SPAD
+//              scenario RFID interface; tagsenddialog.h).
 //              (session 402) Tag Builder: the route open in a Tag Builder,
 //              as it is now, saved or not; each edit there comes here and
 //              the loco stays where it is (back to the start tag when the
@@ -59,6 +62,7 @@
 #include <memory>
 
 class BrakeBenchWindow;
+class TagSendDialog;
 namespace BenchRecord { class Recorder; }
 class TagBuilderWindow;
 class QButtonGroup;
@@ -149,6 +153,10 @@ public:
     void   setReaderHealth(int reader, bool ok);
     bool   readerHealthOk(int reader) const { return reader == 2 ? !m_readerFail[1] : !m_readerFail[0]; }
     void   healthTick();                        // what the health timer does: each reader's frame when due
+    // Session 410: a tag sent by hand (Send a tag…), as the simulator's SPAD window.
+    bool   sendTagByHand(int reader, const QString &pageX, const QString &pageY, QString *why = nullptr);
+    QVector<QPair<QString, QByteArray>> routeTags() const;   // the route's rows: name, tag
+    TagSendDialog *openTagSend();               // the one window, raised
     int    healthSent(int reader) const { return reader == 2 ? m_healthSent[1] : m_healthSent[0]; }
     // Tests: health frames go here (port 0 = A, 1 = B). With only a tag sink, none is sent.
     void   setHealthSink(const std::function<void(int, const QByteArray &)> &sink) { m_healthSink = sink; }
@@ -308,6 +316,7 @@ private:
     std::function<void(int, const QByteArray &)> m_healthSink;
     QTableWidget   *m_tags = nullptr;
     QToolButton    *m_tagsToggle = nullptr;
+    QPointer<TagSendDialog> m_tagSend;
     RouteStrip     *m_wholeStrip = nullptr;
     RouteStrip     *m_followStrip = nullptr;
     QLabel         *m_pulseWhere = nullptr;

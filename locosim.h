@@ -94,6 +94,10 @@ double     pulsesPerMetre(const Wheel &wheel);
 QByteArray speedMessage(int sensor, quint8 direction, quint32 tachometer1, quint32 tachometer2);
 // Empty unless `tag` is 16 bytes (the simulator sends nothing then either).
 QByteArray tagFrame(int reader, const QByteArray &tag);
+// Session 410: the simulator's buildTagPacket (structures.h): page_y + page_x,
+// exactly 32 hex digits, as bytes, reversed, in the 22-byte tag frame. Empty
+// when the digits are not 32 (the simulator refuses them too).
+QByteArray simulatorTagFrame(int reader, const QString &pageX, const QString &pageY);
 // Session 409: LPIM_LTCAS_RFID_READER_HEALTH, 7 B packed: AA AA, length 7,
 // rfid_reader, health_status (1 OK, 2 fail), BB BB.
 QByteArray healthFrame(int reader, bool ok);

@@ -743,6 +743,7 @@ int main(int argc, char **argv) {
         bool scenarioTab = false;   // session 407
         for (int i = 0; locoTabs && i < locoTabs->count(); ++i) scenarioTab = scenarioTab || locoTabs->tabText(i) == QLatin1String("Scenario");
         CHECK(scenarioTab, "and a Scenario tab");
+        CHECK(opened && opened->findChild<QToolButton *>(QStringLiteral("locoSimSendTag")), "and Send a tag… (session 410)");
 #ifdef DL_HAVE_SERIAL
         auto *tagPortA = opened ? opened->findChild<QComboBox *>(QStringLiteral("locoSimTagPortA")) : nullptr;
         CHECK(tagPortA && tagPortA->isEnabled(), "whose tag port A can be picked: it has the serial ports");

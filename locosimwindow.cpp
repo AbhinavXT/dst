@@ -2,6 +2,7 @@
 #include "brakebenchwindow.h"
 #include "benchrecord.h"
 #include "tagbuilderwindow.h"
+#include "tagsenddialog.h"
 #include "routestrip.h"
 #include "biusim.h"
 #include "settings.h"
@@ -591,7 +592,19 @@ QWidget *LocoSimWindow::buildRfidTab()
     m_tagsToggle->setText(tr("Tags"));
     m_tagsToggle->setToolTip(tr("The route's rows: skip a tag, see when each reader sent it"));
     m_tagsToggle->setAutoRaise(true);
-    layout->addWidget(m_tagsToggle);
+    // Session 410: a tag by hand, beside the table's toggle (no height of its own).
+    auto *tagsRow = new QHBoxLayout;
+    tagsRow->addWidget(m_tagsToggle);
+    tagsRow->addStretch(1);
+    auto *sendOne = new QToolButton(page);
+    sendOne->setObjectName(QStringLiteral("locoSimSendTag"));
+    sendOne->setText(tr("Send a tag\u2026"));
+    sendOne->setAutoRaise(true);
+    sendOne->setToolTip(tr("One tag, now, on reader 1 and / or reader 2, from its page_x and page_y "
+                           "(the simulator's SPAD scenario RFID interface)"));
+    connect(sendOne, &QToolButton::clicked, this, [this]() { openTagSend(); });
+    tagsRow->addWidget(sendOne);
+    layout->addLayout(tagsRow);
     m_tags = new QTableWidget(0, TagColumns, page);
     m_tags->setObjectName(QStringLiteral("locoSimTags"));
     m_tags->setHorizontalHeaderLabels({ QString(), tr("Tag"), tr("Type"), tr("abs_loc"), tr("Next"), tr("Skip"),
@@ -703,6 +716,7 @@ void LocoSimWindow::showRoute(int index)
     m_followStrip->setRoute(m_routes.at(index));
     m_tagsToggle->setText(tr("Tags (%1)").arg(m_routes.at(index).tags.size()));
     refreshChainNote();
+    if (m_tagSend) m_tagSend->refreshRoute();
     {
         const QSignalBlocker block(m_startTag);
         m_startTag->clear();
@@ -1537,6 +1551,57 @@ bool LocoSimWindow::chainOn()
 void LocoSimWindow::setReaderOn(int reader, bool on)
 {
     if (reader == 1 || reader == 2) m_readerOn[reader - 1]->setChecked(on);
+}
+
+// ---- session 410: a tag by hand ------------------------------------------------------------
+
+QVector<QPair<QString, QByteArray>> LocoSimWindow::routeTags() const
+{
+    QVector<QPair<QString, QByteArray>> tags;
+    if (m_routeIndex < 0 || m_routeIndex >= m_routes.size()) return tags;
+    for (const RfidTag::Tag &t : m_routes.at(m_routeIndex).tags) tags.append({ RfidTag::nameOf(t.bytes), t.bytes });
+    return tags;
+}
+
+TagSendDialog *LocoSimWindow::openTagSend()
+{
+    if (!m_tagSend) m_tagSend = new TagSendDialog(this);
+    m_tagSend->refreshRoute();
+    m_tagSend->show();
+    m_tagSend->raise();
+    return m_tagSend;
+}
+
+bool LocoSimWindow::sendTagByHand(int reader, const QString &pageX, const QString &pageY, QString *why)
+{
+    QString dummy;
+    QString &whyNot = why ? *why : dummy;
+    if (reader != 1 && reader != 2) { whyNot = tr("reader 1 or 2"); return false; }
+    const QString x = pageX.trimmed(), y = pageY.trimmed();
+    if (x.isEmpty() || y.isEmpty()) { whyNot = tr("neither page_x nor page_y may be empty"); return false; }
+    const QByteArray frame = LocoSim::simulatorTagFrame(reader, x, y);
+    if (frame.isEmpty()) { whyNot = tr("page_y and page_x together must be exactly 32 hex digits"); return false; }
+    const int port = reader == 2 && m_reader2Port->checkedId() == 1 ? 1 : 0;
+    const QString portName = port == 0 ? tr("port A") : tr("port B");
+    bool sent = false;
+    if (m_tagSink) {
+        m_tagSink(port, frame);
+        sent = true;
+    }
+#ifdef DL_HAVE_SERIAL
+    else if (m_tagLink[port] && m_tagLink[port]->isOpen()) {
+        sent = m_tagLink[port]->write(frame) == frame.size();
+    }
+#endif
+    const QString name = RfidTag::nameOf(frame.mid(4, 16));
+    if (m_recorder && m_recorder->recording())
+        record(QStringLiteral("tag"), portName, frame, tr("reader %1 \u00B7 tag %2 \u00B7 by hand").arg(reader).arg(name),
+               sent ? QString() : tr("not sent: %1 closed").arg(portName));
+    if (!sent) { whyNot = tr("%1 is not open").arg(portName); return false; }
+    ++m_tagsSent;
+    m_status->ok(tr("Tag %1 sent by hand on reader %2 (%3).").arg(name).arg(reader).arg(portName));
+    refreshTop();
+    return true;
 }
 
 // ---- session 409: the readers' health ----------------------------------------------------

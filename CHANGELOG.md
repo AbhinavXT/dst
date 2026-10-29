@@ -10,6 +10,59 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-410"></a>
+## Session 410 — Send a tag…: one RFID tag by hand, from its page_x and page_y
+
+Abhinav 2026-10-29: *"Also add functionality of sending rfid data from single
+reader by using pagex and pagey data like simulator's rfid spad scenario"*.
+LocoTcasSimulator's "SPAD scenario RFID interface"
+(`spadsceneriorfidinterface.cpp`).
+
+**What the operator sees.** Loco Simulator ▸ RFID: **Send a tag…** at the right
+of the Tags toggle opens a small window:
+- **Reader 1** (ticked) and **Reader 2:** a tick each, page_x, page_y, and
+  under them what the tag says (its name, type, location, whether its CRC-30
+  matches), or that the digits are not 32.
+- **From the route:** pick a route tag, and every ticked reader's page_x /
+  page_y take its values. The simulator fills them when a route tag is
+  ticked.
+- **Send:** each ticked reader's frame goes out now, whatever the loco is
+  doing. Reader 2's goes on port B when it has its own port. A refusal
+  says why: empty, not 32 hex digits, port closed.
+- Edit a digit and the tag goes out as written: a tag the route does not
+  hold, one out of place, one with a bad CRC.
+- A recording (404) has each as a tag "by hand".
+
+**The frame:** the simulator's `buildTagPacket` (`structures.h`), ported as
+`LocoSim::simulatorTagFrame`: `page_y + page_x`, exactly 32 hex digits, as
+bytes, reversed, in the 22-byte tag frame.
+
+**Files:** new `tagsenddialog.{h,cpp}` (in `dlcore.pri`); `locosim.{h,cpp}`
+(`simulatorTagFrame`), `locosimwindow.{h,cpp}` (`sendTagByHand`, `routeTags`,
+`openTagSend`, the button), `tests/test_session410.cpp`, `tests/tests.pro`,
+`tests/menuaudit_main.cpp`.
+
+**Tests:** `session410` (17 checks).
+- **The frame,** on the simulator's own Configuration1.xml: for every row of
+  its first route, the frame from the row's page_x / page_y as written in
+  the file equals the route's own tag frame, on both readers. 31 digits and
+  a non-hex digit are refused.
+- **By hand:** reader 1 on port A, with no route or run; reader 2 on its own
+  port B; empty, short and a closed port refused, each said.
+- **The window:** one window; From the route fills only the ticked reader,
+  then both; Send with both (reader 1's frame, then reader 2's), recorded
+  as by hand; bad digits said and refused while reader 2 still goes; a
+  changed page_y said not to match its CRC, and sent as written.
+- **Menu audit:** the button.
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 425
+suites / 10643 checks, 0 failed; menu audit and headless smoke ok. Linux
+(Ubuntu 22.04 container): `dltests` 425 / 10643, 0 failed; menu audit ok.
+
+**Not tested:** over a real serial port, with a real VCC.
+
+---
+
 <a id="session-409"></a>
 ## Session 409 — the RFID readers' health frames, as the simulator sends them
 
