@@ -321,9 +321,19 @@ QWidget *LocoSimWindow::buildDriveTab()
     auto *brakeRow = new QHBoxLayout;
     m_brakeFollow = new QCheckBox(tr("From the Brake Test Bench"), loco);
     m_brakeFollow->setObjectName(QStringLiteral("locoSimBrakeFollow"));
-    m_brakeFollow->setToolTip(tr("The bench's BP and BC (what the VCC commanded the BIU) slow the loco; "
+    m_brakeFollow->setToolTip(tr("What the VCC commands the BIU slows the loco; "
                                  "while it brakes, the brake wins over the drive"));
     brakeRow->addWidget(m_brakeFollow);
+    // Session 418: the command's brake type, as LocoTcasSimulator, or the air.
+    m_brakeSource = new QComboBox(loco);
+    m_brakeSource->setObjectName(QStringLiteral("locoSimBrakeSource"));
+    m_brakeSource->addItem(tr("by the BIU's command"), int(LocoSim::BrakeSource::Command));
+    m_brakeSource->addItem(tr("by the bench's air"), int(LocoSim::BrakeSource::Air));
+    m_brakeSource->setToolTip(tr("BIU's command: A9 / SA9 read as NB, FSB, EB or LE, that brake's rate at once "
+                                 "(or over the build-up time on Settings), as LocoTcasSimulator brakes.\n"
+                                 "Bench's air: the rate follows BC and BP as they move, so the bench's plant "
+                                 "faults (slow, leak, stuck) change the braking."));
+    brakeRow->addWidget(m_brakeSource);
     brakeRow->addSpacing(8);
     m_brakeState = labelNamed(QString(), "mono", loco);
     m_brakeState->setObjectName(QStringLiteral("locoSimBrakeState"));
@@ -391,6 +401,7 @@ QWidget *LocoSimWindow::buildDriveTab()
     connect(m_drive, &QButtonGroup::idClicked, this, pull);
     connect(m_direction, &QButtonGroup::idClicked, this, pull);
     connect(m_brakeFollow, &QCheckBox::toggled, this, [this]() { applyBrake(); showMotion(); });
+    connect(m_brakeSource, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() { applyBrake(); showMotion(); });
     for (int sensor = 0; sensor < 2; ++sensor) {
         connect(m_sensorOn[sensor], &QCheckBox::toggled, this, pull);
         for (int channel = 0; channel < 2; ++channel)
@@ -2295,6 +2306,14 @@ QWidget *LocoSimWindow::buildSettingsTab()
     m_emergency->setToolTip(tr("BC at full service with BP at 0"));
     m_fullBc = rateSpin("locoSimFullBc", 6, QStringLiteral(" kg/cm\u00B2"));
     m_fullBc->setToolTip(tr("Annexure-4: 2.4 in formation, 3.5 for a light engine"));
+    m_buildUp = new QDoubleSpinBox(brakes);
+    m_buildUp->setObjectName(QStringLiteral("locoSimBuildUp"));
+    m_buildUp->setRange(0, 60);
+    m_buildUp->setDecimals(1);
+    m_buildUp->setSingleStep(0.5);
+    m_buildUp->setSuffix(QStringLiteral(" s"));
+    m_buildUp->setToolTip(tr("Braking by the BIU's command: the brake grows from 0 to its full rate over this "
+                             "time after it comes on (0: at once)"));
     brakeGrid->addWidget(labelNamed(tr("Normal (NB)"), "muted", brakes), 0, 0);
     brakeGrid->addWidget(m_normal, 0, 1);
     brakeGrid->addWidget(labelNamed(tr("Full service"), "muted", brakes), 1, 0);
@@ -2303,11 +2322,15 @@ QWidget *LocoSimWindow::buildSettingsTab()
     brakeGrid->addWidget(m_emergency, 2, 1);
     brakeGrid->addWidget(labelNamed(tr("BC at full service"), "muted", brakes), 3, 0);
     brakeGrid->addWidget(m_fullBc, 3, 1);
+    brakeGrid->addWidget(labelNamed(tr("Build-up"), "muted", brakes), 4, 0);
+    brakeGrid->addWidget(m_buildUp, 4, 1);
     brakeGrid->setColumnStretch(2, 1);
     brakeBody->addLayout(brakeGrid);
-    auto *brakeNote = labelNamed(tr("BC sets the rate: the NB rate at BC 1.2, the full-service rate at BC full "
-                                    "service, straight lines between. BP under 3.5 raises it, to the emergency "
-                                    "rate at BP 0. So NB gives the NB rate, FSB full service, EB emergency. "
+    auto *brakeNote = labelNamed(tr("By the BIU's command: A9 under 1.75 is EB (the emergency rate), under 3.95 "
+                                    "FSB (full service), under 4.7 NB (the NB rate); A9 charged with SA9 on is "
+                                    "the light engine brake (full service). By the bench's air: BC sets the rate, "
+                                    "the NB rate at BC 1.2, full service at BC full service, straight lines "
+                                    "between; BP under 3.5 raises it, to the emergency rate at BP 0. "
                                     "These are settings, not loco data."), "muted", brakes);
     brakeNote->setWordWrap(true);
     brakeBody->addWidget(brakeNote);
@@ -2326,7 +2349,7 @@ QWidget *LocoSimWindow::buildSettingsTab()
         refreshTop();
     });
     connect(m_hosts, &QLineEdit::editingFinished, this, [this]() { setHosts(m_hosts->text()); });
-    for (QDoubleSpinBox *spin : { m_normal, m_fullService, m_emergency, m_fullBc })
+    for (QDoubleSpinBox *spin : { m_normal, m_fullService, m_emergency, m_fullBc, m_buildUp })
         connect(spin, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this]() { applyBrake(); showMotion(); });
     return page;
 }
@@ -2379,7 +2402,7 @@ void LocoSimWindow::showMotion()
         const QSignalBlocker block(m_rfidSpeed);
         m_rfidSpeed->setValue(m_motion.speed());
         m_rfidSpeedValue->setText(tr("%1 km/h").arg(m_motion.speed(), 0, 'f', 1));
-        m_rfidBrake->setText(m_motion.braking() ? tr("braking %1 m/s\u00B2").arg(m_motion.brake(), 0, 'f', 2)
+        m_rfidBrake->setText(m_motion.braking() ? tr("braking %1 m/s\u00B2").arg(m_motion.brakeNow(), 0, 'f', 2)
                                                 : QString());
     }
     for (int sensor = 0; sensor < 2; ++sensor)
@@ -2423,7 +2446,7 @@ void LocoSimWindow::refreshTop()
                             .arg(sensors).arg(m_sent).arg((m_clock() - m_startedMs) / 1000)
                       : tr("Stopped \u00B7 %1 messages sent").arg(m_sent);
     if (m_readers) text += tr(" \u00B7 %1 tag frame(s)").arg(m_tagsSent);
-    if (m_motion.braking()) text += tr(" \u00B7 braking %1 m/s\u00B2").arg(m_motion.brake(), 0, 'f', 2);
+    if (m_motion.braking()) text += tr(" \u00B7 braking %1 m/s\u00B2").arg(m_motion.brakeNow(), 0, 'f', 2);
     m_state->setText(text);
     if (m_linkChip && m_port && m_intervalMs)
         m_linkChip->setText(tr("%1 VCC(s) \u00B7 UDP %2 \u00B7 every %3 ms")
@@ -2602,12 +2625,37 @@ void LocoSimWindow::followBench(BrakeBenchWindow *bench)
     if (!bench || bench == m_bench) return;
     m_bench = bench;
     connect(bench, &BrakeBenchWindow::airChanged, this, &LocoSimWindow::observeAir, Qt::UniqueConnection);
+    connect(bench, &BrakeBenchWindow::commandChanged, this, &LocoSimWindow::observeCommand, Qt::UniqueConnection);
     connect(bench, &QObject::destroyed, this, [this]() {
         m_airKnown = false;
+        m_cmdKnown = false;
         applyBrake();
         showMotion();
     });
+    observeCommand(bench->target(BrakePlant::Bp), bench->target(BrakePlant::Bc));
     observeAir(bench->pressure(BrakePlant::Bp), bench->pressure(BrakePlant::Bc));
+}
+
+void LocoSimWindow::observeCommand(double bpTargetKgcm2, double bcTargetKgcm2)
+{
+    const bool same = m_cmdKnown && bpTargetKgcm2 == m_cmdBp && bcTargetKgcm2 == m_cmdBc;
+    m_cmdKnown = true;
+    m_cmdBp = bpTargetKgcm2;
+    m_cmdBc = bcTargetKgcm2;
+    if (same) return;
+    const bool was = m_motion.braking();
+    applyBrake();
+    if (was != m_motion.braking()) showMotion();
+}
+
+void LocoSimWindow::setBrakeSource(LocoSim::BrakeSource source)
+{
+    m_brakeSource->setCurrentIndex(m_brakeSource->findData(int(source)));
+}
+
+LocoSim::BrakeSource LocoSimWindow::brakeSource() const
+{
+    return LocoSim::BrakeSource(m_brakeSource->currentData().toInt());
 }
 
 void LocoSimWindow::observeAir(double bpKgcm2, double bcKgcm2)
@@ -2639,6 +2687,7 @@ LocoSim::BrakeRates LocoSimWindow::brakeRates() const
     rates.fullServiceMps2 = m_fullService->value();
     rates.emergencyMps2 = m_emergency->value();
     rates.fullBcKgcm2 = m_fullBc->value();
+    rates.buildUpSeconds = m_buildUp->value();
     return rates;
 }
 
@@ -2648,14 +2697,35 @@ void LocoSimWindow::setBrakeRates(const LocoSim::BrakeRates &rates)
     m_fullService->setValue(rates.fullServiceMps2);
     m_emergency->setValue(rates.emergencyMps2);
     m_fullBc->setValue(rates.fullBcKgcm2);
+    m_buildUp->setValue(rates.buildUpSeconds);
 }
 
-// The air into the motion's brake, and what the Drive tab says of it.
+// The command (session 418) or the air into the motion's brake, and what the Drive tab says of it.
 void LocoSimWindow::applyBrake()
 {
-    if (!m_brakeState || !m_fullBc) return;
+    if (!m_brakeState || !m_fullBc || !m_buildUp || !m_brakeSource) return;
     const bool follows = m_brakeFollow->isChecked();
-    const double mps2 = follows && m_airKnown ? LocoSim::brakeDeceleration(brakeRates(), m_airBp, m_airBc) : 0.0;
+    const LocoSim::BrakeRates rates = brakeRates();
+    if (brakeSource() == LocoSim::BrakeSource::Command) {
+        const LocoSim::BrakeType type = m_cmdKnown ? LocoSim::commandedBrake(rates, m_cmdBp, m_cmdBc)
+                                                   : LocoSim::BrakeType::Released;
+        const double mps2 = follows ? LocoSim::brakeTypeRate(rates, type) : 0.0;
+        m_motion.setBrakeBuildUp(rates.buildUpSeconds);
+        m_motion.setBrake(mps2);
+        const QString cmd = tr("A9 %1 \u00B7 SA9 %2 kg/cm\u00B2").arg(m_cmdBp, 0, 'f', 2).arg(m_cmdBc, 0, 'f', 2);
+        if (!follows) m_brakeState->setText(tr("off: nothing slows the loco"));
+        else if (!m_cmdKnown) m_brakeState->setText(tr("open Tools \u25B8 Simulators \u25B8 Brake Test Bench"));
+        else if (!m_motion.braking()) m_brakeState->setText(tr("released \u00B7 %1").arg(cmd));
+        else if (m_motion.brakeEffort() < 1)
+            m_brakeState->setText(tr("braking %1 %2 of %3 m/s\u00B2 (building up) \u00B7 %4")
+                                      .arg(LocoSim::brakeTypeName(type)).arg(m_motion.brakeNow(), 0, 'f', 2)
+                                      .arg(mps2, 0, 'f', 2).arg(cmd));
+        else m_brakeState->setText(tr("braking %1 %2 m/s\u00B2 \u00B7 %3")
+                                       .arg(LocoSim::brakeTypeName(type)).arg(mps2, 0, 'f', 2).arg(cmd));
+        return;
+    }
+    const double mps2 = follows && m_airKnown ? LocoSim::brakeDeceleration(rates, m_airBp, m_airBc) : 0.0;
+    m_motion.setBrakeBuildUp(0);   // the air builds up by itself
     m_motion.setBrake(mps2);
     const QString air = tr("BC %1 \u00B7 BP %2 kg/cm\u00B2").arg(m_airBc, 0, 'f', 2).arg(m_airBp, 0, 'f', 2);
     if (!follows) m_brakeState->setText(tr("off: nothing slows the loco"));
@@ -2695,6 +2765,9 @@ void LocoSimWindow::loadSettings()
     m_fullService->setValue(settings.value(QStringLiteral("brakeFullService"), rates.fullServiceMps2).toDouble());
     m_emergency->setValue(settings.value(QStringLiteral("brakeEmergency"), rates.emergencyMps2).toDouble());
     m_fullBc->setValue(settings.value(QStringLiteral("brakeFullBc"), rates.fullBcKgcm2).toDouble());
+    m_buildUp->setValue(settings.value(QStringLiteral("brakeBuildUp"), rates.buildUpSeconds).toDouble());
+    setBrakeSource(settings.value(QStringLiteral("brakeSource")).toString() == QLatin1String("air")
+                       ? LocoSim::BrakeSource::Air : LocoSim::BrakeSource::Command);
     applyBrake();
 
     for (int reader = 0; reader < 2; ++reader)
@@ -2736,6 +2809,9 @@ void LocoSimWindow::saveSettings() const
     settings.setValue(QStringLiteral("brakeFullService"), m_fullService->value());
     settings.setValue(QStringLiteral("brakeEmergency"), m_emergency->value());
     settings.setValue(QStringLiteral("brakeFullBc"), m_fullBc->value());
+    settings.setValue(QStringLiteral("brakeBuildUp"), m_buildUp->value());
+    settings.setValue(QStringLiteral("brakeSource"),
+                      brakeSource() == LocoSim::BrakeSource::Air ? QStringLiteral("air") : QStringLiteral("command"));
     for (int reader = 0; reader < 2; ++reader)
         settings.setValue(QStringLiteral("rfidReader%1").arg(reader + 1), m_readerOn[reader]->isChecked());
     settings.setValue(QStringLiteral("rfidReader2OwnPort"), m_reader2Port->checkedId() == 1);

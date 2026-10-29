@@ -51,6 +51,10 @@
 //              (LocoSim::brakeDeceleration): the VCC commands the BIU, the
 //              bench's BP and BC move, the loco brakes; the rates are on
 //              Settings. The motion and the messages are locosim.h.
+//              (session 418) or, by default, the BIU's command itself, as
+//              LocoTcasSimulator brakes: NB, FSB, EB or LE, each its fixed
+//              rate at once (or over a build-up time), until the VCC
+//              releases (LocoSim::commandedBrake).
 // =============================================================================
 #include "locosim.h"
 #include "scenario.h"
@@ -131,6 +135,9 @@ public:
     // ---- the brake (session 398) --------------------------------------------
     void   followBench(BrakeBenchWindow *bench);    // its air brakes the loco while it is open
     void   observeAir(double bpKgcm2, double bcKgcm2);
+    void   observeCommand(double bpTargetKgcm2, double bcTargetKgcm2);   // session 418
+    void   setBrakeSource(LocoSim::BrakeSource source);
+    LocoSim::BrakeSource brakeSource() const;
     void   setBrakeFollows(bool on);
     bool   brakeFollows() const;
     LocoSim::BrakeRates brakeRates() const;
@@ -303,6 +310,11 @@ private:
     bool            m_airKnown = false;
     double          m_airBp = 0;
     double          m_airBc = 0;
+    bool            m_cmdKnown = false;     // session 418: the bench's targets
+    double          m_cmdBp = 0;
+    double          m_cmdBc = 0;
+    QComboBox      *m_brakeSource = nullptr;
+    QDoubleSpinBox *m_buildUp = nullptr;
     QCheckBox      *m_brakeFollow = nullptr;
     QLabel         *m_brakeState = nullptr;
     QDoubleSpinBox *m_normal = nullptr;

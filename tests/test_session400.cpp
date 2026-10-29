@@ -70,6 +70,7 @@ TEST_SUITE(session400)
         }
 
         CHECK(brake->text().isEmpty(), "no brake: the brake line is empty");
+        window.setBrakeSource(LocoSim::BrakeSource::Air);   // session 418: the air way (the default is the command)
         window.observeAir(3.5, 2.4);
         CHECK(brake->text() == QStringLiteral("braking 0.60 m/s\u00B2"), "FSB air: braking 0.60 m/s² on the RFID tab");
         window.observeAir(5.0, 0.0);

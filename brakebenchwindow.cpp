@@ -1691,6 +1691,7 @@ void BrakeBenchWindow::advance(double seconds)
         m_gauge[ch]->setTarget(m_source == Source::Manual ? -1 : m_plant.target(ch));
     }
     emit airChanged(m_plant.value(BrakePlant::Bp), m_plant.value(BrakePlant::Bc));
+    emit commandChanged(m_plant.target(BrakePlant::Bp), m_plant.target(BrakePlant::Bc));
 }
 
 // Channels 1-3 of the analog card read the bench (and its offsets).

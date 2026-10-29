@@ -10,6 +10,73 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-418"></a>
+## Session 418 — the Loco Simulator brakes as LocoTcasSimulator does, from the BIU's own command
+
+Abhinav 2026-10-29: the simulator (`rfid_sim.zip`) brakes from an extra
+deceleration field it added to its own BIU message; *"we will not use
+recvd_accleration, but i need similar braking behaviour like the sim using the
+actual biu messages"*. Picked then: the brake type read from the command,
+that type's rate at once; the rates stay 0.3 / 0.6 / 0.9; the simulator's
+build-up time comes over; the brake acts until the VCC releases (the real
+command carries the loco's speed, not a target speed).
+
+**Why.** The simulator (`Use Rcvd Accn. = NO`) takes a brake type from its
+message and slows at that type's fixed rate from the first tick, scaled by a
+build-up time. The Loco Simulator (398) slowed by the bench's air: nothing
+until BC passed 0.1, then a rate climbing as BC and BP moved. A test written
+against the simulator's braking saw a different stopping curve here.
+
+**What the operator sees.** Loco Simulator ▸ Drive, Brake: *From the Brake
+Test Bench* **by the BIU's command** (the default) or **by the bench's air**
+(398's way, kept: the plant's faults slow, leak, stuck still change the
+braking). By the command:
+- A9 (BP target) under 1.75 is **EB** (the emergency rate), under 3.95
+  **FSB** (full service), under 4.7 **NB** (the NB rate), half way between
+  Annexure-4's 0 / 3.5 / 4.4 / 5.0; A9 charged with SA9 over 0.1 is the light
+  engine brake **LE** (full service, as 398 held BC 3.5). A9 or SA9 not valid
+  counts as not commanded, as the BIU treats it.
+- The rate acts on the next tick, while the bench's air is still moving; the
+  release (A9 5.0, SA9 0) ends it on the next tick too, and the loco holds the
+  speed it slowed to (the drive at Hold, as before).
+- The Drive tab says *braking FSB 0.60 m/s² · A9 3.50 · SA9 2.40 kg/cm²*;
+  while building up, *braking FSB 0.30 of 0.60 m/s² (building up)*.
+- Settings ▸ Brake: **Build-up**, 0-60 s (0: at once, the simulator's
+  default): the brake grows from 0 to its full rate over it, the effort taken
+  at the end of each step as the simulator does; a change of type while
+  braking keeps the effort built up; a release starts it from 0 again.
+- What the command is comes from the bench: the BIU's targets (its validity,
+  isolation and KAVACH-lost handling) with the BIU as the source, the relay
+  pressures with the relays, a hand's with Manual.
+
+Not brought over: `rcvd_acceleration`, the simulator's target-speed stop,
+its 2 s brake-message timeout (the bench's BIU has its own KAVACH-lost
+handling), and its gradient / train-resistance terms.
+
+**Files.** locosim.{h,cpp} (`BrakeSource`, `BrakeType`, `commandedBrake`,
+`brakeTypeRate`, `Motion` build-up), brakebenchwindow.{h,cpp}
+(`target()`, `commandChanged`), locosimwindow.{h,cpp};
+tests/test_session418.cpp, tests/tests.pro; tests 398, 399, 400 set the air
+source they test.
+
+**Tests.** `session418`, 43 checks, the command frames as the reviewed
+firmware sends them (no BIU frame captured yet):
+- the classification at Annexure-4's values and at each split; the rates;
+- the build-up: 5 % after 0.1 s of 2 s, 2.268 km/h lost over it from 80, a
+  type change keeping it, a release restarting it;
+- through the bench's BIU: EB at 0.9 on the first tick with BC at 0.05;
+  1 s of EB 3.24 km/h, FSB 2.16 km/h; NB 0.3; LE 0.6; released at once with BC
+  still up, the speed held; A9 / SA9 not valid: no brake; a 1 s build-up at
+  20 % after 0.2 s, full after 1 s; following off and on; the air source
+  still braking by `brakeDeceleration`; the bench closed: no brake;
+- the source and the build-up kept in a new window.
+- **Not tested:** against a real VCC and BIU; the window by eye.
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 432
+suites / 10800 checks, 0 failed; menu audit 203 ok; headless smoke ok.
+
+---
+
 <a id="session-417"></a>
 ## Session 417 — the RFID Workspace: the Station Layout, a tag editor and the Loco Simulator in one window
 

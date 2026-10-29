@@ -100,6 +100,38 @@ double brakeDeceleration(const BrakeRates &rates, double bpKgcm2, double bcKgcm2
     return qMax(0.0, base * (1 + boost));
 }
 
+QString brakeTypeName(BrakeType type)
+{
+    switch (type) {
+    case BrakeType::Normal:      return QStringLiteral("NB");
+    case BrakeType::FullService: return QStringLiteral("FSB");
+    case BrakeType::Emergency:   return QStringLiteral("EB");
+    case BrakeType::LightEngine: return QStringLiteral("LE");
+    case BrakeType::Released:    break;
+    }
+    return QStringLiteral("released");
+}
+
+BrakeType commandedBrake(const BrakeRates &rates, double bpKgcm2, double bcKgcm2)
+{
+    if (bpKgcm2 < rates.fsbBpKgcm2 / 2) return BrakeType::Emergency;
+    if (bpKgcm2 < (rates.fsbBpKgcm2 + rates.nbBpKgcm2) / 2) return BrakeType::FullService;
+    if (bpKgcm2 < (rates.nbBpKgcm2 + rates.releasedBpKgcm2) / 2) return BrakeType::Normal;
+    return bcKgcm2 > rates.releasedBcKgcm2 ? BrakeType::LightEngine : BrakeType::Released;
+}
+
+double brakeTypeRate(const BrakeRates &rates, BrakeType type)
+{
+    switch (type) {
+    case BrakeType::Normal:      return rates.normalMps2;
+    case BrakeType::FullService:
+    case BrakeType::LightEngine: return rates.fullServiceMps2;
+    case BrakeType::Emergency:   return rates.emergencyMps2;
+    case BrakeType::Released:    break;
+    }
+    return 0;
+}
+
 void Motion::setSpeed(double kmh)
 {
     m_speed = qBound(0.0, kmh, m_maxSpeed);
@@ -115,7 +147,16 @@ void Motion::setBrake(double mps2)
 {
     const bool was = braking();
     m_brake = qMax(0.0, mps2);
-    if (was != braking()) m_drive = Drive::Hold;
+    if (was != braking()) {
+        m_drive = Drive::Hold;
+        m_brakeSeconds = 0;
+    }
+}
+
+double Motion::brakeEffort() const
+{
+    if (!braking()) return 0;
+    return m_buildUp > 0 ? qMin(1.0, m_brakeSeconds / m_buildUp) : 1.0;
 }
 
 Step Motion::step(double seconds)
@@ -124,7 +165,9 @@ Step Motion::step(double seconds)
     if (seconds <= 0) return out;
 
     const double startSpeed = m_speed;
-    if (braking()) setSpeed(m_speed - m_brake * 3.6 * seconds);
+    // Session 418: the brake as built up at the step's end, as the simulator's.
+    if (braking()) m_brakeSeconds += seconds;
+    if (braking()) setSpeed(m_speed - brakeNow() * 3.6 * seconds);
     else if (m_drive == Drive::Accelerate) setSpeed(m_speed + m_rate * seconds);
     else if (m_drive == Drive::Decelerate) setSpeed(m_speed - m_rate * seconds);
     // The speed ramps through the step: its mean is what the wheel turned at.

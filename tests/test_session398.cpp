@@ -102,6 +102,7 @@ TEST_SUITE(session398)
 
         LocoSimWindow window(nullptr);
         window.setAttribute(Qt::WA_DeleteOnClose, false);
+        window.setBrakeSource(LocoSim::BrakeSource::Air);   // session 418: the air way (the default is the command)
         window.setClock([&t]() { return t; });
         window.setSendSink([](const QByteArray &) {});
         auto *state = window.findChild<QLabel *>(QStringLiteral("locoSimBrakeState"));

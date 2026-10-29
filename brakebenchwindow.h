@@ -95,6 +95,9 @@ public:
     void   setPlantFault(int ch, BrakePlant::Fault f, double param);
     void   setAnalogOffset(int ch, double kgcm2);     // the analog card reads off by this
     double pressure(int ch) const { return m_plant.value(ch); }
+    // Session 418: what the air is driven to: KAVACH's A9 / SA9 as the BIU
+    // follows them (validity, isolation, KAVACH lost), or the relays', or a hand's.
+    double target(int ch) const { return m_plant.target(ch); }
 
     // ---- brake relays (from the Cab I/O Simulator's output word) ----------------------
     void   observeOutputWord(int cab, quint16 word);
@@ -144,6 +147,9 @@ public:
 signals:
     // Session 398: the air after each step, for the Loco Simulator's brake.
     void airChanged(double bpKgcm2, double bcKgcm2);
+    // Session 418: the BP and BC targets after each step, for the Loco
+    // Simulator's brake from the BIU's command.
+    void commandChanged(double bpTargetKgcm2, double bcTargetKgcm2);
 
 protected:
     void closeEvent(QCloseEvent *e) override;

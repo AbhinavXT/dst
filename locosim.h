@@ -66,6 +66,15 @@
 //    settings, not loco data: no per-loco-type figures are known yet.
 //    While a brake acts it wins over the drive; when it comes on and when it
 //    goes off the drive goes to Hold, so the loco keeps the speed it slowed to.
+//
+//  THE BRAKE FROM THE BIU'S COMMAND (session 418, LocoTcasSimulator's way)
+//    The command, not the air, picks the brake: what A9 (the BP target) and
+//    SA9 (the BC target) ask for is NB, FSB, EB or the light engine brake
+//    (commandedBrake), and that brake's rate acts at once, as the simulator's
+//    fixed rate per brake type does. A build-up time grows it from 0 to the
+//    full rate (the simulator's "Brake build-up time"; 0 = at once). It acts
+//    until the VCC commands the release (A9 5.0, SA9 0). The air way above
+//    stays, for a test of the plant's faults.
 // =============================================================================
 #include <QByteArray>
 #include <QtGlobal>
@@ -110,9 +119,25 @@ struct BrakeRates {
     double fullBcKgcm2     = 2.4;   // BC at full service (formation FSB / EB)
     double fsbBpKgcm2      = 3.5;   // BP at FSB
     double releasedBcKgcm2 = 0.1;   // BC at or under: no brake
+    // Session 418: the BIU's command.
+    double nbBpKgcm2       = 4.4;   // BP at NB
+    double releasedBpKgcm2 = 5.0;   // BP released
+    double buildUpSeconds  = 0;     // 0 to the full rate (0: at once)
 };
 // m/s^2 the air in the brake gives, 0 for none.
 double brakeDeceleration(const BrakeRates &rates, double bpKgcm2, double bcKgcm2);
+
+// Session 418: what slows the loco: the BIU's command, or the bench's air.
+enum class BrakeSource { Command, Air };
+// The brake a command asks for, from its BP target (A9) and BC target (SA9),
+// each when valid: BP half way down to FSB (1.75) or lower is EB, half way to
+// NB (3.95) FSB, half way to released (4.7) NB; BP charged with BC over the
+// released tolerance is the light engine brake.
+enum class BrakeType { Released, Normal, FullService, Emergency, LightEngine };
+QString   brakeTypeName(BrakeType type);   // "released", "NB", "FSB", "EB", "LE"
+BrakeType commandedBrake(const BrakeRates &rates, double bpKgcm2, double bcKgcm2);
+// m/s^2: NB the NB rate, FSB and LE full service, EB emergency, released 0.
+double    brakeTypeRate(const BrakeRates &rates, BrakeType type);
 
 // Session 405: a tag frame's fault, set per tag on the RFID tab.
 enum class TagFault { None, Late, Twice, BadCrc };
@@ -158,6 +183,12 @@ public:
     void   setBrake(double mps2);
     double brake() const { return m_brake; }
     bool   braking() const { return m_brake > 0; }
+    // Session 418: the brake grows from 0 to brake() over this time after it
+    // comes on (0: at once); brakeNow() is what it is at, as of the last step.
+    void   setBrakeBuildUp(double seconds) { m_buildUp = qMax(0.0, seconds); }
+    double brakeBuildUp() const { return m_buildUp; }
+    double brakeEffort() const;                  // 0 .. 1
+    double brakeNow() const { return m_brake * brakeEffort(); }
 
     Step step(double seconds);
 
@@ -172,6 +203,8 @@ private:
     double    m_pulseInterval = 0.1;
     double    m_position = 0;
     double    m_brake = 0;
+    double    m_buildUp = 0;
+    double    m_brakeSeconds = 0;     // how long the brake has acted
 };
 
 }  // namespace LocoSim
