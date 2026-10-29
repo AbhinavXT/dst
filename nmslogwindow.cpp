@@ -539,6 +539,7 @@ void NmsLogWindow::showCount()
     if (m_filter->rowCount() != n) text += tr(", %1 shown").arg(m_filter->rowCount());
     const int gaps = m_rows->table().gaps;
     if (gaps > 0) text += gaps == 1 ? tr("; 1 gap") : tr("; %1 gaps").arg(gaps);
+    if (m_kind == NmsLog::Kind::DlCount) text += tr("; %1").arg(NmsLog::dlCountTotals(m_rows->table()));
     int hidden = 0;
     for (int c = 0; c < m_rows->columnCount(); ++c) hidden += m_view->isColumnHidden(c) ? 1 : 0;
     if (hidden > 0) text += tr("; %1 of %2 columns hidden").arg(hidden).arg(m_rows->columnCount());

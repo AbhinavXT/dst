@@ -620,6 +620,10 @@ MainWindow::MenuRoots MainWindow::buildMenus()
           QT_TR_NOOP("Every @dllog packet of the current tab as a row: log type, sub-log type and the event's "
                      "fields (SPAD, collision, SoS, brake status, mode transition, RFID tag, periodic, …); "
                      "follows the tab; export CSV or Excel") },
+        // Session 403: LKAVACH's counter message to the LDLU, with a total per counter.
+        { NmsLog::Kind::DlCount, QT_TR_NOOP("DL &counts…"), "actDlCounts",
+          QT_TR_NOOP("Every @dlcount packet of the current tab as a row: which counter (isolation, SOS, "
+                     "OV trip), with a total for each; follows the tab; export CSV or Excel") },
     };
     for (const auto &n : nmsLogs) {
         QAction *a = nmsMenu->addAction(tr(n.text));

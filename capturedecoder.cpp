@@ -459,6 +459,7 @@ CapType typeFromToken(const QString &token)
     if (token == "rdir")    return CapType::Rdir;
     if (token == "lout")    return CapType::Lout;
     if (token == "dllog" || token == "dl_log") return CapType::DlLog;
+    if (token == "dlcount") return CapType::DlCount;
     if (token == "speed")   return CapType::Speed;
     if (token == "analog_top")    return CapType::AnalogTop;
     if (token == "analog_bottom") return CapType::AnalogBottom;
@@ -540,6 +541,7 @@ const char *typeLabel(CapType t)
     case CapType::Rdir:     return "reader direction";
     case CapType::Lout:     return "lout";
     case CapType::DlLog:    return "dl log";
+    case CapType::DlCount:  return "dl count";
     case CapType::Speed:    return "speed";
     case CapType::AnalogTop:    return "analog top";
     case CapType::AnalogBottom: return "analog bottom";
@@ -576,6 +578,7 @@ CapDir directionFor(CapType t)
     case CapType::Rdir:     return CapDir::Out;   // the loco's own reader directions
     case CapType::Lout:     return CapDir::Out;   // VCC -> output cards
     case CapType::DlLog:    return CapDir::Out;   // LKAVACH -> LDLU, logged out
+    case CapType::DlCount:  return CapDir::Out;   // LKAVACH -> LDLU, logged out
     case CapType::Speed:                          // tachometer pulses, sensed
     case CapType::AnalogTop:
     case CapType::AnalogBottom: return CapDir::In; // analog (pressure) inputs, sensed
@@ -903,6 +906,14 @@ static void verifyCrc(CaptureLine &c)
     // struct size is checked — any other length is not this struct and is
     // left unchecked rather than failed against a guessed span.
     // @analog_top/@analog_bottom carry no CRC and fall through to default.
+    // @dlcount (session 403): crcFast over bytes 0..8, u32 LE at 9. Only the
+    // struct's own 13 bytes are checked, as @speed.
+    case CapType::DlCount:
+        if (n == 13) {
+            c.crcChecked = true;
+            c.crcOk = (jamcrc(b, 0, n - 4) == last4le());
+        }
+        break;
     case CapType::Speed:
         if (n == 14) {
             c.crcChecked = true;
@@ -1603,6 +1614,8 @@ QVector<FieldRow> describe(const CaptureLine &c, const QHash<int, qint64> *tagLo
     // @speed / @analog_*: flat LE structs, decoded from byte 0 (session 67).
     // @analog_* is six floats with no CRC; the schema shows them %g.
     case CapType::Speed: r += schemaRows(b, QStringLiteral("speed"), nullptr, -1, rawValues); break;
+    // @dlcount (session 403): the counter message LKAVACH sends the LDLU.
+    case CapType::DlCount: r += schemaRows(b, QStringLiteral("dlcount"), nullptr, -1, rawValues); break;
     case CapType::AnalogTop:
         r += schemaRows(b, QStringLiteral("analog_top"), nullptr, -1, rawValues); break;
     case CapType::AnalogBottom:

@@ -71,8 +71,10 @@ enum class CapType {
     DlLog,                    // @dllog LKAVACH -> LDLU log message: 21 B
                               // header, then the sub-log type's struct, LE,
                               // no CRC (session 267)
-    Lout                      // @lout the 16-bit output word the VCC sends
+    Lout,                     // @lout the 16-bit output word the VCC sends
                               // the output cards, 2 B LE (session 359)
+    DlCount                   // @dlcount LKAVACH -> LDLU counter message:
+                              // 8 B header, counter u8, CRC-32 LE, 13 B (session 403)
 };
 
 enum class CapDir { Unknown = 0, In, Out };   // provisional per-type direction

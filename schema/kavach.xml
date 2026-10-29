@@ -569,7 +569,16 @@
     </enum>
     <enum name="dlMsgId">
       <map v="102" label="%v (LKAVACH_LDLU_LOG_MESSAGE)"/>
+      <map v="105" label="%v (LKAVACH_LDLU_COUNTER_MESSAGE)"/>
       <map default="true" label="%v"/>
+    </enum>
+    <!-- @dlcount (session 403): Send_Counter_Messege_To_Data_Logger's counter_value. -->
+    <enum name="dlCounter">
+      <map v="0" label="%v (Isolation counter)"/>
+      <map v="1" label="%v (SOS counter)"/>
+      <map v="2" label="%v (OV trip counter)"/>
+      <map v="255" label="%v (none: not sent)"/>
+      <map default="true" label="%v (?)"/>
     </enum>
     <enum name="dlLogType">
       <map v="1" label="%v (Abnormal)"/>
@@ -1334,6 +1343,28 @@
     <field name="a_v24_pgd1_status" bits="8"/>
     <field name="a_v24_pgd2_status" bits="8"/>
     <crc name="crc" algo="jamcrc" from="0" len="12"/>
+  </packet>
+
+  <!-- ===================================================================== -->
+  <!-- @dlcount  LKAVACH -> LDLU counter message (session 403).                -->
+  <!-- Send_Counter_Messege_To_Data_Logger: PACK, little-endian, 13 bytes:     -->
+  <!--   STRUCT_MESSAGE_HEADER_NEW  src u8, dest u8, id u16 (105),             -->
+  <!--                              length u16 (= 13), seq u16                 -->
+  <!--   counter_value u8   0 isolation, 1 SOS, 2 OV trip (255: not sent)      -->
+  <!--   CRC                crcFast over bytes 0-8: JAMCRC (init 0), u32 LE,   -->
+  <!--                      as @linfo / @speed. ASSUMED: CRC is a u32 typedef. -->
+  <!-- Sent on CAN to both LDLUs when one counter's condition is met.          -->
+  <!-- NO REAL CAPTURE YET: schema/fixtures/dlcount_synthetic.log, packed from -->
+  <!-- the pasted firmware code (tests/dlcountgen). Token "dlcount" assumed.   -->
+  <!-- ===================================================================== -->
+  <packet name="DLCOUNT" match="captype==dlcount" wire="lsb-first" trailer_bytes="0">
+    <field name="msg.src_id"         bits="8"  enum="dlUnit"/>
+    <field name="msg.dest_id"        bits="8"  enum="dlUnit"/>
+    <field name="msg.message_id"     bits="16" enum="dlMsgId"/>
+    <field name="msg.message_length" bits="16"/>
+    <field name="msg.seq_num"        bits="16"/>
+    <field name="counter_value"      bits="8"  enum="dlCounter"/>
+    <crc name="crc" algo="jamcrc" from="0" len="9"/>
   </packet>
 
   <!-- ===================================================================== -->

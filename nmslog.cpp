@@ -114,6 +114,27 @@ Mark markOf(const QString &column, const QString &value, QString *why)
     return Mark::None;
 }
 
+QVector<int> dlCounts(const Table &t)
+{
+    QVector<int> n(4, 0);
+    const int col = t.index.value(QStringLiteral("counter_value"), -1);
+    if (col < 0) return n;
+    for (int row = 0; row < t.rows.size(); ++row) {
+        bool ok = false;
+        const int v = t.cell(row, col).section(QLatin1Char(' '), 0, 0).toInt(&ok);   // "1  (SOS counter)"
+        ++n[ok && v >= 0 && v <= 2 ? v : 3];
+    }
+    return n;
+}
+
+QString dlCountTotals(const Table &t)
+{
+    const QVector<int> n = dlCounts(t);
+    QString text = QStringLiteral("Isolation %1 \u00B7 SOS %2 \u00B7 OV trip %3").arg(n[0]).arg(n[1]).arg(n[2]);
+    if (n[3] > 0) text += QStringLiteral(" \u00B7 other %1").arg(n[3]);
+    return text;
+}
+
 QString token(Kind k)
 {
     switch (k) {
@@ -121,6 +142,7 @@ QString token(Kind k)
     case Kind::Fault:  return QStringLiteral("nmsflt");
     case Kind::Rssi:   return QStringLiteral("nmsrssi");
     case Kind::DlLog:  return QStringLiteral("dllog");
+    case Kind::DlCount: return QStringLiteral("dlcount");
     }
     return QString();
 }
@@ -132,6 +154,7 @@ QString title(Kind k)
     case Kind::Fault:  return QStringLiteral("NMS fault log");
     case Kind::Rssi:   return QStringLiteral("NMS RSSI log");
     case Kind::DlLog:  return QStringLiteral("DL log");
+    case Kind::DlCount: return QStringLiteral("DL counts");
     }
     return QString();
 }
@@ -143,6 +166,7 @@ QString fileStem(Kind k)
     case Kind::Fault:  return QStringLiteral("nms_fault");
     case Kind::Rssi:   return QStringLiteral("nms_rssi");
     case Kind::DlLog:  return QStringLiteral("dl_log");
+    case Kind::DlCount: return QStringLiteral("dl_counts");
     }
     return QString();
 }
@@ -218,7 +242,7 @@ bool append(Table &t, Kind kind, const LogEntry &entry, bool *newColumns)
         // describe() indents the packet's own rows; the rest is the capture
         // line, then the NMS header.
         // @dllog's message header is the packet's own first rows: msg.*.
-        const Group g = kind == Kind::DlLog && name.startsWith(QLatin1String("msg.")) ? Group::Header
+        const Group g = (kind == Kind::DlLog || kind == Kind::DlCount) && name.startsWith(QLatin1String("msg.")) ? Group::Header
                       : r.field.startsWith(QLatin1Char(' ')) ? Group::Body
                       : leadRank(name) < leadRank(QString()) ? Group::Lead
                       : Group::Header;
@@ -272,7 +296,7 @@ bool append(Table &t, Kind kind, const LogEntry &entry, bool *newColumns)
             }
             t.carry.lastMsgSeq = seq;
         }
-    } else if (kind != Kind::DlLog) {   // @dllog: sent on events, seq_num 0: no basis for a gap
+    } else if (kind != Kind::DlLog && kind != Kind::DlCount) {   // sent on events, seq_num 0: no basis for a gap
         const QDateTime rtc = QDateTime::fromString(valueOf(QStringLiteral("rtc")), QStringLiteral("yyyy-MM-dd HH:mm:ss"));
         if (rtc.isValid()) {
             const qint64 secs = rtc.toMSecsSinceEpoch() / 1000;

@@ -403,11 +403,11 @@ int main(int argc, char **argv) {
     }
     CHECK(monLive && findAction(monLive, "Live Loco Console"), "Monitor > Live > Live Loco Console");
     // Session 247: the three NMS packet logs; session 248: in their own group;
-    // session 267: the DL log beside them.
-    CHECK(monNms && monNms->actions().size() == 4 && findAction(monNms, "NMS health log")
+    // session 267: the DL log beside them; session 403: DL counts.
+    CHECK(monNms && monNms->actions().size() == 5 && findAction(monNms, "NMS health log")
               && findAction(monNms, "NMS fault log") && findAction(monNms, "NMS RSSI log")
-              && findAction(monNms, "DL log"),
-          "Monitor > NMS > NMS health / fault / RSSI log and DL log, and nothing else");
+              && findAction(monNms, "DL log") && findAction(monNms, "DL counts"),
+          "Monitor > NMS > NMS health / fault / RSSI log, DL log and DL counts, and nothing else");
     CHECK(monEquipment && !findAction(monEquipment, "NMS health log"), "and no longer in Equipment");
 
     // View > Theme: every theme, exactly one ticked, and the toggle.

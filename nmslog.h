@@ -21,6 +21,8 @@
 //                sub_log_type, field_applicable, then every sub-log type's
 //                fields in the order first seen, empty where a packet does
 //                not carry them
+//      @dlcount  (session 403) the counter message: its header (msg.*) as
+//                the header columns, then counter_value and the CRC
 //    last, the frame in hex.
 //  Values are as the decoder shows them ("1  (OK)"); a cell that is a whole
 //  number goes to the .xlsx as a number.
@@ -38,9 +40,9 @@
 
 namespace NmsLog {
 
-enum class Kind { Health, Fault, Rssi, DlLog };
+enum class Kind { Health, Fault, Rssi, DlLog, DlCount };
 
-QString token(Kind k);        // "nmshlth", "nmsflt", "nmsrssi", "dllog"
+QString token(Kind k);        // "nmshlth", "nmsflt", "nmsrssi", "dllog", "dlcount"
 QString title(Kind k);        // "NMS health log"
 QString fileStem(Kind k);     // "nms_health"
 
@@ -147,6 +149,12 @@ bool cellMatches(const QString &cell, const QStringList &words);
 bool rowMatches(const Table &t, int row, const QStringList &words, int col = -1);
 // Any cell of the row marked (markOf), or a gap before it.
 bool rowMarked(const Table &t, int row);
+
+// Session 403 (@dlcount): how many packets carried each counter_value,
+// [0] isolation, [1] SOS, [2] OV trip, [3] anything else; and as the window
+// says it, "Isolation 2 · SOS 1 · OV trip 0".
+QVector<int> dlCounts(const Table &t);
+QString dlCountTotals(const Table &t);
 
 // Header row, then one line per packet; RFC 4180 quoting, CRLF.
 // Session 256: `rows` (table rows) and `cols` (display positions) pick what

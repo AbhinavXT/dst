@@ -10,6 +10,70 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-403"></a>
+## Session 403 — @dlcount: LKAVACH's counter message to the LDLU
+
+Abhinav 2026-10-29: *"Add a @dlcount message"*, with
+`Send_Counter_Messege_To_Data_Logger`, `STRUCT_MESSAGE_HEADER_NEW`, the
+`CSCI_ID` enum and `LKAVACH_LDLU_COUNTER_MESSAGE` (105). His answer: decode it,
+and a DL counts window with a total per counter.
+
+**The packet** (`DLCOUNT` in `kavach.xml`, `CapType::DlCount`, token `@dlcount`).
+Little-endian, PACK, 13 bytes:
+
+| Bytes | Field |
+|---|---|
+| 0-7 | `msg.src_id` (2 LKAVACH), `msg.dest_id` (6 LDLU), `msg.message_id` (105), `msg.message_length` (13), `msg.seq_num` |
+| 8 | `counter_value`: 0 Isolation counter, 1 SOS counter, 2 OV trip counter (255: not sent) |
+| 9-12 | `crc`: `crcFast` over bytes 0-8, u32 LE, checked (PASS / FAIL) |
+
+- **Assumed:** `CRC` is a u32 (the firmware's crcFast is the JAMCRC that
+  `@linfo` and `@speed` use); the capture token is `dlcount`. Only a 13-byte
+  frame has its CRC checked, as `@speed`.
+- The firmware never sets `seq_num` (`msg_header` is a stack variable), so it
+  is shown as sent.
+- The Packet Maker does not make it (no `remakeCrc` case).
+
+**What the operator sees.**
+- An `@dlcount` line is decoded in its tab like any packet: the header,
+  the counter by name, the CRC.
+- **Tools ▸ Monitor ▸ NMS ▸ DL counts…**, the NMS log window for `@dlcount`.
+  It has one row per packet (PC time, the msg.* header, counter_value, CRC,
+  the frame), follows the tab, and exports CSV / .xlsx (sheet `dlcount`). The
+  count line gives the totals: "6 packets; Isolation 2 · SOS 3 · OV trip 1".
+  No gap marks: the message is sent on events.
+
+**Files:** `schema/kavach.xml` (packet; `dlCounter` enum; 105 in `dlMsgId`),
+`capturedecoder.{h,cpp}`, `nmslog.{h,cpp}` (`Kind::DlCount`, `dlCounts`,
+`dlCountTotals`), `nmslogwindow.cpp`, `mainwindow_menus.cpp`; new
+`schema/dlcount_oracle.py`, `schema/validate_dlcount.py`,
+`tests/dlcountgen/make_fixture.py`, `schema/fixtures/dlcount_synthetic.log`,
+`tests/test_session403.cpp`; `tests/tests.pro`, `tests/menuaudit_main.cpp`,
+`tests/test_session308.cpp` / `310` (the schema's counts: 31 packets, 63
+enums, SLRP at line 946), `CLAUDE.md` (16 validators).
+
+**Tests:**
+- `validate_dlcount.py` (16th validator): the engine against `struct.unpack`
+  of the firmware's buffer, field by field, CRC included, on the 6 fixture
+  frames (all three counters). It fails 0/6 with the CRC span at 8 bytes
+  and with an 8-bit counter read as 16.
+- `session403` (20 checks): the type; every line 13 bytes, CRC matching; the
+  header and the three counter names; a changed counter byte (CRC FAIL); 12
+  bytes (not checked); the table (header and body groups, no gaps, the totals,
+  refused by the DL log and NMS health tables, xlsx); the window (title, live
+  rows, totals on the count line).
+- Menu audit: Monitor ▸ NMS has the five entries.
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green (16 validators);
+`dltests` 419 suites / 10518 checks, 0 failed; menu audit and headless smoke
+ok. Linux (Ubuntu 22.04 container): `dltests` and the menu audit pass.
+
+**Not tested:** a real `@dlcount` capture (none yet: the fixture is packed
+from the pasted code), the token, the CRC's width, the window with a live
+feed.
+
+---
+
 <a id="session-402"></a>
 ## Session 402 — the RFID tab runs the Tag Builder's open route, live
 

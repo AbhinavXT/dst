@@ -123,10 +123,10 @@ TEST_SUITE(session308)
         }
     }
     CHECK(same, "each element's tag, attribute count and every decoded value match QDomDocument's, in order");
-    CHECK(doc.all(QStringLiteral("packet")).size() == 30 && doc.all(QStringLiteral("enum")).size() == 62,
-          "30 packets and 62 enums");
+    CHECK(doc.all(QStringLiteral("packet")).size() == 31 && doc.all(QStringLiteral("enum")).size() == 63,
+          "31 packets and 63 enums (session 403: DLCOUNT and dlCounter)");
     const int slrp = find308(doc, QStringLiteral("packet"), QStringLiteral("SLRP"));
-    CHECK(slrp > 0 && doc.node(slrp).line == 937, "SLRP is at line 937, as in the file");
+    CHECK(slrp > 0 && doc.node(slrp).line == 946, "SLRP is at line 946, as in the file");
     const int aap = find308(doc, QStringLiteral("packet"), QStringLiteral("AAP"));
     CHECK(doc.node(aap).comment.contains(QLatin1String("Access/Allotment Packet")), "AAP carries the comment above it");
     const int map0 = doc.node(find308(doc, QStringLiteral("enum"), QStringLiteral("speed6"))).children.first();
@@ -372,7 +372,7 @@ TEST_SUITE(session308)
     QApplication::processEvents();
     QStringList cats;
     for (int i = 0; i < win.outline()->topLevelItemCount(); ++i) cats << win.outline()->topLevelItem(i)->text(0);
-    CHECK(cats.value(0) == QLatin1String("Packets (30)") && cats.contains(QStringLiteral("Enums (62)"))
+    CHECK(cats.value(0) == QLatin1String("Packets (31)") && cats.contains(QStringLiteral("Enums (63)"))
               && cats.contains(QStringLiteral("CRCs (3)")),
           QByteArray("the outline: ") + cats.join(QLatin1String(", ")).toUtf8());
     CHECK(win.selectContainer(QStringLiteral("packet"), QStringLiteral("AAP")), "AAP selected");
@@ -419,8 +419,8 @@ TEST_SUITE(session308)
     const int pktDirW = find308(win.session().doc(), QStringLiteral("field"), QStringLiteral("PKT_DIR"), slrp);
     win.selectNode(pktDirW);
     auto *enumBox = qobject_cast<QComboBox *>(win.editorFor(QStringLiteral("enum")));
-    CHECK(enumBox && enumBox->currentText() == QLatin1String("pktDir") && enumBox->count() == 63,
-          "PKT_DIR's enum: a list of the 62 enums and (none)");
+    CHECK(enumBox && enumBox->currentText() == QLatin1String("pktDir") && enumBox->count() == 64,
+          "PKT_DIR's enum: a list of the 63 enums and (none)");
 
     // Review lines.
     const QStringList review = win.reviewLines();
