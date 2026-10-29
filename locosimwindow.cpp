@@ -23,6 +23,10 @@
 #include <QCheckBox>
 #include <QComboBox>
 #include <QDateTime>
+#include <QDialog>
+#include <QDialogButtonBox>
+#include <QListWidget>
+#include <QSet>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QDir>
@@ -489,13 +493,36 @@ QWidget *LocoSimWindow::buildRfidTab()
     auto *rightColumn = new QVBoxLayout;
     rightColumn->setSpacing(12);
     QVBoxLayout *speedBody = nullptr;
-    QFrame *speedCard = card(tr("Speed"), page, &speedBody);
+    QFrame *speedCard = card(tr("Run"), page, &speedBody);
     auto *speedHead = new QHBoxLayout;
     speedHead->addWidget(m_rfidSpeedValue);
     speedHead->addStretch(1);
     speedHead->addWidget(m_rfidBrake);
     speedBody->addLayout(speedHead);
     speedBody->addLayout(speedRow);
+    // Session 406: what the loco does at the route's end.
+    auto *chainRow = new QHBoxLayout;
+    chainRow->setSpacing(6);
+    chainRow->addWidget(labelNamed(tr("Then"), "muted", speedCard));
+    m_chainBox = new QComboBox(speedCard);
+    m_chainBox->setObjectName(QStringLiteral("locoSimChain"));
+    m_chainBox->addItem(tr("stop at the end"), int(Chain::Stop));
+    m_chainBox->addItem(tr("the next route"), int(Chain::Auto));
+    m_chainBox->addItem(tr("routes in order"), int(Chain::List));
+    m_chainBox->setToolTip(tr("At the route's end: stop sending; run on into the route whose first tag is nearest "
+                              "ahead (same direction, this file or folder); or the routes set with Order\u2026"));
+    chainRow->addWidget(m_chainBox);
+    m_chainOrder = new QPushButton(tr("Order\u2026"), speedCard);
+    m_chainOrder->setToolTip(tr("Pick the routes to run, in order"));
+    chainRow->addWidget(m_chainOrder);
+    m_chainNoteLabel = labelNamed(QString(), "muted", speedCard);
+    m_chainNoteLabel->setObjectName(QStringLiteral("locoSimChainNote"));
+    m_chainNoteLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);   // a long name must not widen the card
+    chainRow->addWidget(m_chainNoteLabel, 1);
+    speedBody->addLayout(chainRow);
+    connect(m_chainBox, QOverload<int>::of(&QComboBox::activated), this,
+            [this]() { setChain(Chain(m_chainBox->currentData().toInt())); });
+    connect(m_chainOrder, &QPushButton::clicked, this, &LocoSimWindow::editChainOrder);
     rightColumn->addWidget(speedCard);
     QVBoxLayout *readerBody = nullptr;
     QFrame *readers = card(tr("Readers"), page, &readerBody);
@@ -635,6 +662,9 @@ void LocoSimWindow::setRoute(int index)
 {
     if (index < 0 || index >= m_routes.size()) return;
     m_faults.clear();   // session 405: a route picked afresh starts without faults
+    m_chainAt = -1;     // session 406: its place in the order, if it has one
+    for (int i = 0; i < m_chainList.size(); ++i)
+        if (m_chainList.at(i).file == m_routeFile && m_chainList.at(i).index == index) m_chainAt = i;
     showRoute(index);
     placeAtStart();
 }
@@ -651,6 +681,7 @@ void LocoSimWindow::showRoute(int index)
     m_wholeStrip->setRoute(m_routes.at(index));
     m_followStrip->setRoute(m_routes.at(index));
     m_tagsToggle->setText(tr("Tags (%1)").arg(m_routes.at(index).tags.size()));
+    refreshChainNote();
     {
         const QSignalBlocker block(m_startTag);
         m_startTag->clear();
@@ -961,6 +992,197 @@ void LocoSimWindow::flushLate()
     }
 }
 
+// ---- session 406: on into the next route --------------------------------------------
+
+QString LocoSimWindow::routeName() const
+{
+    return m_routeIndex >= 0 && m_routeIndex < m_routes.size() ? m_routes.at(m_routeIndex).name : QString();
+}
+
+QVector<RfidTag::Route> LocoSimWindow::routesIn(const QString &file) const
+{
+    if (file == m_routeFile) return m_routes;
+    auto it = m_fileRoutes.find(file);
+    if (it == m_fileRoutes.end()) it = m_fileRoutes.insert(file, RfidTag::readFile(file));
+    return it.value();
+}
+
+QVector<LocoSimWindow::ChainRef> LocoSimWindow::chainCandidates() const
+{
+    QVector<ChainRef> out;
+    if (m_routeFile.isEmpty()) return out;   // the Tag Builder's route: no file to look beside
+    for (int i = 0; i < m_routes.size(); ++i) out.append({ m_routeFile, i, m_routes.at(i).name });
+    const QString folder = QFileInfo(m_routeFile).absolutePath();
+    for (const TagLibrary::Entry &e : TagLibrary::scan(folder))
+        if (e.folder.isEmpty() && QFileInfo(e.file).fileName() != QFileInfo(m_routeFile).fileName())
+            out.append({ e.file, e.route, e.name });
+    return out;
+}
+
+bool LocoSimWindow::plannedNext(ChainRef *next, double *ahead, QString *why) const
+{
+    *ahead = 0;
+    if (m_routeIndex < 0) { *why = QString(); return false; }
+    const RfidTag::Route &from = m_routes.at(m_routeIndex);
+    switch (m_chain) {
+    case Chain::Stop:
+        *why = tr("then: stop");
+        return false;
+    case Chain::List: {
+        const int at = m_chainAt + 1;
+        if (at >= m_chainList.size()) { *why = tr("then: the order's end"); return false; }
+        *next = m_chainList.at(at);
+        const QVector<RfidTag::Route> routes = routesIn(next->file);
+        if (next->index < 0 || next->index >= routes.size()) { *why = tr("then: %1 cannot be read").arg(next->name); return false; }
+        const QVector<SimPreview::Row> own = SimPreview::rowsOf(from), rows = SimPreview::rowsOf(routes.at(next->index));
+        const double sign = from.dir == RfidTag::DirReverse ? -1 : 1;
+        if (!own.isEmpty() && !rows.isEmpty()) *ahead = (rows.first().absLoc - own.last().absLoc) * sign;
+        *why = tr("then: %1, %2 m on").arg(next->name).arg(*ahead, 0, 'f', 0);
+        return true;
+    }
+    case Chain::Auto: {
+        const QVector<ChainRef> refs = chainCandidates();
+        QVector<RfidTag::Route> routes;
+        for (const ChainRef &r : refs) routes.append(routesIn(r.file).value(r.index));
+        QVector<int> tied;
+        const int pick = SimPreview::nextRoute(routes, from, ahead, &tied);
+        if (pick < 0) {
+            *why = refs.isEmpty() ? tr("then: no file to look in for the next route")
+                                  : tr("then: no route continues from its last tag (dir %1, within %2 m)")
+                                        .arg(from.dir).arg(int(SimPreview::kChainAhead));
+            return false;
+        }
+        *next = refs.at(pick);
+        *why = tr("then: %1, %2 m on").arg(next->name).arg(*ahead, 0, 'f', 0);
+        if (!tied.isEmpty()) {
+            QStringList others;
+            for (int t : tied) others << refs.at(t).name;
+            *why += tr(" (as near: %1; Order\u2026 picks)").arg(others.join(QStringLiteral(", ")));
+        }
+        return true;
+    }
+    }
+    return false;
+}
+
+QString LocoSimWindow::chainNote() const
+{
+    ChainRef next;
+    double ahead = 0;
+    QString why;
+    plannedNext(&next, &ahead, &why);
+    return why;
+}
+
+void LocoSimWindow::refreshChainNote()
+{
+    if (!m_chainNoteLabel) return;
+    const QString note = chainNote();
+    m_chainNoteLabel->setText(note);
+    m_chainNoteLabel->setToolTip(note);
+    m_chainOrder->setEnabled(!m_routeFile.isEmpty());
+}
+
+void LocoSimWindow::setChain(Chain mode)
+{
+    m_chain = mode;
+    {
+        const QSignalBlocker block(m_chainBox);
+        m_chainBox->setCurrentIndex(m_chainBox->findData(int(mode)));
+    }
+    refreshChainNote();
+}
+
+void LocoSimWindow::setChainList(const QVector<ChainRef> &routes)
+{
+    m_chainList = routes;
+    m_chainAt = -1;
+    for (int i = 0; i < routes.size(); ++i)
+        if (routes.at(i).file == m_routeFile && routes.at(i).index == m_routeIndex) m_chainAt = i;
+    setChain(Chain::List);
+}
+
+void LocoSimWindow::editChainOrder()
+{
+    QDialog dialog(this);
+    dialog.setWindowTitle(tr("Routes in order"));
+    auto *layout = new QVBoxLayout(&dialog);
+    auto *note = new QLabel(tr("Tick the routes to run and drag them into order. The loco runs on from each into the "
+                               "next; it starts on the route picked above."), &dialog);
+    note->setWordWrap(true);
+    layout->addWidget(note);
+    auto *list = new QListWidget(&dialog);
+    list->setDragDropMode(QAbstractItemView::InternalMove);
+    const auto add = [list](const ChainRef &r, bool on) {
+        auto *item = new QListWidgetItem(r.file == QString() ? r.name : tr("%1  \u00B7  %2").arg(r.name, QFileInfo(r.file).fileName()), list);
+        item->setFlags(item->flags() | Qt::ItemIsUserCheckable | Qt::ItemIsDragEnabled);
+        item->setCheckState(on ? Qt::Checked : Qt::Unchecked);
+        item->setData(Qt::UserRole, r.file);
+        item->setData(Qt::UserRole + 1, r.index);
+        item->setData(Qt::UserRole + 2, r.name);
+    };
+    QSet<QString> listed;
+    for (const ChainRef &r : m_chainList) { add(r, true); listed.insert(r.file + QLatin1Char('#') + QString::number(r.index)); }
+    for (const ChainRef &r : chainCandidates())
+        if (!listed.contains(r.file + QLatin1Char('#') + QString::number(r.index))) add(r, false);
+    layout->addWidget(list, 1);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dialog);
+    layout->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::accepted, &dialog, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &dialog, &QDialog::reject);
+    dialog.resize(520, 560);
+    if (dialog.exec() != QDialog::Accepted) return;
+    QVector<ChainRef> chosen;
+    for (int i = 0; i < list->count(); ++i) {
+        const QListWidgetItem *item = list->item(i);
+        if (item->checkState() == Qt::Checked)
+            chosen.append({ item->data(Qt::UserRole).toString(), item->data(Qt::UserRole + 1).toInt(),
+                            item->data(Qt::UserRole + 2).toString() });
+    }
+    setChainList(chosen);
+}
+
+// At the route's end: on into the next one, the loco where it is.
+bool LocoSimWindow::chainOn()
+{
+    ChainRef next;
+    double ahead = 0;
+    QString why;
+    if (!plannedNext(&next, &ahead, &why)) return false;
+    const QString from = routeName();
+    if (next.file != m_routeFile) {
+        const QVector<RfidTag::Route> routes = routesIn(next.file);
+        if (next.index < 0 || next.index >= routes.size()) return false;
+        m_routes = routes;
+        m_routeFile = next.file;
+        m_routeFileLabel->setText(QFileInfo(next.file).fileName());
+        m_routeFileLabel->setToolTip(QDir::toNativeSeparators(next.file));
+        fillRouteBox();
+    }
+    if (m_chain == Chain::List) ++m_chainAt;
+    showRoute(next.index);
+    const RfidTag::Route &route = m_routes.at(m_routeIndex);
+    m_readers.reset(new SimPreview::Readers(SimPreview::rowsOf(route)));
+    m_readers->setReader(1, m_readerOn[0]->isChecked());
+    m_readers->setReader(2, m_readerOn[1]->isChecked());
+    m_readers->setMissing(skippedTags());
+    m_routeRow = -1;
+    m_routeEnded = false;
+    m_tagStates.clear();
+    markFaultedRows();
+    ++m_chained;
+    m_status->ok(tr("Route %1 ended: on to route %2, its first tag %3 m ahead.").arg(from, route.name).arg(ahead, 0, 'f', 0));
+    if (m_recorder && m_recorder->recording())
+        m_recorder->mark(m_clock(), tr("Route %1 ended: on to route %2").arg(from, route.name));
+    // Run into the middle of it (an overlap): its tags from here on.
+    QVector<SimPreview::Readers::Send> sends;
+    const int row = m_readers->step(m_routeD, 0, &sends);
+    if (row >= 0) m_routeRow = row;
+    for (const SimPreview::Readers::Send &send : sends) sendWithFault(send);
+    refreshChainNote();
+    return true;
+}
+
 void LocoSimWindow::setReaderOn(int reader, bool on)
 {
     if (reader == 1 || reader == 2) m_readerOn[reader - 1]->setChecked(on);
@@ -1027,9 +1249,19 @@ void LocoSimWindow::stepRoute(const LocoSim::Step &step)
     QVector<SimPreview::Readers::Send> sends;
     const int row = m_readers->step(m_routeD, metres, &sends);
     if (row < 0) {
-        m_routeEnded = true;
-        m_status->warn(tr("Past route %1's last tag at %2 m: no more tags to send. The simulator never sends a "
-                          "route's last tag.").arg(route.name).arg(m_routeD, 0, 'f', 1));
+        // Session 406: short of the route's first tag (run into from the
+        // route before): on the way to it, nothing to send yet.
+        const bool before = !m_readers->rows().isEmpty() && (m_routeD - m_readers->rows().first().absLoc) * sign < 0;
+        if (!before && !chainOn()) {
+            m_routeEnded = true;
+            QString why;
+            ChainRef next;
+            double ahead = 0;
+            plannedNext(&next, &ahead, &why);
+            m_status->warn(tr("Past route %1's last tag at %2 m: no more tags to send. The simulator never sends a "
+                              "route's last tag.").arg(route.name).arg(m_routeD, 0, 'f', 1)
+                           + (m_chain == Chain::Stop ? QString() : tr(" %1").arg(why)));
+        }
     } else {
         m_routeRow = row;
     }

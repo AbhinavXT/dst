@@ -10,6 +10,69 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-406"></a>
+## Session 406 — route chaining: at a route's end, on into the next
+
+Abhinav 2026-10-29, the third of the four (step 2 stopped at a route's end:
+*"Not chained"*, session 395). His answer: automatic, with a list to override.
+
+**What the operator sees.** Loco Simulator ▸ RFID: the Speed card is now
+**Run**, with a **Then** row:
+- **stop at the end** (the default, as before);
+- **the next route:** the route in the same file, or in another file of the
+  same folder, that has the same direction and whose first tag is nearest
+  ahead of this route's last tag (from 50 m behind it to 5 km ahead);
+- **routes in order:** the routes ticked and dragged into order in
+  **Order…** (this file's routes, then the folder's other files').
+
+Beside it, what will happen: "then: 124_DN_LOOP1_HFZ, 196 m on (as near:
+125_DN_LOOP2_HFZ; Order… picks)", "then: no route continues from its last tag
+(dir 2, within 5000 m)", "then: the order's end", "then: stop".
+
+At the end the loco runs on, where it is, into the next route:
+- the route bar, the track view and the tag table switch to it, and its
+  tags go out from its first one;
+- between the routes nothing is sent;
+- the status line says "Route 1_DN ended: on to route 124_DN_LOOP1_HFZ, its
+  first tag 196 m ahead", and a recording (404) marks it;
+- where nothing continues, the route ends as before, and the status line
+  says why.
+
+**Choices made:**
+- **Ties:** the first in the file wins, and the others are named.
+- **The Tag Builder's route** (402) has no file beside it, so only "stop"
+  finds nothing to run into.
+- **A route picked by hand** sets the order's place to that route.
+
+**Files:** `simpreview.{h,cpp}` (`nextRoute`, `kChainBehind`, `kChainAhead`),
+`locosimwindow.{h,cpp}` (`Chain`, `ChainRef`, `setChain`, `setChainList`,
+`chainCandidates`, `chainNote`, `chainOn`, Order…), `tests/test_session406.cpp`,
+`tests/tests.pro`.
+
+**Tests:** `session406` (17 checks), on the simulator's own Configuration1.xml:
+- **The rule:** after 1_DN (ends at 164414 m), 124_DN_LOOP1_HFZ 196 m on,
+  with 125_DN_LOOP2_HFZ named as just as near; after 2_REV_DN, none; not
+  itself or its REV twin.
+- **The window:**
+  - stop by default (the route ends);
+  - the next route: the note, the loco running into 124, 124's own tags
+    sent, the recording's mark;
+  - in order (1_DN, then 125): into 125, not 124, then the order's end;
+  - nothing continuing, and the candidates.
+- Sessions 393 (fits 1366 × 700), 395, 397, 400, 402, 404 and 405 pass
+  unchanged.
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 422
+suites / 10583 checks, 0 failed; menu audit and headless smoke ok. Linux
+(Ubuntu 22.04 container): `dltests` and the menu audit pass, `session406` and
+the window-size suites included.
+
+**Not tested:** LocoTcasSimulator's own rule for its next route (its source
+was not to hand here: this one is by location); the Order… dialog by hand
+(the tests set the order through `setChainList`); with a real VCC.
+
+---
+
 <a id="session-405"></a>
 ## Session 405 — RFID faults per tag: late, sent twice, bad CRC
 

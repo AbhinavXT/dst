@@ -21,6 +21,10 @@
 //              (session 405) a fault per tag: Late (N ms), Sent twice or
 //              Bad CRC, for reader 1, 2 or both, each time the loco passes;
 //              its word on the tag's chip in the track view.
+//              (session 406) Then: at the route's end, stop; or run on into
+//              the next route, found by location (same direction, its first
+//              tag nearest ahead of the last one, in the same file or folder);
+//              or the routes set in an order.
 //              (session 402) Tag Builder: the route open in a Tag Builder,
 //              as it is now, saved or not; each edit there comes here and
 //              the loco stays where it is (back to the start tag when the
@@ -130,6 +134,17 @@ public:
         int delayMs = 500;
     };
     void   setTagFault(const QString &tag, LocoSim::TagFault kind, int readers = 3, int delayMs = 500);
+    // Session 406: what happens at the route's end.
+    enum class Chain { Stop, Auto, List };
+    struct ChainRef { QString file; int index = 0; QString name; };
+    void   setChain(Chain mode);
+    Chain  chain() const { return m_chain; }
+    void   setChainList(const QVector<ChainRef> &routes);   // and Chain::List
+    QVector<ChainRef> chainList() const { return m_chainList; }
+    QVector<ChainRef> chainCandidates() const;   // this file's routes, then the folder's other files'
+    QString chainNote() const;                   // "then: 124_DN_LOOP1_HFZ, 196 m on"
+    int    chainedCount() const { return m_chained; }
+    QString routeName() const;                   // the route the loco is on, "" none
     TagFaultSetting tagFault(const QString &tag) const { return m_faults.value(tag); }
     int    lateQueued() const { return m_late.size(); }
     void   setReader2OwnPort(bool own);
@@ -166,6 +181,11 @@ private:
     void   markFaultedRows();
     void   showFaultRow(int row);
     QHash<int, QString> faultLabels() const;
+    bool   chainOn();                           // at the route's end: into the next; false: none
+    bool   plannedNext(ChainRef *next, double *ahead, QString *why) const;
+    QVector<RfidTag::Route> routesIn(const QString &file) const;
+    void   refreshChainNote();
+    void   editChainOrder();
     void   showRoutePosition();
     QStringList skippedTags() const;
     void   refreshTagPorts();
@@ -260,6 +280,14 @@ private:
     QHash<QString, TagFaultSetting> m_faults;   // session 405: by tag name
     struct Late { qint64 dueMs; SimPreview::Readers::Send send; QString note; };
     QVector<Late>   m_late;             // late tags waiting for their time
+    Chain           m_chain = Chain::Stop;   // session 406
+    QVector<ChainRef> m_chainList;
+    int             m_chainAt = -1;     // the current route's place in m_chainList
+    int             m_chained = 0;
+    mutable QHash<QString, QVector<RfidTag::Route>> m_fileRoutes;
+    QComboBox      *m_chainBox = nullptr;
+    QPushButton    *m_chainOrder = nullptr;
+    QLabel         *m_chainNoteLabel = nullptr;
 };
 
 #endif  // LOCOSIMWINDOW_H

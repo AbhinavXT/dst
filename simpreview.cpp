@@ -1,5 +1,7 @@
 #include "simpreview.h"
 
+#include <cmath>
+
 #include "capturedecoder.h"
 #include "logmodel.h"
 
@@ -52,6 +54,35 @@ QVector<Row> rowsOf(const RfidTag::Route &route, bool *fromFileRows)
     }
     if (fromFileRows) *fromFileRows = fileRows;
     return rows;
+}
+
+int nextRoute(const QVector<RfidTag::Route> &candidates, const RfidTag::Route &from, double *ahead, QVector<int> *tied)
+{
+    if (tied) tied->clear();
+    if (from.dir != RfidTag::DirNominal && from.dir != RfidTag::DirReverse) return -1;
+    const QVector<Row> own = rowsOf(from);
+    if (own.isEmpty()) return -1;
+    const double sign = from.dir == RfidTag::DirReverse ? -1 : 1;
+    const double last = own.last().absLoc;
+    int best = -1;
+    double bestAhead = 0;
+    QVector<QPair<int, double>> near;
+    for (int i = 0; i < candidates.size(); ++i) {
+        const RfidTag::Route &c = candidates.at(i);
+        if (c.dir != from.dir) continue;
+        const QVector<Row> rows = rowsOf(c);
+        if (rows.isEmpty()) continue;
+        if (c.name == from.name && rows.size() == own.size() && rows.first().absLoc == own.first().absLoc) continue;
+        const double gap = (rows.first().absLoc - last) * sign;
+        if (gap < -kChainBehind || gap > kChainAhead) continue;
+        near.append({ i, gap });
+        if (best < 0 || gap < bestAhead) { best = i; bestAhead = gap; }
+    }
+    if (best >= 0 && tied)
+        for (const auto &n : near)
+            if (n.first != best && std::fabs(n.second - bestAhead) <= 1) tied->append(n.first);
+    if (ahead) *ahead = bestAhead;
+    return best;
 }
 
 void Readers::setMissing(const QStringList &names)

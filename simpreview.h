@@ -99,6 +99,16 @@ struct Row {
 // holds its tag, else RfidTag::routeRows (route.dir must be set).
 QVector<Row> rowsOf(const RfidTag::Route &route, bool *fromFileRows = nullptr);
 
+// Session 406: the route the loco runs into when `from` ends. Of
+// `candidates`, the ones with the same direction whose first row lies from
+// 50 m behind `from`'s last row to 5 km ahead of it, along the direction;
+// the nearest. -1 when none does. *ahead: how far ahead its first row is;
+// *tied: the others as near (within 1 m), which the caller may want named.
+// A candidate with the same name and rows as `from` is not one.
+constexpr double kChainBehind = 50, kChainAhead = 5000;
+int nextRoute(const QVector<RfidTag::Route> &candidates, const RfidTag::Route &from, double *ahead = nullptr,
+              QVector<int> *tied = nullptr);
+
 class Readers
 {
 public:
