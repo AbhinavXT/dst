@@ -244,7 +244,8 @@ void MinimizedDock::relayout()
         // Room for the "+N more" button too, unless this is the last chip.
         m_more->setText(tr("+%1 more").arg(m_chips.size() - i));
         const int moreW = last ? 0 : m_more->sizeHint().width() + gap;
-        const bool fits = hidden == 0 && used + w + moreW <= room;
+        // The first always: a row of none and "+N more" says nothing (session 416).
+        const bool fits = hidden == 0 && (i == 0 || used + w + moreW <= room);
         chip.frame->setVisible(fits);
         if (fits) {
             used += w;

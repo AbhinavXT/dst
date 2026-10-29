@@ -1362,10 +1362,11 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     addBtn->setToolTip(tr("After the selected row. On Tags: a copy of the selected tag, to move or edit"));
     auto *delBtn = new QPushButton(tr("Delete rows"), this);
     // Session 221: the RFID Tag Builder on a tag of the layout.
-    auto *editTagBtn = new QPushButton(tr("Edit in Tag Builder…"), this);
+    // Session 416: short names, the row fits with wider (Linux) fonts; the tooltips name the Tag Builder.
+    auto *editTagBtn = new QPushButton(tr("Edit tag…"), this);
     editTagBtn->setToolTip(tr("Open the selected tag in the RFID Tag Builder: every field by name, CRC-30 computed. "
                               "Its Apply button puts it back here (double-click a tag in the drawing does the same)"));
-    auto *newTagBtn = new QPushButton(tr("New tag in Tag Builder…"), this);
+    auto *newTagBtn = new QPushButton(tr("New tag…"), this);
     newTagBtn->setToolTip(tr("Make a new tag in the RFID Tag Builder, starting from the selected tag; "
                              "its Apply button adds it to the layout"));
     auto *rowBar = new QHBoxLayout;

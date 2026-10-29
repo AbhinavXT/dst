@@ -64,7 +64,9 @@ TEST_SUITE(session413)
     CHECK(shown >= 1 && shown < 8 && dock->overflowCount() == 8 - shown,
           qPrintable(QStringLiteral("900 px wide: %1 in the row, %2 behind \"+N more\"").arg(shown).arg(8 - shown)));
     CHECK(sideBySide(dock->shownChips()), "those in the row side by side, each at its own width");
-    CHECK(dock->width() <= 450, qPrintable(QStringLiteral("the row within half the window (%1 px)").arg(dock->width())));
+    // Over half only with the first alone in it (wide fonts: Linux CI, session 416).
+    CHECK(dock->width() <= 450 || shown == 1,
+          qPrintable(QStringLiteral("the row within half the window, or just the first chip (%1 px)").arg(dock->width())));
     QToolButton *more = dock->moreButton();
     CHECK(more && more->isVisible() && more->text() == QStringLiteral("+%1 more").arg(8 - shown)
               && more->menu()->actions().size() == 8 - shown,

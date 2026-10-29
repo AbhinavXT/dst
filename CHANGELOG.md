@@ -10,6 +10,41 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-416"></a>
+## Session 416 — CI green again on Linux: Station Layout's row, the first chip
+
+CI's Linux job has failed since patch 411; the Mac gates passed. Linux's
+wider fonts (Ubuntu 22.04, Qt 5.15.3, offscreen):
+- **session210, 212, 233:** the Station Layout's minimum width was 1044 px,
+  over the 1000 px the tests keep for wider fonts. 411 put its Simulator
+  button in the row under the tables, which had room on the Mac only.
+- **session413:** at 900 px, not one chip in the row, all eight behind
+  "+8 more": the first chip and "+N more" are wider than half the window
+  there.
+
+**What the operator sees.**
+- **Station Layout:** "Edit in Tag Builder…" and "New tag in Tag Builder…"
+  are now **"Edit tag…"** and **"New tag…"**; their tooltips still say they
+  open the RFID Tag Builder. The row fits with Simulator in it.
+- **Minimised windows:** the first chip is always in the row, even when it
+  and "+N more" are wider than half the window; the others go behind
+  "+N more" as before.
+
+**Files.** stationlayoutwindow.cpp, minimizeddock.cpp,
+tests/test_session413.cpp (the half-width check allows the first chip
+alone).
+
+**Tests.** No new suite: the four that failed on CI are the tests. Run in an
+ubuntu:22.04 container (Qt 5.15.3, offscreen), the CI job's setup:
+session210, 212, 221, 233, 411, 413 all ok; the full `dltests` there:
+430 suites / 10737 checks, 0 failed (414 and 415's suites too).
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 430
+suites / 10737 checks, 0 failed; menu audit 203 ok; headless smoke ok. Linux
+(ubuntu:22.04 container): the full `dltests` green, as above; CI to confirm.
+
+---
+
 <a id="session-415"></a>
 ## Session 415 — the RFID frames the Loco Simulator sent, in a tab of their own
 
