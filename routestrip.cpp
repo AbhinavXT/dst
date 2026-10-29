@@ -8,6 +8,7 @@
 #include <cmath>
 #include <limits>
 
+#include <QContextMenuEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPainterPath>
@@ -80,6 +81,13 @@ double RouteStrip::xAt(double loc) const
     return kMargin + w * (loc - lo) / (hi - lo);
 }
 
+double RouteStrip::locAt(double x) const
+{
+    const double w = qMax(1, width() - 2 * kMargin);
+    const double lo = viewLow(), hi = viewHigh();
+    return lo + (x - kMargin) / w * (hi - lo);
+}
+
 void RouteStrip::useOverlay()
 {
     if (m_overlay) return;
@@ -137,8 +145,21 @@ int RouteStrip::rowAt(const QPoint &p) const
 
 void RouteStrip::mousePressEvent(QMouseEvent *e)
 {
+    if (e->button() != Qt::LeftButton) return;   // the right button is contextMenuEvent's
     const int row = rowAt(e->pos());
     if (row >= 0) emit rowClicked(row);
+}
+
+void RouteStrip::mouseDoubleClickEvent(QMouseEvent *e)
+{
+    if (e->button() != Qt::LeftButton) return;
+    const int row = rowAt(e->pos());
+    if (row >= 0) emit rowDoubleClicked(row);
+}
+
+void RouteStrip::contextMenuEvent(QContextMenuEvent *e)
+{
+    emit contextRequested(rowAt(e->pos()), locAt(e->pos().x()), e->globalPos());
 }
 
 void RouteStrip::paintEvent(QPaintEvent *)

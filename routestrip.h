@@ -24,6 +24,10 @@
 //  tag's state (sent on reader 1 / 2, skipped), and reader 2's 20-24 m
 //  window. None of it is drawn until set, so the Tag Builder's strip is as
 //  it was.
+//
+//  Session 401: a double-click on a tag and a right-click anywhere are passed
+//  on (rowDoubleClicked, contextRequested), for the Tag Builder's edit window
+//  and its New tag here….
 // =============================================================================
 
 #include "rfidtag.h"
@@ -66,12 +70,20 @@ public:
     QSize sizeHint() const override { return QSize(600, m_overlay ? 150 : 100); }
     QSize minimumSizeHint() const override { return QSize(200, m_overlay ? 150 : 100); }
 
+    double locAt(double x) const;                        // session 401: the location at a widget x
+
 signals:
     void rowClicked(int row);
+    // Session 401: a tag double-clicked; a right-click (`row` -1 off the tags)
+    // at location `loc`, for the caller's menu at `globalPos`.
+    void rowDoubleClicked(int row);
+    void contextRequested(int row, double loc, const QPoint &globalPos);
 
 protected:
     void paintEvent(QPaintEvent *) override;
     void mousePressEvent(QMouseEvent *e) override;
+    void mouseDoubleClickEvent(QMouseEvent *e) override;
+    void contextMenuEvent(QContextMenuEvent *e) override;
 
 private:
     double xOf(qint64 loc) const;

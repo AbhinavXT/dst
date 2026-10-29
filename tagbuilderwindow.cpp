@@ -1,4 +1,7 @@
 #include "tagbuilderwindow.h"
+#include "tageditdialog.h"
+#include <QSet>
+#include <cmath>
 #include "fielddocs.h"
 #include "tagscenario.h"
 
@@ -520,6 +523,12 @@ TagBuilderWindow::TagBuilderWindow(MessageDispatcher *dispatcher, QWidget *paren
     connect(m_strip, &RouteStrip::rowClicked, this, [this](int row) {
         m_tabs->setCurrentIndex(0);
         selectRow(row);
+    });
+    connect(m_strip, &RouteStrip::rowDoubleClicked, this, [this](int row) { editRowInDialog(row); });
+    connect(m_strip, &RouteStrip::contextRequested, this, [this](int row, double loc, const QPoint &globalPos) {
+        QMenu *menu = stripMenu(row, loc);
+        menu->setAttribute(Qt::WA_DeleteOnClose);
+        menu->popup(globalPos);
     });
     connect(m_checks, &QTableWidget::cellDoubleClicked, this, [this](int r) {
         const int row = m_checks->item(r, 0) ? m_checks->item(r, 0)->data(Qt::UserRole).toInt() : -1;
@@ -1073,6 +1082,96 @@ void TagBuilderWindow::fillChecks()
         m_checks->setItem(i, 2, text);
     }
     m_tabs->setTabText(2, attention ? tr("Checks (%1 to look at)").arg(attention) : tr("Checks"));
+}
+
+// ---- session 401: editing on the route drawing ----------------------------------------------
+
+TagEditDialog *TagBuilderWindow::editRowInDialog(int row)
+{
+    if (row < 0 || row >= m_route.tags.size()) return nullptr;
+    selectRow(row);
+    const QByteArray was = m_route.tags.at(row).bytes;
+    auto *dialog = new TagEditDialog(was, tr("Tag %1, row %2").arg(RfidTag::nameOf(was)).arg(row + 1), tr("Change"), this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &QDialog::accepted, this, [this, dialog, row, was]() {
+        // The row is the tag the window opened, or it moved under it: refused then.
+        if (row >= m_route.tags.size() || m_route.tags.at(row).bytes != was) {
+            m_status->fail(tr("Not changed: row %1 is no longer tag %2").arg(row + 1).arg(RfidTag::nameOf(was)));
+            return;
+        }
+        const QByteArray tag = dialog->tag();
+        if (tag == was) return;
+        const RfidTag::Route before = m_route;
+        m_route.tags[row] = { RfidTag::nameOf(tag), tag };
+        changed(tr("Edit tag %1").arg(RfidTag::nameOf(tag)), before, row);
+        m_status->ok(tr("Row %1 is now tag %2").arg(row + 1).arg(RfidTag::nameOf(tag)));
+    });
+    dialog->open();
+    return dialog;
+}
+
+TagEditDialog *TagBuilderWindow::newTagInDialog(qint64 loc)
+{
+    // The nearest main tag is the template: its type, TINs and placement.
+    int nearest = -1;
+    qint64 best = 0;
+    QSet<int> used;
+    for (int i = 0; i < m_route.tags.size(); ++i) {
+        const RfidTag::Summary s = RfidTag::summary(m_route.tags.at(i).bytes);
+        used.insert(s.unique);
+        if (s.duplicate || s.absLoc == RfidCheck::kNotApplicable) continue;
+        if (nearest < 0 || std::llabs(s.absLoc - loc) < best) { nearest = i; best = std::llabs(s.absLoc - loc); }
+    }
+    QHash<QString, qint64> v = RfidTag::values(nearest >= 0 ? m_route.tags.at(nearest).bytes : m_tag);
+    int id = 1;
+    while (used.contains(id) && id < 1023) ++id;   // unique is a 10-bit field
+    v.insert(QStringLiteral("unique"), id);
+    v.insert(QStringLiteral("duplication"), 0);
+    const QString locField = v.value(QStringLiteral("type")) == 12 ? QStringLiteral("abs_loc_1") : QStringLiteral("abs_loc");
+    v.insert(locField, loc);
+    QString err;
+    const QByteArray made = RfidTag::build(v, &err);
+    if (made.isEmpty()) {
+        m_status->fail(tr("No new tag: %1").arg(err));
+        return nullptr;
+    }
+    auto *dialog = new TagEditDialog(made, tr("New tag at %1 m").arg(loc), tr("Add"), this);
+    dialog->setAttribute(Qt::WA_DeleteOnClose);
+    connect(dialog, &QDialog::accepted, this, [this, dialog]() {
+        const QByteArray tag = dialog->tag();
+        const qint64 at = RfidTag::summary(tag).absLoc;
+        // In the order the loco meets it: before the first tag it reaches first.
+        const bool down = m_route.dir == RfidTag::DirReverse;
+        int row = m_route.tags.size();
+        for (int i = 0; i < m_route.tags.size(); ++i) {
+            const qint64 l = RfidTag::summary(m_route.tags.at(i).bytes).absLoc;
+            if (l == RfidCheck::kNotApplicable) continue;
+            if (down ? l < at : l > at) { row = i; break; }
+        }
+        const RfidTag::Route before = m_route;
+        m_route.tags.insert(row, { RfidTag::nameOf(tag), tag });
+        changed(tr("Add tag %1").arg(RfidTag::nameOf(tag)), before, row);
+        m_status->ok(tr("Tag %1 added at row %2, %3 m").arg(RfidTag::nameOf(tag)).arg(row + 1).arg(at));
+    });
+    dialog->open();
+    return dialog;
+}
+
+QMenu *TagBuilderWindow::stripMenu(int row, double loc)
+{
+    auto *menu = new QMenu(this);
+    if (row >= 0 && row < m_route.tags.size()) {
+        const QString name = RfidTag::nameOf(m_route.tags.at(row).bytes);
+        menu->addAction(tr("Edit tag %1\u2026").arg(name), this, [this, row]() { editRowInDialog(row); });
+        menu->addAction(tr("Delete tag %1").arg(name), this, [this, row]() {
+            selectRow(row);
+            deleteTag();
+        });
+        menu->addSeparator();
+    }
+    const qint64 metres = qint64(std::llround(qMax(0.0, loc)));
+    menu->addAction(tr("New tag here (%1 m)\u2026").arg(metres), this, [this, metres]() { newTagInDialog(metres); });
+    return menu;
 }
 
 void TagBuilderWindow::addTag()

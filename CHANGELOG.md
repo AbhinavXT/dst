@@ -10,6 +10,54 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-401"></a>
+## Session 401 — the Tag Builder: change or add a tag straight on the route drawing
+
+Abhinav 2026-10-29: *"add direct window to tag builder for changing and adding
+a tag directly on the route"*. His answer: edit from the route drawing.
+
+**What the operator sees.** On the Tag Builder's route drawing:
+- **Double-click a tag:** a window with that tag's type and every field
+  (coded values by name, Annexure D's description on each), page_x / page_y,
+  and the CRC-30 computed as you type. **Change** replaces the row in the
+  route; Cancel leaves it as it was.
+- **Right-click a tag:** Edit tag 904…, Delete tag 904, New tag here (… m)….
+  **Right-click the line elsewhere:** New tag here (… m)….
+- **New tag here…** opens the same window on a new main tag: the nearest main
+  tag's type and TINs, the first id the route does not use, the clicked
+  metre. **Add** puts it in the route in the order the loco meets it (by
+  location, along the route's direction).
+- Each change is one Undo step. If the row changed under an open window
+  (another edit), Change is refused and the status line says so.
+- The strip's left click selects a tag as before. A right click no longer
+  selects it as well.
+
+**Not built:** the new tag's duplicate (4 m on) in the same step (Add
+duplicate does it after); the neighbours' "next tag" distances are not
+rewritten. The Checks tab flags what needs looking at.
+
+**Files:** `tageditdialog.{h,cpp}` (new, in `dlcore.pri`), `routestrip.{h,cpp}`
+(`locAt`, `rowDoubleClicked`, `contextRequested`), `tagbuilderwindow.{h,cpp}`
+(`editRowInDialog`, `newTagInDialog`, `stripMenu`), `tests/test_session401.cpp`,
+`tests/tests.pro`.
+
+**Tests:** `session401` (21 checks), on the simulator's own Configuration1.xml:
+locAt the inverse of xAt; a double-click opens the tag; a location changed
+there, CRC good, nothing changed before OK, OK replaces the row, one Undo
+back; Cancel; New tag here between two main tags (the clicked metre, a main
+tag, an unused id, a good CRC, placed between them, one Undo out); the menus
+on and off a tag; Delete from the menu. Sessions 196, 221, 222 and 397 pass
+unchanged.
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 417
+suites / 10482 checks, 0 failed; menu audit and headless smoke ok. Linux
+(Ubuntu 22.04 container): `session401` and the Tag Builder suites pass.
+
+**Not tested:** by hand with a mouse. The tests call the strip's signals and
+the window's functions, not real clicks.
+
+---
+
 <a id="session-400"></a>
 ## Session 400 — the RFID tab shows and sets the speed; Linux CI green again
 

@@ -40,6 +40,11 @@
 //                 when the builder opens from the menu.
 //    (session 221) opened from Station Layout to edit or add one of its tags:
 //                 an Apply button sends the editor's tag back.
+//    (session 401) on the route drawing: double-click a tag to change it in a
+//                 window of its own (tageditdialog.h); right-click for Edit
+//                 tag…, Delete tag and New tag here… (the nearest main tag's
+//                 type and TINs, an unused id, the clicked metre). Each is one
+//                 Undo step.
 //    (session 203) a Simulator tab: what the RFID simulator (LocoTcasSimulator)
 //                 would send for this route, at a speed, from a start tag, tick
 //                 by tick, on reader 1 and reader 2 (simpreview.h).
@@ -55,6 +60,8 @@
 
 class MessageDispatcher;
 class QComboBox;
+class QMenu;
+class TagEditDialog;
 class QTabWidget;
 class RouteStrip;
 class UndoLog;
@@ -163,6 +170,13 @@ public:
     QTableWidget *simTable() const { return m_simTable; }
     QLabel *simSummary() const { return m_simSummary; }
     void selectRow(int row);
+    // Session 401: from the route drawing. The window opens (not modal to the
+    // app) and OK puts its tag in the route, one Undo step. Null when there
+    // is no such row. newTagInDialog: a new main tag at `loc` metres, placed
+    // in the route in the order the loco meets it.
+    TagEditDialog *editRowInDialog(int row);
+    TagEditDialog *newTagInDialog(qint64 loc);
+    QMenu *stripMenu(int row, double loc);   // the right-click menu; the caller owns it
     // Session 200.
     QList<int> selectedRows() const;      // ascending
     void selectRows(const QList<int> &rows);

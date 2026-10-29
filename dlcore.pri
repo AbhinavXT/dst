@@ -146,6 +146,7 @@ SOURCES += \
     $$PWD/speedgauge.cpp \
     $$PWD/taglibrary.cpp \
     $$PWD/tagbuilderwindow.cpp \
+    $$PWD/tageditdialog.cpp \
     $$PWD/twolocowindow.cpp \
     $$PWD/trackdiagram.cpp \
     $$PWD/trackdiagramwindow.cpp \
@@ -358,6 +359,7 @@ HEADERS += \
     $$PWD/speedgauge.h \
     $$PWD/taglibrary.h \
     $$PWD/tagbuilderwindow.h \
+    $$PWD/tageditdialog.h \
     $$PWD/twolocowindow.h \
     $$PWD/trackdiagram.h \
     $$PWD/trackdiagramwindow.h \
