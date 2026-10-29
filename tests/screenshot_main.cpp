@@ -1481,6 +1481,16 @@ int main(int argc, char **argv)
         for (int i = 0; i < 20; ++i) { QCoreApplication::processEvents(); }
         for (FindBar *fb : w.findChildren<FindBar *>()) if (fb->parentWidget() && fb->parentWidget()->isVisible()) fb->activate();
         for (int i = 0; i < 20; ++i) { QCoreApplication::processEvents(); }
+        // SHOT_CHIPS=N (session 413): N tool windows minimised, their chips in the status bar.
+        for (int i = 0; i < qEnvironmentVariable("SHOT_CHIPS").toInt(); ++i) {
+            auto *tool = new QMainWindow(&w);
+            tool->setWindowFlag(Qt::Window);
+            tool->setWindowTitle(QStringLiteral("Decode Workbench \u00B7 @dmi 14:02:%1").arg(10 + i));
+            tool->show();
+            QCoreApplication::processEvents();
+            tool->setWindowState(Qt::WindowMinimized);
+            for (int k = 0; k < 10; ++k) QCoreApplication::processEvents();
+        }
         clipAudit(&w, QStringLiteral("main"));
         w.grab().save(QStringLiteral("%1/shot_%2.png").arg(dir, ThemeUtil::toString(t)));
         if (qEnvironmentVariableIsSet("SHOT_DUMP")) {

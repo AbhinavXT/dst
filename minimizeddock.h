@@ -21,6 +21,11 @@
 //    some other way -- its menu item reopens it, say -- its chip goes; if
 //    it is destroyed, its chip goes; if its title changes, its chip follows.
 //
+//    Session 413: the chips stay side by side at their own width, never
+//    squeezed over one another. Those that do not fit in half the main
+//    window's width go into a "+N more" menu at the end of the row, which
+//    brings each back; the row is laid out again when the window resizes.
+//
 //    "Tool window": a real window (Qt::Window) with a parent. The main
 //    window, dialogs, message boxes, menus and tooltips are not affected.
 //    Every tool window, current or future, is covered without asking.
@@ -46,6 +51,12 @@ public:
     QStringList chipTitles() const;
     void        restoreChip(int index);   // as a click on the chip
     void        closeChip(int index);     // as a click on its ✕
+    // Session 413: the row's width (px); -1 (the default): half the main window's.
+    void        setWidthBudget(int px);
+    int         shownChipCount() const;   // chips in the row; the rest are in "+N more"
+    int         overflowCount() const { return chipCount() - shownChipCount(); }
+    QToolButton *moreButton() const { return m_more; }
+    QList<QWidget *> shownChips() const;
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -63,10 +74,14 @@ private:
     void restore(QWidget *window);         // remove the chip and show the window
     void updateChipText(QWidget *window);
     void restyle();
+    void relayout();                       // session 413: what fits in the row, the rest in "+N more"
+    int  budget() const;
     int  indexOf(const QWidget *window) const;
 
     QHBoxLayout  *m_layout = nullptr;
     QVector<Chip> m_chips;
+    QToolButton  *m_more = nullptr;        // session 413
+    int           m_budget = -1;
 };
 
 #endif // MINIMIZEDDOCK_H

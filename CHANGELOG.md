@@ -10,6 +10,62 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-413"></a>
+## Session 413 — the minimised windows' chips side by side, the rest in "+N more"
+
+Abhinav 2026-10-29, the second of three (*"Sometimes minimized windows
+superimpose on other minimized windows in the bottom of dlconsole, they
+should ne side by side."*).
+
+**What the operator sees.** In the status bar, the chips of minimised tool
+windows (minimizeddock.h):
+- **Each chip keeps its own width, side by side**, never drawn over another.
+- **Those that do not fit in half the main window's width** go behind a
+  **"+N more ▾"** button at the end of the row. Its menu lists each by title;
+  picking one brings that window back, as its chip would.
+- **The row is laid out again** when the main window is resized, and when a
+  chip comes, goes or its title changes. Widen the window and more chips
+  come into the row.
+- **A long title is cut in the middle**, not at the end:
+  "Decode Workbench…14:02:11". The end is what tells two windows of one tool
+  apart: since 412 it is the row's time. The full title is in the tooltip.
+
+**Why they overlapped.** The status bar gives its widgets what room it has.
+With more chips than fit, it squeezed the dock below the chips' own width,
+and they were drawn over one another. The chips and the dock now have a
+fixed size policy, and the row never asks for more than its budget.
+
+**Files:** `minimizeddock.{h,cpp}` (`relayout`, `budget`, `setWidthBudget`,
+`shownChipCount`, `overflowCount`, `moreButton`, `shownChips`),
+`tests/test_session413.cpp`, `tests/tests.pro`, `tests/screenshot_main.cpp`
+(`SHOT_CHIPS=N`: N tool windows minimised in the main window's shot).
+
+**Tests:** `session413` (9 checks): a 900 px main window with a status bar
+like DLConsole's, eight tool windows minimised:
+- eight chips, some in the row and the rest behind "+N more";
+- those in the row side by side, none narrower than its own width, the row
+  within half the window;
+- "+N more" after the chips, its menu one entry per window not in the row;
+- picked from the menu: that window back, one chip fewer;
+- 2400 px wide: more in the row, still side by side; room for all: no
+  "+N more".
+- **Looked at:** the main window's shot with nine minimised: two chips, then
+  "+7 more".
+
+**Gate** (macOS), Qt 5.15 and Qt 6.11: every stage green; `dltests` 428
+suites / 10687 checks, 0 failed; menu audit 203 ok; headless smoke ok. Linux:
+left to CI. Not looked at: the shot on the native macOS platform, where the
+harness hangs even with no chip (offscreen it is fine); not chased here.
+
+**Not tested:** on Windows itself. The overlap was seen there; whether the
+case Abhinav saw was the squeeze (fixed here) or something else is not
+known: no picture of it was to hand. **Found, not fixed:** the screenshot
+harness (`tests/screenshot_main.cpp`, not the app) crashes as it closes the
+main window, in `FindBar::setDetached` called from a table's `destroyed`.
+The picture is saved first, and the app's headless smoke exits cleanly.
+
+---
+
 <a id="session-412"></a>
 ## Session 412 — each packet in a Decode Workbench or Packet Maker of its own
 
