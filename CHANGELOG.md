@@ -10,6 +10,85 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-424"></a>
+## Session 424 — the Stationary KAVACH routes and their MA drawn on the Station Layout
+
+Abhinav 2026-10-30, after patch 423, asked what next and answered *"1,2,3"*:
+(1) draw the routes on the layout's drawing, (2) pick a route's tags by
+clicking them in the drawing, (3) more station behaviour. This is item 1.
+Choice made without asking (unattended list): the drawing shows the aspects
+the file starts with (the KAVACH tab's *Aspect at start*), not Packet Maker ▸
+Station…'s live ones, which live in another window.
+
+**What the operator sees.** Tools ▸ Station Layout, tab **KAVACH**: the
+drawing above shows the selected route as a strong halo along its tags,
+each MA section on from it (the routes its exit signal's aspect takes in,
+as the station answers) as a fainter one, a bar where the MA ends with its
+length under the gap dimensions (*MA 1956 m*), and every KAVACH signal lit
+by its aspect (red, yellow, two yellows, green, red and white for
+calling-on). A KAVACH signal the signals sheet lacks (A900, A904 on
+Section_30) is drawn at its foot tag too. Hovering names the route, the
+section and its metres, the signal's aspect. The line over the route's
+tables says it: *Route S43-A900 DN Auto: S43 → A900, 1116 m. A900 Yellow:
+2 sections → MA 1956 m*, and when fewer routes go on than the aspect wants,
+*(2 wanted; no route on from A904)*. Changing an aspect or the route
+redraws at once; another tab shows the layout alone; Export ▸ PDF / PNG
+draws what is shown.
+
+**Checks** now also says where the layout's tags do not lie as a route's
+linking distances say (in its direction: Nominal is rising locations): *route
+A900-A904 DN Auto: tag 904 is 200 m on from tag 902; the layout's tags lie
+9800 m back*. A tag number the layout lists more than once agrees when any
+of its tags does. Said, not corrected.
+
+**Found on the way.** The first version of that check said exactly that line
+about the built-in Section_30.xlsx; it was wrong. Section_30 repeats one 5 km
+block three times (154-158.8, 159-163.8, 164-168.8 km), so 802 … 902 are each
+listed three times (Checks already said so), and 904 only in the first block,
+200 m after that block's 902: as station 527's SLRPs have it. One location per
+name had compared the third block's 902 with the first block's 904. The check
+now takes every location of a number; on Section_30 it says nothing. The
+drawing still places each tag name once (as the layout's own drawing does),
+so on Section_30 the route's halo runs through the last block's tags and its
+step to 904 jumps back to the first block; hovering a section names the tags
+the layout lists more than once.
+
+**Engine.** `StationKavach::sectionsFrom()`: the MA's sections from a route,
+taken out of `answer()`, which now uses it, so the drawing and the answer
+cannot differ. `aspectName()` is public; `locationChecks()` is new.
+
+**Files.** `stationkavach.{h,cpp}`; `stationlayoutwindow.{h,cpp}`
+(`StationLayoutCanvas::setKavachView`, `kavachPath`, `kavachMaEndRect`;
+`kavachViewOf`); `stationkavacheditor.{h,cpp}` (`routeSelected`, the MA in
+the route's line); `docs/STATION_KAVACH.md` (*On the drawing*); `CLAUDE.md`;
+`tests/test_session424.cpp` (new), `tests/tests.pro`;
+`tests/screenshot_main.cpp` (`SHOT_KAVACH_FROM=<layout json>`,
+`SHOT_KAVACH_DRAWING=<png>`).
+
+**Tests.** `session424` (43 checks): the station 527 fixture on the built-in
+Section_30.xlsx (real tags). The sections from S43-A900 are S43-A900 and
+A900-A904, MA 1956 m, the MA `answer()` gives the **real LSRP 40380**; A900
+Red gives 1 section and MA 1116 m, Green wants 4 of 2 and says so, a route
+not starting where the one before ends is named. The view: every tag found
+in the layout, each section by its tags, the path through the tags where
+they are drawn, the MA's end at tag 904 (then at 900 with A900 Red, back
+after Undo); the tooltips, with the tags the layout lists more than once;
+S48-S43 gives MA 1650 m as station 527 sent it; another tab or no KAVACH
+data draws nothing; the PNG export. The location
+check: nothing on Section_30's three blocks (each step agrees with some
+block), one line when only the third block's 902 is given, the counts when a
+number is listed twice and neither agrees, each step when run Reverse; in the
+window, tag 904 moved 30 m is said.
+Looked at with the screenshot harness, light and dark (the fainter halo was
+raised on dark sheets after the first look).
+- **Not tested:** Windows and Linux fonts by eye (Mac shots only).
+- **Not built:** the live aspects of Packet Maker ▸ Station… on the drawing.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: 17 validators, 437 suites / 11001
+checks, menu audit (203), headless smoke.
+
+---
+
 <a id="session-423"></a>
 ## Session 423 — the Stationary KAVACH data edited in Station Layout
 

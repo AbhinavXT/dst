@@ -649,11 +649,22 @@ int main(int argc, char **argv)
                 }
                 // Session 423: SHOT_KAVACH=<route row>: the KAVACH tab, that route selected;
                 // SHOT_LIST=0..6 the route's table shown (Tags, SSP, ...).
+                // Session 424: SHOT_KAVACH_FROM=<layout .json>: its "kavach" block on the file open.
+                if (!qEnvironmentVariableIsEmpty("SHOT_KAVACH_FROM")) {
+                    StationLayout::Layout from;
+                    if (StationLayout::load(qEnvironmentVariable("SHOT_KAVACH_FROM"), &from)) {
+                        StationLayout::Layout l = w->station();
+                        l.kavach = from.kavach;
+                        w->setStation(l);
+                    }
+                }
                 if (!qEnvironmentVariableIsEmpty("SHOT_KAVACH")) {
                     w->tabs()->setCurrentWidget(w->kavachEditor());
                     w->kavachEditor()->selectRoute(qEnvironmentVariableIntValue("SHOT_KAVACH"));
                     w->kavachEditor()->listTabs()->setCurrentIndex(qEnvironmentVariableIntValue("SHOT_LIST"));
                     w->resize(1280, 900);
+                    // Session 424: SHOT_KAVACH_DRAWING=<png>: the drawing with that route on it.
+                    if (!qEnvironmentVariableIsEmpty("SHOT_KAVACH_DRAWING")) w->exportDrawing(qEnvironmentVariable("SHOT_KAVACH_DRAWING"));
                 }
                 win = w;
             }

@@ -22,6 +22,7 @@
 #include "stationlayout.h"
 
 #include <QHash>
+#include <QPolygonF>
 #include <QPointer>
 #include <QSet>
 #include <QWidget>
@@ -41,6 +42,7 @@ class QTableWidget;
 class StationKavachEditor;
 class StatusLine;
 class UndoLog;
+namespace StationKavach { struct Station; }
 
 #include <functional>
 
@@ -73,6 +75,29 @@ public:
     double simLoco() const { return m_simLoc; }
     const QHash<QString, int> &simTags() const { return m_simTags; }
     QRectF simLocoRect() const;   // where the loco is drawn (tests); null when hidden
+    // Session 424: the KAVACH tab's route on the drawing. `sections` are the
+    // MA's sections (StationKavach::sectionsFrom), [0] the route selected,
+    // each with its tags' layout names in order; the KAVACH signals lit by
+    // their aspect, at their foot tags (a signal the signals sheet lacks is
+    // drawn too). An empty view hides it all.
+    struct KavachSection {
+        QString route;
+        QStringList tags;
+        qint64 from = 0, to = 0;       // m from the start signal
+        QStringList repeated;          // its tags the layout lists more than once (drawn at one of their places)
+    };
+    struct KavachSignal  { QString name, footTag; int aspect = 1; };
+    struct KavachView {
+        QVector<KavachSection> sections;
+        QVector<KavachSignal>  signalList;
+        QString maText;                // the MA end's label ("MA 1956 m")
+        bool isEmpty() const { return sections.isEmpty() && signalList.isEmpty(); }
+    };
+    void setKavachView(const KavachView &v);
+    const KavachView &kavachView() const { return m_kavachView; }
+    // Where section `i` is drawn: its tags' places, in order (tests).
+    QPolygonF kavachPath(int i) const;
+    QRectF kavachMaEndRect() const { return m_kavachMaEnd; }   // null when hidden
     // Session 223: the tags selected together (highlighted like the selected one).
     void setMarkedTags(const QSet<QString> &names);
     // The tags whose marks fall inside `r` (canvas coordinates).
@@ -187,6 +212,8 @@ private:
     QPoint m_hover;
     QHash<QString, int> m_diffKinds;   // session 226
     QHash<QString, int> m_runStates;   // session 227
+    KavachView m_kavachView;           // session 424
+    QRectF  m_kavachMaEnd;
     QString m_simLine;                 // session 411
     double  m_simLoc = 0;
     int     m_simSign = 1;
@@ -200,6 +227,12 @@ private:
     QPoint  m_panFrom;                 // where (global)
     int     m_panH = 0, m_panV = 0;    // the scroll bars when the grab began
 };
+
+// Session 424: the drawing's view of route `route` of the KAVACH data `s`:
+// its MA sections and the signals, the data's tag numbers as the layout's
+// tag names. *missing: the tags the layout does not hold (not drawn).
+StationLayoutCanvas::KavachView kavachViewOf(const StationLayout::Layout &l, const StationKavach::Station &s,
+                                             int route, QStringList *missing = nullptr);
 
 class StationLayoutWindow : public QWidget
 {
@@ -369,6 +402,7 @@ private:
     QString m_compareLabel;
     StationLayout::Diff m_diff;
     void fillCompare();
+    void updateKavachView();           // session 424
     QLabel *m_other = nullptr;
     std::function<LocoSimWindow *()> m_openSim;   // session 411
     QPointer<LocoSimWindow> m_sim;

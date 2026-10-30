@@ -4,6 +4,7 @@
 #include <QObject>
 
 #include <algorithm>
+#include <cstdlib>
 #include <functional>
 
 namespace StationKavach {
@@ -15,19 +16,6 @@ const char *const kStruct[8] = { "MovementAuthority", "StaticSpeedProfile", "Gra
 
 bool redLike(int aspect) { return aspect == 0 || aspect == 1 || aspect == 24; }
 bool isYellow(int aspect) { return (aspect >= 2 && aspect <= 8) || aspect >= 32; }
-
-QString aspectName(int a)
-{
-    if (a == 0) return QObject::tr("Unidentified");
-    if (a == 1) return QObject::tr("Red");
-    if (isYellow(a)) return a == 2 ? QObject::tr("Yellow") : QObject::tr("Yellow (route %1)").arg(a);
-    if (a == 10 || a == 12 || a == 13) return QObject::tr("Double Yellow");
-    if (a == 11) return QObject::tr("Green");
-    if (a == 14) return QObject::tr("AG marker");
-    if (a == 15) return QObject::tr("Calling-on");
-    if (a == 24) return QObject::tr("Stop board");
-    return QString::number(a);
-}
 
 // --- JSON helpers ---------------------------------------------------------------
 QStringList strings(const QJsonValue &v)
@@ -254,6 +242,53 @@ int sectionsFor(const Station &s, int aspect)
     return s.sections.contains(aspect) ? s.sections.value(aspect) : defaultSections(aspect);
 }
 
+QString aspectName(int a)
+{
+    if (a == 0) return QObject::tr("Unidentified");
+    if (a == 1) return QObject::tr("Red");
+    if (isYellow(a)) return a == 2 ? QObject::tr("Yellow") : QObject::tr("Yellow (route %1)").arg(a);
+    if (a == 10 || a == 12 || a == 13) return QObject::tr("Double Yellow");
+    if (a == 11) return QObject::tr("Green");
+    if (a == 14) return QObject::tr("AG marker");
+    if (a == 15) return QObject::tr("Calling-on");
+    if (a == 24) return QObject::tr("Stop board");
+    return QString::number(a);
+}
+
+Sections sectionsFrom(const Station &s, const State &st, int route)
+{
+    Sections out;
+    if (route < 0 || route >= s.routes.size()) return out;
+    const Route &r0 = s.routes[route];
+    out.aspect = st.aspectOf(s, r0.exit);
+    out.wanted = std::max(1, sectionsFor(s, out.aspect));
+    out.routes << route;
+    out.offsets << 0;
+    while (out.routes.size() < out.wanted) {
+        const Route &last = s.routes[out.routes.last()];
+        QVector<int> next;
+        for (int i = 0; i < s.routes.size(); ++i)
+            if (s.routes[i].entry == last.exit && s.routes[i].pktDir == r0.pktDir) next << i;
+        const int ni = bySetPoints(s, st, next);
+        if (ni < 0) {
+            out.endsShort = QObject::tr("%1 %2 wants %3 sections; no route on from %4: MA ends there")
+                                .arg(r0.exit, aspectName(out.aspect)).arg(out.wanted).arg(last.exit);
+            break;
+        }
+        const Route &n = s.routes[ni];
+        if (n.tags.isEmpty() || last.tags.isEmpty() || n.tags.first().tag != last.tags.last().tag) {
+            out.broken = QObject::tr("route %1 starts on tag %2, not on tag %3 where %4 ends")
+                             .arg(n.name).arg(n.tags.isEmpty() ? 0 : n.tags.first().tag)
+                             .arg(last.tags.isEmpty() ? 0 : last.tags.last().tag).arg(last.name);
+            break;
+        }
+        out.offsets << out.offsets.last() + last.length();
+        out.routes << ni;
+    }
+    out.maEnd = out.offsets.last() + s.routes[out.routes.last()].length();
+    return out;
+}
+
 bool fromJson(const QJsonObject &o, Station *out, QString *err, QStringList *notes)
 {
     if (!o.contains(QStringLiteral("routes"))) {
@@ -409,6 +444,33 @@ QStringList tagChecks(const Station &s, const QSet<int> &tagIds)
     return out;
 }
 
+QStringList locationChecks(const Station &s, const QHash<int, QVector<qint64>> &tagLocs)
+{
+    QStringList out;
+    for (const Route &r : s.routes) {
+        const int sign = r.pktDir == 2 ? -1 : 1;
+        for (int i = 1; i < r.tags.size(); ++i) {
+            const int a = r.tags[i - 1].tag, b = r.tags[i].tag;
+            const QVector<qint64> la = tagLocs.value(a), lb = tagLocs.value(b);
+            if (la.isEmpty() || lb.isEmpty()) continue;
+            bool agrees = false;
+            for (qint64 x : la) for (qint64 y : lb) agrees = agrees || (y - x) * sign == r.tags[i].dist;
+            if (agrees) continue;
+            if (la.size() == 1 && lb.size() == 1) {
+                const qint64 along = (lb.first() - la.first()) * sign;
+                out << QObject::tr("route %1: tag %2 is %3 m on from tag %4; the layout's tags lie %5 m %6")
+                           .arg(r.name).arg(b).arg(r.tags[i].dist).arg(a).arg(std::llabs(along))
+                           .arg(along >= 0 ? QObject::tr("on") : QObject::tr("back"));
+            } else {
+                out << QObject::tr("route %1: tag %2 is %3 m on from tag %4; none of the layout's %5 tag(s) %2 lies so "
+                                   "from its %6 tag(s) %4")
+                           .arg(r.name).arg(b).arg(r.tags[i].dist).arg(a).arg(lb.size()).arg(la.size());
+            }
+        }
+    }
+    return out;
+}
+
 State State::initial(const Station &s)
 {
     State st;
@@ -459,34 +521,17 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
     }
 
     // The sections: this route, then on from each exit signal.
-    const int curAspect = st.aspectOf(s, r0.exit);
-    const int want = std::max(1, sectionsFor(s, curAspect));
-    QVector<const Route *> secs{ &r0 };
-    QVector<qint64> off{ 0 };
+    const Sections sx = sectionsFrom(s, st, ri);
+    if (!sx.broken.isEmpty()) { a.why = sx.broken; return a; }
+    if (!sx.endsShort.isEmpty()) a.checks << sx.endsShort;
+    const int curAspect = sx.aspect;
+    QVector<const Route *> secs;
+    for (int i : sx.routes) secs << &s.routes[i];
+    const QVector<qint64> off = sx.offsets;
+    const qint64 maEnd = sx.maEnd;
     QStringList notes;
     if (entering.size() > 1 || (entering.isEmpty() && holding.size() > 1))
         if (!pointsSet(r0, st)) notes << QObject::tr("no route from tag %1 has its points set; %2 taken").arg(tag).arg(r0.name);
-    while (secs.size() < want) {
-        const Route *last = secs.last();
-        QVector<int> next;
-        for (int i = 0; i < s.routes.size(); ++i)
-            if (s.routes[i].entry == last->exit && s.routes[i].pktDir == r0.pktDir) next << i;
-        const int ni = bySetPoints(s, st, next);
-        if (ni < 0) {
-            a.checks << QObject::tr("%1 %2 wants %3 sections; no route on from %4: MA ends there")
-                            .arg(r0.exit, aspectName(curAspect)).arg(want).arg(last->exit);
-            break;
-        }
-        const Route &n = s.routes[ni];
-        if (n.tags.first().tag != last->tags.last().tag) {
-            a.why = QObject::tr("route %1 starts on tag %2, not on tag %3 where %4 ends")
-                        .arg(n.name).arg(n.tags.first().tag).arg(last->tags.last().tag).arg(last->name);
-            return a;
-        }
-        off << off.last() + last->length();
-        secs << &n;
-    }
-    const qint64 maEnd = off.last() + secs.last()->length();
 
     // What the live state does not agree with.
     for (const Route *r : secs) routeChecks(*r, st, &a.checks);

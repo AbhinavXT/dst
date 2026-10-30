@@ -419,10 +419,20 @@ void StationKavachEditor::fillRoute()
         for (QTableWidget *t : m_lists) t->setRowCount(0);
         for (int l = 0; l < ListCount; ++l) m_listTabs->setTabText(l, tr(kListTitle[l]));
         m_filling = false;
+        emit routeSelected(-1);
         return;
     }
     const Route &r = m_station.routes[m_route];
-    m_routeLabel->setText(tr("Route %1: %2 → %3, %4 m").arg(r.name, r.entry, r.exit).arg(r.length()));
+    // Session 424: the MA as the drawing shows it, the aspects as the file starts them.
+    const StationKavach::Sections sx = StationKavach::sectionsFrom(m_station, StationKavach::State::initial(m_station), m_route);
+    QString ma = tr("%1 %2: %3 → MA %4 m").arg(r.exit, StationKavach::aspectName(sx.aspect))
+                     .arg(sx.routes.size() == 1 ? tr("1 section") : tr("%1 sections").arg(sx.routes.size())).arg(sx.maEnd);
+    if (!sx.broken.isEmpty()) ma += tr(" (%1)").arg(sx.broken);
+    else if (!sx.endsShort.isEmpty()) ma += tr(" (%1 wanted; no route on from %2)").arg(sx.wanted)
+                                               .arg(m_station.routes[sx.routes.last()].exit);
+    m_routeLabel->setText(tr("Route %1: %2 → %3, %4 m. %5").arg(r.name, r.entry, r.exit).arg(r.length()).arg(ma));
+    m_routeLabel->setToolTip(tr("The MA from this route as the station would answer with the aspects at start "
+                                "(Signals); on the drawing, this route and the sections beyond it"));
 
     QTableWidget *tags = m_lists[Tags];
     tags->setRowCount(r.tags.size());
@@ -461,6 +471,7 @@ void StationKavachEditor::fillRoute()
         m_listTabs->setTabText(l, title);
     }
     m_filling = false;
+    emit routeSelected(m_route);
 }
 
 void StationKavachEditor::commit(const Station &next, const QString &label)

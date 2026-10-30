@@ -77,6 +77,8 @@ signals:
     // The new "kavach" block (empty: removed) and the Undo label.
     void edited(const QJsonObject &kavach, const QString &label);
     void refused(const QString &why);
+    // Session 424: the route shown (-1: none), after every fill: the drawing follows it.
+    void routeSelected(int route);
 
 private:
     void fill();

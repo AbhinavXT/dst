@@ -104,6 +104,8 @@ struct Station {
 // AG marker 4.
 int defaultSections(int aspect);
 int sectionsFor(const Station &s, int aspect);
+// "Red", "Double Yellow", "Yellow (route 33)", ...: an aspect code in words.
+QString aspectName(int aspect);
 
 // The "kavach" block. *err and false on a block that is not one; a row it
 // cannot read is named in *notes.
@@ -117,6 +119,14 @@ QStringList checks(const Station &s);
 // Session 423: the tags a signal or route names that the layout's tags
 // (`tagIds`, their unique ids) do not hold. Nothing when it has no tags.
 QStringList tagChecks(const Station &s, const QSet<int> &tagIds);
+
+// Session 424: where the layout's tags (`tagLocs`: tag number -> the
+// abs_loc of each tag of that number it holds) do not lie as a route's
+// linking distances say: the next tag `dist` m on in the route's direction
+// (Nominal: rising locations). A number the layout holds more than once
+// (a section drawn block after block) agrees when any of its tags does.
+// Tags the layout lacks are tagChecks()'s.
+QStringList locationChecks(const Station &s, const QHash<int, QVector<qint64>> &tagLocs);
 
 struct State {
     QHash<QString, int>  aspect;       // signal -> sigAspect
@@ -145,6 +155,20 @@ struct Answer {
     QString note;                      // made: one line, what was sent
     QStringList checks;                // what the live state does not agree with
 };
+
+// Session 424: the MA's sections from route `route`, as answer() takes
+// them: the route, then on from each exit signal (the route whose points
+// are set, in the same direction), as many as the route's exit signal's
+// aspect gives. Station Layout draws them; answer() sends them.
+struct Sections {
+    QVector<int>    routes;            // route indexes; [0] = `route`
+    QVector<qint64> offsets;           // each one's start, from the start signal, m
+    qint64  maEnd = 0;                 // MA_W_R_T_SIG
+    int     aspect = 0, wanted = 1;    // the exit signal's aspect, the sections it gives
+    QString endsShort;                 // fewer than wanted: no route on (said; the MA ends there)
+    QString broken;                    // a route that does not start where the one before ends (refused)
+};
+Sections sectionsFrom(const Station &s, const State &st, int route);
 
 // The SLRP answering `lsrp` (its fields by name). `loco` is read and
 // updated only when the answer is made. `enc` gives the field widths

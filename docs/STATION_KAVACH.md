@@ -95,6 +95,38 @@ the layout's own tags do not hold (when it has tags). A word where a number
 goes is refused, the reason shown, and the table put back as it was.
 Save writes the `.json` (or the `kavach` sheet of an exported `.xlsx`).
 
+## On the drawing (session 424)
+
+While the **KAVACH** tab is shown, the drawing above it shows the route
+selected and the MA the station would give from it, with the aspects as
+the file starts them (*Aspect at start* in Signals):
+
+- the route selected: a strong halo along its tags, entry to exit;
+- each MA section on from it (the routes the aspect of its exit signal
+  takes in, as the station answers): a fainter halo;
+- the MA's end: a bar across the line at the last section's exit foot tag,
+  and its length (*MA 1956 m*) under the gap dimensions;
+- each KAVACH signal lit by its aspect (red; yellow; two yellows; green;
+  red with white for calling-on). A KAVACH signal the signals sheet does
+  not hold is drawn at its foot tag too. Hover a signal for its aspect,
+  a halo for its route and section.
+
+The line over the route's tables says the same: *A900 Yellow: 2 sections
+→ MA 1956 m*, and, when there are fewer routes on than the aspect
+wants, how many it wanted. Change an aspect, or select another route,
+and the drawing follows. Another tab shows the layout alone. Export ▸
+PDF / PNG draws what is shown, the route included.
+
+**Checks** also says where the layout's tags do not lie as a route's
+linking distances say: *route A900-A904 DN Auto: tag 904 is 200 m on from
+tag 902; the layout's tags lie 9800 m back*. A tag number the layout lists
+more than once (Section_30.xlsx repeats one 5 km block three times) agrees
+when any of its tags does. Said, not corrected.
+
+The drawing places each tag name once, as the layout's own drawing does:
+a route through a tag listed more than once is drawn through one of its
+places, so it can jump from block to block; hovering it says which tags.
+
 ## The file
 
 A Station Layout JSON (Tools ▸ Station Layout) with a `"kavach"` block, or
@@ -149,4 +181,5 @@ SoS, the next station's communication, the absolute-block last stop
 signal's MA in metres (give the block section as a route). Not tested
 against a live loco: the engine's answers are checked against real station
 frames only. No import from a firm's Table-of-Control sheet yet (waiting for
-a real sheet to read), and the routes are not drawn on the layout.
+a real sheet to read). The drawing shows the aspects the file starts
+with, not Packet Maker ▸ Station…'s live ones.

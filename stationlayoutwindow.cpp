@@ -1,4 +1,5 @@
 #include "stationlayoutwindow.h"
+#include "stationkavach.h"
 #include "stationkavacheditor.h"
 
 #include "logmodel.h"
@@ -472,6 +473,22 @@ void StationLayoutCanvas::setDiffTags(const QHash<QString, int> &kinds)
     update();
 }
 
+void StationLayoutCanvas::setKavachView(const KavachView &v)
+{
+    m_kavachView = v;
+    if (v.sections.isEmpty()) m_kavachMaEnd = QRectF();
+    update();
+}
+
+QPolygonF StationLayoutCanvas::kavachPath(int i) const
+{
+    QPolygonF out;
+    if (i < 0 || i >= m_kavachView.sections.size()) return out;
+    for (const QString &n : m_kavachView.sections.at(i).tags)
+        if (m_loc.contains(n)) out << tagPos(n, xOf(m_loc.value(n)));
+    return out;
+}
+
 void StationLayoutCanvas::setMarkedTags(const QSet<QString> &names)
 {
     m_marked = names;
@@ -773,6 +790,27 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
     auto inSet = [&](const QString &n) { return isDuplicateName(n) && dupOf.value(n.chopped(1)) == n; };
     auto xAt = [&](const QString &n) { return n == m_dragTag && m_dragX >= 0 ? m_dragX : xOf(m_loc.value(n)); };
 
+    // ---- session 424: the KAVACH route and the MA's sections on, under the lanes ---------------
+    for (int i = 0; i < m_kavachView.sections.size(); ++i) {
+        const QPolygonF path = kavachPath(i);
+        const KavachSection &k = m_kavachView.sections.at(i);
+        QColor c = UiColor::accent();
+        const bool dark = palette().color(QPalette::Base).lightness() < 128;   // a faint halo vanishes on a dark sheet
+        c.setAlpha(i == 0 ? (dark ? 200 : 150) : (dark ? 130 : 70));
+        p.setPen(QPen(c, 17, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.setBrush(Qt::NoBrush);
+        if (path.size() == 1) p.drawPoint(path.first());
+        else p.drawPolyline(path);
+        QString tip = i == 0 ? tr("KAVACH route %1 (selected): %2 to %3 m").arg(k.route).arg(k.from).arg(k.to)
+                             : tr("KAVACH route %1: MA section %2 of %3, %4 to %5 m")
+                                   .arg(k.route).arg(i + 1).arg(m_kavachView.sections.size()).arg(k.from).arg(k.to);
+        if (!k.repeated.isEmpty())
+            tip += QLatin1Char('\n') + tr("tag(s) %1 listed more than once in the layout: each drawn at one of its places")
+                                           .arg(k.repeated.join(QStringLiteral(", ")));
+        for (int j = 0; j + 1 < path.size(); ++j)
+            m_hits << Hit{ QRectF(path.at(j), path.at(j + 1)).normalized().adjusted(-2, -9, 2, 9), QString(), tip };
+    }
+
     // ---- lanes: one band colour per TIN section (H2.17, H2.18) --------------------------------
     struct Run { int lane, tin; double from, to; };
     QVector<Run> runs;
@@ -836,33 +874,69 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
     }
 
     // ---- signals at their foot tags ---------------------------------------------------------------
-    QHash<int, QVector<double>> sigEnds;
+    // Session 424: with the KAVACH tab's view, a KAVACH signal is lit by its
+    // aspect, and one the signals sheet lacks is drawn at its foot tag too.
+    QHash<QString, int> kAspect;
+    for (const KavachSignal &k : m_kavachView.signalList) kAspect.insert(k.name, k.aspect);
+    struct Sig { QString name, foot, tip; int index; };
+    QVector<Sig> sigs;
+    QSet<QString> sheetNames;
     for (int si = 0; si < m_l.signalList.size(); ++si) {
         const StationLayout::Signal &s = m_l.signalList.at(si);
-        if (!m_loc.contains(s.footTag)) continue;
-        const double x = xOf(m_loc.value(s.footTag));
-        const double y = tagPos(s.footTag, x).y();
-        if (si == m_selSignal) {
+        sheetNames.insert(s.name);
+        sigs << Sig{ s.name, s.footTag,
+                     tr("Signal %1 (id %2, station %3) at foot tag %4").arg(s.name).arg(s.sigId).arg(s.stationId).arg(s.footTag), si };
+    }
+    for (const KavachSignal &k : m_kavachView.signalList)
+        if (!sheetNames.contains(k.name))
+            sigs << Sig{ k.name, k.footTag, tr("Signal %1 (KAVACH data; not in the signals sheet) at foot tag %2").arg(k.name, k.footTag), -1 };
+    auto lampsFor = [](int a) -> QStringList {
+        if (a == 10 || a == 12 || a == 13) return { QStringLiteral("yellow"), QStringLiteral("yellow") };
+        if ((a >= 2 && a <= 8) || a >= 32) return { QStringLiteral("yellow") };
+        if (a == 11 || a == 14) return { QStringLiteral("green") };
+        if (a == 15) return { QStringLiteral("red"), QStringLiteral("white") };
+        return { QStringLiteral("red") };
+    };
+    QHash<int, QVector<double>> sigEnds;
+    for (const Sig &g : sigs) {
+        if (!m_loc.contains(g.foot)) continue;
+        const int si = g.index;
+        const double x = xOf(m_loc.value(g.foot));
+        const double y = tagPos(g.foot, x).y();
+        if (si >= 0 && si == m_selSignal) {
             p.setPen(QPen(UiColor::accent(), 2));
             p.setBrush(Qt::NoBrush);
             p.drawRoundedRect(QRectF(x - 7, y + 6, 14, 20), 3, 3);
         }
-        p.setPen(QPen(UiColor::signalLamp(QStringLiteral("red")), 2));
-        p.drawLine(QPointF(x, y + 8), QPointF(x, y + 18));
-        p.setBrush(UiColor::signalLamp(QStringLiteral("red")));
-        p.drawEllipse(QPointF(x, y + 20), 3, 3);
+        QString tip = g.tip;
+        if (kAspect.contains(g.name)) {
+            const int a = kAspect.value(g.name);
+            const QStringList lamps = lampsFor(a);
+            p.setPen(QPen(text, 1.5));
+            p.drawLine(QPointF(x, y + 8), QPointF(x, y + 16));
+            for (int k = 0; k < lamps.size(); ++k) {
+                p.setPen(QPen(text, 1));
+                p.setBrush(UiColor::signalLamp(lamps.at(k)));
+                p.drawEllipse(QPointF(x + 8 * k, y + 20), 3.5, 3.5);
+            }
+            tip += QLatin1Char('\n') + tr("KAVACH: %1").arg(StationKavach::aspectName(a));
+        } else {
+            p.setPen(QPen(UiColor::signalLamp(QStringLiteral("red")), 2));
+            p.drawLine(QPointF(x, y + 8), QPointF(x, y + 18));
+            p.setBrush(UiColor::signalLamp(QStringLiteral("red")));
+            p.drawEllipse(QPointF(x, y + 20), 3, 3);
+        }
         p.setBrush(Qt::NoBrush);
-        const int w = fm.horizontalAdvance(s.name) + 4;
-        const int row = placeLabel(sigEnds, m_lane.value(s.footTag, 0), x, w, 2);
+        const int w = fm.horizontalAdvance(g.name) + 4;
+        const int row = placeLabel(sigEnds, m_lane.value(g.foot, 0), x, w, 2);
         if (row >= 0) {
             QFont f = p.font();
-            if (si == m_selSignal) { f.setBold(true); p.setFont(f); }
+            if (si >= 0 && si == m_selSignal) { f.setBold(true); p.setFont(f); }
             p.setPen(text);
-            p.drawText(QRectF(x - w / 2.0 - 4, y + 24 + row * lh, w + 8, lh), Qt::AlignCenter, s.name);
-            if (si == m_selSignal) { f.setBold(false); p.setFont(f); }
+            p.drawText(QRectF(x - w / 2.0 - 4, y + 24 + row * lh, w + 8, lh), Qt::AlignCenter, g.name);
+            if (si >= 0 && si == m_selSignal) { f.setBold(false); p.setFont(f); }
         }
-        Hit h{ QRectF(x - 6, y + 8, 12, 16 + lh),  QString(),
-               tr("Signal %1 (id %2, station %3) at foot tag %4").arg(s.name).arg(s.sigId).arg(s.stationId).arg(s.footTag) };
+        Hit h{ QRectF(x - 6, y + 8, 12, 16 + lh), QString(), tip };
         h.signal = si;
         m_hits << h;
     }
@@ -973,6 +1047,29 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         m_hits << Hit{ QRectF(x - 5, y - 5, 10, 10), it.value(),
                        tr("Duplicate tag %1 at %2 (main %3 at %4)").arg(it.value(), km(m_loc.value(it.value())), it.key(),
                                                                         km(m_loc.value(it.key()))) };
+    }
+
+    // ---- session 424: where the MA ends: a bar across the lane, its length in the dimensions' row ------
+    m_kavachMaEnd = QRectF();
+    if (!m_kavachView.sections.isEmpty()) {
+        const QPolygonF path = kavachPath(m_kavachView.sections.size() - 1);
+        const KavachSection &k = m_kavachView.sections.last();
+        if (!path.isEmpty() && !k.tags.isEmpty() && m_loc.contains(k.tags.last())) {
+            const QPointF e = path.last();
+            p.setPen(QPen(UiColor::accent(), 3, Qt::SolidLine, Qt::FlatCap));
+            p.drawLine(QPointF(e.x(), e.y() - 14), QPointF(e.x(), e.y() + 14));
+            const int w = fm.horizontalAdvance(m_kavachView.maText) + 8;
+            const QRectF box(e.x() - w / 2.0, e.y() + 28 + 3 * lh - lh / 2.0, w, lh);   // under the gap dimensions' row
+            p.setPen(Qt::NoPen);
+            p.setBrush(palette().color(QPalette::Base));
+            p.drawRect(box);
+            p.setBrush(Qt::NoBrush);
+            p.setPen(UiColor::accent());
+            p.drawText(box, Qt::AlignCenter, m_kavachView.maText);
+            m_kavachMaEnd = QRectF(e.x() - 4, e.y() - 14, 8, 28).united(box);
+            m_hits << Hit{ m_kavachMaEnd, QString(),
+                           tr("End of the MA: %1, at the foot of the exit signal of %2").arg(m_kavachView.maText, k.route) };
+        }
     }
 
     // ---- TIN labels "(N-65)" in the label room the tags left -----------------------------------
@@ -1198,6 +1295,56 @@ QTableWidgetItem *readOnly(const QString &s)
 
 }  // namespace
 
+StationLayoutCanvas::KavachView kavachViewOf(const StationLayout::Layout &l, const StationKavach::Station &s,
+                                             int route, QStringList *missing)
+{
+    StationLayoutCanvas::KavachView v;
+    // A tag number is the layout's tag of that name; its duplicate ("…D") only when there is no main.
+    QHash<int, QString> nameOf;
+    QHash<QString, int> times;
+    for (const StationLayout::Tag &t : l.tags) times[t.name] += 1;
+    for (const StationLayout::Tag &t : l.tags) {
+        const bool dup = isDuplicateName(t.name);
+        bool ok = false;
+        const int id = (dup ? t.name.chopped(1) : t.name).toInt(&ok);
+        if (ok && (!dup || !nameOf.contains(id))) nameOf.insert(id, t.name);
+    }
+    auto nameFor = [&](int id) {
+        if (nameOf.contains(id)) return nameOf.value(id);
+        if (missing && !missing->contains(QString::number(id))) *missing << QString::number(id);
+        return QString();
+    };
+    for (const StationKavach::Signal &g : s.signalList) {
+        const QString foot = nameFor(g.footTag);
+        if (!foot.isEmpty()) v.signalList << StationLayoutCanvas::KavachSignal{ g.name, foot, g.aspect };
+    }
+    if (route < 0 || route >= s.routes.size()) return v;
+    const StationKavach::Sections sx = StationKavach::sectionsFrom(s, StationKavach::State::initial(s), route);
+    for (int i = 0; i < sx.routes.size(); ++i) {
+        const StationKavach::Route &r = s.routes.at(sx.routes.at(i));
+        StationLayoutCanvas::KavachSection k;
+        k.route = r.name;
+        k.from = sx.offsets.at(i);
+        k.to = k.from + r.length();
+        for (const StationKavach::RouteTag &t : r.tags) {
+            const QString n = nameFor(t.tag);
+            if (n.isEmpty()) continue;
+            k.tags << n;
+            if (times.value(n) > 1 && !k.repeated.contains(n)) k.repeated << n;
+        }
+        v.sections << k;
+    }
+    v.maText = QObject::tr("MA %1 m").arg(sx.maEnd);
+    return v;
+}
+
+void StationLayoutWindow::updateKavachView()
+{
+    const bool on = m_tabs->currentWidget() == m_kavach && !m_layout.kavach.isEmpty();
+    m_canvas->setKavachView(on ? kavachViewOf(m_layout, m_kavach->station(), m_kavach->currentRoute())
+                               : StationLayoutCanvas::KavachView());
+}
+
 StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     : QWidget(parent, Qt::Window)
 {
@@ -1366,6 +1513,8 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
         changed(label, before);
     });
     connect(m_kavach, &StationKavachEditor::refused, this, [this](const QString &why) { m_status->fail(why); });
+    // Session 424: the route selected, and the MA's sections on from it, drawn while the tab is shown.
+    connect(m_kavach, &StationKavachEditor::routeSelected, this, [this]() { updateKavachView(); });
     connect(m_compare, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *it) {
         const QString name = it->data(Qt::UserRole).toString();
         if (tagIndexOf(name) >= 0) { selectTags({ name }); m_canvas->setSelectedTag(name); }
@@ -1412,6 +1561,7 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     // its own size back after.
     connect(m_tabs, &QTabWidget::currentChanged, this, [this, addBtn, delBtn, split, drawingSizes = QList<int>()]() mutable {
         const bool kavach = m_tabs->currentWidget() == m_kavach;
+        updateKavachView();
         addBtn->setVisible(!kavach);
         delBtn->setVisible(!kavach);
         const QList<int> now = split->sizes();
@@ -1599,7 +1749,16 @@ void StationLayoutWindow::refreshAll()
         QSet<int> ids;
         for (const StationLayout::Tag &t : m_layout.tags)
             ids.insert((t.name.endsWith(QLatin1Char('D')) ? t.name.chopped(1) : t.name).toInt());
-        for (const QString &c : notes + StationKavach::checks(ks) + StationKavach::tagChecks(ks, ids))
+        // Session 424: and where the layout's tags do not lie as the routes' linking distances say.
+        QHash<int, QVector<qint64>> locs;
+        for (const StationLayout::Tag &t : m_layout.tags) {
+            bool ok = false;
+            const int id = t.name.toInt(&ok);   // main tags only: a duplicate ("…D") lies apart
+            const StationLayout::TagInfo in = StationLayout::info(t);
+            if (ok && in.ok) locs[id] << in.absLoc;
+        }
+        for (const QString &c : notes + StationKavach::checks(ks) + StationKavach::tagChecks(ks, ids)
+                                    + StationKavach::locationChecks(ks, locs))
             found << tr("KAVACH: %1").arg(c);
         m_tabs->setTabText(m_tabs->indexOf(m_kavach), ks.routes.size() == 1 ? tr("KAVACH (1 route)")
                                                                      : tr("KAVACH (%1 routes)").arg(ks.routes.size()));
@@ -2646,6 +2805,7 @@ bool StationLayoutWindow::exportDrawing(const QString &path)
     StationLayoutCanvas c;
     c.setFont(m_canvas->font());
     c.setStation(m_layout);
+    c.setKavachView(m_canvas->kavachView());   // session 424: the KAVACH route as shown
     c.resize(qMax(2400, m_canvas->width()), 100);
     c.resize(c.width(), c.minimumSizeHint().height());
     bool ok = false;
