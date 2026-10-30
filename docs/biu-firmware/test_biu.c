@@ -4,6 +4,7 @@
 #include "common_include.h"
 #include "brake_pressure_interface_user.h"
 #include "enet_user.h"
+#include "utility.h"
 #include <string.h>
 #include <math.h>
 
@@ -23,6 +24,14 @@ void test_can_send(uint16_t cob_id, const uint8_t *data, uint8_t length)
 {
     if (can_sends >= 64) return;
     can_cob_id[can_sends] = cob_id; can_dlc[can_sends] = length; memcpy(can_data[can_sends], data, length); ++can_sends;
+}
+
+/* The DLConsole copies: UDP_SendCapturePkt, as utility.c has it. */
+static LOG_PKT_TYPE capture_type[64]; static uint16_t capture_len[64]; static uint8_t capture_data[64][8]; static int captures;
+void UDP_SendCapturePkt(LOG_PKT_TYPE type, const uint8_t *buff, uint16_t len)
+{
+    if (captures >= 64) return;
+    capture_type[captures] = type; capture_len[captures] = len; memcpy(capture_data[captures], buff, len > 8 ? 8 : len); ++captures;
 }
 
 static int fails, checks;
@@ -204,6 +213,51 @@ int main(void)
     biu_link_select(BIU_LINK_UDP);
     { const uint8_t can_pressures[8] = { 100, 0, 180, 0, 0, 0, 0, 0x7F };
       CHECK(process_biu_can_frame(0x220, can_pressures, 8) == 0, "UDP link: a CAN frame is not taken"); }
+
+    /* ---- the DLConsole copies ---- */
+    CHECK(!biu_dlconsole_mirror_on() && captures == 0, "copies off by default: none sent so far");
+    biu_link_select(BIU_LINK_CAN);
+    biu_dlconsole_mirror(1);
+    CHECK(biu_dlconsole_mirror_on(), "copies on");
+    can_sends = 0;
+    advance_s(0.5); biu_link_tick();
+    CHECK(can_sends == 1 && captures == 1 && capture_type[0] == LOG_PKT_BIU_BEAT && capture_len[0] == 1 && capture_data[0][0] == 0x05,
+          "our heartbeat on CAN, and its copy: @biu_beat, 1 byte [05]");
+    send_biu_command(LOCO_WAP7, TRAIN_MODE_FORMATION, EMERGENCY_BRAKE);
+    CHECK(can_sends == 2 && captures == 2 && capture_type[1] == LOG_PKT_BIU_CMD && capture_len[1] == 8
+              && memcmp(capture_data[1], can_data[1], 8) == 0,
+          "the command on CAN, and its copy: @biu_cmd, the same 8 data bytes");
+    CHECK(capture_data[1][4] == 0 && capture_data[1][5] == 48, "EB in the copy: A9 0, SA9 48 (2.4)");
+    { const uint8_t eb_pressures[8] = { 0, 48, 180, 0, 48, 0, 0, 0x7F };
+      CHECK(process_biu_can_frame(0x220, eb_pressures, 8) == 1 && captures == 3 && capture_type[2] == LOG_PKT_BIU_PRESS
+                && capture_len[2] == 8 && memcmp(capture_data[2], eb_pressures, 8) == 0, "BIU pressures received: @biu_press, as received"); }
+    { const uint8_t eb_codes[8] = { 1, 0, 0x40, 0x10, 0, 0, 0, 0 };
+      CHECK(process_biu_can_frame(0x320, eb_codes, 8) == 1 && captures == 4 && capture_type[3] == LOG_PKT_BIU_CODES, "codes: @biu_codes"); }
+    { const uint8_t eb_discretes[8] = { 1, 0, 0xF0, 0, 0, 0, 0, 0 };
+      CHECK(process_biu_can_frame(0x420, eb_discretes, 8) == 1 && captures == 5 && capture_type[4] == LOG_PKT_BIU_DISC, "discretes: @biu_disc"); }
+    { const uint8_t biu_state = 0x05;
+      CHECK(process_biu_can_frame(0x710, &biu_state, 1) == 1 && captures == 6 && capture_type[5] == LOG_PKT_BIU_BEATRX
+                && capture_len[5] == 1, "BIU heartbeat: @biu_beatrx, 1 byte"); }
+    { const uint8_t other_node[2] = { 0x02, 0x30 };
+      CHECK(process_biu_can_frame(0x000, other_node, 2) == 0 && captures == 7 && capture_type[6] == LOG_PKT_BIU_NMT
+                && capture_len[6] == 2 && capture_data[6][1] == 0x30 && biu_nmt_state() == 0x05,
+            "NMT stop for another node: not taken, still copied (@biu_nmt), still operational"); }
+    { const uint8_t junk[8] = { 0 };
+      CHECK(process_biu_can_frame(0x123, junk, 8) == 0 && captures == 7, "a COB-ID the BIU does not send: no copy"); }
+    biu_link_select(BIU_LINK_UDP);
+    { const uint8_t udp_pressures[8] = { 100, 0, 180, 0, 0, 0, 0, 0x7F };
+      CHECK(process_biu_can_frame(0x220, udp_pressures, 8) == 0 && captures == 7, "a frame on the link not selected: not taken, no copy");
+      frame(0x220, udp_pressures, 8);
+      CHECK(captures == 8 && capture_type[7] == LOG_PKT_BIU_PRESS && memcmp(capture_data[7], udp_pressures, 8) == 0,
+            "UDP link too: the data bytes, without the bench's 3-byte header"); }
+    send_biu_command(LOCO_WAP7, TRAIN_MODE_FORMATION, NO_BRAKE_T);
+    CHECK(captures == 9 && capture_type[8] == LOG_PKT_BIU_CMD && memcmp(capture_data[8], sent + 3, 8) == 0,
+          "the command to the bench, and its copy");
+    biu_dlconsole_mirror(0);
+    const int sends_before = sends;
+    send_biu_command(LOCO_WAP7, TRAIN_MODE_FORMATION, NO_BRAKE_T);
+    { const uint8_t biu_state = 0x05; frame(0x710, &biu_state, 1); }
+    CHECK(captures == 9 && sends == sends_before + 1 && biu_link_up(), "copies off: none, and the BIU link works as before");
 
     printf("%d checks, %d failed\n", checks, fails);
     return fails != 0;

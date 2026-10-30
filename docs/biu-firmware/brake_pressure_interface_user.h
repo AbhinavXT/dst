@@ -67,6 +67,14 @@ typedef enum {
  * BIU_SIM_IP0..3 / BIU_SIM_PORT: the DLConsole Brake Test Bench, for the UDP
  *   link (default 192.168.25.126:51235; 51234 is DLConsole's log port).
  * BIU_HEARTBEAT_PERIOD_MS (500) / BIU_HEARTBEAT_TIMEOUT_MS (1500).
+ * BIU_DLCONSOLE_MIRROR (1): 0 leaves the DLConsole copies (below) out of the
+ *   build; biu_dlconsole_mirror() is then a no-op.
+ * BIU_CAPTURE_SEND(log_pkt, data, length): how a copy goes to DLConsole;
+ *   defaults to UDP_SendCapturePkt (utility.h), as the other capture packets
+ *   (@dmi, @dllog, ...) go. With the copies built in, utility.h's LOG_PKT_TYPE
+ *   needs LOG_PKT_BIU_CMD, _BEAT, _NMT, _BEATRX, _PRESS, _CODES and _DISC, and
+ *   utility.c's log_pkt_token[] their tokens, in the same places: biu_cmd,
+ *   biu_beat, biu_nmt, biu_beatrx, biu_press, biu_codes, biu_disc.
  */
 
 /* Which link the BIU frames use. CAN (the default): the real BIU, wired to the
@@ -101,6 +109,20 @@ uint8_t process_biu_can_frame(uint16_t cob_id, const uint8_t *data, uint8_t dlc)
 /* UDP link: call with each datagram from the DLConsole Brake Test Bench:
  * [COB-ID lo][COB-ID hi][3 + length][length data bytes]. */
 uint8_t process_biu_udp_frame(const uint8_t *buffer, uint16_t len);
+
+/* DLConsole copies: with this on, every BIU frame, both ways and on either
+ * link, also goes to DLConsole as a capture packet holding the frame's data
+ * bytes as they are on CAN (no COB-ID, no length):
+ *   sent      0x190 command  -> @biu_cmd    (8 B)
+ *             0x720 heartbeat -> @biu_beat  (1 B, our NMT state)
+ *   received  0x000 NMT       -> @biu_nmt   (2 B, command and node)
+ *             0x710 heartbeat -> @biu_beatrx (1 B, the BIU's NMT state)
+ *             0x220 pressures -> @biu_press, 0x320 codes -> @biu_codes,
+ *             0x420 discretes -> @biu_disc (as received)
+ * A frame received is copied whether or not it was taken. Off by default;
+ * the frames to the BIU do not change either way. */
+void    biu_dlconsole_mirror(uint8_t on);
+uint8_t biu_dlconsole_mirror_on(void);
 
 /* The BIU's last status (pressures with validity, codes, discretes). */
 const BiuStatus *biu_status_get(void);

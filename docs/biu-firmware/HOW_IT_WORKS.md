@@ -16,11 +16,12 @@ where in the spec each rule comes from.
 | `biu_can_messages.h` | The wire: node IDs, COB-IDs, NMT codes, the bit of every discrete flag, `BiuCommand` (what we send) and `BiuStatus` (what the BIU told us). No code. |
 | `brake_pressure_interface_user.h` | The public API, the brake table's types (`Range`, `BrakeSpec`), the enums (`LocoType`, `Mode`, `Command`, `PressureCmd`, `BrakeCheck`), and the analog reading (`PressureReading`). |
 | `brake_pressure_interface_user.c` | Everything that runs: the brake table, the frame codec, the two links (CAN, UDP), network management, sending the command, taking BIU frames, the checks, and the 4-20 mA conversion. |
-| `test_biu.c` + `test_common_include.h` + `test_enet_user.h` | Host test: 74 checks with a fake clock and fake sends. |
+| `test_biu.c` + `test_common_include.h` + `test_enet_user.h` + `test_utility.h` | Host test: 89 checks with a fake clock and fake sends. |
 | `loco_sim/` | The loco simulator (section 10). |
 
-The `.c` needs two headers from the VCC project: `common_include.h` (it uses `loco_params`, `SERIAL_PRINTF`,
-the brake-type enum, `ClockP_getTimeUsec`) and `enet_user.h` (it uses `UDP_Send`, `set_pc_ipAddr`). The test
+The `.c` needs headers from the VCC project: `common_include.h` (it uses `loco_params`, `SERIAL_PRINTF`,
+the brake-type enum, `ClockP_getTimeUsec`), `enet_user.h` (it uses `UDP_Send`, `set_pc_ipAddr`) and, with the
+DLConsole copies built in (section 8a), `utility.h` (`UDP_SendCapturePkt`, `LOG_PKT_TYPE`). The test
 and the loco simulator each bring their own stand-ins.
 
 ---
@@ -399,20 +400,51 @@ KAVACH node 0x20), our heartbeat `0x720`, the BIU's `0x710`, NMT `0x000`.
 
 ---
 
+## 8a. Copies to DLConsole (`@biu_cmd`, `@biu_beat`, ...)
+
+With a real BIU on CAN, DLConsole can still see every BIU frame: `biu_dlconsole_mirror(1)` copies each one, both
+ways, as a capture packet through `UDP_SendCapturePkt` (utility.c) to the log port 51234, the way `@dmi` and
+`@lout` go. The frames to the BIU do not change, and the bench (port 51235) is not involved.
+
+```
+VCC ──CAN 0x190 / 0x720──► real BIU          (unchanged)
+VCC ◄─CAN 0x000 / 0x710 / 0x220 / 0x320 / 0x420── real BIU
+ └──UDP 51234: @biu_cmd @biu_beat @biu_nmt @biu_beatrx @biu_press @biu_codes @biu_disc──► DLConsole
+```
+
+| Frame | Way | Capture id | Line in DLConsole (example) |
+|-------|-----|-----------|------------------------------|
+| `0x190` command | sent | `LOG_PKT_BIU_CMD` | `@biu_cmd_1_1 2026-10-30T10:15:02 812 E8 03 12 0C 00 30 00 00` (EB: A9 0, SA9 2.4) |
+| `0x720` our heartbeat | sent | `LOG_PKT_BIU_BEAT` | `@biu_beat_1_1 … 05` |
+| `0x000` NMT | received | `LOG_PKT_BIU_NMT` | `@biu_nmt_1_1 … 01 20` |
+| `0x710` BIU heartbeat | received | `LOG_PKT_BIU_BEATRX` | `@biu_beatrx_1_1 … 05` |
+| `0x220` / `0x320` / `0x420` | received | `LOG_PKT_BIU_PRESS` / `_CODES` / `_DISC` | the 8 data bytes |
+
+Each holds the frame's data bytes as on CAN: no COB-ID, no length (the token says which frame). A frame received
+is copied whether or not it was taken, so the log shows what arrived. Only the selected link is copied.
+
+**What the VCC adds:** the seven `LOG_PKT_BIU_*` values to `LOG_PKT_TYPE` in `utility.h` (before
+`LOG_PKT_TYPE_COUNT`) and their tokens `biu_cmd`, `biu_beat`, `biu_nmt`, `biu_beatrx`, `biu_press`,
+`biu_codes`, `biu_disc` to `log_pkt_token[]` in `utility.c`, at the same places. Then call
+`biu_dlconsole_mirror(1)` to start them (off by default); `biu_dlconsole_mirror(0)` stops them. Building with
+`BIU_DLCONSOLE_MIRROR 0` leaves the code out. About 20 copies a second while the BIU runs.
+
+---
+
 ## 9. The host test
 
 ```
 cd docs/biu-firmware
 mkdir -p /tmp/biu && cp *.c *.h /tmp/biu && cd /tmp/biu
-mv test_common_include.h common_include.h && mv test_enet_user.h enet_user.h
+mv test_common_include.h common_include.h && mv test_enet_user.h enet_user.h && mv test_utility.h utility.h
 gcc -std=c11 -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror -I. test_biu.c brake_pressure_interface_user.c -lm
-./a.out          # 74 checks, 0 failed
+./a.out          # 89 checks, 0 failed
 ```
 
 It drives a fake clock (`fake_usec`) and captures what would be sent, then checks the boot-up, heartbeats,
 NMT start / stop / reset, the command bytes for each brake against Annexure-1 and -4, the settling times, the
-three status frames, the acks, refusals of bad frames, the codec edges, the 4-20 mA conversion, and the CAN
-link (id, DLC, no header, nothing on UDP).
+three status frames, the acks, refusals of bad frames, the codec edges, the 4-20 mA conversion, the CAN
+link (id, DLC, no header, nothing on UDP), and the DLConsole copies (section 8a).
 
 ---
 
@@ -473,6 +505,9 @@ cd docs/biu-firmware
 | `--speed m/s` | 0 | Speed sent in the command. |
 | `--analog-bar N` | 10 | Sensor full scale for `current_to_pressure`. |
 | `--can` | off | Runs the CAN link with no driver: nothing is sent, and the bench's UDP frames are refused. Shows the link switch. |
+| `--log a.b.c.d` | off | Turns the DLConsole copies on (section 8a), sent to DLConsole there, as `utility.c` sends them (source id 2, dest 101, message 160). |
+| `--log-port N` | 51234 | DLConsole's log port. |
+| `--loco-id N` / `--vcc-id N` | 1 / 1 | The `_<loco>_<vcc>` of the tokens (`@biu_cmd_1_1`). |
 | `--help` | | The usage. |
 
 ### Keys while it runs (type, then Enter; on Windows too)
@@ -482,6 +517,7 @@ cd docs/biu-firmware
 | `0`-`5` | Change the brake (the settling clock restarts). |
 | `i` | Toggle BIU isolate (discrete byte 1, bit 3). |
 | `s` | Toggle speed valid (discrete byte 1, bit 4). |
+| `m` | Toggle the DLConsole copies (with `--log`). |
 | `q` | Quit. |
 
 ### Reading its output (once a second)

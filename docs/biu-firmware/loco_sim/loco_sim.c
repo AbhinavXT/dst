@@ -10,8 +10,13 @@
  *   - once a second prints what it commanded, what the BIU reported, what the
  *     analog card reads, and what check_brake_malfunction() says of each.
  *
+ *   - with --log (session 419), copies every BIU frame to DLConsole as the
+ *     VCC's capture packets (@biu_cmd, @biu_beat, @biu_press, ...): the
+ *     firmware's biu_dlconsole_mirror, sent as utility.c's UDP_SendCapturePkt
+ *     sends them, to DLConsole's log port (UDP 51234).
+ *
  * Type a brake type (0-5) and Enter to change the brake; i toggles BIU
- * isolate, q quits. See ../HOW_IT_WORKS.md for the options.
+ * isolate, m the DLConsole copies, q quits. See ../HOW_IT_WORKS.md for the options.
  *
  * Builds on Windows (Winsock, MSVC or MinGW), Mac and Linux (POSIX sockets). */
 #ifdef _WIN32
@@ -29,6 +34,7 @@
 #include "common_include.h"
 #include "../brake_pressure_interface_user.h"
 #include "enet_user.h"
+#include "utility.h"
 
 #include <errno.h>
 #include <stdlib.h>
@@ -60,6 +66,9 @@ static SocketHandle s_biu_socket = SOCKET_NONE;     /* bound to the reply port: 
 static SocketHandle s_analog_socket = SOCKET_NONE;
 static uint32_t s_bench_override_ip;      /* host order; 0 = use the firmware's BIU_SIM_IP0..3 */
 static uint16_t s_bench_port = 51235;   /* the firmware's BIU_SIM_PORT; 51234 is DLConsole's log port */
+static uint32_t s_log_ip;                 /* host order; 0 = no DLConsole copies */
+static uint16_t s_log_port = 51234;       /* DLConsole's log port (utility.c SELF_LOGGER_PORT) */
+static unsigned s_loco_id = 1, s_vcc_id = 1;
 
 /* ---- the firmware's network calls, on real sockets ------------------------------- */
 ip_addr_t set_pc_ipAddr(ipAddress address)
@@ -79,6 +88,44 @@ void UDP_Send(const char *buffer, ip_addr_t *ip_address, uint16_t port, uint16_t
     (void)port;   /* the firmware's BIU_SIM_PORT; --bench-port sets it here */
     if (sendto(s_biu_socket, buffer, length, 0, (struct sockaddr *)&destination, (SocketLength)sizeof(destination)) < 0)
         fprintf(stderr, "loco_sim: send to the bench failed: %s\n", socket_error_text());
+}
+
+/* utility.c's UDP_SendCapturePkt, for the copies: LOG_CONSOLE_HDR (src, dest
+ * 101, message 160, length, loco id; packed, little-endian), then
+ * "@<token>_<loco>_<ctrl> YYYY-MM-DDTHH:MM:SS <seq> " and the bytes in hex.
+ * Only this file's BIU tokens; source id 2 (the VCC's LKAVACH * 40 + ctrl is
+ * not known here). */
+void UDP_SendCapturePkt(LOG_PKT_TYPE type, const uint8_t *buff, uint16_t len)
+{
+    static const char *const tokens[] = { "biu_cmd", "biu_beat", "biu_nmt", "biu_beatrx", "biu_press", "biu_codes", "biu_disc" };
+    static unsigned sequence;
+    char datagram[256];
+    if (s_log_ip == 0U || buff == NULL || type < LOG_PKT_BIU_CMD || type > LOG_PKT_BIU_DISC) return;
+
+    const time_t seconds = time(NULL);
+    const struct tm *local = localtime(&seconds);
+    int length = snprintf(datagram + 7, sizeof(datagram) - 7, "@%s_%u_%u %04d-%02d-%02dT%02d:%02d:%02d %u ",
+                          tokens[type - LOG_PKT_BIU_CMD], s_loco_id, s_vcc_id, local->tm_year + 1900, local->tm_mon + 1,
+                          local->tm_mday, local->tm_hour, local->tm_min, local->tm_sec, sequence++);
+    for (uint16_t index = 0; index < len && length > 0 && length + 4 < (int)sizeof(datagram) - 7; ++index)
+        length += snprintf(datagram + 7 + length, sizeof(datagram) - 7 - (size_t)length, "%02X ", buff[index]);
+    if (length <= 0) return;
+    datagram[7 + length++] = '\n';
+    datagram[0] = 2;                                   /* source */
+    datagram[1] = 101;                                 /* DLConsole */
+    datagram[2] = (char)160;                           /* LOG_CAPTURE_MSG_ID */
+    datagram[3] = (char)(length & 0xFF);
+    datagram[4] = (char)(length >> 8);
+    datagram[5] = (char)(s_loco_id & 0xFFU);
+    datagram[6] = (char)(s_loco_id >> 8);
+
+    struct sockaddr_in destination;
+    memset(&destination, 0, sizeof(destination));
+    destination.sin_family = AF_INET;
+    destination.sin_addr.s_addr = htonl(s_log_ip);
+    destination.sin_port = htons(s_log_port);
+    if (sendto(s_biu_socket, datagram, 7 + length, 0, (struct sockaddr *)&destination, (SocketLength)sizeof(destination)) < 0)
+        fprintf(stderr, "loco_sim: copy to DLConsole failed: %s\n", socket_error_text());
 }
 
 /* ---- the analog card's frame (DLConsole cabio.h, session 346-347) -------------------
@@ -256,8 +303,10 @@ static void usage(void)
     printf("loco_sim [--bench a.b.c.d] [--bench-port 51235] [--reply-port 50001] [--analog-port 20000]\n"
            "         [--loco wap7|wag9|wap5] [--mode formation|lem] [--brake 0-5] [--speed m/s]\n"
            "         [--analog-bar 10] [--can]\n"
+           "         [--log a.b.c.d] [--log-port 51234] [--loco-id 1] [--vcc-id 1]\n"
+           "  --log: copy every BIU frame to DLConsole there as @biu_* capture packets.\n"
            "  While running: 0-5 + Enter sets the brake (0 no brake, 1 overspeed, 2 NB, 3 FSB, 4 EB, 5 LE),\n"
-           "  i toggles BIU isolate, s toggles speed valid, q quits.\n");
+           "  i toggles BIU isolate, s toggles speed valid, m toggles the DLConsole copies, q quits.\n");
 }
 
 int main(int argument_count, char **arguments)
@@ -293,6 +342,14 @@ int main(int argument_count, char **arguments)
         else if (!strcmp(option, "--speed"))      { loco_params.sensor_speed = (float)atof(value); ++index; }
         else if (!strcmp(option, "--analog-bar")) { analog_full_scale_bar = (float)atof(value); ++index; }
         else if (!strcmp(option, "--can"))        { use_can_link = 1; }
+        else if (!strcmp(option, "--log")) {
+            struct in_addr parsed;
+            if (inet_pton(AF_INET, value, &parsed) != 1) { fprintf(stderr, "not an IPv4 address: %s\n", value); return 2; }
+            s_log_ip = ntohl(parsed.s_addr); ++index;
+        }
+        else if (!strcmp(option, "--log-port")) { s_log_port = (uint16_t)atoi(value); ++index; }
+        else if (!strcmp(option, "--loco-id"))  { s_loco_id = (unsigned)atoi(value); ++index; }
+        else if (!strcmp(option, "--vcc-id"))   { s_vcc_id = (unsigned)atoi(value); ++index; }
         else { usage(); return !strcmp(option, "--help") ? 0 : 2; }
     }
     loco_params.train_type = train_mode == TRAIN_MODE_LEM ? LIGHT_ENGINE_TYPE : FORMATION_TYPE;
@@ -312,6 +369,7 @@ int main(int argument_count, char **arguments)
     /* --can runs the CAN link with no driver: nothing goes out. It shows the
      * firmware refusing the bench's UDP frames when CAN is selected. */
     biu_link_select(use_can_link ? BIU_LINK_CAN : BIU_LINK_UDP);
+    biu_dlconsole_mirror(s_log_ip != 0U);
     biu_link_init();
     printf("loco_sim: VCC as loco %u mode %u, BIU frames to %s:%u, listening on %u (BIU) and %u (analog)\n",
            (unsigned)loco_type, (unsigned)train_mode,
@@ -378,8 +436,10 @@ int main(int argument_count, char **arguments)
             if (line[0] >= '0' && line[0] <= '5') brake_type = (uint8_t)(line[0] - '0');
             else if (line[0] == 'i') loco_params.dmi_context_values.biu_isolated ^= 1U;
             else if (line[0] == 's') loco_params.speed_ok ^= 1U;
-            printf("loco_sim: brake %s, isolate %u, speed valid %u\n", brake_name(brake_type),
-                   (unsigned)loco_params.dmi_context_values.biu_isolated, (unsigned)loco_params.speed_ok);
+            else if (line[0] == 'm' && s_log_ip != 0U) biu_dlconsole_mirror(!biu_dlconsole_mirror_on());
+            printf("loco_sim: brake %s, isolate %u, speed valid %u, DLConsole copies %s\n", brake_name(brake_type),
+                   (unsigned)loco_params.dmi_context_values.biu_isolated, (unsigned)loco_params.speed_ok,
+                   biu_dlconsole_mirror_on() ? "on" : s_log_ip ? "off" : "off (no --log)");
         }
     }
     close_socket(s_biu_socket);

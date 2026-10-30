@@ -33,6 +33,17 @@
 #ifndef BIU_SIM_PORT
 #define BIU_SIM_PORT 51235U   /* not 51234: that is DLConsole's log port */
 #endif
+#ifndef BIU_DLCONSOLE_MIRROR
+#define BIU_DLCONSOLE_MIRROR 1
+#endif
+#if BIU_DLCONSOLE_MIRROR
+/* utility.h: UDP_SendCapturePkt and LOG_PKT_TYPE, with the seven LOG_PKT_BIU_*
+ * values added to it (and their tokens to log_pkt_token[] in utility.c). */
+#include "utility.h"
+#ifndef BIU_CAPTURE_SEND
+#define BIU_CAPTURE_SEND(log_pkt, data, length)  UDP_SendCapturePkt((log_pkt), (data), (uint16_t)(length))
+#endif
+#endif
 #ifndef BIU_HEARTBEAT_PERIOD_MS
 #define BIU_HEARTBEAT_PERIOD_MS   500U      /* Annexure-1 4 */
 #endif
@@ -247,10 +258,46 @@ static void biu_udp_send_frame(uint16_t cob_id, const uint8_t *data, uint8_t len
     UDP_Send((const char *)buffer, &biu_sim_ip_address, BIU_SIM_PORT, (uint16_t)(3U + length));
 }
 
+/* ---- DLConsole copies (see biu_dlconsole_mirror in the .h) ---------------------- */
+#if BIU_DLCONSOLE_MIRROR
+static uint8_t s_mirror;
+
+void    biu_dlconsole_mirror(uint8_t on) { s_mirror = on ? 1U : 0U; }
+uint8_t biu_dlconsole_mirror_on(void)    { return s_mirror; }
+
+/* A frame sent (sent = 1) or received, as the capture packet it is copied as. */
+static void biu_mirror_frame(uint16_t cob_id, uint8_t sent, const uint8_t *data, uint8_t length)
+{
+    LOG_PKT_TYPE log_pkt;
+    if (!s_mirror) return;
+    if (sent) {
+        if (cob_id == BIU_COB_COMMAND)               log_pkt = LOG_PKT_BIU_CMD;
+        else if (cob_id == BIU_COB_HEARTBEAT_KAVACH) log_pkt = LOG_PKT_BIU_BEAT;
+        else return;
+    } else {
+        switch (cob_id) {
+        case BIU_COB_NMT:              log_pkt = LOG_PKT_BIU_NMT;    break;
+        case BIU_COB_HEARTBEAT_BIU:    log_pkt = LOG_PKT_BIU_BEATRX; break;
+        case BIU_COB_STATUS_PRESSURES: log_pkt = LOG_PKT_BIU_PRESS;  break;
+        case BIU_COB_STATUS_CODES:     log_pkt = LOG_PKT_BIU_CODES;  break;
+        case BIU_COB_STATUS_DISCRETES: log_pkt = LOG_PKT_BIU_DISC;   break;
+        default:                       return;
+        }
+    }
+    if (length > BIU_FRAME_LEN) length = BIU_FRAME_LEN;
+    BIU_CAPTURE_SEND(log_pkt, data, length);
+}
+#else
+void    biu_dlconsole_mirror(uint8_t on) { (void)on; }
+uint8_t biu_dlconsole_mirror_on(void)    { return 0U; }
+#define biu_mirror_frame(cob_id, sent, data, length)  ((void)0)
+#endif
+
 static void biu_send_frame(uint16_t cob_id, const uint8_t *data, uint8_t length)
 {
     if (s_link == BIU_LINK_UDP) biu_udp_send_frame(cob_id, data, length);
     else                        biu_can_send_frame(cob_id, data, length);
+    biu_mirror_frame(cob_id, 1U, data, length);
 }
 
 /* ---- Module state ------------------------------------------------------------- */
@@ -423,6 +470,7 @@ static uint8_t take_biu_frame(uint16_t cob_id, const uint8_t *data, uint8_t leng
 {
     uint32_t now_ms = BIU_NOW_MS();
     if (now_ms == 0U) now_ms = 1U;   /* 0 means "never" in rx_ms */
+    biu_mirror_frame(cob_id, 0U, data, length);   /* what arrived, taken or not */
 
     switch (cob_id) {
     case BIU_COB_NMT:

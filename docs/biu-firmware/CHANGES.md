@@ -74,6 +74,29 @@ recorded" means none was written down, and "not from the spec" means a code defe
     identifier or DLC; it came from your original `brake_pressure_interface_user.c`.*
   - The two paths share no send or receive code, only the frame contents and the state they update.
 
+## Fourth round: copies to DLConsole (2026-10-30, DLConsole patch 419)
+
+- **Every BIU frame, both ways, can also go to DLConsole** as a capture packet, like `@dmi` or `@lout`, through
+  your `UDP_SendCapturePkt` (utility.c) to the log port 51234. The real BIU stays on CAN and sees nothing
+  different; the Brake Test Bench and port 51235 are not needed for it. Each copy holds the frame's data bytes
+  as they are on CAN, no COB-ID or length:
+
+  | Frame | Way | Capture id (utility.h) | Token | Bytes |
+  |-------|-----|------------------------|-------|-------|
+  | `0x190` command | sent | `LOG_PKT_BIU_CMD` | `biu_cmd` | 8 |
+  | `0x720` our heartbeat | sent | `LOG_PKT_BIU_BEAT` | `biu_beat` | 1 |
+  | `0x000` NMT | received | `LOG_PKT_BIU_NMT` | `biu_nmt` | 2 |
+  | `0x710` BIU heartbeat | received | `LOG_PKT_BIU_BEATRX` | `biu_beatrx` | 1 |
+  | `0x220` pressures | received | `LOG_PKT_BIU_PRESS` | `biu_press` | 8 |
+  | `0x320` codes | received | `LOG_PKT_BIU_CODES` | `biu_codes` | 8 |
+  | `0x420` discretes | received | `LOG_PKT_BIU_DISC` | `biu_disc` | 8 |
+
+  A frame received is copied whether or not it was taken (an NMT for another node, a short frame), so the log
+  shows what arrived. Only the selected link's frames are copied. *Not from the spec: a test aid.*
+- **Two switches.** `biu_dlconsole_mirror(1 / 0)` at run time, **off** by default. `BIU_DLCONSOLE_MIRROR 0` at
+  build time leaves the copies out (then `utility.h` is not included and `biu_dlconsole_mirror` does nothing).
+- **Traffic:** about 20 copies a second with the BIU running (command 4, heartbeats 2 + 2, status 3 x 4).
+
 ## What callers must change
 
 1. **Define `BIU_SPEED_VALID()`** (1 while the speed sensor is healthy). Without it, the file stops with `#error`.
@@ -87,21 +110,36 @@ recorded" means none was written down, and "not from the spec" means a code defe
 6. **Bench testing over UDP:** `biu_link_select(BIU_LINK_UDP)` before `biu_link_init()`, and give
    `process_biu_udp_frame(buffer, len)` every datagram from the DLConsole Brake Test Bench.
 7. **Call `biu_link_init()` once, then `biu_link_tick()` and `send_biu_command()` every 250 ms.**
-8. **Bench port 51235** (patch 390): `BIU_SIM_PORT` defaults to 51235, where the Brake Test Bench now listens.
+8. **DLConsole copies** (fourth round): in `utility.h`, add to `LOG_PKT_TYPE`, before `LOG_PKT_TYPE_COUNT`:
+   ```c
+   LOG_PKT_BIU_CMD, LOG_PKT_BIU_BEAT, LOG_PKT_BIU_NMT, LOG_PKT_BIU_BEATRX,
+   LOG_PKT_BIU_PRESS, LOG_PKT_BIU_CODES, LOG_PKT_BIU_DISC,
+   ```
+   and in `utility.c`, `log_pkt_token[]`, at the same places:
+   ```c
+   "biu_cmd", "biu_beat", "biu_nmt", "biu_beatrx", "biu_press", "biu_codes", "biu_disc"
+   ```
+   Then `biu_dlconsole_mirror(1)` wherever the copies should start (a DMI or maintenance setting, or at boot
+   while testing). Or build with `BIU_DLCONSOLE_MIRROR 0` to leave them out.
+9. **Bench port 51235** (patch 390): `BIU_SIM_PORT` defaults to 51235, where the Brake Test Bench now listens.
    51234 is DLConsole's log port; sharing it split the traffic (the BIU frames were counted as malformed logs).
 
 ## Tested
 
-`test_biu.c` is a host test. Build it with `test_common_include.h` / `test_enet_user.h` renamed to
-`common_include.h` / `enet_user.h`:
+`test_biu.c` is a host test. Build it with `test_common_include.h` / `test_enet_user.h` / `test_utility.h` renamed
+to `common_include.h` / `enet_user.h` / `utility.h`:
 `gcc -std=c11 -Wall -Wextra -Wpedantic -Wconversion -Wshadow -Werror -I. test_biu.c brake_pressure_interface_user.c -lm`
 
-It runs 74 checks:
+It runs 89 checks:
 - the frame bytes against Annexure-1, with values from Annexure-4 (on the UDP link, where the bytes are visible);
 - the CAN link: identifier and DLC per frame, the same 8 command bytes with no header, nothing on UDP, status
   frames taken from CAN, and a frame from the link not selected refused;
 - boot-up, heartbeat, start, stop and reset, and the BIU heartbeat timeout;
 - settling per pressure (EB -> release, LE -> NB);
-- the three status frames, acks and refusals.
+- the three status frames, acks and refusals;
+- the DLConsole copies: off by default; on, each frame sent and received as its capture id with the CAN data
+  bytes (the command's the same 8 bytes as on CAN), an NMT for another node copied though not taken, an unknown
+  COB-ID and the link not selected not copied, the UDP link copied without its header; off again, none. Also
+  built with `BIU_DLCONSOLE_MIRROR 0` and no `utility.h`.
 
 Not built with the TI compiler or on target, and not run against a real BIU. The CAN send is yours to put in.

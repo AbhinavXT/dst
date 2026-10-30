@@ -10,6 +10,61 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-419"></a>
+## Session 419 — the BIU firmware copies every BIU frame to DLConsole (@biu_cmd, @biu_beat, ...)
+
+Abhinav 2026-10-30: *"why are we using 51235 port, can we not update the
+firmware code. so i can send packet to both dlconsole like @biu_cmd and
+@biu_beat … and i will also send the packet to real biu … on CAN. we can just
+add toggling dlconsole brake packet sending and processing on or off."*
+Picked then: copy every frame both ways (command, our heartbeat, the BIU's
+NMT, heartbeat and three status frames); the CAN data bytes only; a run-time
+switch and a build switch. The capture function and its token table are the
+VCC's own `utility.h` / `utility.c`, pasted then.
+
+**Why.** With a real BIU on CAN, no log carried what the VCC commanded the BIU
+or what the BIU answered (the gap in `docs/BRAKE_BENCH_NEXT.md`), and the
+Loco Simulator could only brake from the Brake Test Bench, a stand-in for the
+BIU on port 51235. The copies go where every other capture packet goes.
+
+**What changes for the VCC** (`docs/biu-firmware/`, which DLConsole does not build):
+- `biu_dlconsole_mirror(1 / 0)` (off by default): each frame sent (`0x190`,
+  `0x720`) and received (`0x000`, `0x710`, `0x220`, `0x320`, `0x420`) also
+  goes out through `UDP_SendCapturePkt` as `@biu_cmd`, `@biu_beat`, `@biu_nmt`,
+  `@biu_beatrx`, `@biu_press`, `@biu_codes`, `@biu_disc`: the frame's data bytes
+  as on CAN. A frame received is copied whether or not it was taken; only the
+  selected link is copied; the frames to the BIU do not change.
+- `BIU_DLCONSOLE_MIRROR 0` builds it out (no `utility.h` needed then);
+  `BIU_CAPTURE_SEND` can replace the send.
+- The VCC adds the seven `LOG_PKT_BIU_*` values to `LOG_PKT_TYPE` and their
+  tokens to `log_pkt_token[]` (CHANGES.md, "What callers must change" 8).
+- `loco_sim`: `--log a.b.c.d` (with `--log-port`, `--loco-id`, `--vcc-id`)
+  sends the copies to DLConsole as `utility.c` does (header src 2, dest 101,
+  message 160); `m` toggles them.
+
+DLConsole does not decode them yet: that is patch 420.
+
+**Files.** docs/biu-firmware: brake_pressure_interface_user.{c,h},
+test_biu.c, test_utility.h (new), loco_sim/loco_sim.c, loco_sim/utility.h
+(new), HOW_IT_WORKS.md (section 8a, options, keys), CHANGES.md (fourth round).
+
+**Tests.** The host test (gcc, `-Wall -Wextra -Wpedantic -Wconversion
+-Wshadow -Werror`): 89 checks, 0 failed (74 before): copies off by default;
+on, the heartbeat and the command copied with the same bytes as on CAN, EB's
+A9 0 / SA9 48; each status frame and the BIU heartbeat copied as received; an
+NMT for another node copied though not taken; an unknown COB-ID and the link
+not selected not copied; the UDP link copied without the bench's header; off
+again, none, the link unaffected. Built with `BIU_DLCONSOLE_MIRROR=0` and no
+`utility.h`. `loco_sim` built (clang) and its copies read off a socket:
+`02 65 A0 <len> <loco>` + `@biu_beat_7_3 2026-10-30T06:20:58 0 00`.
+- **Not tested:** the TI compiler, the target, a real BIU; `loco_sim` with
+  MSVC (CI builds it on release).
+
+**Gate.** No DLConsole source changed since patch 418's green gate (Qt 5.15
+and Qt 6.11, 432 suites / 10800 checks), so it was not run again.
+
+---
+
 <a id="session-418"></a>
 ## Session 418 — the Loco Simulator brakes as LocoTcasSimulator does, from the BIU's own command
 
