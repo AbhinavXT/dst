@@ -1,0 +1,49 @@
+{
+    "format": "dlconsole-station-layout",
+    "version": 2,
+    "comment": "Session 422. Station 527 (Section_30) as its SLRPs in replay/2026-10-08/loco_1_1_08102026_10{3520,5200}.cap show it. A904's sig_info is not in any capture: A900's is used.",
+    "tags": [], "signals": [], "points": [], "lines": [], "stations": [ { "station_id": 527, "location": 161060 } ],
+    "texts": [], "other_sheets": [],
+    "kavach": {
+        "station_id": 527,
+        "stn_version": 2,
+        "signals": [
+            { "name": "S48",  "foot_tag": 12,  "sig_info": 0,     "aspect": 2 },
+            { "name": "S43",  "foot_tag": 18,  "sig_info": 66400, "aspect": 2 },
+            { "name": "A900", "foot_tag": 900, "sig_info": 77664, "aspect": 2 },
+            { "name": "A904", "foot_tag": 904, "sig_info": 77664, "aspect": 2 }
+        ],
+        "routes": [
+            {
+                "name": "S48-S43 DN Main", "entry": "S48", "exit": "S43", "pkt_dir": 1,
+                "section_type": 0, "authority": 1, "os_speed": 20,
+                "tags": [ { "dist": 0, "tag": 12 }, { "dist": 275, "tag": 14 }, { "dist": 137, "tag": 16, "dup_dir": 1 },
+                          { "dist": 122, "tag": 18 } ],
+                "dist_dup_tag": 4, "adj_tins": [ 84 ], "tin": 83,
+                "ssp": [ { "d": 534, "u": 16 } ],
+                "gradient": [ { "d": 534, "dir": 1, "value": 4 } ],
+                "track_conditions": [ { "type": 7, "sd": 0, "ln": 534 } ]
+            },
+            {
+                "name": "S43-A900 DN Auto", "entry": "S43", "exit": "A900", "pkt_dir": 1,
+                "section_type": 2, "authority": 2,
+                "tags": [ { "dist": 0, "tag": 18 }, { "dist": 200, "tag": 906 }, { "dist": 656, "tag": 898 },
+                          { "dist": 260, "tag": 900 } ],
+                "dist_dup_tag": 4, "adj_tins": [ 84 ], "tin": 83,
+                "ssp": [ { "d": 1116, "u": 16 } ],
+                "gradient": [ { "d": 1116, "dir": 1, "value": 6 } ],
+                "lc": [ { "d": 506, "id": 191, "suffix": 1, "manned": 0, "class": 1, "awEn": 1, "awType": 0 } ],
+                "track_conditions": [ { "type": 2, "sd": 100, "ln": 1016 } ]
+            },
+            {
+                "name": "A900-A904 DN Auto", "entry": "A900", "exit": "A904", "pkt_dir": 1,
+                "section_type": 2, "authority": 2,
+                "tags": [ { "dist": 0, "tag": 900 }, { "dist": 640, "tag": 902 }, { "dist": 200, "tag": 904 } ],
+                "dist_dup_tag": 4, "adj_tins": [ 84 ], "tin": 83,
+                "ssp": [ { "d": 840, "u": 16 } ],
+                "gradient": [ { "d": 320, "dir": 1, "value": 6 }, { "d": 520, "dir": 0, "value": 0 } ],
+                "track_conditions": [ { "type": 6, "sd": 200, "ln": 640 } ]
+            }
+        ]
+    }
+}

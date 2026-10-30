@@ -20,6 +20,7 @@ namespace StationLayout {
 namespace {
 
 const char *kFormat = "dlconsole-station-layout";
+const char *kKavachSheet = "kavach";
 
 // The tool's sheets, and their columns in its order. A column listed in
 // `numbers` is written as a number on export.
@@ -329,6 +330,14 @@ bool fromSheets(const QVector<XlsxBook::Sheet> &sheets, Layout *out, QString *er
     for (const XlsxBook::Sheet &sh : sheets) {
         bool known = false;
         for (const SheetSpec &s : specs()) known = known || sh.name == QLatin1String(s.name);
+        if (sh.name == QLatin1String(kKavachSheet)) {
+            QStringList json;
+            for (const XlsxBook::Row &r : sh.rows) json << (r.isEmpty() ? QString() : r.first().toString());
+            const QJsonDocument doc = QJsonDocument::fromJson(json.join(QLatin1Char('\n')).toUtf8());
+            if (doc.isObject()) l.kavach = doc.object();
+            else if (notes) *notes << QStringLiteral("the kavach sheet is not JSON: not read");
+            continue;
+        }
         if (!known) l.otherSheets << sh;
     }
     *out = l;
@@ -375,6 +384,13 @@ QVector<XlsxBook::Sheet> toSheets(const Layout &l)
     for (const Text &t : l.texts) rows << QStringList{ t.text, QString::number(t.location), QString::number(t.posY) };
     sheet(sp.at(5), rows);
     out << l.otherSheets;
+    if (!l.kavach.isEmpty()) {
+        XlsxBook::Sheet k;
+        k.name = QLatin1String(kKavachSheet);
+        for (const QByteArray &line : QJsonDocument(l.kavach).toJson(QJsonDocument::Indented).split('\n'))
+            if (!line.isEmpty()) k.rows << XlsxBook::Row{ QString::fromUtf8(line) };
+        out << k;
+    }
     return out;
 }
 
@@ -384,7 +400,8 @@ QByteArray toJson(const Layout &l)
 {
     QJsonObject root;
     root.insert(QStringLiteral("format"), QLatin1String(kFormat));
-    root.insert(QStringLiteral("version"), 1);
+    // Version 2 only with the KAVACH data: a version 1 file stays readable as it was.
+    root.insert(QStringLiteral("version"), l.kavach.isEmpty() ? 1 : 2);
     QJsonArray a;
     for (const Tag &t : l.tags)
         a.append(QJsonObject{ { "name", t.name }, { "page_x", t.pageX }, { "page_y", t.pageY } });
@@ -416,6 +433,7 @@ QByteArray toJson(const Layout &l)
     a = QJsonArray();
     for (const XlsxBook::Sheet &sh : l.otherSheets) a.append(sheetJson(sh));
     root.insert(QStringLiteral("other_sheets"), a);
+    if (!l.kavach.isEmpty()) root.insert(QStringLiteral("kavach"), l.kavach);
     return QJsonDocument(root).toJson(QJsonDocument::Indented);
 }
 
@@ -432,7 +450,7 @@ bool fromJson(const QByteArray &json, Layout *out, QString *err, QStringList *no
         if (err) *err = QStringLiteral("not a DLConsole station layout (format \"%1\")").arg(QLatin1String(kFormat));
         return false;
     }
-    if (root.value(QStringLiteral("version")).toInt() > 1 && notes)
+    if (root.value(QStringLiteral("version")).toInt() > 2 && notes)
         *notes << QStringLiteral("written by a newer DLConsole (version %1): fields it added are not read")
                       .arg(root.value(QStringLiteral("version")).toInt());
     Layout l;
@@ -468,6 +486,7 @@ bool fromJson(const QByteArray &json, Layout *out, QString *err, QStringList *no
         l.texts << Text{ s(o, "text"), n(o, "location"), n(o, "posy") };
     }
     for (const QJsonValue &v : arr("other_sheets")) l.otherSheets << sheetFromJson(v.toObject());
+    l.kavach = root.value(QStringLiteral("kavach")).toObject();
     *out = l;
     return true;
 }
@@ -625,6 +644,10 @@ Diff diff(const Layout &from, const Layout &to)
         return out;
     };
     keyed(QStringLiteral("text"), textKeys(from), textKeys(to));
+    if (from.kavach != to.kavach)
+        d.other << (from.kavach.isEmpty() ? QStringLiteral("KAVACH data added")
+                    : to.kavach.isEmpty() ? QStringLiteral("KAVACH data removed")
+                                          : QStringLiteral("KAVACH data changed (signals, routes or profiles)"));
     std::sort(d.other.begin(), d.other.end());
     return d;
 }

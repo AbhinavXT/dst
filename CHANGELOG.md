@@ -10,6 +10,94 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-422"></a>
+## Session 422 — a Stationary KAVACH made of data: the station's routes answer the loco
+
+Abhinav 2026-10-30, after reading RDSO/SPN/196/2020 Annexure-I Amdt-6 (the
+KAVACH Table of Control guidelines): *"make a miniature station with
+changeable signals, points, tracks, tags, TINs, SSP, TSR, turnout, gradient,
+track condition, tag linking etc. according to which we can generate MA and
+other track profiles, and send a station regular packet to the loco
+according to its location"*. Asked and answered: the operator sets the
+aspects and the station checks; the data extends the Station Layout; the
+first patch is the engine, the file and a basic panel; station 527 from
+`replay/` is the fixture.
+
+**What the operator sees.** Packet Maker ▸ Send log: *Answer the loco: ARP →
+AAP, LSRP →* now picks **this SLRP** (session 378, unchanged) or **the
+station's routes (KAVACH data in the layout)**. With the second, a station
+layout carrying KAVACH data answers every LSRP with the SLRP the station
+would send, each loco MACed with the session key from its own ARP. No SLRP
+in the form is needed. **Station…** opens the live state: the signals'
+aspects, the points (Normal / Reverse), the track circuits and TINs
+(occupied), each route's authority (OS / FS / SR), the TSRs (on / off); and
+the last answer to each loco, with what the state does not agree with.
+Each answer is a send-log row saying which route, which aspect, how many
+sections, the MA, the ref and whether the profile went in full.
+
+**How the station answers** (`stationkavach.h`, `docs/STATION_KAVACH.md`):
+- One **route** = one Table-of-Control row, entry signal → exit signal: the
+  tags with linking distances (I.2.11.14), the points, track circuits and
+  TINs (I.2.11.9-13), section type, authority and OS speed, and its track
+  profile (I.2.12): SSP, gradient, LC gates, turnouts, track conditions, TSR.
+- The route the loco is on: the one whose entry foot tag it has just read,
+  else the one it was on, else any holding the tag; between routes from one
+  signal, the one whose points are set.
+- **MA in sections** (I.2.11.16): this route is section 1, each route on
+  from its exit signal one more; Red / calling-on / stop board 1, Yellow 2,
+  Double Yellow 3, Green 4 (the GGD example's values; the file can change
+  them). `MA_W_R_T_SIG` counts from the start signal, as `trackdiagram.cpp`
+  and `replaywindow.cpp` already read it.
+- The **profile** of those sections end to end, cut at the MA end; a new
+  `REF_PROF_ID` when it changes, sent in full until `LAST_REF_PROFILE_NUM`
+  acknowledges it.
+- What the state does not agree with (a point lying wrong, something
+  occupied, Green with Red ahead, more sections wanted than known) is said,
+  never corrected. A value too wide for its field (checked against the
+  schema's widths: the encoder masks), too many rows, an SSP or gradient
+  short of its route, a tag on no route: refused by name.
+
+**Found in the real frames.** Station 527's three MAs are this rule
+exactly: 1650 = 534 + 1116 (S43 Yellow, 2 sections), 1116 (A900 Red, 1),
+1956 = 1116 + 840 (A900 Yellow, 2); and every profile it sent ends exactly
+at its MA end. Where it did otherwise: it moved ref and route a few frames
+after the loco read a tag; entering a Red section it kept the profile it had
+(its stretch covered the new MA); it sent the full profile once or twice
+after the acknowledgement. DLConsole does each at once / anew / never.
+
+**The file.** `StationLayout::Layout::kavach` (a JSON object), written as
+`"kavach"` in the own file (version 2 only when present: a file without it
+is still version 1) and as a `kavach` sheet in the .xlsx (the JSON, a line
+per row), read back from either; the layout diff names it.
+
+**Files.** `stationkavach.{h,cpp}`, `stationkavachpanel.{h,cpp}` (new);
+`stationlayout.{h,cpp}`, `packetmakerdialog.{h,cpp}`, `dlcore.pri`;
+`docs/STATION_KAVACH.md` (new); `tests/fixtures/station_kavach/section30_527.json`
+(new: station 527's 4 signals and 3 routes, built from its SLRPs);
+`tests/test_session422.cpp` (new), `tests/tests.pro`.
+
+**Tests.** `session422` (54 checks) on `loco_1_1_08102026_105200.cap` and
+`_103520.cap`: the full SLRPs (profiles 1, 2 and 3) and the MA-only ones are
+the station's field for field; tag 14 / 16 / 906 give its DIST_PKT_START and
+APPR_SIG_DIST; A900 Red gives its MA 1116; a changed LC id makes the
+comparison fail (it bites); the Packet Maker answering run 105200's LSRPs
+sends **the station's SLRP to LSRP 40380 byte for byte, MAC included**;
+A900 set to Red in the panel gives MA 1116 and profile 3 in full; the checks
+and refusals; TSR on / off; the file round trips (JSON, .xlsx, version 1
+without it). `session378` and `session208` unchanged and green.
+- **Not tested:** against a live loco or VCC; routes with points (main /
+  loop: the fixture's are plain, the choice by points is tested on a copy);
+  turnouts, LOC_RESET and TSR against real frames (station 527 sent none);
+  A904's `sig_info` is not in any capture (A900's is used).
+- **Not built:** an editor (the file is written by hand, see the doc), the
+  TSR route table's OHE poles, TSL working, train length, shortened MA,
+  SoS, Table-of-Control import.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: 17 validators, 435 suites / 10908
+checks, menu audit, headless smoke.
+
+---
+
 <a id="session-421"></a>
 ## Session 421 — the Loco Simulator: the operator picks the tab whose @biu_cmd brakes the loco
 

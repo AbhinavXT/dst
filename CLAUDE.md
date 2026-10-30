@@ -117,6 +117,10 @@ The three features once queued here are all done:
   (370), Play with the DMI (371); the Monitor tools (372) and the test cases
   (373) over a recording, two runs in step (374), what changed on the DMI
   (375). How-to: `docs/REMOTE_REVIEW.md`.
+- **Stationary KAVACH from data** (a miniature station answering the loco):
+  routes as Table-of-Control rows, MA in sections from the aspects, profile
+  cut at the MA end, live state in Packet Maker ▸ Station… (422).
+  `docs/STATION_KAVACH.md`. Next steps proposed there under "Not yet".
 
 Before proposing a feature, search `CHANGELOG.md` for it. **Queued:** the
 Brake Test Bench follow-ups for the hardware session (real BIU frames,

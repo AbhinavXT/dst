@@ -13,6 +13,7 @@
 
 #include "messageheader.h"
 #include "packetpreset.h"
+#include "stationkavachpanel.h"
 #include "sessionkeystore.h"
 #include "stationanswer.h"
 #include <QRandomGenerator>
@@ -773,19 +774,30 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
 
     // Answer the loco (session 378): ARP -> AAP from a preset, LSRP -> this SLRP.
     auto *answerRow = new QHBoxLayout;
-    m_answerLoco = new QCheckBox(tr("Answer the loco: ARP → AAP, LSRP → this SLRP"), logPage);
+    m_answerLoco = new QCheckBox(tr("Answer the loco: ARP → AAP, LSRP →"), logPage);
     m_answerLoco->setObjectName(QStringLiteral("pmAnswerLoco"));
     m_answerLoco->setToolTip(tr("While armed: each ARP gets an AAP (the preset, with a fresh station random\n"
-                                "and the session key derived from the loco's auth keys); each LSRP from that\n"
-                                "loco gets this SLRP with its FRAME_NUM and the last tag it read as LAST_REF_RFID;\n"
-                                "DIST_PKT_START and APPR_SIG_DIST are re-counted from that tag, so the start\n"
-                                "signal and the signal stay where this SLRP puts them."));
+                                "and the session key derived from the loco's auth keys); each LSRP gets an SLRP."));
+    m_answerFrom = new QComboBox(logPage);
+    m_answerFrom->setObjectName(QStringLiteral("pmAnswerFrom"));
+    m_answerFrom->addItem(tr("this SLRP"));
+    m_answerFrom->addItem(tr("the station's routes (KAVACH data in the layout)"));
+    m_answerFrom->setItemData(0, tr("This SLRP with the LSRP's FRAME_NUM and the last tag the loco read as\n"
+                                    "LAST_REF_RFID; DIST_PKT_START and APPR_SIG_DIST are re-counted from that\n"
+                                    "tag, so the start signal and the signal stay where this SLRP puts them.\n"
+                                    "Only the form's DEST_LOCO_ID is answered."), Qt::ToolTipRole);
+    m_answerFrom->setItemData(1, tr("The SLRP the station would send, from the layout's KAVACH data: the route the\n"
+                                    "loco is on, the MA in sections from the aspect of the signal ahead, the\n"
+                                    "profile of those sections cut at the MA end, a new REF_PROF_ID sent in full\n"
+                                    "until the loco acknowledges it. Every loco is answered, each MACed with the\n"
+                                    "session key from its own ARP."), Qt::ToolTipRole);
     m_aapPresetEdit = new QLineEdit(logPage);
     m_aapPresetEdit->setObjectName(QStringLiteral("pmAnswerAap"));
     m_aapPresetEdit->setPlaceholderText(tr("AAP preset (.json)"));
     m_layoutEdit = new QLineEdit(StationLayout::defaultFile(), logPage);
     m_layoutEdit->setObjectName(QStringLiteral("pmAnswerLayout"));
-    m_layoutEdit->setToolTip(tr("Station layout: where each RFID tag is"));
+    m_layoutEdit->setToolTip(tr("Station layout: where each RFID tag is; with KAVACH data (docs/STATION_KAVACH.md),\n"
+                                "the station's signals and routes that answer as the station"));
     const auto browse = [this, logPage](QLineEdit *e, const QString &filter) {
         const QString p = QFileDialog::getOpenFileName(logPage, QString(), e->text(), filter);
         if (!p.isEmpty()) e->setText(p);
@@ -797,13 +809,36 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     connect(layoutBrowse, &QPushButton::clicked, this,
             [this, browse]() { browse(m_layoutEdit, tr("Station layout (*.xlsx *.json)")); });
     answerRow->addWidget(m_answerLoco);
+    answerRow->addWidget(m_answerFrom);
     answerRow->addWidget(m_aapPresetEdit, 1);
     answerRow->addWidget(aapBrowse);
     answerRow->addWidget(m_layoutEdit, 1);
     answerRow->addWidget(layoutBrowse);
+    m_stnPanelBtn = new QPushButton(tr("Station…"), logPage);
+    m_stnPanelBtn->setObjectName(QStringLiteral("pmStationPanel"));
+    m_stnPanelBtn->setToolTip(tr("The station's live state while answering as its routes: the signals' aspects,\n"
+                                 "the points, what is occupied, each route's authority, the TSRs; and why each\n"
+                                 "answer was what it was."));
+    m_stnPanelBtn->setEnabled(false);
+    answerRow->addWidget(m_stnPanelBtn);
+    connect(m_stnPanelBtn, &QPushButton::clicked, this, [this]() {
+        if (!m_stnPanel) {
+            m_stnPanel = new StationKavachPanel(m_builder.encoder().enumChoices(QStringLiteral("sigAspect")), this);
+            m_stnPanel->setStation(m_station, &m_stnState);
+        }
+        m_stnPanel->show();
+        m_stnPanel->raise();
+    });
     logLay->addLayout(answerRow);
     connect(m_answerLoco, &QCheckBox::toggled, this, [this](bool on) {
         if (on && !startAnswering()) m_answerLoco->setChecked(false);
+    });
+    connect(m_answerFrom, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
+        if (m_answerLoco->isChecked()) m_answerLoco->setChecked(false);   // a different answer: start it again
+    });
+    connect(m_answerLoco, &QCheckBox::toggled, this, [this](bool on) {
+        m_stnPanelBtn->setEnabled(on && answeringAsStation());
+        if (!m_stnPanelBtn->isEnabled() && m_stnPanel) m_stnPanel->hide();
     });
     auto *replyTimer = new QTimer(this);
     replyTimer->start(250);
@@ -1943,8 +1978,44 @@ void PacketMakerDialog::observe(const LogEntryPtr &entry)
     }
 }
 
+bool PacketMakerDialog::answeringAsStation() const
+{
+    return m_answerFrom && m_answerFrom->currentIndex() == 1;
+}
+
 bool PacketMakerDialog::startAnswering()
 {
+    if (answeringAsStation()) {
+        PacketPreset aap;
+        QString err;
+        if (!PacketPreset::load(m_aapPresetEdit->text().trimmed(), &aap, &err) || aap.captype != QLatin1String("aap")) {
+            m_status->fail(tr("Not answering — the AAP preset: %1").arg(err.isEmpty() ? tr("not an AAP") : err));
+            return false;
+        }
+        StationLayout::Layout layout;
+        StationKavach::Station station;
+        if (!StationLayout::load(m_layoutEdit->text().trimmed(), &layout, &err)) {
+            m_status->fail(tr("Not answering — the station layout: %1").arg(err));
+            return false;
+        }
+        if (layout.kavach.isEmpty() || !StationKavach::fromJson(layout.kavach, &station, &err)) {
+            m_status->fail(tr("Not answering — the layout has no KAVACH data (signals and routes)%1.")
+                               .arg(err.isEmpty() ? QString() : QStringLiteral(": ") + err));
+            return false;
+        }
+        m_aapFields = aap.header;
+        m_station = station;
+        m_stnState = StationKavach::State::initial(station);
+        m_stnLocos.clear();
+        if (m_stnPanel) m_stnPanel->setStation(m_station, &m_stnState);
+        const QStringList bad = StationKavach::checks(station);
+        if (!bad.isEmpty())
+            m_status->warn(tr("Answering as station %1 while armed; the data: %2").arg(station.stationId).arg(bad.join(QStringLiteral("; "))));
+        else
+            m_status->ok(tr("Answering as station %1 while armed (%2 routes, %3 signals).")
+                             .arg(station.stationId).arg(station.routes.size()).arg(station.signalList.size()));
+        return true;
+    }
     if (currentCaptype() != QLatin1String("slrp")) {
         m_status->fail(tr("Answering needs an SLRP in the form."));
         return false;
@@ -1993,6 +2064,7 @@ void PacketMakerDialog::answerArp(const CaptureLine &c, const QHash<QString, qin
     }
     // The SLRPs that follow are MACed with this key.
     m_keyEdit->setText(QString::fromLatin1(k.sessionKey.toHex()));
+    m_locoKeys.insert(locoId, k.sessionKey);
     const PacketBuilder::Result r = m_builder.build(QStringLiteral("aap"), h, {}, k.sessionKey);
     sendAnswer(QStringLiteral("aap"), r,
                tr("answers ARP %1 from loco %2, station random %3")
@@ -2002,6 +2074,23 @@ void PacketMakerDialog::answerArp(const CaptureLine &c, const QHash<QString, qin
 
 void PacketMakerDialog::answerLsrp(const QHash<QString, qint64> &lsrp)
 {
+    const qint64 fn = lsrp.value(QStringLiteral("FRAME_NUM"));
+    if (answeringAsStation()) {
+        const int locoId = int(lsrp.value(QStringLiteral("SOURCE_LOCO_ID")));
+        StationKavach::Loco &loco = m_stnLocos[locoId];
+        const StationKavach::Answer a = StationKavach::answer(m_station, m_stnState, &loco, lsrp, m_builder.encoder());
+        if (!a.ok) {
+            m_status->fail(tr("LSRP %1 from loco %2 not answered — %3").arg(fn).arg(locoId).arg(a.why));
+            if (m_stnPanel) m_stnPanel->showAnswer(locoId, tr("LSRP %1 NOT answered: %2").arg(fn).arg(a.why), {});
+            return;
+        }
+        if (!a.checks.isEmpty()) m_status->warn(tr("Loco %1: %2").arg(locoId).arg(a.checks.join(QStringLiteral("; "))));
+        if (m_stnPanel) m_stnPanel->showAnswer(locoId, tr("LSRP %1 answered: %2").arg(fn).arg(a.note), a.checks);
+        sendAnswer(QStringLiteral("slrp"),
+                   m_builder.build(QStringLiteral("slrp"), a.header, a.subs, m_locoKeys.value(locoId, sessionKey())),
+                   tr("answers LSRP %1: %2").arg(fn).arg(a.note));
+        return;
+    }
     commitCurrentSub();
     QHash<QString, qint64> h = readHeader();
     if (lsrp.value(QStringLiteral("SOURCE_LOCO_ID")) != h.value(QStringLiteral("DEST_LOCO_ID"))) return;
@@ -2647,7 +2736,7 @@ void PacketMakerDialog::onPacketChanged()
     m_sender.stop();
     // A different packet is a different decision.
     disarm(tr("Disarmed: the packet type changed."));
-    if (m_answerLoco) m_answerLoco->setChecked(false);
+    if (m_answerLoco && !answeringAsStation()) m_answerLoco->setChecked(false);   // the station's answer is not the form's
     m_subs.clear();
     m_curSub = -1;
     m_subList->clear();

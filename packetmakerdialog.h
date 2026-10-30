@@ -26,6 +26,7 @@
 #include "packetvariation.h"
 #include "messageheader.h"
 #include "schema/schemaencoder.h"
+#include "stationkavach.h"
 
 class SessionKeyStore;
 struct CaptureLine;
@@ -46,6 +47,7 @@ class QCheckBox;
 class QTableWidget;
 
 class SubPacketWindow;
+class StationKavachPanel;
 
 class PacketMakerDialog : public QDialog {
     Q_OBJECT
@@ -100,6 +102,9 @@ public:
     // Session 378: the AAP's station random comes from here when set (tests
     // reproduce a real AAP); 0 = a fresh random per ARP.
     void setStationRandomForTest(quint16 r) { m_stnRandomForTest = r; }
+    // Session 422: answering as the station's routes, its live state (the
+    // signals' aspects, the points, ...) as the station would see it.
+    StationKavach::State *stationState() { return &m_stnState; }
 
 signals:
     void loopbackRequested(const QString &captureLine);
@@ -386,6 +391,15 @@ private:
     QHash<QString, qint64> m_aapFields;    // the AAP preset's header
     QHash<int, qint64> m_stnTags;          // unique tag id -> abs loc
     int     m_stnRef = -1;                 // ref tag in use; -1 = the form's
+    // Session 422: LSRP -> the station's own SLRP (stationkavach.h).
+    QComboBox *m_answerFrom = nullptr;     // 0: this SLRP; 1: the station's routes
+    StationKavach::Station m_station;
+    StationKavach::State   m_stnState;
+    QHash<int, StationKavach::Loco> m_stnLocos;   // by loco id
+    QHash<int, QByteArray> m_locoKeys;     // session key by loco id, from its ARP
+    QPushButton *m_stnPanelBtn = nullptr;
+    StationKavachPanel *m_stnPanel = nullptr;   // Station…: the live state
+    bool answeringAsStation() const;
     quint16 m_stnRandomForTest = 0;
     QString m_pendingCaptype;              // send log's Packet, when not the form's
     bool startAnswering();
