@@ -480,6 +480,17 @@ void StationLayoutCanvas::setKavachView(const KavachView &v)
     update();
 }
 
+void StationLayoutCanvas::setPicking(bool on)
+{
+    m_picking = on;
+    if (on) {
+        setCursor(Qt::CrossCursor);
+        setFocus();         // so Esc reaches it
+    } else {
+        unsetCursor();
+    }
+}
+
 QPolygonF StationLayoutCanvas::kavachPath(int i) const
 {
     QPolygonF out;
@@ -559,6 +570,10 @@ void StationLayoutCanvas::mousePressEvent(QMouseEvent *e)
         measureAt(e->pos());
         return;
     }
+    // Session 425: picking a KAVACH route's tags: a tag is picked, not selected or dragged.
+    if (m_picking)
+        for (const Hit &h : m_hits)
+            if (!h.tag.isEmpty() && h.rect.contains(e->pos())) { emit tagPicked(h.tag); return; }
     // Session 223: Shift + drag boxes tags; Ctrl + click adds or removes one.
     if (e->modifiers() & Qt::ShiftModifier) {
         m_bandFrom = e->pos();
@@ -629,7 +644,7 @@ void StationLayoutCanvas::mouseReleaseEvent(QMouseEvent *)
     m_dragTag.clear();
     m_dragX = -1;
     m_panning = false;
-    unsetCursor();
+    if (m_picking) setCursor(Qt::CrossCursor); else unsetCursor();
     if (!tag.isEmpty() && x >= 0 && std::fabs(x - xOf(m_loc.value(tag))) >= 2.0) emit tagDragged(tag, locAt(x));
     update();
 }
@@ -1203,6 +1218,10 @@ void StationLayoutCanvas::keyPressEvent(QKeyEvent *e)
         emit measureCancelled();
         return;
     }
+    if (m_picking && e->key() == Qt::Key_Escape) {
+        emit pickCancelled();
+        return;
+    }
     QWidget::keyPressEvent(e);
 }
 
@@ -1515,6 +1534,27 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     connect(m_kavach, &StationKavachEditor::refused, this, [this](const QString &why) { m_status->fail(why); });
     // Session 424: the route selected, and the MA's sections on from it, drawn while the tab is shown.
     connect(m_kavach, &StationKavachEditor::routeSelected, this, [this]() { updateKavachView(); });
+    // Session 425: the selected route's tags picked on the drawing.
+    m_kavach->setTagLocations([this](int id) {
+        QVector<qint64> out;
+        for (const StationLayout::Tag &t : m_layout.tags) {
+            const StationLayout::TagInfo in = StationLayout::info(t);
+            if (t.name == QString::number(id) && in.ok) out << in.absLoc;
+        }
+        return out;
+    });
+    connect(m_kavach, &StationKavachEditor::pickingChanged, this, [this](bool on) {
+        m_canvas->setPicking(on);
+        if (on) {
+            m_measureBtn->setChecked(false);
+            m_status->state(tr("Pick: click the route's tags on the drawing in the order the loco reads them; Esc ends"));
+        }
+    });
+    connect(m_kavach, &StationKavachEditor::said, this, [this](const QString &what) { m_status->ok(what); });
+    connect(m_canvas, &StationLayoutCanvas::pickCancelled, this, [this]() {
+        m_kavach->setPicking(false);
+        m_status->state(tr("Picking ended"));
+    });
     connect(m_compare, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *it) {
         const QString name = it->data(Qt::UserRole).toString();
         if (tagIndexOf(name) >= 0) { selectTags({ name }); m_canvas->setSelectedTag(name); }
@@ -1562,6 +1602,7 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     connect(m_tabs, &QTabWidget::currentChanged, this, [this, addBtn, delBtn, split, drawingSizes = QList<int>()]() mutable {
         const bool kavach = m_tabs->currentWidget() == m_kavach;
         updateKavachView();
+        if (!kavach) m_kavach->setPicking(false);
         addBtn->setVisible(!kavach);
         delBtn->setVisible(!kavach);
         const QList<int> now = split->sizes();
@@ -1677,12 +1718,22 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
         if (!m_updating) m_canvas->setSelectedPoint(m_tables.at(2)->currentRow());
     });
     connect(m_measureBtn, &QPushButton::toggled, this, [this](bool on) {
+        if (on) m_kavach->setPicking(false);   // session 425: one click mode at a time
         m_canvas->setMeasuring(on);
         if (on) m_status->state(tr("Measure: click the start on the drawing"));
         else { m_canvas->clearMeasure(); m_status->clear(); }
     });
     connect(m_canvas, &StationLayoutCanvas::measured, this, [this](const QString &t) { m_status->state(t); });
     connect(m_canvas, &StationLayoutCanvas::measureCancelled, this, [this]() { m_measureBtn->setChecked(false); });
+    // Session 425: a tag picked for the KAVACH route: by its number, a duplicate ("…D") as its main tag.
+    connect(m_canvas, &StationLayoutCanvas::tagPicked, this, [this](const QString &name) {
+        const QString main = isDuplicateName(name) ? name.chopped(1) : name;
+        bool ok = false;
+        const int id = main.toInt(&ok);
+        const QHash<QString, qint64> locs = StationLayout::tagLocations(m_layout);
+        if (!ok || !locs.contains(main)) { m_status->fail(tr("Tag %1 has no number and location to pick").arg(name)); return; }
+        m_kavach->pickTag(id, locs.value(main));
+    });
     connect(m_canvas, &StationLayoutCanvas::tagClicked, this, [this](const QString &name) {
         for (int i = 0; i < m_layout.tags.size(); ++i)
             if (m_layout.tags.at(i).name == name) {

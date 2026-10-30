@@ -17,6 +17,7 @@
 #include <QVBoxLayout>
 
 #include <algorithm>
+#include <cstdlib>
 #include <functional>
 
 using StationKavach::Route;
@@ -267,7 +268,17 @@ StationKavachEditor::StationKavachEditor(QWidget *parent) : QWidget(parent)
                                                            + tr("\nSegment lengths: the rows add up to the route's length"));
     auto *addRow = button(tr("Add row"), QStringLiteral("skeAddRow"), detail);
     auto *delRow = button(tr("Delete rows"), QStringLiteral("skeDeleteRows"), detail);
-    dv->addWidget(withButtons(m_listTabs, { addRow, delRow }, detail), 1);
+    // Session 425: the route's tags clicked on the drawing, in order.
+    m_pick = button(tr("Pick on drawing"), QStringLiteral("skePick"), detail);
+    m_pick->setCheckable(true);
+    m_pick->setToolTip(tr("Click the route's tags on the drawing above, in the order the loco reads them: each is added "
+                          "after the last, its distance from the layout's tags. Click the last one again to take it off; "
+                          "the exit signal's foot tag, or Esc, ends it"));
+    dv->addWidget(withButtons(m_listTabs, { addRow, delRow, m_pick }, detail), 1);
+    connect(m_pick, &QPushButton::toggled, this, [this](bool on) {
+        if (on) m_listTabs->setCurrentIndex(Tags);
+        emit pickingChanged(on);
+    });
     connect(addRow, &QPushButton::clicked, this, &StationKavachEditor::addListRow);
     connect(delRow, &QPushButton::clicked, this, &StationKavachEditor::deleteListRows);
     split->addWidget(detail);
@@ -276,6 +287,76 @@ StationKavachEditor::StationKavachEditor(QWidget *parent) : QWidget(parent)
     pv->addWidget(split, 1);
     m_stack->addWidget(page);
     m_stack->setCurrentIndex(0);
+}
+
+void StationKavachEditor::setPicking(bool on)
+{
+    if (m_pick->isChecked() != on) m_pick->setChecked(on);
+}
+
+bool StationKavachEditor::isPicking() const { return m_pick->isChecked(); }
+
+bool StationKavachEditor::pickTag(int tag, qint64 loc)
+{
+    if (m_route < 0 || m_route >= m_station.routes.size()) {
+        emit refused(tr("Select a route first: its tags are picked in order"));
+        return false;
+    }
+    Station next = m_station;
+    Route &r = next.routes[m_route];
+    const int sign = r.pktDir == 2 ? -1 : 1;
+    const int e = next.signalIndex(r.exit);
+    const int exitFoot = e >= 0 ? next.signalList[e].footTag : -1;
+    if (r.tags.isEmpty() || (r.tags.size() == 1 && r.tags[0].tag == 0)) {
+        // No entry foot tag yet: the first tag picked is it.
+        r.tags = { StationKavach::RouteTag{ 0, tag, 0 } };
+        commit(next, tr("pick KAVACH route %1 tag %2").arg(r.name).arg(tag));
+        emit said(tr("Route %1 starts at tag %2: pick the next").arg(r.name).arg(tag));
+        return true;
+    }
+    if (r.tags.last().tag == tag) {
+        if (r.tags.size() == 1) {
+            emit refused(tr("Tag %1 is route %2's entry foot tag: it stays").arg(tag).arg(r.name));
+            return false;
+        }
+        r.tags.removeLast();
+        commit(next, tr("unpick KAVACH route %1 tag %2").arg(r.name).arg(tag));
+        emit said(tr("Tag %1 taken off route %2 (%3 m)").arg(tag).arg(r.name).arg(r.length()));
+        return true;
+    }
+    for (int i = 0; i < r.tags.size(); ++i)
+        if (r.tags[i].tag == tag) {
+            emit refused(tr("Tag %1 is already in route %2 (row %3)").arg(tag).arg(r.name).arg(i + 1));
+            return false;
+        }
+    const int last = r.tags.last().tag;
+    const QVector<qint64> from = m_tagLocs ? m_tagLocs(last) : QVector<qint64>();
+    if (from.isEmpty()) {
+        emit refused(tr("Tag %1, the route's last, is not in the layout's tags: type tag %2's distance in the Tags table")
+                         .arg(last).arg(tag));
+        return false;
+    }
+    // Of the last tag's places (a number listed more than once), the one nearest the tag clicked.
+    qint64 near = from.first();
+    for (qint64 x : from) if (std::llabs(loc - x) < std::llabs(loc - near)) near = x;
+    const qint64 along = (loc - near) * sign;
+    if (along <= 0) {
+        emit refused(tr("Tag %1 does not lie on from tag %2 in route %3's direction (%4)")
+                         .arg(tag).arg(last).arg(r.name, r.pktDir == 2 ? tr("Reverse: falling locations")
+                                                                       : tr("Nominal: rising locations")));
+        return false;
+    }
+    r.tags << StationKavach::RouteTag{ int(along), tag, 0 };
+    const QString name = r.name;
+    const int length = r.length();
+    commit(next, tr("pick KAVACH route %1 tag %2").arg(name).arg(tag));
+    if (tag == exitFoot) {
+        setPicking(false);
+        emit said(tr("Tag %1 is %2's foot tag: route %3 is %4 m, picking done").arg(tag).arg(next.routes[m_route].exit, name).arg(length));
+    } else {
+        emit said(tr("Tag %1 added to route %2, %3 m on from tag %4 (%5 m)").arg(tag).arg(name).arg(along).arg(last).arg(length));
+    }
+    return true;
 }
 
 QStringList StationKavachEditor::listColumns(List l) const
@@ -414,6 +495,8 @@ void StationKavachEditor::fillRoute()
     m_filling = true;
     const bool any = m_route >= 0 && m_route < m_station.routes.size();
     m_listTabs->setEnabled(any);
+    m_pick->setEnabled(any);
+    if (!any) setPicking(false);
     if (!any) {
         m_routeLabel->setText(tr("Select a route to edit its tags and track profile."));
         for (QTableWidget *t : m_lists) t->setRowCount(0);

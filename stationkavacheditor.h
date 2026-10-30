@@ -65,6 +65,20 @@ public:
     void selectRoute(int i);
     QPushButton *startButton() const { return m_start; }
 
+    // Session 425: picking the selected route's tags on the Station Layout
+    // drawing. `locations` gives the layout's abs_loc of each tag of a
+    // number (more than one when it lists the number more than once).
+    void setTagLocations(const std::function<QVector<qint64>(int)> &locations) { m_tagLocs = locations; }
+    void setPicking(bool on);
+    bool isPicking() const;
+    QPushButton *pickButton() const { return m_pick; }
+    // The tag `tag`, drawn at `loc`, clicked: added after the route's last
+    // tag, its linking distance the locations' difference in the route's
+    // direction. The route's last tag again: taken off. The exit signal's
+    // foot tag ends picking. Refused, by name: no route, a tag already in
+    // the route, one that does not lie on in the route's direction.
+    bool pickTag(int tag, qint64 loc);
+
     // Row operations (the buttons'), on the table they name.
     void addSignal();
     void deleteSignals();
@@ -79,6 +93,9 @@ signals:
     void refused(const QString &why);
     // Session 424: the route shown (-1: none), after every fill: the drawing follows it.
     void routeSelected(int route);
+    // Session 425: picking on / off; what a pick did (for the status line).
+    void pickingChanged(bool on);
+    void said(const QString &what);
 
 private:
     void fill();
@@ -100,6 +117,8 @@ private:
     bool m_filling = false;
     int  m_route = -1;
     const StationLayout::Layout *m_seedFrom = nullptr;
+    std::function<QVector<qint64>(int)> m_tagLocs;   // session 425
+    QPushButton *m_pick = nullptr;
     QStackedWidget *m_stack = nullptr;
     QPushButton *m_start = nullptr;
     QSpinBox  *m_stationId = nullptr, *m_stnVersion = nullptr;

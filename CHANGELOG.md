@@ -10,6 +10,60 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-425"></a>
+## Session 425 — a KAVACH route's tags picked by clicking them on the drawing
+
+Item 2 of Abhinav's *"1,2,3"* (session 424): pick a route's tags by clicking
+them in the Station Layout drawing.
+
+**What the operator sees.** Tools ▸ Station Layout ▸ KAVACH, under the
+route's tables: **Pick on drawing**. On, the Tags table is shown and the
+drawing's cursor is a cross: a click on a tag adds it after the route's last
+tag, the linking distance worked out from the two tags' locations in the
+layout (in the route's direction: Nominal is rising locations). The status
+line says it: *Tag 906 added to route S43-A900 DN Auto, 200 m on from tag
+18 (200 m)*. The route's last tag clicked again comes off. The exit signal's
+foot tag ends picking (*Tag 900 is A900's foot tag: route S43-A900 DN Auto
+is 1116 m, picking done*), as do Esc, another tab and Measure. A click while
+picking never selects or drags the tag. Each pick is one Undo step, and the
+route's halo (session 424) grows with it.
+
+Refused by name: a tag already in the route, one that does not lie on from
+the last in the route's direction, a pick with no route selected, a last tag
+the layout does not hold. A route without its entry tag takes the first tag
+picked as it.
+
+Choices made without asking: a number the layout lists more than once
+(Section_30's three blocks) is measured from the last tag's place nearest
+the tag clicked (the first version took the nearest one behind, which on
+Section_30 accepted tag 16 as 9678 m on from the first block's 906; the test
+caught it); a duplicate tag ("…D") picks its main tag; *Duplicate dir* is
+left 0, since no real layout here has a duplicate to check a rule against.
+
+**Files.** `stationkavacheditor.{h,cpp}` (`pickTag`, `setPicking`,
+`setTagLocations`, `pickingChanged`, `said`); `stationlayoutwindow.{h,cpp}`
+(`StationLayoutCanvas::setPicking`, `tagPicked`, `pickCancelled`; the
+wiring); `docs/STATION_KAVACH.md` (*Picking a route's tags*); `CLAUDE.md`;
+`tests/test_session425.cpp` (new), `tests/tests.pro`;
+`tests/screenshot_main.cpp` (`SHOT_PICK=906,898`).
+
+**Tests.** `session425` (30 checks), by mouse clicks on the drawing, on the
+station 527 fixture over the built-in Section_30.xlsx (real tags): S43-A900
+cut to its entry tag and rebuilt by clicking 906, 898, 900 gives **station
+527's own linking distances, 200, 656, 260 m**, picking ends at A900's foot
+tag, and the real LSRP 40380 is answered MA 1956 m again; no tag moved; Undo
+per pick; taking off; the refusals (18 already in, 16 behind); a tag skipped
+over; Esc, Measure and another tab end picking; not picking, a click selects
+the tag as before; a route with no entry tag; a Reverse route (898 on, 902
+refused); no route selected. Looked at with the screenshot harness.
+- **Not tested:** Windows and Linux by eye; picking on a layout with
+  duplicate ("…D") tags (none of the library's routes needs one here).
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: 17 validators, 438 suites / 11031
+checks, menu audit (203), headless smoke.
+
+---
+
 <a id="session-424"></a>
 ## Session 424 — the Stationary KAVACH routes and their MA drawn on the Station Layout
 

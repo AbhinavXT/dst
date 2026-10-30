@@ -98,6 +98,10 @@ public:
     // Where section `i` is drawn: its tags' places, in order (tests).
     QPolygonF kavachPath(int i) const;
     QRectF kavachMaEndRect() const { return m_kavachMaEnd; }   // null when hidden
+    // Session 425: picking a KAVACH route's tags. A click on a tag picks it
+    // (tagPicked) instead of selecting or dragging it; Esc ends picking.
+    void setPicking(bool on);
+    bool isPicking() const { return m_picking; }
     // Session 223: the tags selected together (highlighted like the selected one).
     void setMarkedTags(const QSet<QString> &names);
     // The tags whose marks fall inside `r` (canvas coordinates).
@@ -158,6 +162,8 @@ signals:
     void pointClicked(int index);
     void measured(const QString &text);       // the measurement, in words
     void measureCancelled();                  // Esc while measuring
+    void tagPicked(const QString &name);      // session 425
+    void pickCancelled();                     // Esc while picking
 
 protected:
     void paintEvent(QPaintEvent *) override;
@@ -214,6 +220,7 @@ private:
     QHash<QString, int> m_runStates;   // session 227
     KavachView m_kavachView;           // session 424
     QRectF  m_kavachMaEnd;
+    bool    m_picking = false;         // session 425
     QString m_simLine;                 // session 411
     double  m_simLoc = 0;
     int     m_simSign = 1;

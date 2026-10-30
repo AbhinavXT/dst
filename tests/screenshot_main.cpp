@@ -663,6 +663,15 @@ int main(int argc, char **argv)
                     w->kavachEditor()->selectRoute(qEnvironmentVariableIntValue("SHOT_KAVACH"));
                     w->kavachEditor()->listTabs()->setCurrentIndex(qEnvironmentVariableIntValue("SHOT_LIST"));
                     w->resize(1280, 900);
+                    // Session 425: SHOT_PICK=906,898: Pick on drawing, those tags clicked on the drawing.
+                    if (!qEnvironmentVariableIsEmpty("SHOT_PICK")) {
+                        w->show();
+                        w->kavachEditor()->setPicking(true);
+                        for (const QString &t : qEnvironmentVariable("SHOT_PICK").split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+                            w->canvas()->grab();
+                            emit w->canvas()->tagPicked(t);
+                        }
+                    }
                     // Session 424: SHOT_KAVACH_DRAWING=<png>: the drawing with that route on it.
                     if (!qEnvironmentVariableIsEmpty("SHOT_KAVACH_DRAWING")) w->exportDrawing(qEnvironmentVariable("SHOT_KAVACH_DRAWING"));
                 }

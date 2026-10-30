@@ -127,6 +127,25 @@ The drawing places each tag name once, as the layout's own drawing does:
 a route through a tag listed more than once is drawn through one of its
 places, so it can jump from block to block; hovering it says which tags.
 
+## Picking a route's tags on the drawing (session 425)
+
+Under the route's tables, **Pick on drawing**: then click the route's tags
+on the drawing above, in the order the loco reads them. Each is added after
+the route's last tag; its linking distance is the difference of the two
+tags' locations in the layout, in the route's direction (Nominal: rising
+locations). Clicking the route's last tag again takes it off. Picking the
+exit signal's foot tag ends it; so do Esc, another tab and Measure. Each
+pick is one Undo step; the status line says what it did.
+
+- A route without an entry tag yet takes the first tag picked as it.
+- Refused, by name: a tag already in the route; a tag that does not lie on
+  from the last one in the route's direction; a pick with no route
+  selected; a last tag that is not in the layout's tags (type the distance).
+- A tag number the layout lists more than once (Section_30's blocks): the
+  last tag's place nearest the clicked tag is the one measured from.
+- A duplicate tag ("…D") picks its main tag. *Duplicate dir* is left 0:
+  set it in the table.
+
 ## The file
 
 A Station Layout JSON (Tools ▸ Station Layout) with a `"kavach"` block, or
