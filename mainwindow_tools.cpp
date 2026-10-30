@@ -863,10 +863,11 @@ LocoSimWindow *MainWindow::ensureLocoSimulator()
         static_cast<LocoSimWindow *>(m_locoSim.data())->setTagBuilders([this]() { return findChildren<TagBuilderWindow *>(); });
         // Session 420: the VCC's @biu_cmd copies, for its brake by the VCC's log.
         connect(m_dispatcher, &MessageDispatcher::entryAppended, m_locoSim.data(),
-                [sim = static_cast<LocoSimWindow *>(m_locoSim.data())](const QString &, const LogEntryPtr &e) {
+                [sim = static_cast<LocoSimWindow *>(m_locoSim.data()), d = m_dispatcher](const QString &tab, const LogEntryPtr &e) {
                     // Every entry passes here: the prefix is read in place, a copy only for a @biu_cmd.
                     if (e.isNull() || !QStringView(e->text).trimmed().startsWith(QLatin1String("@biu_cmd_"))) return;
-                    sim->observeBiuCmdLine(e->text.trimmed());
+                    // Session 421: with its tab, which the Drive tab's "from" picks.
+                    sim->observeBiuCmdLine(e->text.trimmed(), tab, d->friendlyNameFor(tab));
                 });
         // Session 415: a sent tag, double-clicked in Sent frames, in a workbench of its own.
         static_cast<LocoSimWindow *>(m_locoSim.data())->setOpenInWorkbench([this](const QString &line, const QString &label) {

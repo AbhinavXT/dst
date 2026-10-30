@@ -10,6 +10,45 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-421"></a>
+## Session 421 — the Loco Simulator: the operator picks the tab whose @biu_cmd brakes the loco
+
+Abhinav 2026-10-30: *"let the user select in the console which tab input to
+select"*, after patch 420 followed the first loco and VCC heard.
+
+**What the operator sees.** Loco Simulator ▸ Drive ▸ Brake, with the source
+**by the VCC's @biu_cmd**: a **from** list beside it (shown only for that
+source).
+- **from the first tab heard** (the default): patch 420's rule, now by tab as
+  well as loco and VCC: the first heard is followed, the others are counted
+  and not taken until it has been silent for 2 s.
+- Each tab that has carried `@biu_cmd` lines, added as it is heard, by its
+  name, key, loco and VCC (`Loco 1 VCC-1 (41_1) · loco 1 VCC 1`). Picked, only
+  that tab's lines brake the loco; the others are counted ("1 not taken from
+  another source"), and there is no hand-over when it goes silent: it
+  releases after 2 s and waits ("no @biu_cmd from 42_2 … yet" until the first).
+- Picking another tab drops what the last one commanded at once.
+- The pick is saved (`locosim/biuCmdTab`); opened again before that tab is
+  heard, it shows as "42_2 (not heard yet)" and is renamed when heard.
+
+**Files.** locosimwindow.{h,cpp} (`m_biuTab`, `setBiuCmdTab` / `biuCmdTab`,
+`observeBiuCmdLine` takes the tab and its name), mainwindow_tools.cpp (the
+tab key and `friendlyNameFor` passed on), tests/test_session421.cpp.
+
+**Tests.** `session421` (18 checks): the default; shown only for the
+@biu_cmd source; both tabs offered by name as heard; the first heard followed;
+a tab picked: the other's EB dropped, its lines not taken and counted, no
+hand-over when the picked tab is silent; back to the first heard; the pick
+saved, "not heard yet", renamed when heard. `session420` unchanged and green.
+- **Not tested:** live traffic on real tabs (the tab key and name come from
+  the dispatcher's `entryAppended`, as for the other consumers); lines are
+  the synthetic fixture's.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: 17 validators, 434 suites / 10854
+checks, menu audit, headless smoke.
+
+---
+
 <a id="session-420"></a>
 ## Session 420 — DLConsole reads the @biu_* copies; the Loco Simulator brakes by the VCC's @biu_cmd
 

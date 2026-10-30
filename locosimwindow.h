@@ -138,11 +138,16 @@ public:
     void   followBench(BrakeBenchWindow *bench);    // its air brakes the loco while it is open
     void   observeAir(double bpKgcm2, double bcKgcm2);
     void   observeCommand(double bpTargetKgcm2, double bcTargetKgcm2);   // session 418
-    // Session 420: a live @biu_cmd line (MainWindow routes them here); true
-    // if taken. Brakes the loco when the source is the VCC's log. The first
-    // loco and VCC heard are followed; another's lines are counted and not
-    // taken until the followed one has been silent for kBiuCmdStaleMs.
-    bool   observeBiuCmdLine(const QString &line);
+    // Session 420: a live @biu_cmd line (MainWindow routes them here, with
+    // the tab it arrived in and that tab's name); true if taken. Brakes the
+    // loco when the source is the VCC's log. Session 421: the tab is picked
+    // on the Drive tab ("from"); with "the first tab heard", the first tab,
+    // loco and VCC heard are followed, another's lines counted and not taken
+    // until the followed one has been silent for kBiuCmdStaleMs.
+    bool   observeBiuCmdLine(const QString &line, const QString &tab = QString(),
+                             const QString &tabName = QString());
+    void   setBiuCmdTab(const QString &tab);       // "" = the first tab heard
+    QString biuCmdTab() const;
     int    biuCmdLines() const { return m_logLines; }
     int    biuCmdIgnored() const { return m_logIgnored; }
     static constexpr qint64 kBiuCmdStaleMs = 2000;   // older: the command is not known
@@ -328,6 +333,8 @@ private:
     qint64          m_logMs = 0;
     QString         m_logFrom;              // "loco 1 VCC 2"
     int             m_logLoco = -1, m_logVcc = -1;
+    QString         m_logTab;               // the tab the followed lines came in
+    QComboBox      *m_biuTab = nullptr;     // session 421: which tab's @biu_cmd
     int             m_logLines = 0;
     int             m_logIgnored = 0;       // lines from another loco / VCC
     QString         m_logIgnoredFrom;

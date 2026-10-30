@@ -338,6 +338,14 @@ QWidget *LocoSimWindow::buildDriveTab()
                                  "VCC's @biu_cmd: the command as the VCC copies it to the log (a real BIU on CAN, "
                                  "no bench): the same brakes as the BIU's command, from the live @biu_cmd lines."));
     brakeRow->addWidget(m_brakeSource);
+    // Session 421: which tab's @biu_cmd lines brake the loco.
+    m_biuTab = new QComboBox(loco);
+    m_biuTab->setObjectName(QStringLiteral("locoSimBiuTab"));
+    m_biuTab->addItem(tr("from the first tab heard"), QString());
+    m_biuTab->setToolTip(tr("The tab whose @biu_cmd lines brake the loco: each tab that has carried them is listed "
+                            "as it is heard, with the loco and VCC in its lines. Lines from the other tabs are "
+                            "counted, not taken."));
+    brakeRow->addWidget(m_biuTab);
     brakeRow->addSpacing(8);
     m_brakeState = labelNamed(QString(), "mono", loco);
     m_brakeState->setObjectName(QStringLiteral("locoSimBrakeState"));
@@ -406,6 +414,15 @@ QWidget *LocoSimWindow::buildDriveTab()
     connect(m_direction, &QButtonGroup::idClicked, this, pull);
     connect(m_brakeFollow, &QCheckBox::toggled, this, [this]() { applyBrake(); showMotion(); });
     connect(m_brakeSource, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() { applyBrake(); showMotion(); });
+    connect(m_biuTab, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this]() {
+        // Another tab picked: what the last one commanded no longer brakes the loco.
+        m_logKnown = false;
+        m_logIgnored = 0;
+        m_logTab.clear();
+        m_logLoco = m_logVcc = -1;
+        applyBrake();
+        showMotion();
+    });
     for (int sensor = 0; sensor < 2; ++sensor) {
         connect(m_sensorOn[sensor], &QCheckBox::toggled, this, pull);
         for (int channel = 0; channel < 2; ++channel)
@@ -2659,25 +2676,36 @@ void LocoSimWindow::observeCommand(double bpTargetKgcm2, double bcTargetKgcm2)
     if (was != m_motion.braking()) showMotion();
 }
 
-bool LocoSimWindow::observeBiuCmdLine(const QString &line)
+bool LocoSimWindow::observeBiuCmdLine(const QString &line, const QString &tab, const QString &tabName)
 {
     const CaptureLine cap = CaptureDecoder::parseLine(line);
     LocoSim::CommandTargets t;
     if (!cap.valid || cap.type != CapType::BiuCmd || !LocoSim::biuCommandTargets(cap.bytes, brakeRates(), &t)) return false;
     const qint64 now = m_clock();
-    const QString from = tr("loco %1 VCC %2").arg(cap.locoId).arg(cap.ctrlId);
-    // One loco's BIU: the source followed holds until it has been silent.
-    const bool other = cap.locoId != m_logLoco || cap.ctrlId != m_logVcc;
-    if (m_logKnown && other && now - m_logMs <= kBiuCmdStaleMs) {
+    const QString lineFrom = tr("loco %1 VCC %2").arg(cap.locoId).arg(cap.ctrlId);
+    const QString shown = tabName.isEmpty() || tabName == tab ? tab : tr("%1 (%2)").arg(tabName, tab);
+    const QString from = tab.isEmpty() ? lineFrom : tr("%1 \u00B7 %2").arg(shown, lineFrom);
+    // Session 421: each tab that carries them, offered in "from" as it is heard.
+    if (!tab.isEmpty()) {
+        const int at = m_biuTab->findData(tab);
+        if (at < 0) m_biuTab->addItem(from, tab);
+        else if (m_biuTab->itemText(at) != from) m_biuTab->setItemText(at, from);
+    }
+    const QString picked = biuCmdTab();
+    // One loco's BIU: the tab picked, or the source followed until it has been silent.
+    const bool other = tab != m_logTab || cap.locoId != m_logLoco || cap.ctrlId != m_logVcc;
+    if ((!picked.isEmpty() && tab != picked) || (picked.isEmpty() && m_logKnown && other && now - m_logMs <= kBiuCmdStaleMs)) {
         ++m_logIgnored;
         m_logIgnoredFrom = from;
         return false;
     }
-    if (other) m_logIgnored = 0;   // a new source: the count was against the old one
+    // A hand-over (the first tab heard): the count was against the old source.
+    if (other && picked.isEmpty() && m_logKnown) m_logIgnored = 0;
     ++m_logLines;
     m_logKnown = true;
     m_log = t;
     m_logMs = now;
+    m_logTab = tab;
     m_logLoco = cap.locoId;
     m_logVcc = cap.ctrlId;
     m_logFrom = from;
@@ -2692,6 +2720,21 @@ bool LocoSimWindow::observeBiuCmdLine(const QString &line)
 void LocoSimWindow::setBrakeSource(LocoSim::BrakeSource source)
 {
     m_brakeSource->setCurrentIndex(m_brakeSource->findData(int(source)));
+}
+
+void LocoSimWindow::setBiuCmdTab(const QString &tab)
+{
+    int at = m_biuTab->findData(tab);
+    if (at < 0) {   // not heard yet (a saved choice): offered until it is
+        m_biuTab->addItem(tr("%1 (not heard yet)").arg(tab), tab);
+        at = m_biuTab->count() - 1;
+    }
+    m_biuTab->setCurrentIndex(at);
+}
+
+QString LocoSimWindow::biuCmdTab() const
+{
+    return m_biuTab ? m_biuTab->currentData().toString() : QString();
 }
 
 LocoSim::BrakeSource LocoSimWindow::brakeSource() const
@@ -2748,6 +2791,7 @@ void LocoSimWindow::applyBrake()
     const bool follows = m_brakeFollow->isChecked();
     const LocoSim::BrakeRates rates = brakeRates();
     const LocoSim::BrakeSource source = brakeSource();
+    if (m_biuTab) m_biuTab->setVisible(source == LocoSim::BrakeSource::VccLog);
     if (source != LocoSim::BrakeSource::Air) {
         // The bench's BIU (session 418), or the VCC's @biu_cmd lines (session 420).
         const bool fromLog = source == LocoSim::BrakeSource::VccLog;
@@ -2768,6 +2812,8 @@ void LocoSimWindow::applyBrake()
                 cmd += tr(" \u00B7 %n not taken from another source (last %1)", nullptr, m_logIgnored).arg(m_logIgnoredFrom);
         }
         if (!follows) m_brakeState->setText(tr("off: nothing slows the loco"));
+        else if (fromLog && !m_logKnown && !biuCmdTab().isEmpty())
+            m_brakeState->setText(tr("no @biu_cmd from %1 yet").arg(m_biuTab->currentText()));
         else if (fromLog && !m_logKnown)
             m_brakeState->setText(tr("no @biu_cmd from the VCC yet (its biu_dlconsole_mirror copies)"));
         else if (fromLog && !known)
@@ -2829,6 +2875,8 @@ void LocoSimWindow::loadSettings()
     setBrakeSource(source == QLatin1String("air")   ? LocoSim::BrakeSource::Air
                    : source == QLatin1String("log") ? LocoSim::BrakeSource::VccLog
                                                     : LocoSim::BrakeSource::Command);
+    const QString biuTab = settings.value(QStringLiteral("biuCmdTab")).toString();
+    if (!biuTab.isEmpty()) setBiuCmdTab(biuTab);
     applyBrake();
 
     for (int reader = 0; reader < 2; ++reader)
@@ -2875,6 +2923,7 @@ void LocoSimWindow::saveSettings() const
                       brakeSource() == LocoSim::BrakeSource::Air      ? QStringLiteral("air")
                       : brakeSource() == LocoSim::BrakeSource::VccLog ? QStringLiteral("log")
                                                                       : QStringLiteral("command"));
+    settings.setValue(QStringLiteral("biuCmdTab"), biuCmdTab());
     for (int reader = 0; reader < 2; ++reader)
         settings.setValue(QStringLiteral("rfidReader%1").arg(reader + 1), m_readerOn[reader]->isChecked());
     settings.setValue(QStringLiteral("rfidReader2OwnPort"), m_reader2Port->checkedId() == 1);
