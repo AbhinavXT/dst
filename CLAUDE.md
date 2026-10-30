@@ -122,7 +122,8 @@ The three features once queued here are all done:
   cut at the MA end, live state in Packet Maker ▸ Station… (422); edited in
   Station Layout ▸ KAVACH (423); the routes and the MA drawn on the layout
   (424); a route's tags picked by clicking the drawing (425); SoS SPAD to a
-  loco past a Red signal (426).
+  loco past a Red signal (426); the MA cut behind a loco ahead, Rear-end SoS
+  echoed (427).
   `docs/STATION_KAVACH.md`. Next steps proposed there under "Not yet".
 
 Before proposing a feature, search `CHANGELOG.md` for it. **Queued:** the

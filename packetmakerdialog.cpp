@@ -2078,8 +2078,10 @@ void PacketMakerDialog::answerLsrp(const QHash<QString, qint64> &lsrp)
     const qint64 fn = lsrp.value(QStringLiteral("FRAME_NUM"));
     if (answeringAsStation()) {
         const int locoId = int(lsrp.value(QStringLiteral("SOURCE_LOCO_ID")));
+        QList<StationKavach::Loco> others;   // session 427: a loco ahead cuts the MA
+        for (auto it = m_stnLocos.cbegin(); it != m_stnLocos.cend(); ++it) if (it.key() != locoId) others << it.value();
         StationKavach::Loco &loco = m_stnLocos[locoId];
-        const StationKavach::Answer a = StationKavach::answer(m_station, m_stnState, &loco, lsrp, m_builder.encoder());
+        const StationKavach::Answer a = StationKavach::answer(m_station, m_stnState, &loco, lsrp, m_builder.encoder(), others);
         if (!a.ok) {
             m_status->fail(tr("LSRP %1 from loco %2 not answered — %3").arg(fn).arg(locoId).arg(a.why));
             if (m_stnPanel) m_stnPanel->showAnswer(locoId, tr("LSRP %1 NOT answered: %2").arg(fn).arg(a.why), {});

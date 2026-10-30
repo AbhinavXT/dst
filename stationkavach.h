@@ -54,6 +54,7 @@
 //  sub-packet holds) is refused by name, never clamped.
 // =====================================================================
 #include <QHash>
+#include <QList>
 #include <QJsonObject>
 #include <QSet>
 #include <QString>
@@ -150,6 +151,11 @@ struct State {
 
 // What the station remembers of one loco between answers.
 struct Loco {
+    // Session 427: where the loco was by its last LSRP (noted from every
+    // one): a loco ahead cuts another's MA.
+    int     id = 0;
+    qint64  absLoc = -1;               // ABS_LOCO_LOC; -1: not yet heard
+    int     trainLength = 0, dir = 0;  // TRAIN_LENGTH, MOVEMENT_DIR
     int     route = -1;
     int     refTag = -1;
     int     profId = 0;                // last REF_PROF_ID issued (0: none yet)
@@ -181,10 +187,18 @@ struct Sections {
 Sections sectionsFrom(const Station &s, const State &st, int route);
 
 // The SLRP answering `lsrp` (its fields by name). `loco` is read and
-// updated only when the answer is made. `enc` gives the field widths
+// updated only when the answer is made, but for where it is (id, absLoc,
+// trainLength, dir: from every LSRP). `enc` gives the field widths
 // every value is checked against.
+// Session 427: `others`, the other locos the station has heard. One ahead
+// on the MA's routes, the same way, cuts the MA to its ABS_LOCO_LOC less its
+// TRAIN_LENGTH less kRearMargin (the profile stays the sections'). A loco
+// reporting EMERGENCY_STATUS 5 is answered DEST_LOCO_SOS 5 (Rear-end).
+// Both as station 527 answered loco 1 behind loco 2 in
+// replay/loco_{1,2}_1_27062026_151052.cap.
+constexpr qint64 kRearMargin = 100;
 Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString, qint64> &lsrp,
-              const Schema::Encoder &enc);
+              const Schema::Encoder &enc, const QList<Loco> &others = {});
 
 }  // namespace StationKavach
 

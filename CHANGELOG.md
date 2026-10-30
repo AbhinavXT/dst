@@ -10,6 +10,59 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-427"></a>
+## Session 427 — the Stationary KAVACH and a loco ahead: MA cut behind it, Rear-end SoS
+
+The second half of Abhinav's *"SPAD, then Rear-end"* (session 426). Asked,
+with what the frames show and do not: *"Echo + cut"*.
+
+**Found in the real frames.** `replay/loco_{1,2}_1_27062026_151052.cap`:
+loco 1 stands at 160661 m in section S50-S48 (S48 Red), loco 2 ahead of it,
+drawing away to 161305 m. Station 527's MA to loco 1 is **loco 2's
+ABS_LOCO_LOC less its TRAIN_LENGTH (250 m) less 100 m**, from the start
+signal: 1236, 1250, 1263, 1273, 1282, 1288, 1292, 1295 m, every one to the
+metre, each from loco 2's last LSRP heard (one or two frames before; its
+doubt is not used). The profile stays S50-S48's whole (SSP to 1670 m), not
+cut at that MA. Loco 1 reports EMERGENCY_STATUS 5 (Rear-End Collision) in
+every LSRP and the station sends DEST_LOCO_SOS 5; the 20 s capture starts
+with both on, so what set the SoS off cannot be seen. Loco 2 got no SoS.
+
+**What DLConsole does now** (Packet Maker answering as the station, session
+422): a loco ahead on the MA's routes, the same way, cuts the MA as above
+(never below 0); a loco reporting EMERGENCY_STATUS 5 is answered SoS
+Rear-end, cut or not. The send log says it: *…, MA 1236 m; …; MA cut to
+1236 m: loco 2 ahead, its rear at 1336 m, less 100 m; SoS Rear-end (the loco
+reports it)*. The station keeps each loco's last position from every LSRP
+(`StationKavach::Loco`: id, absLoc, trainLength, dir) and passes the others
+to `answer()`. Where the locos are along a route comes from the layout's tag
+locations, as for SPAD (session 426).
+
+**Not modelled:** a loco ahead going the other way (head-on); the SoS kinds
+the frames never show (shunt, foreign RFID, station general).
+
+**Files.** `stationkavach.{h,cpp}` (`Loco` position, `answer(…, others)`,
+`kRearMargin`); `packetmakerdialog.cpp`; `docs/STATION_KAVACH.md`;
+`CLAUDE.md`; `tests/test_session427.cpp` (new), `tests/tests.pro`.
+
+**Tests.** `session427` (14 checks): station 527 as it was in June (the
+fixture plus S50 and route S50-S48, made from the real SLRP 54791's own
+sub-packets; S48's signal info from it), both captures' LSRPs through the
+station in frame order: **loco 1's 10 answers have station 527's header and
+MA field for field**, the first one (profile due) the whole SLRP, MAC aside
+(no session keys in those captures); each with SoS Rear-end. Loco 1's 11th
+LSRP is unanswered before the capture ends; SLRP 54808 is a second answer to
+54807; the real station sent the profile again after the acknowledgement
+(DLConsole does not: session 422), so the later answers are compared header
+and MA. Edges: no loco ahead (MA 1670 m, SoS still echoed); no emergency
+reported (cut, no SoS); the loco behind not cut; the other way, a loco on a
+route beyond the MA, no tag locations: not cut; MA never below 0.
+- **Not tested:** against live locos.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: 17 validators, 440 suites / 11069
+checks, menu audit (203), headless smoke.
+
+---
+
 <a id="session-426"></a>
 ## Session 426 — the Stationary KAVACH sees a SPAD: SoS to a loco past a Red signal
 

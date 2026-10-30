@@ -488,9 +488,13 @@ int State::aspectOf(const Station &s, const QString &signal) const
 // ---- the answer -------------------------------------------------------------------
 
 Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString, qint64> &lsrp,
-              const Schema::Encoder &enc)
+              const Schema::Encoder &enc, const QList<Loco> &others)
 {
     Answer a;
+    loco->id = int(lsrp.value(QStringLiteral("SOURCE_LOCO_ID")));
+    loco->absLoc = lsrp.value(QStringLiteral("ABS_LOCO_LOC"), -1);
+    loco->trainLength = int(lsrp.value(QStringLiteral("TRAIN_LENGTH")));
+    loco->dir = int(lsrp.value(QStringLiteral("MOVEMENT_DIR")));
     const int tag = int(lsrp.value(QStringLiteral("LAST_RFID_TAG")));
     const int dir = int(lsrp.value(QStringLiteral("MOVEMENT_DIR")));
     const auto dirOk = [dir](const Route &r) { return dir != 1 && dir != 2 ? true : r.pktDir == dir; };
@@ -563,6 +567,31 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
     for (int i : sx.routes) secs << &s.routes[i];
     const QVector<qint64> off = sx.offsets;
     const qint64 maEnd = sx.maEnd;
+
+    // Session 427: a loco ahead on these routes, the same way: the MA ends kRearMargin short of its rear.
+    qint64 maSent = maEnd;
+    QString cutNote;
+    if (!others.isEmpty() && s.tagLocs.contains(ref) && lsrp.contains(QStringLiteral("ABS_LOCO_LOC"))) {
+        const int sign = r0.pktDir == 2 ? -1 : 1;
+        const qint64 abs = lsrp.value(QStringLiteral("ABS_LOCO_LOC"));
+        const QVector<qint64> at = s.tagLocs.value(ref);
+        qint64 refLoc = at.first();
+        for (qint64 x : at) if (std::llabs(abs - x) < std::llabs(abs - refLoc)) refLoc = x;
+        const qint64 startAbs = refLoc - sign * refDist;
+        const qint64 self = (abs - startAbs) * sign;
+        for (const Loco &o : others) {
+            if (o.id == loco->id || o.absLoc < 0 || o.dir != dir || !sx.routes.contains(o.route)) continue;
+            const qint64 front = (o.absLoc - startAbs) * sign;
+            if (front <= self) continue;
+            const qint64 cut = std::max<qint64>(0, front - o.trainLength - kRearMargin);
+            if (cut < maSent) {
+                maSent = cut;
+                cutNote = QObject::tr("MA cut to %1 m: loco %2 ahead, its rear at %3 m, less %4 m")
+                              .arg(cut).arg(o.id).arg(front - o.trainLength).arg(kRearMargin);
+            }
+        }
+    }
+    const bool rearEnd = lsrp.value(QStringLiteral("EMERGENCY_STATUS")) == 5;
     QStringList notes;
     if (entering.size() > 1 || (entering.isEmpty() && holding.size() > 1))
         if (!pointsSet(r0, st)) notes << QObject::tr("no route from tag %1 has its points set; %2 taken").arg(tag).arg(r0.name);
@@ -588,10 +617,10 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
                  { "LAST_REF_RFID", ref }, { "DIST_PKT_START", -refDist }, { "PKT_DIR", r0.pktDir } };
     Schema::SubEntry ma;
     ma.type = 0;
-    ma.values = { { "FRAME_OFFSET", 0 }, { "DEST_LOCO_SOS", 0 }, { "TRAIN_SECTION_TYPE", r0.sectionType },
+    ma.values = { { "FRAME_OFFSET", 0 }, { "DEST_LOCO_SOS", rearEnd ? 5 : 0 }, { "TRAIN_SECTION_TYPE", r0.sectionType },
                   { "CUR_SIG_INFO", sigIdx < 0 ? 0 : s.signalList[sigIdx].sigInfo }, { "CUR_SIG_ASPECT", curAspect },
                   { "NEXT_SIG_ASPECT", nextAspect }, { "APPR_SIG_DIST", appr }, { "AUTHORITY_TYPE", auth },
-                  { "MA_W_R_T_SIG", maEnd }, { "REQ_SHORTEN_MA", 0 }, { "TRN_LEN_INFO_STS", 0 }, { "NEXT_STN_COMM", 0 } };
+                  { "MA_W_R_T_SIG", maSent }, { "REQ_SHORTEN_MA", 0 }, { "TRN_LEN_INFO_STS", 0 }, { "NEXT_STN_COMM", 0 } };
     if (auth == 1) ma.values.insert(QStringLiteral("AUTHORIZED_SPEED"), r0.osSpeed);
 
     // The profile, cut at the MA end.
@@ -677,8 +706,10 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
     const int sent = secs.size();
     a.note = QObject::tr("route %1, %2 %3 → %4 section%5, MA %6 m; ref tag %7, APPR_SIG_DIST %8 m; profile %9 %10")
                  .arg(r0.name, r0.exit, aspectName(curAspect)).arg(sent).arg(sent == 1 ? QString() : QStringLiteral("s"))
-                 .arg(maEnd).arg(ref).arg(appr).arg(l.profId)
+                 .arg(maSent).arg(ref).arg(appr).arg(l.profId)
                  .arg(a.fullProfile ? QObject::tr("in full") : QObject::tr("acknowledged: MA only"));
+    if (!cutNote.isEmpty()) a.note += QStringLiteral("; ") + cutNote;
+    if (rearEnd) a.note += QObject::tr("; SoS Rear-end (the loco reports it)");
     if (!notes.isEmpty()) a.checks = notes + a.checks;
     a.ok = true;
     return a;

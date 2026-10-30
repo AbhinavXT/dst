@@ -55,6 +55,17 @@ profile 2 acknowledged: MA only*.
   past A904 in `replay/loco_1_1_27062026_140226.cap`, every frame of it
   (MAC aside: that capture has no session keys). What set it off is not in
   the capture (it starts with the SoS on); "past the foot" is our reading.
+- **A loco ahead (Rear-end)** (session 427). Another loco the station has
+  heard, ahead on the MA's routes and going the same way, cuts the MA to
+  its `ABS_LOCO_LOC` less its `TRAIN_LENGTH` less **100 m** (never below 0;
+  the profile stays the sections'). A loco reporting `EMERGENCY_STATUS` 5
+  (Rear-End Collision) is answered `DEST_LOCO_SOS` 5; the cut is made
+  whether or not it does (Abhinav's choice: the capture cannot tell what
+  set the SoS off). This is station 527's answer to loco 1 standing 400 m
+  behind loco 2 in section S50-S48
+  (`replay/loco_{1,2}_1_27062026_151052.cap`): MA 1236 … 1295 m as loco 2
+  drew away, each from loco 2's last LSRP heard. A loco coming the other
+  way (head-on) is not modelled.
 - **The checks.** A point lying the wrong way, an occupied track circuit
   or TIN, a Green or Double Yellow with Red ahead, an aspect wanting more
   sections than there are routes: each is **said**, and the answer is
@@ -208,7 +219,8 @@ start (`d`, `start`, `sd`, `dist`).
 
 Not modelled: the TSR route table's OHE poles (TSR rows are placed by
 distance), Temporary Single Line working, train length, shortened MA,
-SoS other than SPAD (Rear-end: waiting for the rule), the next station's
+SoS other than SPAD and Rear-end (head-on, shunt, foreign RFID, station
+general), the next station's
 communication, the absolute-block last stop
 signal's MA in metres (give the block section as a route). Not tested
 against a live loco: the engine's answers are checked against real station
