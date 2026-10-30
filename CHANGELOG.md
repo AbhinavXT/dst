@@ -10,6 +10,72 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-429"></a>
+## Session 429 — every tag of a repeated name drawn where it is
+
+The second of Abhinav's *"1,2"* (session 428 the first).
+
+**Why.** Station Layout kept one place per tag name. Section_30.xlsx
+(station 527's layout) repeats one 5 km block three times, so tags 802 …
+902 are listed three times each: two of every three were not drawn (the
+drawing kept the last), a route could be drawn in one block and its MA end
+in another (S43-A900 in the third block, its MA end at tag 904 in the
+first), and a click, a drag or the Tag Builder on a repeated tag acted on
+whichever one the name found first or last.
+
+**What the operator sees.** Every tag drawn at its own place: Section_30's
+drawing spans all three blocks, 154 to 168.8 km. Hovering says the tag's
+name. Clicking a tag selects its own row; dragging moves that one; Shift,
+Set a field and Delete act on the rows selected (a deleted tag takes its
+own place in the line with it, the k-th 906 of the line for the k-th tag
+906); the Tag Builder replaces the one opened and no longer refuses it for
+sharing a name with the others; Pick (session 425) measures from the tag
+clicked. On the KAVACH tab a route is drawn through the tags its linking
+distances lead to, starting at the entry tag whose whole MA agrees best
+(S43-A900 and its MA to A904 now both in the first block, the only one
+holding 904). A loco's MA (428) runs through the block the loco is in. A
+signal whose foot tag is listed more than once: the signals sheet's k-th
+row for it at the k-th tag of that name when the rows and tags are as many
+(Section_30 lists S50, S48, S43 once per block, stations 501, 527, 528);
+else at every one.
+
+**Found on the way.** In Section_30.xlsx the third tag 2 is encoded at
+159660 m, the same as the second (the third block's would be 164660 m):
+the drawing now shows two S50s at 159.660 km and none in the third block.
+That is the file; it is not changed.
+
+**How.** `StationLayout::tagKeys()` gives each tag a key, its name, and
+"902#2", "902#3" for the second and third of a name; `nameOfKey()`,
+`indexOfKey()`. The canvas keeps locations, lanes and tag info by key and
+draws one mark per tag; its signals carry keys, the window resolves them
+(`tagIndexOf` takes a key; a plain name is still the first of it, as
+before). `kavachViewOf()` and `liveViewOf()` choose the tags of each
+number from their locations.
+
+**Files.** `stationlayout.{h,cpp}`; `stationlayoutwindow.{h,cpp}`;
+`docs/STATION_KAVACH.md`; `CLAUDE.md`; `tests/test_session429.cpp` (new),
+`tests/test_session424.cpp`, `tests/tests.pro`.
+
+**Tests.** `session429` (24 checks) on Section_30's real tags: the keys and
+their tags (902 at 158620, 163620, 168620 m); the three 902s drawn at their
+places, one mark per tag of the file, the drawing spanning all three
+blocks; the three S50 rows each at its own tag 2; hovering by name; a click
+on the second 902 selecting its row and saying tag 902 to the windows that
+follow; drag, Shift, Delete (and its line place) and the Tag Builder on one
+of three, the others unchanged; S43-A900 with its MA drawn in the first
+block; picking 906, 898, 900 of the second block giving station 527's 200,
+656, 260 m; a loco at 162100 m with its MA through the second block's 898,
+900, 902. `session424`'s drawing checks follow: the route now in the first
+block with its MA end (it was drawn in the third), the tooltip's wording.
+Looked at in the screenshot harness.
+- **Not tested:** Compare and a loco's Run (reads by tag name) on a layout
+  with repeated names: they ring every tag of the name, as before.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: 442 suites / 11,120 checks, menu
+audit, smoke.
+
+---
+
 <a id="session-428"></a>
 ## Session 428 — the station live on the Station Layout drawing
 

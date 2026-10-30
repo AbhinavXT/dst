@@ -128,6 +128,13 @@ QHash<QString, qint64> tagLocations(const Layout &l);
 QHash<int, QVector<qint64>> tagLocationsByNumber(const Layout &l);
 // Tag name -> its line (from the lines sheet; first line wins).
 QHash<QString, QString> lineOfTag(const Layout &l);
+// Session 429: a key for each tag of the layout, in order: its name; the
+// second, third, ... tag of a name the layout lists more than once (a
+// section drawn block after block) "name#2", "name#3". The drawing places
+// each by its key, so every one is drawn where it is.
+QStringList tagKeys(const Layout &l);
+QString nameOfKey(const QString &key);             // "906#2" -> "906"; a name -> itself
+int indexOfKey(const Layout &l, const QString &key);   // into l.tags; -1 when absent
 
 // --- comparing two layouts (session 226) -----------------------------------------
 // What changed from `from` (another file) to `to` (the layout open): tags by

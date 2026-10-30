@@ -84,7 +84,7 @@ public:
         QString route;
         QStringList tags;
         qint64 from = 0, to = 0;       // m from the start signal
-        QStringList repeated;          // its tags the layout lists more than once (drawn at one of their places)
+        QStringList repeated;          // its tags the layout lists more than once (drawn: the ones its distances lead to)
     };
     struct KavachSignal  { QString name, footTag; int aspect = 1; };
     struct KavachView {
@@ -220,7 +220,11 @@ private:
     int legend(QPainter *p, int top, int width) const;
 
     StationLayout::Layout m_l;
-    QHash<QString, qint64> m_loc;      // tag -> abs_loc
+    // Session 429: tags are kept by key (StationLayout::tagKeys): "906",
+    // "906#2", ... for a name the layout lists more than once.
+    QStringList m_keys;                // per m_l.tags entry
+    QHash<QString, QStringList> m_keysOf;   // name -> its keys
+    QHash<QString, qint64> m_loc;      // tag key -> abs_loc
     QHash<QString, StationLayout::TagInfo> m_info;
     QHash<QString, int>    m_lane;     // tag -> lane
     QStringList m_laneNames;           // "DN  DM", ..., "(no line)"

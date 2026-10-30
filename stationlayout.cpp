@@ -206,6 +206,34 @@ QHash<int, QVector<qint64>> tagLocationsByNumber(const Layout &l)
     return out;
 }
 
+QStringList tagKeys(const Layout &l)
+{
+    QStringList out;
+    QHash<QString, int> seen;
+    for (const Tag &t : l.tags) {
+        const int n = ++seen[t.name];
+        out << (n == 1 ? t.name : t.name + QLatin1Char('#') + QString::number(n));
+    }
+    return out;
+}
+
+QString nameOfKey(const QString &key)
+{
+    const int at = key.lastIndexOf(QLatin1Char('#'));
+    bool ok = false;
+    if (at > 0) key.mid(at + 1).toInt(&ok);
+    return ok ? key.left(at) : key;
+}
+
+int indexOfKey(const Layout &l, const QString &key)
+{
+    const QString name = nameOfKey(key);
+    const int want = name == key ? 1 : key.mid(name.size() + 1).toInt();
+    for (int i = 0, n = 0; i < l.tags.size(); ++i)
+        if (l.tags.at(i).name == name && ++n == want) return i;
+    return -1;
+}
+
 QHash<QString, QString> lineOfTag(const Layout &l)
 {
     QHash<QString, QString> out;

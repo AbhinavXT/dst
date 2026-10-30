@@ -129,9 +129,18 @@ void StationLayoutCanvas::setStation(const StationLayout::Layout &l)
 
 void StationLayoutCanvas::layoutLanes()
 {
-    m_loc = StationLayout::tagLocations(m_l);
+    // Session 429: by key (StationLayout::tagKeys): every tag of a name the
+    // layout lists more than once is drawn where it is.
+    m_keys = StationLayout::tagKeys(m_l);
+    m_keysOf.clear();
+    m_loc.clear();
     m_info.clear();
-    for (const StationLayout::Tag &t : m_l.tags) m_info.insert(t.name, StationLayout::info(t));
+    for (int i = 0; i < m_l.tags.size(); ++i) {
+        const StationLayout::TagInfo in = StationLayout::info(m_l.tags.at(i));
+        m_info.insert(m_keys.at(i), in);
+        if (in.ok) m_loc.insert(m_keys.at(i), in.absLoc);
+        m_keysOf[m_l.tags.at(i).name] << m_keys.at(i);
+    }
     m_lane.clear();
     m_laneNames.clear();
     m_laneOfLine.clear();
@@ -192,18 +201,20 @@ void StationLayoutCanvas::layoutLanes()
         else ++it;
     }
     bool orphan = false;
-    for (const StationLayout::Tag &t : m_l.tags) {
+    for (int i = 0; i < m_l.tags.size(); ++i) {
+        const StationLayout::Tag &t = m_l.tags.at(i);
+        const QString key = m_keys.at(i);
         // A duplicate tag rides its main tag's line.
         QString line = lineOf.value(t.name);
         if (line.isEmpty() && isDuplicateName(t.name)) line = lineOf.value(t.name.chopped(1));
         const QString main = isDuplicateName(t.name) ? t.name.chopped(1) : t.name;
         if (line.isEmpty() && (m_pointOfTag.contains(t.name) || m_pointOfTag.contains(main))) {
             const int pi = m_pointOfTag.value(t.name, m_pointOfTag.value(main));
-            m_pointOfTag.insert(t.name, pi);
+            m_pointOfTag.insert(key, pi);
             line = m_l.points.at(pi).line1;
         }
-        if (m_laneOfLine.contains(line)) m_lane.insert(t.name, m_laneOfLine.value(line));
-        else { m_lane.insert(t.name, -1); orphan = true; }
+        if (m_laneOfLine.contains(line)) m_lane.insert(key, m_laneOfLine.value(line));
+        else { m_lane.insert(key, -1); orphan = true; }
     }
     if (orphan) {
         const int lane = m_laneNames.size();
@@ -825,12 +836,17 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
 
     // Main and duplicate make one set (H2.15): the duplicate is the main's
     // name with "D" after it, on the same line.
+    // Session 429: by key; the second "12D" ("12D#2") pairs with the second "12" ("12#2").
+    auto mainKeyOf = [](const QString &key) {
+        const QString name = StationLayout::nameOfKey(key);
+        return name.chopped(1) + key.mid(name.size());
+    };
     QHash<QString, QString> dupOf;
-    for (const StationLayout::Tag &t : m_l.tags)
-        if (isDuplicateName(t.name) && m_loc.contains(t.name) && m_loc.contains(t.name.chopped(1))
-            && m_lane.value(t.name) == m_lane.value(t.name.chopped(1)))
-            dupOf.insert(t.name.chopped(1), t.name);
-    auto inSet = [&](const QString &n) { return isDuplicateName(n) && dupOf.value(n.chopped(1)) == n; };
+    for (const QString &key : m_keys)
+        if (isDuplicateName(StationLayout::nameOfKey(key)) && m_loc.contains(key) && m_loc.contains(mainKeyOf(key))
+            && m_lane.value(key) == m_lane.value(mainKeyOf(key)))
+            dupOf.insert(mainKeyOf(key), key);
+    auto inSet = [&](const QString &k) { return isDuplicateName(StationLayout::nameOfKey(k)) && dupOf.value(mainKeyOf(k)) == k; };
     auto xAt = [&](const QString &n) { return n == m_dragTag && m_dragX >= 0 ? m_dragX : xOf(m_loc.value(n)); };
 
     // ---- session 424: the KAVACH route and the MA's sections on, under the lanes ---------------
@@ -848,7 +864,7 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
                              : tr("KAVACH route %1: MA section %2 of %3, %4 to %5 m")
                                    .arg(k.route).arg(i + 1).arg(m_kavachView.sections.size()).arg(k.from).arg(k.to);
         if (!k.repeated.isEmpty())
-            tip += QLatin1Char('\n') + tr("tag(s) %1 listed more than once in the layout: each drawn at one of its places")
+            tip += QLatin1Char('\n') + tr("tag(s) %1 listed more than once in the layout: the ones its linking distances lead to")
                                            .arg(k.repeated.join(QStringLiteral(", ")));
         for (int j = 0; j + 1 < path.size(); ++j)
             m_hits << Hit{ QRectF(path.at(j), path.at(j + 1)).normalized().adjusted(-2, -9, 2, 9), QString(), tip };
@@ -961,11 +977,19 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         return { QStringLiteral("red") };
     };
     QHash<int, QVector<double>> sigEnds;
-    for (const Sig &g : sigs) {
-        if (!m_loc.contains(g.foot)) continue;
+    // Session 429: a foot tag the layout lists more than once: the k-th sheet
+    // row naming it at the k-th tag of that name when the rows and the tags
+    // are as many (Section_30: one row per block); else at every one.
+    QHash<QString, QVector<int>> rowsAt;
+    for (const Sig &g : sigs) if (g.index >= 0) rowsAt[g.foot] << g.index;
+    for (const Sig &g : sigs) for (const QString &foot : m_keysOf.value(g.foot)) {
+        if (!m_loc.contains(foot)) continue;
+        const QStringList &all = m_keysOf.value(g.foot);
+        const QVector<int> &rows = rowsAt.value(g.foot);
+        if (g.index >= 0 && all.size() > 1 && rows.size() == all.size() && all.indexOf(foot) != rows.indexOf(g.index)) continue;
         const int si = g.index;
-        const double x = xOf(m_loc.value(g.foot));
-        const double y = tagPos(g.foot, x).y();
+        const double x = xOf(m_loc.value(foot));
+        const double y = tagPos(foot, x).y();
         if (si >= 0 && si == m_selSignal) {
             p.setPen(QPen(UiColor::accent(), 2));
             p.setBrush(Qt::NoBrush);
@@ -992,7 +1016,7 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         }
         p.setBrush(Qt::NoBrush);
         const int w = fm.horizontalAdvance(g.name) + 4;
-        const int row = placeLabel(sigEnds, m_lane.value(g.foot, 0), x, w, 2);
+        const int row = placeLabel(sigEnds, m_lane.value(foot, 0), x, w, 2);
         if (row >= 0) {
             QFont f = p.font();
             if (si >= 0 && si == m_selSignal) { f.setBold(true); p.setFont(f); }
@@ -1029,20 +1053,21 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
 
     QHash<int, QVector<double>> labelEnds;   // the label rows above each lane
     // ---- tags: one symbol per set (H2.15), its letter (H2.21), "R-…" and km above ------------------
-    for (const StationLayout::Tag &t : m_l.tags) {
-        if (!m_loc.contains(t.name) || inSet(t.name)) continue;
-        const QString dup = dupOf.value(t.name);
-        const double x = xAt(t.name);
-        const int lane = m_lane.value(t.name, 0);
-        const double y = tagPos(t.name, x).y();
-        const StationLayout::TagInfo in = m_info.value(t.name);
-        const bool flagged = m_flagged.contains(t.name) || (!dup.isEmpty() && m_flagged.contains(dup));
-        const TinLayout::Shape shape = TinLayout::shapeOf(m_loc.value(t.name), m_loc.value(dup), !dup.isEmpty());
+    for (int ti = 0; ti < m_l.tags.size(); ++ti) {
+        const QString &name = m_l.tags.at(ti).name, &key = m_keys.at(ti);   // session 429: drawn by key
+        if (!m_loc.contains(key) || inSet(key)) continue;
+        const QString dup = dupOf.value(key);
+        const double x = xAt(key);
+        const int lane = m_lane.value(key, 0);
+        const double y = tagPos(key, x).y();
+        const StationLayout::TagInfo in = m_info.value(key);
+        const bool flagged = m_flagged.contains(name) || (!dup.isEmpty() && m_flagged.contains(StationLayout::nameOfKey(dup)));
+        const TinLayout::Shape shape = TinLayout::shapeOf(m_loc.value(key), m_loc.value(dup), !dup.isEmpty());
         const QChar letter = TinLayout::notation(in.type, in.placement);
         TinLayout::drawTag(p, QPointF(x, y), letter, shape, flagged ? UiColor::warning() : text, flagged ? 2 : 1.2);
         // Session 227: the run: read (ok), read but different (warning), not read (error).
-        if (m_runStates.contains(t.name)) {
-            const int st = m_runStates.value(t.name);
+        if (m_runStates.contains(name)) {
+            const int st = m_runStates.value(name);
             p.setPen(QPen(st == int(PlanRun::State::NotRead) ? UiColor::error()
                           : st == int(PlanRun::State::Different) ? UiColor::warning() : UiColor::ok(), 2));
             p.setBrush(Qt::NoBrush);
@@ -1050,7 +1075,7 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         }
         // Session 411: the Loco Simulator's tags: sent (ok), a fault on it
         // (warning), skipped (muted, dashed); a duplicate's state on its set.
-        if (const int st = m_simTags.value(t.name) | (dup.isEmpty() ? 0 : m_simTags.value(dup))) {
+        if (const int st = m_simTags.value(name) | (dup.isEmpty() ? 0 : m_simTags.value(StationLayout::nameOfKey(dup)))) {
             const bool sent = st & (RouteStrip::SentOn1 | RouteStrip::SentOn2);
             const QColor c = st & RouteStrip::Faulted ? UiColor::warning() : sent ? UiColor::ok() : ink;
             p.setPen(QPen(c, 2, sent || (st & RouteStrip::Faulted) ? Qt::SolidLine : Qt::DashLine));
@@ -1058,49 +1083,49 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
             p.drawEllipse(QPointF(x, y), 24, 24);
         }
         // Session 226: a tag that differs from the compared file (added: ok; moved / changed: warning).
-        if (m_diffKinds.contains(t.name) || (!dup.isEmpty() && m_diffKinds.contains(dup))) {
-            const int k = m_diffKinds.value(t.name, m_diffKinds.value(dup));
+        if (m_diffKinds.contains(name) || (!dup.isEmpty() && m_diffKinds.contains(StationLayout::nameOfKey(dup)))) {
+            const int k = m_diffKinds.value(name, m_diffKinds.value(StationLayout::nameOfKey(dup)));
             p.setPen(QPen(k == StationLayout::TagChange::Added ? UiColor::ok() : UiColor::warning(), 2, Qt::DotLine));
             p.setBrush(Qt::NoBrush);
             p.drawEllipse(QPointF(x, y), 16, 16);
         }
-        if ((!m_selected.isEmpty() && (t.name == m_selected || dup == m_selected)) || m_marked.contains(t.name)) {
+        if ((!m_selected.isEmpty() && (key == m_selected || dup == m_selected)) || m_marked.contains(key)) {
             p.setPen(QPen(UiColor::selectedMark(), 2));
             p.setBrush(Qt::NoBrush);
             p.drawEllipse(QPointF(x, y), 12, 12);
         }
-        const QString id = TinLayout::idText(t.name), k = QString::number(m_loc.value(t.name) / 1000.0, 'f', 3);
+        const QString id = TinLayout::idText(name), k = QString::number(m_loc.value(key) / 1000.0, 'f', 3);
         const int w = qMax(fm.horizontalAdvance(id) + 6, fm.horizontalAdvance(k) + 4);
-        if (m_pointOfTag.contains(t.name)) {
+        if (m_pointOfTag.contains(key)) {
             // On a diagonal: "R-…" and km beside the tag, as on the RDSO layouts.
             const double lx = x + 12 + w / 2.0;
             TinLayout::drawIdBox(p, QPointF(lx, y + lh / 2.0 + 2), id);
-            p.setPen(t.name == m_selected ? text : ink);
+            p.setPen(key == m_selected ? text : ink);
             p.drawText(QRectF(lx - w / 2.0, y - lh * 1.5 - 4, w, lh), Qt::AlignCenter, k);
         } else if (const int row = placeLabel(labelEnds, lane, x, w, 2); row >= 0) {
             const double bottom = y - 9 - row * labelRow;
             TinLayout::drawIdBox(p, QPointF(x, bottom), id);
-            p.setPen(t.name == m_selected ? text : ink);
+            p.setPen(key == m_selected ? text : ink);
             p.drawText(QRectF(x - w / 2.0, bottom - 2 * lh - 2, w, lh), Qt::AlignCenter, k);
         }
-        QString tip = tr("Tag %1 (%2) at %3, line %4").arg(t.name, TinLayout::notationName(letter),
-                                                          km(t.name == m_dragTag && m_dragX >= 0 ? locAt(x) : m_loc.value(t.name)),
-                                                          m_pointOfTag.contains(t.name) ? tr("point %1").arg(m_l.points.at(m_pointOfTag.value(t.name)).name)
+        QString tip = tr("Tag %1 (%2) at %3, line %4").arg(name, TinLayout::notationName(letter),
+                                                          km(key == m_dragTag && m_dragX >= 0 ? locAt(x) : m_loc.value(key)),
+                                                          m_pointOfTag.contains(key) ? tr("point %1").arg(m_l.points.at(m_pointOfTag.value(key)).name)
                                                                                         : m_laneNames.value(lane));
         tip += QLatin1Char('\n') + tr("TIN %1 Nominal / %2 Reverse").arg(in.tinNom).arg(in.tinRev);
         if (!dup.isEmpty())
-            tip += QLatin1Char('\n') + (shape == TinLayout::Box ? tr("Duplicate %1 at the same location").arg(dup)
-                                                                : tr("Duplicate %1 at %2").arg(dup, km(m_loc.value(dup))));
-        tip += QLatin1Char('\n') + (t.name == m_dragTag && m_dragX >= 0 ? tr("Release to move it here (re-encoded, CRC-30 recomputed)")
+            tip += QLatin1Char('\n') + (shape == TinLayout::Box ? tr("Duplicate %1 at the same location").arg(StationLayout::nameOfKey(dup))
+                                                                : tr("Duplicate %1 at %2").arg(StationLayout::nameOfKey(dup), km(m_loc.value(dup))));
+        tip += QLatin1Char('\n') + (key == m_dragTag && m_dragX >= 0 ? tr("Release to move it here (re-encoded, CRC-30 recomputed)")
                                                                         : tr("Drag along the line to move it"));
-        m_hits << Hit{ QRectF(x - 9, y - 8, 18, 16), t.name, tip };
+        m_hits << Hit{ QRectF(x - 9, y - 8, 18, 16), key, tip };
     }
     // A duplicate away from its main: a small mark of its own, to drag.
     for (auto it = dupOf.constBegin(); it != dupOf.constEnd(); ++it) {
         if (m_loc.value(it.value()) == m_loc.value(it.key())) continue;
         const double x = xAt(it.value());
         const double y = tagPos(it.value(), x).y();
-        p.setPen(QPen(m_flagged.contains(it.value()) ? UiColor::warning() : text, 1.2));
+        p.setPen(QPen(m_flagged.contains(StationLayout::nameOfKey(it.value())) ? UiColor::warning() : text, 1.2));
         p.setBrush(palette().base());
         p.drawEllipse(QPointF(x, y), 3, 3);
         if (it.value() == m_selected || m_marked.contains(it.value())) {
@@ -1109,7 +1134,8 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
             p.drawEllipse(QPointF(x, y), 8, 8);
         }
         m_hits << Hit{ QRectF(x - 5, y - 5, 10, 10), it.value(),
-                       tr("Duplicate tag %1 at %2 (main %3 at %4)").arg(it.value(), km(m_loc.value(it.value())), it.key(),
+                       tr("Duplicate tag %1 at %2 (main %3 at %4)").arg(StationLayout::nameOfKey(it.value()), km(m_loc.value(it.value())),
+                                                                        StationLayout::nameOfKey(it.key()),
                                                                         km(m_loc.value(it.key()))) };
     }
 
@@ -1350,7 +1376,7 @@ void StationLayoutCanvas::measureAt(const QPointF &pos)
         const Hit &h = *hp;
         if (!h.tag.isEmpty() && m_loc.contains(h.tag)) {
             end.loc = m_loc.value(h.tag);
-            end.what = tr("tag %1").arg(h.tag);
+            end.what = tr("tag %1").arg(StationLayout::nameOfKey(h.tag));
         } else if (h.signal >= 0 && m_loc.contains(m_l.signalList.at(h.signal).footTag)) {
             end.loc = m_loc.value(m_l.signalList.at(h.signal).footTag);
             end.what = tr("signal %1").arg(m_l.signalList.at(h.signal).name);
@@ -1411,44 +1437,98 @@ QTableWidgetItem *readOnly(const QString &s)
     return it;
 }
 
+// Session 429: a tag number's tags in the layout, each by its drawing key
+// (StationLayout::tagKeys) and location: its main tags, or its duplicate
+// ("…D") where it has no main.
+struct TagCopy { QString key; qint64 loc = 0; };
+QHash<int, QVector<TagCopy>> tagCopies(const StationLayout::Layout &l)
+{
+    const QStringList keys = StationLayout::tagKeys(l);
+    QHash<int, QVector<TagCopy>> mains, dups;
+    for (int i = 0; i < l.tags.size(); ++i) {
+        const QString &n = l.tags.at(i).name;
+        const bool dup = isDuplicateName(n);
+        bool ok = false;
+        const int id = (dup ? n.chopped(1) : n).toInt(&ok);
+        const StationLayout::TagInfo in = StationLayout::info(l.tags.at(i));
+        if (ok && in.ok) (dup ? dups : mains)[id] << TagCopy{ keys.at(i), in.absLoc };
+    }
+    for (auto it = dups.cbegin(); it != dups.cend(); ++it) if (!mains.contains(it.key())) mains.insert(it.key(), it.value());
+    return mains;
+}
+
+// The tag of number `id` nearest `want` (-1: none of that number); *at its location.
+QString nearestCopy(const QHash<int, QVector<TagCopy>> &copies, int id, qint64 want, qint64 *at = nullptr)
+{
+    const auto it = copies.constFind(id);
+    if (it == copies.cend()) return QString();
+    const TagCopy *best = nullptr;
+    for (const TagCopy &c : it.value())
+        if (!best || std::llabs(c.loc - want) < std::llabs(best->loc - want)) best = &c;
+    if (at && best) *at = best->loc;
+    return best ? best->key : QString();
+}
+
 }  // namespace
 
 StationLayoutCanvas::KavachView kavachViewOf(const StationLayout::Layout &l, const StationKavach::Station &s,
                                              int route, QStringList *missing)
 {
     StationLayoutCanvas::KavachView v;
-    // A tag number is the layout's tag of that name; its duplicate ("…D") only when there is no main.
-    QHash<int, QString> nameOf;
-    QHash<QString, int> times;
-    for (const StationLayout::Tag &t : l.tags) times[t.name] += 1;
-    for (const StationLayout::Tag &t : l.tags) {
-        const bool dup = isDuplicateName(t.name);
-        bool ok = false;
-        const int id = (dup ? t.name.chopped(1) : t.name).toInt(&ok);
-        if (ok && (!dup || !nameOf.contains(id))) nameOf.insert(id, t.name);
-    }
-    auto nameFor = [&](int id) {
-        if (nameOf.contains(id)) return nameOf.value(id);
+    const QHash<int, QVector<TagCopy>> copies = tagCopies(l);
+    auto note = [&](int id) {
         if (missing && !missing->contains(QString::number(id))) *missing << QString::number(id);
-        return QString();
     };
+    // The signals: at their foot tag's name (drawn at every tag of it).
     for (const StationKavach::Signal &g : s.signalList) {
-        const QString foot = nameFor(g.footTag);
-        if (!foot.isEmpty()) v.signalList << StationLayoutCanvas::KavachSignal{ g.name, foot, g.aspect };
+        const QString key = nearestCopy(copies, g.footTag, 0);
+        if (key.isEmpty()) { note(g.footTag); continue; }
+        v.signalList << StationLayoutCanvas::KavachSignal{ g.name, StationLayout::nameOfKey(key), g.aspect };
     }
     if (route < 0 || route >= s.routes.size()) return v;
     const StationKavach::Sections sx = StationKavach::sectionsFrom(s, StationKavach::State::initial(s), route);
+    // Session 429: of a number the layout lists more than once, the tags the
+    // linking distances lead to: the route starts at the entry tag whose
+    // route agrees best, each next tag the one nearest where its distance says.
+    auto walk = [&](const StationKavach::Route &r, qint64 start, QStringList *keys) {
+        const int sign = r.pktDir == 2 ? -1 : 1;
+        qint64 at = start, off = 0;
+        for (int i = 0; i < r.tags.size(); ++i) {
+            const qint64 want = at + (i ? sign * r.tags[i].dist : 0);
+            qint64 got = want;
+            const QString key = nearestCopy(copies, r.tags[i].tag, want, &got);
+            off += std::llabs(got - want);
+            at = key.isEmpty() ? want : got;
+            if (keys && !key.isEmpty()) *keys << key;
+        }
+        return qMakePair(off, at);
+    };
+    // The entry tag whose whole MA (every section) agrees best; of equals, the first.
+    qint64 start = 0;
+    if (!sx.routes.isEmpty()) {
+        const StationKavach::Route &r0 = s.routes.at(sx.routes.first());
+        qint64 best = -1;
+        for (const TagCopy &c : copies.value(r0.tags.isEmpty() ? -1 : r0.tags.first().tag)) {
+            qint64 off = 0, at = c.loc;
+            for (int i : sx.routes) {
+                const QPair<qint64, qint64> w = walk(s.routes.at(i), at, nullptr);
+                off += w.first;
+                at = w.second;
+            }
+            if (best < 0 || off < best) { best = off; start = c.loc; }
+        }
+    }
     for (int i = 0; i < sx.routes.size(); ++i) {
         const StationKavach::Route &r = s.routes.at(sx.routes.at(i));
         StationLayoutCanvas::KavachSection k;
         k.route = r.name;
         k.from = sx.offsets.at(i);
         k.to = k.from + r.length();
+        start = walk(r, start, &k.tags).second;   // the next section starts at this one's exit
         for (const StationKavach::RouteTag &t : r.tags) {
-            const QString n = nameFor(t.tag);
-            if (n.isEmpty()) continue;
-            k.tags << n;
-            if (times.value(n) > 1 && !k.repeated.contains(n)) k.repeated << n;
+            if (!copies.contains(t.tag)) { note(t.tag); continue; }
+            const QString name = StationLayout::nameOfKey(copies.value(t.tag).first().key);
+            if (copies.value(t.tag).size() > 1 && !k.repeated.contains(name)) k.repeated << name;
         }
         v.sections << k;
     }
@@ -1460,20 +1540,11 @@ StationLayoutCanvas::LiveView liveViewOf(const StationLayout::Layout &l, const S
                                          const StationKavach::State &st, const QList<StationKavach::Loco> &locos)
 {
     StationLayoutCanvas::LiveView v;
-    const StationLayoutCanvas::KavachView names = kavachViewOf(l, s, -1);
-    QHash<int, QString> nameOf;   // as kavachViewOf names them
-    for (const StationLayout::Tag &t : l.tags) {
-        const bool dup = isDuplicateName(t.name);
-        bool ok = false;
-        const int id = (dup ? t.name.chopped(1) : t.name).toInt(&ok);
-        if (ok && (!dup || !nameOf.contains(id))) nameOf.insert(id, t.name);
-    }
-    for (StationLayoutCanvas::KavachSignal k : names.signalList) {
+    for (StationLayoutCanvas::KavachSignal k : kavachViewOf(l, s, -1).signalList) {
         k.aspect = st.aspectOf(s, k.name);
         v.signalList << k;
     }
-    const QHash<int, QVector<qint64>> locs = StationLayout::tagLocationsByNumber(l);
-    const QHash<QString, qint64> byName = StationLayout::tagLocations(l);
+    const QHash<int, QVector<TagCopy>> copies = tagCopies(l);
     for (const StationKavach::Loco &o : locos) {
         if (o.absLoc < 0) continue;
         StationLayoutCanvas::LiveLoco k;
@@ -1483,27 +1554,26 @@ StationLayoutCanvas::LiveView liveViewOf(const StationLayout::Layout &l, const S
         const StationKavach::Route *r0 = !o.maRoutes.isEmpty() && o.maRoutes.first() >= 0 && o.maRoutes.first() < s.routes.size()
                                              ? &s.routes.at(o.maRoutes.first()) : nullptr;
         k.sign = (r0 ? r0->pktDir : o.dir) == 2 ? -1 : 1;
-        k.laneTag = nameOf.value(o.refTag);
+        qint64 refLoc = -1;
+        k.laneTag = nearestCopy(copies, o.refTag, o.absLoc, &refLoc);   // the tag it last read, where it is
         if (k.laneTag.isEmpty()) {   // no tag on a route read yet: the layout's tag nearest it
             qint64 best = -1;
-            for (auto it = byName.cbegin(); it != byName.cend(); ++it)
-                if (best < 0 || std::llabs(it.value() - o.absLoc) < best) { best = std::llabs(it.value() - o.absLoc); k.laneTag = it.key(); }
+            for (const QVector<TagCopy> &cs : copies)
+                for (const TagCopy &c : cs)
+                    if (best < 0 || std::llabs(c.loc - o.absLoc) < best) { best = std::llabs(c.loc - o.absLoc); k.laneTag = c.key; }
         }
         k.maText = o.maSent < 0 ? QObject::tr("no MA sent yet") : QObject::tr("MA %1 m").arg(o.maSent);
         if (o.maSent == 0) k.maText = QObject::tr("MA 0");
         if (o.sos == 4) k.sos = QObject::tr("SoS SPAD");
         else if (o.sos == 5) k.sos = QObject::tr("SoS Rear-end");
         // Where the MA ends: from the start signal (the ref tag's place nearest the loco, less its distance).
-        if (r0 && o.maSent > 0 && locs.contains(o.refTag)) {
+        if (r0 && o.maSent > 0 && refLoc >= 0) {
             qint64 refDist = -1;
             for (int i = 0, d = 0; i < r0->tags.size(); ++i) {
                 d += i ? r0->tags[i].dist : 0;
                 if (r0->tags[i].tag == o.refTag) { refDist = d; break; }
             }
             if (refDist >= 0) {
-                const QVector<qint64> at = locs.value(o.refTag);
-                qint64 refLoc = at.first();
-                for (qint64 x : at) if (std::llabs(o.absLoc - x) < std::llabs(o.absLoc - refLoc)) refLoc = x;
                 const qint64 start = refLoc - k.sign * refDist;
                 const qint64 self = (o.absLoc - start) * k.sign;
                 k.maEnd = start + k.sign * o.maSent;
@@ -1513,9 +1583,9 @@ StationLayoutCanvas::LiveView liveViewOf(const StationLayout::Layout &l, const S
                     const QVector<StationKavach::RouteTag> &ts = s.routes[o.maRoutes[i]].tags;
                     for (int j = (i ? 1 : 0); j < ts.size(); ++j) {
                         d += j ? ts[j].dist : 0;
-                        // A number the layout repeats is drawn at one of its places: only when that one is on the way.
-                        const QString n = nameOf.value(ts[j].tag);
-                        if (d > self && d < o.maSent && !n.isEmpty() && byName.value(n) == start + k.sign * d) k.maTags << n;
+                        // Session 429: of a number listed more than once, the tag where its distance says.
+                        const QString key = d > self && d < o.maSent ? nearestCopy(copies, ts[j].tag, start + k.sign * d) : QString();
+                        if (!key.isEmpty()) k.maTags << key;
                     }
                 }
             }
@@ -1883,7 +1953,7 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
         connect(m_tables.at(i), &QTableWidget::cellChanged, this, [this, i](int, int) { onSheetCell(i); });
     connect(m_tables.at(0), &QTableWidget::itemSelectionChanged, this, [this]() {
         const int r = m_tables.at(0)->currentRow();
-        m_canvas->setSelectedTag(r >= 0 && r < m_layout.tags.size() ? m_layout.tags.at(r).name : QString());
+        m_canvas->setSelectedTag(r >= 0 && r < m_layout.tags.size() ? StationLayout::tagKeys(m_layout).at(r) : QString());
         const QStringList sel = selectedTags();
         m_canvas->setMarkedTags(QSet<QString>(sel.cbegin(), sel.cend()));
         if (r >= 0 && r < m_layout.tags.size() && !m_updating && !m_selecting) emit tagSelected(m_layout.tags.at(r).name);
@@ -1915,22 +1985,24 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     connect(m_canvas, &StationLayoutCanvas::measured, this, [this](const QString &t) { m_status->state(t); });
     connect(m_canvas, &StationLayoutCanvas::measureCancelled, this, [this]() { m_measureBtn->setChecked(false); });
     // Session 425: a tag picked for the KAVACH route: by its number, a duplicate ("…D") as its main tag.
-    connect(m_canvas, &StationLayoutCanvas::tagPicked, this, [this](const QString &name) {
+    // Session 429: at the place of the tag clicked (of a name listed more than once, that one).
+    connect(m_canvas, &StationLayoutCanvas::tagPicked, this, [this](const QString &key) {
+        const QString name = StationLayout::nameOfKey(key);
+        const QString suffix = key.mid(name.size());
         const QString main = isDuplicateName(name) ? name.chopped(1) : name;
         bool ok = false;
         const int id = main.toInt(&ok);
-        const QHash<QString, qint64> locs = StationLayout::tagLocations(m_layout);
-        if (!ok || !locs.contains(main)) { m_status->fail(tr("Tag %1 has no number and location to pick").arg(name)); return; }
-        m_kavach->pickTag(id, locs.value(main));
+        const int at = tagIndexOf(main + suffix);
+        const StationLayout::TagInfo in = at < 0 ? StationLayout::TagInfo() : StationLayout::info(m_layout.tags.at(at));
+        if (!ok || !in.ok) { m_status->fail(tr("Tag %1 has no number and location to pick").arg(name)); return; }
+        m_kavach->pickTag(id, in.absLoc);
     });
-    connect(m_canvas, &StationLayoutCanvas::tagClicked, this, [this](const QString &name) {
-        for (int i = 0; i < m_layout.tags.size(); ++i)
-            if (m_layout.tags.at(i).name == name) {
-                m_tabs->setCurrentIndex(0);
-                m_tables.at(0)->selectRow(i);
-                m_tables.at(0)->scrollToItem(m_tables.at(0)->item(i, 0));
-                break;
-            }
+    connect(m_canvas, &StationLayoutCanvas::tagClicked, this, [this](const QString &key) {
+        const int i = tagIndexOf(key);   // session 429: the row of the tag clicked
+        if (i < 0) return;
+        m_tabs->setCurrentIndex(0);
+        m_tables.at(0)->selectRow(i);
+        m_tables.at(0)->scrollToItem(m_tables.at(0)->item(i, 0));
     });
     auto selectedTag = [this]() {
         const int r = m_tables.at(0)->currentRow();
@@ -2071,8 +2143,9 @@ void StationLayoutWindow::changed(const QString &label, const StationLayout::Lay
 
 bool StationLayoutWindow::moveTag(const QString &name, qint64 locM)
 {
-    for (int i = 0; i < m_layout.tags.size(); ++i) {
-        if (m_layout.tags.at(i).name != name) continue;
+    const QString key = name;   // session 429: a key: "906#2" moves the second tag 906
+    if (const int i = tagIndexOf(key); i >= 0) {
+        const QString name = m_layout.tags.at(i).name;
         const StationLayout::Layout before = m_layout;
         QString err;
         if (!StationLayout::moveTag(&m_layout.tags[i], locM, &err)) {
@@ -2090,8 +2163,9 @@ bool StationLayoutWindow::moveTag(const QString &name, qint64 locM)
 
 TagBuilderWindow *StationLayoutWindow::tagBuilder() const { return m_builder; }
 
-TagBuilderWindow *StationLayoutWindow::openInTagBuilder(const QString &name)
+TagBuilderWindow *StationLayoutWindow::openInTagBuilder(const QString &target)
 {
+    QString name = target;
     if (!m_builder) {
         m_builder = new TagBuilderWindow(nullptr, this);
         m_builder->setWindowFlag(Qt::Window);
@@ -2101,10 +2175,11 @@ TagBuilderWindow *StationLayoutWindow::openInTagBuilder(const QString &name)
     }
     // A new tag starts from the selected one (same TINs and line, a location to change).
     const int r = m_tables.at(0)->currentRow();
-    const QString from = !name.isEmpty() ? name : r >= 0 && r < m_layout.tags.size() ? m_layout.tags.at(r).name : QString();
-    for (const StationLayout::Tag &t : m_layout.tags)
-        if (t.name == from) { m_builder->setPages(t.pageX, t.pageY); break; }
-    m_builderTarget = name;
+    const int fromRow = !name.isEmpty() ? tagIndexOf(name) : r >= 0 && r < m_layout.tags.size() ? r : -1;
+    if (fromRow >= 0) m_builder->setPages(m_layout.tags.at(fromRow).pageX, m_layout.tags.at(fromRow).pageY);
+    m_builderTarget = name;   // a key (session 429): the one opened
+    const QString key = name;
+    name = StationLayout::nameOfKey(key);
     m_builderLine.clear();
     m_builder->offerApply(name.isEmpty() ? tr("Add this tag to the station layout") : tr("Apply to tag %1 in the station layout").arg(name),
                           name.isEmpty() ? tr("Adds the tag above to the layout, named by its bits")
@@ -2124,11 +2199,14 @@ bool StationLayoutWindow::applyTag(const QString &target, const QByteArray &byte
         m_status->fail(tr("Not applied: the Tag Builder's tag does not decode"));
         return false;
     }
-    int at = -1;
+    // Session 429: `target` a key: the one tag it names; the others of its name stay.
+    const int at0 = target.isEmpty() ? -1 : tagIndexOf(target);
+    const QString targetName = StationLayout::nameOfKey(target);
+    const int targetK = targetName == target ? 1 : target.mid(targetName.size() + 1).toInt();
+    int at = at0;
     for (int i = 0; i < m_layout.tags.size(); ++i) {
         const QString n = m_layout.tags.at(i).name;
-        if (n == target && !target.isEmpty()) at = i;
-        else if (n == name) {
+        if (i != at0 && n == name && n != targetName) {
             m_status->fail(tr("Not applied: the layout already has a tag %1. Open that one to change it").arg(name));
             return false;
         }
@@ -2158,20 +2236,26 @@ bool StationLayoutWindow::applyTag(const QString &target, const QByteArray &byte
     } else {
         m_layout.tags[at] = t;
         // shortcut: a point's "tags" cell is free text and is not renamed; rename it by hand.
-        if (name != target) {
-            for (StationLayout::Line &ln : m_layout.lines)
-                for (QString &n : ln.tags) if (n == target) n = name;
+        if (name != targetName) {
+            int others = 0;
+            for (const StationLayout::Tag &o : m_layout.tags) others += o.name == targetName;
+            for (StationLayout::Line &ln : m_layout.lines) {
+                int seen = 0;
+                for (QString &n : ln.tags)
+                    if (n == targetName && (others == 0 || ++seen == targetK)) n = name;   // listed more than once: its own place
+            }
             for (StationLayout::Signal &sg : m_layout.signalList)
-                if (sg.footTag == target) sg.footTag = name;
+                if (sg.footTag == targetName && others == 0) sg.footTag = name;
         }
     }
-    changed(target.isEmpty() ? tr("add tag %1").arg(name) : tr("edit tag %1").arg(target), before);
+    changed(target.isEmpty() ? tr("add tag %1").arg(name) : tr("edit tag %1").arg(targetName), before);
     m_tables.at(0)->selectRow(at);
-    m_canvas->setSelectedTag(name);
-    if (!target.isEmpty()) m_builderTarget = name;   // a second Apply edits the same tag
+    const QString atKey = StationLayout::tagKeys(m_layout).value(at);
+    m_canvas->setSelectedTag(atKey);
+    if (!target.isEmpty()) m_builderTarget = atKey;   // a second Apply edits the same tag
     m_status->ok(target.isEmpty() ? tr("Tag %1 added from the Tag Builder").arg(name)
-                 : name == target ? tr("Tag %1 updated from the Tag Builder").arg(name)
-                                  : tr("Tag %1 is now %2 (its lines and signals follow)").arg(target, name));
+                 : name == targetName ? tr("Tag %1 updated from the Tag Builder").arg(name)
+                                      : tr("Tag %1 is now %2 (its lines and signals follow)").arg(targetName, name));
     return true;
 }
 
@@ -2317,7 +2401,7 @@ QMenu *StationLayoutWindow::contextMenuFor(const QString &tag, const QString &li
         menu->addSeparator();
     }
     if (!tag.isEmpty()) {
-        menu->addAction(tr("Edit tag %1 in Tag Builder…").arg(tag), this, [this, tag]() { openInTagBuilder(tag); });
+        menu->addAction(tr("Edit tag %1 in Tag Builder…").arg(StationLayout::nameOfKey(tag)), this, [this, tag]() { openInTagBuilder(tag); });
         menu->addAction(tr("New signal at tag %1…").arg(tag), this, [this, tag, station]() {
             QStringList v{ QString(), QString(), QString::number(station) };
             if (!askFields(this, tr("New signal at tag %1").arg(tag), { tr("Name:"), tr("sig_id:"), tr("Station id:") }, &v)) return;
@@ -2382,8 +2466,7 @@ QMenu *StationLayoutWindow::contextMenuFor(const QString &tag, const QString &li
 
 int StationLayoutWindow::tagIndexOf(const QString &name) const
 {
-    for (int i = 0; i < m_layout.tags.size(); ++i) if (m_layout.tags.at(i).name == name) return i;
-    return -1;
+    return StationLayout::indexOfKey(m_layout, name);   // session 429: "906#2" is the second tag 906
 }
 
 QStringList StationLayoutWindow::selectedTags() const
@@ -2392,7 +2475,8 @@ QStringList StationLayoutWindow::selectedTags() const
     for (const QModelIndex &i : m_tables.at(0)->selectionModel()->selectedRows()) rows << i.row();
     std::sort(rows.begin(), rows.end());
     QStringList out;
-    for (int r : rows) if (r < m_layout.tags.size()) out << m_layout.tags.at(r).name;
+    const QStringList keys = StationLayout::tagKeys(m_layout);   // session 429: each row its own tag
+    for (int r : rows) if (r < keys.size()) out << keys.at(r);
     return out;
 }
 
@@ -2421,7 +2505,7 @@ void StationLayoutWindow::selectTags(const QStringList &names)
         m_tabs->setCurrentIndex(0);
     }
     m_selecting = false;
-    if (!names.isEmpty() && tagIndexOf(names.last()) >= 0 && !m_updating) emit tagSelected(names.last());
+    if (!names.isEmpty() && tagIndexOf(names.last()) >= 0 && !m_updating) emit tagSelected(StationLayout::nameOfKey(names.last()));
 }
 
 bool StationLayoutWindow::shiftTags(const QStringList &names, qint64 metres)
@@ -2455,7 +2539,7 @@ bool StationLayoutWindow::setFieldOnTags(const QStringList &names, const QString
         if (!v.contains(field)) err = tr("has no field %1").arg(field);
         v.insert(field, value);
         const QByteArray b = err.isEmpty() ? RfidTag::build(v, &err) : QByteArray();
-        if (err.isEmpty() && RfidTag::nameOf(b) != n) err = tr("would become tag %1: change ids one at a time in the Tag Builder").arg(RfidTag::nameOf(b));
+        if (err.isEmpty() && RfidTag::nameOf(b) != StationLayout::nameOfKey(n)) err = tr("would become tag %1: change ids one at a time in the Tag Builder").arg(RfidTag::nameOf(b));
         if (!err.isEmpty() || b.isEmpty()) {
             m_status->fail(tr("Nothing set: tag %1 %2").arg(n, err));
             return false;
@@ -2475,10 +2559,22 @@ bool StationLayoutWindow::deleteTags(const QStringList &names)
 {
     if (names.isEmpty()) return false;
     const StationLayout::Layout before = m_layout;
-    for (const QString &n : names) {
-        const int i = tagIndexOf(n);
-        if (i >= 0) m_layout.tags.remove(i);
-        for (StationLayout::Line &ln : m_layout.lines) ln.tags.removeAll(n);
+    // Session 429: a tag of a name listed more than once takes its own place
+    // in the lines with it (the k-th "906" goes with the k-th 906 of a line).
+    QVector<QPair<int, QString>> gone;
+    for (const QString &n : names) if (tagIndexOf(n) >= 0) gone.append({ tagIndexOf(n), n });
+    std::sort(gone.begin(), gone.end(), [](const QPair<int, QString> &a, const QPair<int, QString> &b) { return a.first > b.first; });
+    for (const auto &g : gone) {
+        const QString name = StationLayout::nameOfKey(g.second);
+        const int k = name == g.second ? 1 : g.second.mid(name.size() + 1).toInt();
+        int alone = 0;
+        for (const StationLayout::Tag &t : m_layout.tags) alone += t.name == name;
+        m_layout.tags.remove(g.first);
+        for (StationLayout::Line &ln : m_layout.lines) {
+            if (alone <= 1) { ln.tags.removeAll(name); continue; }
+            for (int j = 0, seen = 0; j < ln.tags.size(); ++j)
+                if (ln.tags.at(j) == name && ++seen == k) { ln.tags.removeAt(j); break; }
+        }
     }
     changed(tr("delete %n tag(s)", nullptr, names.size()), before);
     m_status->ok(tr("%1 tags deleted (Undo brings them back)").arg(names.size()));

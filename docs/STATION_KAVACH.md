@@ -146,9 +146,17 @@ tag 902; the layout's tags lie 9800 m back*. A tag number the layout lists
 more than once (Section_30.xlsx repeats one 5 km block three times) agrees
 when any of its tags does. Said, not corrected.
 
-The drawing places each tag name once, as the layout's own drawing does:
-a route through a tag listed more than once is drawn through one of its
-places, so it can jump from block to block; hovering it says which tags.
+Since session 429 every tag of a name the layout lists more than once is
+drawn where it is (Section_30: all three blocks). A route is drawn through
+the tags its linking distances lead to: it starts at the entry tag whose
+whole MA agrees best with the layout (S43-A900 with its MA to A904 in the
+first block, the only one holding tag 904), each next tag the one nearest
+where its distance says. A loco's MA (session 428) runs through the block
+the loco is in. Clicking, dragging, the Tag Builder, Shift, Set a field,
+Delete and Pick act on the tag clicked, not the first of its name. A signal
+whose foot tag is listed more than once: the signals sheet's k-th row for
+it at the k-th such tag when there are as many rows as tags (Section_30
+lists S50, S48, S43 once per block), else at every one.
 
 ## The station live on the drawing (session 428)
 

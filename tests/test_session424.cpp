@@ -195,14 +195,16 @@ TEST_SUITE(session424)
     CHECK(sectionRoutes(c->kavachView()) == (QStringList{ "S43-A900 DN Auto", "A900-A904 DN Auto" }),
           "the KAVACH tab, S43-A900 selected: it and the section on are drawn");
     const QPolygonF p0 = c->kavachPath(0);
-    CHECK(p0.size() == 4 && qAbs(p0[0].x() - c->xOf(166864)) < 0.5 && qAbs(p0[3].x() - c->xOf(167980)) < 0.5,
-          "along tags 18 … 900, at their own locations");
+    // Session 429: every copy of a repeated tag is drawn; the route is drawn in
+    // the block where its whole MA lies (904 is in Section_30's first block only).
+    CHECK(p0.size() == 4 && qAbs(p0[0].x() - c->xOf(156864)) < 0.5 && qAbs(p0[3].x() - c->xOf(157980)) < 0.5,
+          "along tags 18 … 900, at their own locations, in the block the MA's tag 904 is in");
     CHECK(p0.size() == 4 && qAbs(p0[1].x() - c->tagRect(QStringLiteral("906")).center().x()) < 0.5,
           "through tag 906 where it is drawn");
     const QRectF end = c->kavachMaEndRect();
     CHECK(!end.isNull() && end.contains(QPointF(c->xOf(158820), end.center().y())), "the MA's end marked at tag 904");
-    CHECK(hitSays(c, QStringLiteral("tag(s) 18, 906, 898, 900 listed more than once in the layout: each drawn at one of its places")),
-          "Section_30 lists those tags three times: hovering the route says the drawing shows one of each");
+    CHECK(hitSays(c, QStringLiteral("tag(s) 18, 906, 898, 900 listed more than once in the layout: the ones its linking distances lead to")),
+          "Section_30 lists those tags three times: hovering the route says which are drawn");
     CHECK(hitSays(c, QStringLiteral("KAVACH route S43-A900 DN Auto (selected): 0 to 1116 m"))
               && hitSays(c, QStringLiteral("KAVACH route A900-A904 DN Auto: MA section 2 of 2, 1116 to 1956 m"))
               && hitSays(c, QStringLiteral("End of the MA: MA 1956 m")),
@@ -222,7 +224,7 @@ TEST_SUITE(session424)
     CHECK(ed->currentRoute() == 1 && sectionRoutes(c->kavachView()) == (QStringList{ "S43-A900 DN Auto" })
               && c->kavachView().maText == QStringLiteral("MA 1116 m"),
           "A900 Red: one section drawn, MA 1116 m");
-    CHECK(!c->kavachMaEndRect().isNull() && c->kavachMaEndRect().contains(QPointF(c->xOf(167980), c->kavachMaEndRect().center().y())),
+    CHECK(!c->kavachMaEndRect().isNull() && c->kavachMaEndRect().contains(QPointF(c->xOf(157980), c->kavachMaEndRect().center().y())),
           "the MA's end moves to A900's foot tag");
     label = ed->findChild<QLabel *>(QStringLiteral("skeRouteLabel"));
     CHECK(label && label->text().endsWith(QStringLiteral("A900 Red: 1 section → MA 1116 m")), "the line too");
