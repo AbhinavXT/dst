@@ -65,6 +65,7 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "mergedwindow.h"
 #include "trackdiagramwindow.h"
 #include "stationlayoutwindow.h"
+#include "stationkavacheditor.h"
 #include "testcatalogwindow.h"
 #include "packetmatrixdialog.h"
 #include <QTemporaryDir>
@@ -645,6 +646,14 @@ int main(int argc, char **argv)
                         w->measureButton()->setChecked(true);
                         for (const QString &t : m) w->canvas()->measureAt(w->canvas()->tagRect(t).center());
                     }
+                }
+                // Session 423: SHOT_KAVACH=<route row>: the KAVACH tab, that route selected;
+                // SHOT_LIST=0..6 the route's table shown (Tags, SSP, ...).
+                if (!qEnvironmentVariableIsEmpty("SHOT_KAVACH")) {
+                    w->tabs()->setCurrentWidget(w->kavachEditor());
+                    w->kavachEditor()->selectRoute(qEnvironmentVariableIntValue("SHOT_KAVACH"));
+                    w->kavachEditor()->listTabs()->setCurrentIndex(qEnvironmentVariableIntValue("SHOT_LIST"));
+                    w->resize(1280, 900);
                 }
                 win = w;
             }

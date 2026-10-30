@@ -1,0 +1,718 @@
+#include "stationkavacheditor.h"
+
+#include "stationlayout.h"
+
+#include <QComboBox>
+#include <QFormLayout>
+#include <QHBoxLayout>
+#include <QHeaderView>
+#include <QLabel>
+#include <QLineEdit>
+#include <QPushButton>
+#include <QSpinBox>
+#include <QSplitter>
+#include <QStackedWidget>
+#include <QTabWidget>
+#include <QTableWidget>
+#include <QVBoxLayout>
+
+#include <algorithm>
+#include <functional>
+
+using StationKavach::Route;
+using StationKavach::Row;
+using StationKavach::Station;
+
+namespace {
+
+// The SLRP sub-packet (struct, repeat) each profile list is made into, as
+// stationkavach.cpp builds it; "class" of a speed row is worked out there.
+const char *const kListStruct[] = { "", "StaticSpeedProfile", "GradientProfile", "LCgateProfile", "TurnoutSpeed",
+                                    "TrackCondition", "TSR" };
+const char *const kListRepeat[] = { "", "speed", "grad", "lc", "to", "tc", "tsr" };
+const char *const kListTitle[] = { "Tags", "SSP", "Gradient", "LC gates", "Turnouts", "Track conditions", "TSR" };
+
+enum RouteCol { RName, REntry, RExit, RDir, RSection, RAuth, ROsSpeed, RPointsN, RPointsR, RTrack, RTins,
+                RDupDist, RAdjTins, RTin, RLocReset, RLength, RouteCols };
+
+QTableWidget *makeTable(const QStringList &headers, const QString &name, QWidget *parent)
+{
+    auto *t = new QTableWidget(0, headers.size(), parent);
+    t->setObjectName(name);
+    t->setHorizontalHeaderLabels(headers);
+    t->verticalHeader()->hide();
+    t->setSelectionBehavior(QAbstractItemView::SelectRows);
+    t->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    t->horizontalHeader()->setSectionResizeMode(QHeaderView::Interactive);
+    t->horizontalHeader()->setStretchLastSection(true);
+    t->setEditTriggers(QAbstractItemView::DoubleClicked | QAbstractItemView::EditKeyPressed | QAbstractItemView::AnyKeyPressed);
+    return t;
+}
+
+QTableWidgetItem *item(const QString &s) { return new QTableWidgetItem(s); }
+QTableWidgetItem *readOnly(const QString &s)
+{
+    auto *i = new QTableWidgetItem(s);
+    i->setFlags(i->flags() & ~Qt::ItemIsEditable);
+    return i;
+}
+
+QString cell(const QTableWidget *t, int r, int c) { return t->item(r, c) ? t->item(r, c)->text().trimmed() : QString(); }
+
+// A whole number, or false. Empty is 0 when `emptyOk`.
+bool number(const QString &s, qint64 *v, bool emptyOk = true)
+{
+    if (s.isEmpty()) { *v = 0; return emptyOk; }
+    bool ok = false;
+    *v = s.toLongLong(&ok);
+    return ok;
+}
+
+QStringList names(const QString &s)
+{
+    QStringList out;
+    for (const QString &x : s.split(QLatin1Char(','))) if (!x.trimmed().isEmpty()) out << x.trimmed();
+    return out;
+}
+
+QString join(const QStringList &l) { return l.join(QStringLiteral(", ")); }
+
+QPushButton *button(const QString &text, const QString &name, QWidget *parent)
+{
+    auto *b = new QPushButton(text, parent);
+    b->setObjectName(name);
+    return b;
+}
+
+// A table with a row of buttons under it.
+QWidget *withButtons(QWidget *table, const QVector<QPushButton *> &buttons, QWidget *parent)
+{
+    auto *w = new QWidget(parent);
+    auto *v = new QVBoxLayout(w);
+    v->setContentsMargins(0, 0, 0, 0);
+    v->addWidget(table, 1);
+    auto *h = new QHBoxLayout;
+    for (QPushButton *b : buttons) h->addWidget(b);
+    h->addStretch(1);
+    v->addLayout(h);
+    return w;
+}
+
+QList<int> selectedRows(const QTableWidget *t)
+{
+    QList<int> rows;
+    for (const QModelIndex &i : t->selectionModel()->selectedRows()) rows << i.row();
+    if (rows.isEmpty() && t->currentRow() >= 0) rows << t->currentRow();
+    std::sort(rows.begin(), rows.end(), std::greater<int>());
+    return rows;
+}
+
+}  // namespace
+
+StationKavachEditor::StationKavachEditor(QWidget *parent) : QWidget(parent)
+{
+    setObjectName(QStringLiteral("stationKavachEditor"));
+    auto *lay = new QVBoxLayout(this);
+    lay->setContentsMargins(4, 4, 4, 4);
+    m_stack = new QStackedWidget(this);
+    lay->addWidget(m_stack);
+
+    // Page 0: no KAVACH data yet.
+    auto *empty = new QWidget(m_stack);
+    auto *ev = new QVBoxLayout(empty);
+    auto *el = new QLabel(tr("No KAVACH data in this layout. With it, Packet Maker ▸ Send log can answer a loco as "
+                             "this station would (docs/STATION_KAVACH.md): its signals, and its routes as the rows "
+                             "of a Table of Control."), empty);
+    el->setWordWrap(true);
+    m_start = button(tr("Start KAVACH data from this layout"), QStringLiteral("skeStart"), empty);
+    m_start->setToolTip(tr("The layout's station id and its signals (at Red); the routes are added here"));
+    ev->addWidget(el);
+    auto *eh = new QHBoxLayout;
+    eh->addWidget(m_start);
+    eh->addStretch(1);
+    ev->addLayout(eh);
+    ev->addStretch(1);
+    m_stack->addWidget(empty);
+    connect(m_start, &QPushButton::clicked, this, [this]() {
+        static const StationLayout::Layout none;
+        emit edited(seedFrom(m_seedFrom ? *m_seedFrom : none), tr("start KAVACH data"));
+    });
+
+    // Page 1: the editor.
+    auto *page = new QWidget(m_stack);
+    auto *pv = new QVBoxLayout(page);
+    pv->setContentsMargins(0, 0, 0, 0);
+    auto *top = new QHBoxLayout;
+    m_stationId = new QSpinBox(page);
+    m_stationId->setObjectName(QStringLiteral("skeStationId"));
+    m_stationId->setRange(0, 65535);
+    m_stnVersion = new QSpinBox(page);
+    m_stnVersion->setObjectName(QStringLiteral("skeStnVersion"));
+    m_stnVersion->setRange(0, 7);
+    m_sections = new QLineEdit(page);
+    m_sections->setObjectName(QStringLiteral("skeSections"));
+    m_sections->setPlaceholderText(tr("Annexure-I: Red 1, Yellow 2, Double Yellow 3, Green 4"));
+    m_sections->setToolTip(tr("MA sections by aspect code, where they differ from Annexure-I's, e.g. \"11=3, 10=2\" "
+                              "(Green 3, Double Yellow 2). Empty: Red, calling-on and stop board 1; every Yellow 2; "
+                              "Double Yellow 3; Green and AG 4"));
+    auto *remove = button(tr("Remove KAVACH data"), QStringLiteral("skeRemove"), page);
+    top->addWidget(new QLabel(tr("Station id"), page));
+    top->addWidget(m_stationId);
+    top->addWidget(new QLabel(tr("STN version"), page));
+    top->addWidget(m_stnVersion);
+    top->addWidget(new QLabel(tr("MA sections by aspect"), page));
+    top->addWidget(m_sections, 1);
+    top->addWidget(remove);
+    pv->addLayout(top);
+    connect(remove, &QPushButton::clicked, this, [this]() { emit edited(QJsonObject(), tr("remove KAVACH data")); });
+    connect(m_stationId, &QSpinBox::editingFinished, this, &StationKavachEditor::onTopEdited);
+    connect(m_stnVersion, &QSpinBox::editingFinished, this, &StationKavachEditor::onTopEdited);
+    connect(m_sections, &QLineEdit::editingFinished, this, &StationKavachEditor::onTopEdited);
+
+    // Signals beside the routes, the selected route's tables under both.
+    auto *split = new QSplitter(Qt::Vertical, page);
+    auto *upper = new QSplitter(Qt::Horizontal, split);
+    m_signals = makeTable({ tr("Signal"), tr("Foot tag"), tr("Signal info"), tr("Aspect at start") },
+                          QStringLiteral("skeSignals"), upper);
+    m_signals->horizontalHeader()->setStretchLastSection(false);
+    m_signals->horizontalHeaderItem(2)->setToolTip(tr("CUR_SIG_INFO (17 bits), sent when it is the signal ahead"));
+    m_signals->horizontalHeaderItem(3)->setToolTip(tr("The aspect the file starts with; Packet Maker ▸ Station… "
+                                                      "changes it while answering"));
+    auto *addSig = button(tr("Add signal"), QStringLiteral("skeAddSignal"), upper);
+    auto *delSig = button(tr("Delete"), QStringLiteral("skeDeleteSignals"), upper);
+    upper->addWidget(withButtons(m_signals, { addSig, delSig }, upper));
+    connect(addSig, &QPushButton::clicked, this, &StationKavachEditor::addSignal);
+    connect(delSig, &QPushButton::clicked, this, &StationKavachEditor::deleteSignals);
+    connect(m_signals, &QTableWidget::cellChanged, this, [this]() { if (!m_filling) onSignalsEdited(); });
+
+    m_routes = makeTable({ tr("Route"), tr("Entry"), tr("Exit"), tr("Direction"), tr("Section"), tr("Authority"),
+                           tr("OS speed"), tr("Points normal"), tr("Points reverse"), tr("Track circuits"), tr("TINs"),
+                           tr("Dup tag dist"), tr("Adjacent TINs"), tr("TIN"), tr("Loc reset"), tr("Length") },
+                         QStringLiteral("skeRoutes"), upper);
+    const QString list = tr("names separated by commas");
+    m_routes->horizontalHeaderItem(RName)->setToolTip(tr("One row of the Table of Control: entry signal → exit signal"));
+    m_routes->horizontalHeaderItem(REntry)->setToolTip(tr("The entry signal's name (Signals above)"));
+    m_routes->horizontalHeaderItem(RExit)->setToolTip(tr("The exit signal's name: the signal ahead"));
+    m_routes->horizontalHeaderItem(ROsSpeed)->setToolTip(tr("AUTHORIZED_SPEED under OS authority (calling-on)"));
+    for (int c : { RPointsN, RPointsR, RTrack, RTins })
+        m_routes->horizontalHeaderItem(c)->setToolTip(tr("What the route needs (the live state is checked against it): %1").arg(list));
+    m_routes->horizontalHeaderItem(RDupDist)->setToolTip(tr("TagLinking DIST_DUP_TAG, m"));
+    m_routes->horizontalHeaderItem(RAdjTins)->setToolTip(tr("TagLinking adjacent line TINs: numbers separated by commas"));
+    m_routes->horizontalHeaderItem(RLocReset)->setToolTip(tr("Absolute location reset: \"start, direction, correction\" "
+                                                             "(start from the entry signal, m); empty for none"));
+    m_routes->horizontalHeaderItem(RLength)->setToolTip(tr("Entry foot tag to exit foot tag: the tags' linking distances added"));
+    auto *addRoute = button(tr("Add route"), QStringLiteral("skeAddRoute"), upper);
+    auto *copyRoute = button(tr("Copy route"), QStringLiteral("skeCopyRoute"), upper);
+    copyRoute->setToolTip(tr("A copy of the selected route, its tags and profile: a start for a loop or a parallel route"));
+    auto *delRoute = button(tr("Delete"), QStringLiteral("skeDeleteRoutes"), upper);
+    upper->addWidget(withButtons(m_routes, { addRoute, copyRoute, delRoute }, upper));
+    upper->setStretchFactor(0, 3);
+    upper->setStretchFactor(1, 5);
+    split->addWidget(upper);
+    connect(addRoute, &QPushButton::clicked, this, [this]() { this->addRoute(false); });
+    connect(copyRoute, &QPushButton::clicked, this, [this]() { this->addRoute(true); });
+    connect(delRoute, &QPushButton::clicked, this, &StationKavachEditor::deleteRoutes);
+    connect(m_routes, &QTableWidget::cellChanged, this, [this]() { if (!m_filling) onRoutesEdited(); });
+    connect(m_routes, &QTableWidget::currentCellChanged, this, [this](int row) {
+        if (m_filling || row == m_route) return;
+        m_route = row;
+        fillRoute();
+    });
+
+    auto *detail = new QWidget(split);
+    auto *dv = new QVBoxLayout(detail);
+    dv->setContentsMargins(0, 0, 0, 0);
+    m_routeLabel = new QLabel(detail);
+    m_routeLabel->setObjectName(QStringLiteral("skeRouteLabel"));
+    dv->addWidget(m_routeLabel);
+    m_listTabs = new QTabWidget(detail);
+    m_listTabs->setUsesScrollButtons(true);
+    for (int l = 0; l < ListCount; ++l) {
+        m_listCols[l] = listColumns(List(l));
+        QStringList headers = m_listCols[l];
+        if (l == Tags) headers = QStringList{ tr("From previous (m)"), tr("Tag"), tr("Duplicate dir"), tr("From entry (m)") };
+        m_lists[l] = makeTable(headers, QStringLiteral("skeList%1").arg(l), m_listTabs);
+        m_lists[l]->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+        m_listTabs->addTab(m_lists[l], tr(kListTitle[l]));
+        connect(m_lists[l], &QTableWidget::cellChanged, this, [this, l]() { if (!m_filling) onListEdited(List(l)); });
+    }
+    m_lists[Tags]->horizontalHeaderItem(0)->setToolTip(tr("The linking distance from the tag before; the first tag "
+                                                          "(the entry signal's foot tag) is at 0"));
+    m_lists[Tags]->horizontalHeaderItem(2)->setToolTip(tr("TagLinking dup_dir of this tag"));
+    // The profile tables' headers: the schema's field, its width and its codes.
+    for (int l = Ssp; l < ListCount; ++l) {
+        const Schema::StructLayout sl = m_builder.encoder().structLayout(QLatin1String(kListStruct[l]));
+        for (const Schema::RepeatInfo &ri : sl.repeats) {
+            if (ri.name != QLatin1String(kListRepeat[l])) continue;
+            m_lists[l]->setToolTip(tr("%1 %2 rows: up to %3. Distances from the route's entry signal; an empty cell "
+                                      "is a field not given").arg(QLatin1String(kListStruct[l]), ri.name).arg(ri.cmax));
+            for (const Schema::FieldInfo &f : ri.fields) {
+                const int c = m_listCols[l].indexOf(f.name);
+                if (c < 0) continue;
+                QString tip = tr("%1: %2 bits").arg(f.name).arg(f.bits) + (f.unit.isEmpty() ? QString() : QStringLiteral(", ") + f.unit);
+                if (!f.when.isEmpty()) tip += tr("; given when %1").arg(f.when);
+                if (!f.enumName.isEmpty()) {
+                    QStringList codes;
+                    for (const auto &c2 : m_builder.encoder().enumChoices(f.enumName)) codes << c2.second;
+                    if (!codes.isEmpty()) tip += QStringLiteral("\n") + codes.mid(0, 24).join(QStringLiteral("\n"))
+                                                 + (codes.size() > 24 ? QStringLiteral("\n…") : QString());
+                }
+                m_lists[l]->horizontalHeaderItem(c)->setToolTip(tip);
+            }
+        }
+    }
+    m_lists[Ssp]->horizontalHeaderItem(0)->setToolTip(m_lists[Ssp]->horizontalHeaderItem(0)->toolTip()
+                                                      + tr("\nSegment lengths: the rows add up to the route's length"));
+    m_lists[Gradient]->horizontalHeaderItem(0)->setToolTip(m_lists[Gradient]->horizontalHeaderItem(0)->toolTip()
+                                                           + tr("\nSegment lengths: the rows add up to the route's length"));
+    auto *addRow = button(tr("Add row"), QStringLiteral("skeAddRow"), detail);
+    auto *delRow = button(tr("Delete rows"), QStringLiteral("skeDeleteRows"), detail);
+    dv->addWidget(withButtons(m_listTabs, { addRow, delRow }, detail), 1);
+    connect(addRow, &QPushButton::clicked, this, &StationKavachEditor::addListRow);
+    connect(delRow, &QPushButton::clicked, this, &StationKavachEditor::deleteListRows);
+    split->addWidget(detail);
+    split->setStretchFactor(0, 1);
+    split->setStretchFactor(1, 1);
+    pv->addWidget(split, 1);
+    m_stack->addWidget(page);
+    m_stack->setCurrentIndex(0);
+}
+
+QStringList StationKavachEditor::listColumns(List l) const
+{
+    if (l == Tags) return { QStringLiteral("dist"), QStringLiteral("tag"), QStringLiteral("dup_dir") };
+    QStringList out;
+    const Schema::StructLayout sl = m_builder.encoder().structLayout(QLatin1String(kListStruct[l]));
+    for (const Schema::RepeatInfo &ri : sl.repeats)
+        if (ri.name == QLatin1String(kListRepeat[l]))
+            for (const Schema::FieldInfo &f : ri.fields)
+                // A speed row's class follows from u or a, b, c (stationkavach.cpp).
+                if (!f.isPad && !((l == Ssp || l == Tsr) && f.name == QLatin1String("class"))) out << f.name;
+    return out;
+}
+
+QVector<Row> *StationKavachEditor::listOf(Route &r, List l) const
+{
+    switch (l) {
+    case Ssp: return &r.ssp;
+    case Gradient: return &r.gradient;
+    case Lc: return &r.lc;
+    case Turnouts: return &r.turnouts;
+    case TrackConditions: return &r.trackConditions;
+    case Tsr: return &r.tsr;
+    default: return nullptr;
+    }
+}
+
+QJsonObject StationKavachEditor::seedFrom(const StationLayout::Layout &l)
+{
+    Station s;
+    s.stationId = l.stations.isEmpty() ? 0 : int(l.stations.first().id);
+    for (const StationLayout::Signal &g : l.signalList) {
+        if (g.name.trimmed().isEmpty()) continue;
+        StationKavach::Signal k;
+        k.name = g.name.trimmed();
+        QString foot = g.footTag.trimmed();
+        if (foot.endsWith(QLatin1Char('D'), Qt::CaseInsensitive)) foot.chop(1);
+        k.footTag = foot.toInt();
+        k.aspect = 1;
+        s.signalList << k;
+    }
+    return StationKavach::toJson(s);
+}
+
+void StationKavachEditor::setKavach(const QJsonObject &kavach)
+{
+    m_has = !kavach.isEmpty();
+    m_station = Station();
+    if (m_has) StationKavach::fromJson(kavach, &m_station);   // the window's Checks say what it could not read
+    m_stack->setCurrentIndex(m_has ? 1 : 0);
+    fill();
+}
+
+int StationKavachEditor::currentRoute() const { return m_route; }
+
+void StationKavachEditor::selectRoute(int i)
+{
+    m_route = i >= 0 && i < m_station.routes.size() ? i : -1;
+    m_filling = true;
+    if (m_route >= 0) m_routes->selectRow(m_route); else m_routes->clearSelection();
+    m_filling = false;
+    fillRoute();
+}
+
+QComboBox *StationKavachEditor::enumCell(QTableWidget *t, int row, int col, const QString &enumName, qint64 value,
+                                         const std::function<void()> &onChange)
+{
+    auto *c = new QComboBox(t);
+    for (const auto &ch : m_builder.encoder().enumChoices(enumName)) c->addItem(ch.second, ch.first);
+    if (c->findData(value) < 0) c->addItem(QString::number(value), value);
+    c->setCurrentIndex(c->findData(value));
+    t->setCellWidget(row, col, c);
+    connect(c, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, onChange]() {
+        if (!m_filling) onChange();
+    });
+    return c;
+}
+
+void StationKavachEditor::fill()
+{
+    m_filling = true;
+    m_stationId->setValue(m_station.stationId);
+    m_stnVersion->setValue(m_station.stnVersion);
+    QList<int> aspects = m_station.sections.keys();
+    std::sort(aspects.begin(), aspects.end());
+    QStringList sec;
+    for (int a : aspects) sec << QStringLiteral("%1=%2").arg(a).arg(m_station.sections.value(a));
+    m_sections->setText(join(sec));
+
+    m_signals->setRowCount(m_station.signalList.size());
+    for (int i = 0; i < m_station.signalList.size(); ++i) {
+        const StationKavach::Signal &g = m_station.signalList[i];
+        m_signals->setItem(i, 0, item(g.name));
+        m_signals->setItem(i, 1, item(QString::number(g.footTag)));
+        m_signals->setItem(i, 2, item(QString::number(g.sigInfo)));
+        enumCell(m_signals, i, 3, QStringLiteral("sigAspect"), g.aspect, [this]() { onSignalsEdited(); });
+    }
+    m_signals->resizeColumnsToContents();
+
+    m_routes->setRowCount(m_station.routes.size());
+    for (int i = 0; i < m_station.routes.size(); ++i) {
+        const Route &r = m_station.routes[i];
+        auto changed = [this]() { onRoutesEdited(); };
+        m_routes->setItem(i, RName, item(r.name));
+        m_routes->setItem(i, REntry, item(r.entry));
+        m_routes->setItem(i, RExit, item(r.exit));
+        enumCell(m_routes, i, RDir, QStringLiteral("pktDir"), r.pktDir, changed);
+        enumCell(m_routes, i, RSection, QStringLiteral("secType"), r.sectionType, changed);
+        enumCell(m_routes, i, RAuth, QStringLiteral("authType"), r.authority, changed);
+        enumCell(m_routes, i, ROsSpeed, QStringLiteral("speed6"), r.osSpeed, changed);
+        m_routes->setItem(i, RPointsN, item(join(r.pointsNormal)));
+        m_routes->setItem(i, RPointsR, item(join(r.pointsReverse)));
+        m_routes->setItem(i, RTrack, item(join(r.trackCircuits)));
+        m_routes->setItem(i, RTins, item(join(r.tins)));
+        m_routes->setItem(i, RDupDist, item(QString::number(r.distDupTag)));
+        QStringList adj;
+        for (int t : r.adjTins) adj << QString::number(t);
+        m_routes->setItem(i, RAdjTins, item(join(adj)));
+        m_routes->setItem(i, RTin, item(QString::number(r.tin)));
+        m_routes->setItem(i, RLocReset, item(r.locReset ? QStringLiteral("%1, %2, %3").arg(r.locResetStart)
+                                                              .arg(r.adjLocoDir).arg(r.absLocCorrection)
+                                                        : QString()));
+        m_routes->setItem(i, RLength, readOnly(tr("%1 m").arg(r.length())));
+    }
+    m_routes->resizeColumnsToContents();
+    if (m_route >= m_station.routes.size()) m_route = m_station.routes.size() - 1;
+    if (m_route < 0 && !m_station.routes.isEmpty()) m_route = 0;
+    if (m_route >= 0) m_routes->selectRow(m_route);
+    m_filling = false;
+    fillRoute();
+}
+
+void StationKavachEditor::fillRoute()
+{
+    m_filling = true;
+    const bool any = m_route >= 0 && m_route < m_station.routes.size();
+    m_listTabs->setEnabled(any);
+    if (!any) {
+        m_routeLabel->setText(tr("Select a route to edit its tags and track profile."));
+        for (QTableWidget *t : m_lists) t->setRowCount(0);
+        for (int l = 0; l < ListCount; ++l) m_listTabs->setTabText(l, tr(kListTitle[l]));
+        m_filling = false;
+        return;
+    }
+    const Route &r = m_station.routes[m_route];
+    m_routeLabel->setText(tr("Route %1: %2 → %3, %4 m").arg(r.name, r.entry, r.exit).arg(r.length()));
+
+    QTableWidget *tags = m_lists[Tags];
+    tags->setRowCount(r.tags.size());
+    int at = 0;
+    for (int i = 0; i < r.tags.size(); ++i) {
+        if (i) at += r.tags[i].dist;
+        tags->setItem(i, 0, item(QString::number(r.tags[i].dist)));
+        tags->setItem(i, 1, item(QString::number(r.tags[i].tag)));
+        tags->setItem(i, 2, item(QString::number(r.tags[i].dupDir)));
+        tags->setItem(i, 3, readOnly(QString::number(at)));
+    }
+    m_listTabs->setTabText(Tags, tr("Tags (%1)").arg(r.tags.size()));
+
+    for (int l = Ssp; l < ListCount; ++l) {
+        Route copy = r;
+        const QVector<Row> rows = *listOf(copy, List(l));
+        // Keys a row holds that the schema's columns lack stay, as columns of their own.
+        QStringList cols = m_listCols[l];
+        for (const Row &x : rows)
+            for (const QString &k : x.keys())
+                if (!cols.contains(k) && !((l == Ssp || l == Tsr) && k == QLatin1String("class"))) cols << k;
+        QTableWidget *t = m_lists[l];
+        t->setColumnCount(cols.size());
+        for (int c = m_listCols[l].size(); c < cols.size(); ++c) t->setHorizontalHeaderItem(c, new QTableWidgetItem(cols[c]));
+        t->setRowCount(rows.size());
+        for (int i = 0; i < rows.size(); ++i)
+            for (int c = 0; c < cols.size(); ++c)
+                t->setItem(i, c, item(rows[i].contains(cols[c]) ? QString::number(rows[i].value(cols[c])) : QString()));
+        t->resizeColumnsToContents();
+        QString title = tr("%1 (%2)").arg(tr(kListTitle[l])).arg(rows.size());
+        if ((l == Ssp || l == Gradient) && !rows.isEmpty()) {
+            qint64 sum = 0;
+            for (const Row &x : rows) sum += x.value(QStringLiteral("d"));
+            if (sum != r.length()) title = tr("%1 (%2, %3 of %4 m)").arg(tr(kListTitle[l])).arg(rows.size()).arg(sum).arg(r.length());
+        }
+        m_listTabs->setTabText(l, title);
+    }
+    m_filling = false;
+}
+
+void StationKavachEditor::commit(const Station &next, const QString &label)
+{
+    m_station = next;
+    emit edited(StationKavach::toJson(next), label);
+}
+
+void StationKavachEditor::refuse(const QString &why)
+{
+    emit refused(why);
+    fill();
+}
+
+void StationKavachEditor::onTopEdited()
+{
+    if (m_filling || !m_has) return;
+    Station next = m_station;
+    next.stationId = m_stationId->value();
+    next.stnVersion = m_stnVersion->value();
+    next.sections.clear();
+    for (const QString &pair : names(m_sections->text())) {
+        const QStringList kv = pair.split(QLatin1Char('='));
+        qint64 a = 0, n = 0;
+        if (kv.size() != 2 || !number(kv[0].trimmed(), &a, false) || !number(kv[1].trimmed(), &n, false) || n < 1)
+            return refuse(tr("MA sections by aspect: \"%1\" is not aspect=sections (e.g. 11=3)").arg(pair));
+        next.sections.insert(int(a), int(n));
+    }
+    if (next.stationId == m_station.stationId && next.stnVersion == m_station.stnVersion
+        && next.sections == m_station.sections)
+        return;
+    commit(next, tr("edit KAVACH station"));
+}
+
+void StationKavachEditor::onSignalsEdited()
+{
+    Station next = m_station;
+    next.signalList.clear();
+    for (int r = 0; r < m_signals->rowCount(); ++r) {
+        StationKavach::Signal g;
+        g.name = cell(m_signals, r, 0);
+        qint64 foot = 0, info = 0;
+        if (g.name.isEmpty()) return refuse(tr("signal row %1 has no name").arg(r + 1));
+        if (!number(cell(m_signals, r, 1), &foot)) return refuse(tr("signal %1: the foot tag is a number").arg(g.name));
+        if (!number(cell(m_signals, r, 2), &info)) return refuse(tr("signal %1: the signal info is a number").arg(g.name));
+        for (const StationKavach::Signal &o : next.signalList)
+            if (o.name == g.name) return refuse(tr("two signals are called %1").arg(g.name));
+        g.footTag = int(foot);
+        g.sigInfo = info;
+        auto *c = qobject_cast<QComboBox *>(m_signals->cellWidget(r, 3));
+        g.aspect = c ? int(c->currentData().toLongLong()) : 1;
+        next.signalList << g;
+    }
+    // A renamed signal: the routes naming it follow.
+    for (int i = 0; i < qMin(m_station.signalList.size(), next.signalList.size()); ++i) {
+        const QString was = m_station.signalList[i].name, now = next.signalList[i].name;
+        if (was == now) continue;
+        for (Route &r : next.routes) {
+            if (r.entry == was) r.entry = now;
+            if (r.exit == was) r.exit = now;
+        }
+    }
+    commit(next, tr("edit KAVACH signals"));
+}
+
+void StationKavachEditor::onRoutesEdited()
+{
+    Station next = m_station;
+    for (int r = 0; r < m_routes->rowCount() && r < next.routes.size(); ++r) {
+        Route &x = next.routes[r];
+        x.name = cell(m_routes, r, RName);
+        if (x.name.isEmpty()) return refuse(tr("route row %1 has no name").arg(r + 1));
+        for (int o = 0; o < r; ++o)
+            if (next.routes[o].name == x.name) return refuse(tr("two routes are called %1").arg(x.name));
+        x.entry = cell(m_routes, r, REntry);
+        x.exit = cell(m_routes, r, RExit);
+        auto combo = [this, r](int col, int def) {
+            auto *c = qobject_cast<QComboBox *>(m_routes->cellWidget(r, col));
+            return c ? int(c->currentData().toLongLong()) : def;
+        };
+        x.pktDir = combo(RDir, x.pktDir);
+        x.sectionType = combo(RSection, x.sectionType);
+        x.authority = combo(RAuth, x.authority);
+        x.osSpeed = combo(ROsSpeed, x.osSpeed);
+        x.pointsNormal = names(cell(m_routes, r, RPointsN));
+        x.pointsReverse = names(cell(m_routes, r, RPointsR));
+        x.trackCircuits = names(cell(m_routes, r, RTrack));
+        x.tins = names(cell(m_routes, r, RTins));
+        qint64 v = 0;
+        if (!number(cell(m_routes, r, RDupDist), &v)) return refuse(tr("route %1: the duplicate tag distance is a number").arg(x.name));
+        x.distDupTag = int(v);
+        x.adjTins.clear();
+        for (const QString &t : names(cell(m_routes, r, RAdjTins))) {
+            if (!number(t, &v, false)) return refuse(tr("route %1: adjacent TIN \"%2\" is not a number").arg(x.name, t));
+            x.adjTins << int(v);
+        }
+        if (!number(cell(m_routes, r, RTin), &v)) return refuse(tr("route %1: the TIN is a number").arg(x.name));
+        x.tin = int(v);
+        const QStringList lr = names(cell(m_routes, r, RLocReset));
+        x.locReset = !lr.isEmpty();
+        if (x.locReset) {
+            qint64 a = 0, b = 0, c = 0;
+            if (lr.size() != 3 || !number(lr[0], &a, false) || !number(lr[1], &b, false) || !number(lr[2], &c, false))
+                return refuse(tr("route %1: the location reset is \"start, direction, correction\", three numbers").arg(x.name));
+            x.locResetStart = int(a);
+            x.adjLocoDir = int(b);
+            x.absLocCorrection = c;
+        }
+    }
+    commit(next, tr("edit KAVACH routes"));
+}
+
+void StationKavachEditor::onListEdited(List l)
+{
+    if (m_route < 0 || m_route >= m_station.routes.size()) return;
+    Station next = m_station;
+    Route &r = next.routes[m_route];
+    QTableWidget *t = m_lists[l];
+    if (l == Tags) {
+        QVector<StationKavach::RouteTag> tags;
+        for (int i = 0; i < t->rowCount(); ++i) {
+            qint64 d = 0, tag = 0, dup = 0;
+            if (!number(cell(t, i, 0), &d) || !number(cell(t, i, 1), &tag) || !number(cell(t, i, 2), &dup))
+                return refuse(tr("route %1, tag row %2: distance, tag and duplicate dir are numbers").arg(r.name).arg(i + 1));
+            tags << StationKavach::RouteTag{ int(d), int(tag), int(dup) };
+        }
+        if (tags.isEmpty()) return refuse(tr("route %1 needs at least its entry signal's foot tag").arg(r.name));
+        r.tags = tags;
+        return commit(next, tr("edit KAVACH route %1 tags").arg(r.name));
+    }
+    QVector<Row> rows;
+    for (int i = 0; i < t->rowCount(); ++i) {
+        Row x;
+        for (int c = 0; c < t->columnCount(); ++c) {
+            const QString s = cell(t, i, c);
+            if (s.isEmpty()) continue;
+            qint64 v = 0;
+            const QString col = t->horizontalHeaderItem(c) ? t->horizontalHeaderItem(c)->text() : QString();
+            if (!number(s, &v, false))
+                return refuse(tr("route %1, %2 row %3: %4 = \"%5\" is not a number")
+                                  .arg(r.name, tr(kListTitle[l])).arg(i + 1).arg(col, s));
+            x.insert(col, v);
+        }
+        rows << x;
+    }
+    *listOf(r, l) = rows;
+    commit(next, tr("edit KAVACH route %1 %2").arg(r.name, tr(kListTitle[l]).toLower()));
+}
+
+void StationKavachEditor::addSignal()
+{
+    Station next = m_station;
+    QString name;
+    for (int n = next.signalList.size() + 1;; ++n) {
+        name = tr("S%1").arg(n);
+        if (next.signalIndex(name) < 0) break;
+    }
+    StationKavach::Signal g;
+    g.name = name;
+    const int at = m_signals->currentRow() >= 0 ? m_signals->currentRow() + 1 : next.signalList.size();
+    next.signalList.insert(qBound(0, at, next.signalList.size()), g);
+    commit(next, tr("add KAVACH signal"));
+}
+
+void StationKavachEditor::deleteSignals()
+{
+    Station next = m_station;
+    const QList<int> rows = selectedRows(m_signals);
+    if (rows.isEmpty()) return;
+    for (int r : rows) if (r < next.signalList.size()) next.signalList.remove(r);
+    commit(next, tr("delete KAVACH signal(s)"));
+}
+
+void StationKavachEditor::addRoute(bool copySelected)
+{
+    Station next = m_station;
+    Route r;
+    if (copySelected && m_route >= 0 && m_route < next.routes.size()) {
+        r = next.routes[m_route];
+        r.name = tr("%1 (copy)").arg(r.name);
+    } else {
+        // From the selected route's exit (the next section on), or the first signal.
+        const Route *from = m_route >= 0 && m_route < next.routes.size() ? &next.routes[m_route] : nullptr;
+        r.entry = from ? from->exit : next.signalList.isEmpty() ? QString() : next.signalList.first().name;
+        if (from) r.pktDir = from->pktDir;
+        const int e = next.signalIndex(r.entry);
+        r.tags << StationKavach::RouteTag{ 0, e >= 0 ? next.signalList[e].footTag : 0, 0 };
+        r.name = r.entry.isEmpty() ? tr("new route") : tr("%1-").arg(r.entry);
+    }
+    QString name = r.name;
+    for (int n = 2;; ++n) {
+        bool used = false;
+        for (const Route &o : next.routes) used = used || o.name == name;
+        if (!used) break;
+        name = QStringLiteral("%1 %2").arg(r.name).arg(n);
+    }
+    r.name = name;
+    const int at = m_route >= 0 ? m_route + 1 : next.routes.size();
+    next.routes.insert(qBound(0, at, next.routes.size()), r);
+    m_route = qBound(0, at, next.routes.size() - 1);
+    commit(next, copySelected ? tr("copy KAVACH route") : tr("add KAVACH route"));
+}
+
+void StationKavachEditor::deleteRoutes()
+{
+    Station next = m_station;
+    const QList<int> rows = selectedRows(m_routes);
+    if (rows.isEmpty()) return;
+    for (int r : rows) if (r < next.routes.size()) next.routes.remove(r);
+    m_route = qMin(m_route, next.routes.size() - 1);
+    commit(next, tr("delete KAVACH route(s)"));
+}
+
+void StationKavachEditor::addListRow()
+{
+    if (m_route < 0 || m_route >= m_station.routes.size()) return;
+    const List l = List(m_listTabs->currentIndex());
+    Station next = m_station;
+    Route &r = next.routes[m_route];
+    QTableWidget *t = m_lists[l];
+    if (l == Tags) {
+        const int at = qBound(1, t->currentRow() >= 0 ? t->currentRow() + 1 : r.tags.size(), r.tags.size());
+        r.tags.insert(at, StationKavach::RouteTag{ 0, 0, 0 });
+        return commit(next, tr("add KAVACH route %1 tag").arg(r.name));
+    }
+    QVector<Row> &rows = *listOf(r, l);
+    const int cur = t->currentRow();
+    const int at = cur >= 0 ? cur + 1 : rows.size();
+    Row x = cur >= 0 && cur < rows.size() ? rows[cur] : Row();   // a copy of the row selected: change what differs
+    // A first row: every field 0, a speed as universal (u) rather than by class (a, b, c).
+    const QStringList byClass{ QStringLiteral("a"), QStringLiteral("b"), QStringLiteral("c") };
+    if (x.isEmpty())
+        for (const QString &c : m_listCols[l])
+            if (!((l == Ssp || l == Tsr) && byClass.contains(c))) x.insert(c, 0);
+    rows.insert(qBound(0, at, rows.size()), x);
+    commit(next, tr("add KAVACH route %1 %2 row").arg(r.name, tr(kListTitle[l]).toLower()));
+}
+
+void StationKavachEditor::deleteListRows()
+{
+    if (m_route < 0 || m_route >= m_station.routes.size()) return;
+    const List l = List(m_listTabs->currentIndex());
+    Station next = m_station;
+    Route &r = next.routes[m_route];
+    const QList<int> rows = selectedRows(m_lists[l]);
+    if (rows.isEmpty()) return;
+    if (l == Tags) {
+        for (int i : rows) if (i < r.tags.size()) r.tags.remove(i);
+        if (r.tags.isEmpty()) return refuse(tr("route %1 needs at least its entry signal's foot tag").arg(r.name));
+        return commit(next, tr("delete KAVACH route %1 tag(s)").arg(r.name));
+    }
+    QVector<Row> &list = *listOf(r, l);
+    for (int i : rows) if (i < list.size()) list.remove(i);
+    commit(next, tr("delete KAVACH route %1 %2 row(s)").arg(r.name, tr(kListTitle[l]).toLower()));
+}

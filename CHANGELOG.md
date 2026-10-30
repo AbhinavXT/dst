@@ -10,6 +10,73 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-423"></a>
+## Session 423 — the Stationary KAVACH data edited in Station Layout
+
+Abhinav 2026-10-30, after patch 422: *"Both"* (the editor and the
+Table-of-Control import). Asked: there is no Table-of-Control sheet to read
+in the repo or on this machine, and guessing its columns would be guessing.
+Answered: **the editor only for now**; the import waits for a real sheet.
+
+**What the operator sees.** Tools ▸ Station Layout has a **KAVACH** tab
+(*KAVACH (3 routes)*). A layout without KAVACH data offers **Start KAVACH
+data from this layout**: its station id, its signals (name, foot tag) at
+Red, no routes. With data:
+- the station id, STN version and *MA sections by aspect* (`11=3`: where
+  they differ from Annexure-I's); **Remove KAVACH data**;
+- **Signals** (name, foot tag, signal info, the aspect it starts with)
+  beside **Routes** (one Table-of-Control row each: entry, exit, direction,
+  section, authority and OS speed as the schema's code lists, points, track
+  circuits and TINs as names, duplicate-tag distance, adjacent TINs, TIN,
+  location reset as `start, direction, correction`, the length worked out).
+  **Add route** starts at the selected route's exit (the next section on);
+  **Copy route** copies one with its tags and profile;
+- under them, the selected route's **Tags** (linking distance, tag,
+  duplicate dir, the distance from the entry worked out), **SSP**,
+  **Gradient**, **LC gates**, **Turnouts**, **Track conditions**, **TSR**.
+  Their columns are the SLRP sub-packet's own fields from the active
+  schema (the heading's tooltip gives the width and codes); an empty cell
+  is a field not given; a key the file has that the schema lacks stays, as
+  a column of its own. The SSP and gradient tabs say when their rows do not
+  add up to the route (*SSP (1, 1000 of 1116 m)*).
+
+Each edit is one Undo step. Checks lists what the data would not do
+(`KAVACH: route …`, session 422's checks) and, new, the tags a signal or
+route names that the layout's tags do not hold (when it has tags). A word
+where a number goes, a location reset of two numbers, two signals or routes
+of one name: refused by name, the table put back. Renaming a signal renames
+it in the routes. While the KAVACH tab is shown the drawing gets a third of
+the height (its size comes back after), and the sheet tabs' Add row /
+Delete rows are hidden: the tab has its own, on the table each names.
+
+**Files.** `stationkavacheditor.{h,cpp}` (new); `stationkavach.{h,cpp}`
+(`tagChecks`); `stationlayoutwindow.{h,cpp}`; `dlcore.pri`;
+`docs/STATION_KAVACH.md` (*Editing it*); `CLAUDE.md`;
+`tests/test_session423.cpp` (new), `tests/tests.pro`;
+`tests/screenshot_main.cpp` (`SHOT_KAVACH=<route>`, `SHOT_LIST=<table>`).
+
+**Tests.** `session423` (50 checks) on the station 527 fixture: it shows
+whole (4 signals, 3 routes, the LC gate, OS at speed code 20) and nothing is
+lost; A900 set to start at Red makes the **real LSRP 40380** of
+`loco_1_1_08102026_105200.cap` answered with MA 1116 m instead of 1956, and
+Undo puts it back; `2=1` (Yellow 1 section) does the same; a short SSP and
+an over-long gradient are said in Checks and on the tab; the refusals; the
+rename following into the routes; Add route / Copy route / Add row / Delete
+rows; saved and read back, the file answers that LSRP the same; Remove and
+Undo; Start from the built-in default layout (every signal, on its own foot
+tag, at Red). The engine's `tagChecks` names exactly the missing tags.
+Looked at with the screenshot harness, light and dark.
+- **Not tested:** on Windows or Linux fonts by eye (only the Mac shots);
+  typing into the combo cells by keyboard (the tests set them).
+- **Not built:** the Table-of-Control import (waiting for a real sheet); the
+  routes drawn on the layout's drawing; picking a route's tags by clicking
+  them in the drawing.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: 17 validators, 436 suites / 10958
+checks, menu audit, headless smoke.
+
+---
+
 <a id="session-422"></a>
 ## Session 422 — a Stationary KAVACH made of data: the station's routes answer the loco
 

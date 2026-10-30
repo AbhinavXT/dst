@@ -64,6 +64,37 @@ change into a Red signal it kept the profile it had sent, whose stretch
 covered the new MA (DLConsole: a new profile); it sent a full profile once
 or twice more after the acknowledgement (DLConsole: never).
 
+## Editing it (session 423)
+
+Tools ▸ Station Layout, tab **KAVACH**. A layout without KAVACH data shows
+**Start KAVACH data from this layout**: the layout's station id and its
+signals (name, foot tag) at Red, no routes yet.
+
+- **Top:** station id, STN version, and *MA sections by aspect* where they
+  differ from Annexure-I's (`11=3, 10=2`; empty: Red 1, Yellow 2, Double
+  Yellow 3, Green 4). **Remove KAVACH data** takes the block out.
+- **Signals:** name, foot tag, signal info, the aspect it starts with.
+  Renaming a signal renames it in the routes too.
+- **Routes:** one Table-of-Control row each. Direction, section, authority
+  and OS speed are lists of the schema's codes; points, track circuits and
+  TINs are names separated by commas; *Loc reset* is `start, direction,
+  correction` or empty. The length is worked out from the tags.
+  **Add route** starts at the selected route's exit signal (the next
+  section on); **Copy route** copies one with its tags and profile (a loop
+  beside a main line).
+- **The selected route:** its tags (linking distance from the tag before;
+  *From entry* worked out), then SSP, gradient, LC gates, turnouts, track
+  conditions and TSR. Their columns are the SLRP sub-packet's own fields;
+  hover a heading for its width and codes. An empty cell is a field not
+  given. **Add row** copies the selected row. The SSP and gradient tab
+  titles show when the rows do not add up to the route's length.
+
+Each edit is one Undo step. What the data would not do is listed under
+**Checks**, as `KAVACH: …`. That includes tags a signal or route names that
+the layout's own tags do not hold (when it has tags). A word where a number
+goes is refused, the reason shown, and the table put back as it was.
+Save writes the `.json` (or the `kavach` sheet of an exported `.xlsx`).
+
 ## The file
 
 A Station Layout JSON (Tools ▸ Station Layout) with a `"kavach"` block, or
@@ -117,5 +148,5 @@ distance), Temporary Single Line working, train length, shortened MA,
 SoS, the next station's communication, the absolute-block last stop
 signal's MA in metres (give the block section as a route). Not tested
 against a live loco: the engine's answers are checked against real station
-frames only. No editor yet: the file is written by hand (or from a Table of
-Control, a later patch).
+frames only. No import from a firm's Table-of-Control sheet yet (waiting for
+a real sheet to read), and the routes are not drawn on the layout.

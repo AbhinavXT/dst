@@ -38,6 +38,7 @@ class LogModel;
 class QMenu;
 class QTabWidget;
 class QTableWidget;
+class StationKavachEditor;
 class StatusLine;
 class UndoLog;
 
@@ -231,6 +232,8 @@ public:
     QTabWidget *tabs() const { return m_tabs; }
     StatusLine *status() const { return m_status; }
     QTableWidget *table(int sheet) const;     // 0 tags, 1 signals, 2 points, 3 lines, 4 station, 5 texts
+    // Session 423: the KAVACH tab, the station's Stationary KAVACH data.
+    StationKavachEditor *kavachEditor() const { return m_kavach; }
     bool undo();
     // Move a tag (what a drag does).
     bool moveTag(const QString &name, qint64 locM);
@@ -371,6 +374,7 @@ private:
     QPointer<LocoSimWindow> m_sim;
     bool m_simInView = false;          // the loco was in view at its last move
     QLabel *m_simState = nullptr;
+    StationKavachEditor *m_kavach = nullptr;   // session 423
     StatusLine *m_status = nullptr;
     UndoLog *m_undo = nullptr;
 };

@@ -392,6 +392,23 @@ QStringList checks(const Station &s)
     return out;
 }
 
+QStringList tagChecks(const Station &s, const QSet<int> &tagIds)
+{
+    QStringList out;
+    if (tagIds.isEmpty()) return out;
+    for (const Signal &g : s.signalList)
+        if (!tagIds.contains(g.footTag))
+            out << QObject::tr("signal %1: foot tag %2 is not in the layout's tags").arg(g.name).arg(g.footTag);
+    for (const Route &r : s.routes) {
+        QStringList missing;
+        for (const RouteTag &t : r.tags)
+            if (!tagIds.contains(t.tag) && !missing.contains(QString::number(t.tag))) missing << QString::number(t.tag);
+        if (!missing.isEmpty())
+            out << QObject::tr("route %1: tag(s) %2 not in the layout's tags").arg(r.name, missing.join(QStringLiteral(", ")));
+    }
+    return out;
+}
+
 State State::initial(const Station &s)
 {
     State st;

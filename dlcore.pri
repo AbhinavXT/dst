@@ -30,6 +30,7 @@ SOURCES += \
     $$PWD/stationanswer.cpp \
     $$PWD/stationkavach.cpp \
     $$PWD/stationkavachpanel.cpp \
+    $$PWD/stationkavacheditor.cpp \
     $$PWD/sessionkeydialog.cpp \
     $$PWD/sessionkeystore.cpp \
     $$PWD/schema/schemadecoder.cpp \
@@ -257,6 +258,7 @@ HEADERS += \
     $$PWD/stationanswer.h \
     $$PWD/stationkavach.h \
     $$PWD/stationkavachpanel.h \
+    $$PWD/stationkavacheditor.h \
     $$PWD/sessionkeydialog.h \
     $$PWD/sessionkeystore.h \
     $$PWD/schema/schemadecoder.h \

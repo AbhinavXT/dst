@@ -114,6 +114,9 @@ QJsonObject toJson(const Station &s);
 // that is not there, a route whose exit is not the foot tag it ends on,
 // a profile longer than its route. Reported, never corrected.
 QStringList checks(const Station &s);
+// Session 423: the tags a signal or route names that the layout's tags
+// (`tagIds`, their unique ids) do not hold. Nothing when it has no tags.
+QStringList tagChecks(const Station &s, const QSet<int> &tagIds);
 
 struct State {
     QHash<QString, int>  aspect;       // signal -> sigAspect

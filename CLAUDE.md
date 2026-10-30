@@ -119,7 +119,8 @@ The three features once queued here are all done:
   (375). How-to: `docs/REMOTE_REVIEW.md`.
 - **Stationary KAVACH from data** (a miniature station answering the loco):
   routes as Table-of-Control rows, MA in sections from the aspects, profile
-  cut at the MA end, live state in Packet Maker ▸ Station… (422).
+  cut at the MA end, live state in Packet Maker ▸ Station… (422); edited in
+  Station Layout ▸ KAVACH (423).
   `docs/STATION_KAVACH.md`. Next steps proposed there under "Not yet".
 
 Before proposing a feature, search `CHANGELOG.md` for it. **Queued:** the

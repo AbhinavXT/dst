@@ -1,4 +1,5 @@
 #include "stationlayoutwindow.h"
+#include "stationkavacheditor.h"
 
 #include "logmodel.h"
 #include "messagedispatcher.h"
@@ -1353,6 +1354,18 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     m_compare->setToolTip(tr("What differs from the file compared with (Open ▸ Compare with). Double-click a tag's row to select it"));
     m_tabs->addTab(m_compare, tr("Compare"));
     m_tabs->addTab(m_run, tr("Run"));
+    // Session 423: the Stationary KAVACH data, edited here; each edit one Undo step.
+    m_kavach = new StationKavachEditor(this);
+    m_kavach->setSeedSource(&m_layout);
+    m_tabs->addTab(m_kavach, tr("KAVACH"));
+    m_tabs->setTabToolTip(m_tabs->count() - 1, tr("The station's signals and routes (Table-of-Control rows) for "
+                                                  "Packet Maker ▸ Send log to answer a loco as this station would"));
+    connect(m_kavach, &StationKavachEditor::edited, this, [this](const QJsonObject &k, const QString &label) {
+        const StationLayout::Layout before = m_layout;
+        m_layout.kavach = k;
+        changed(label, before);
+    });
+    connect(m_kavach, &StationKavachEditor::refused, this, [this](const QString &why) { m_status->fail(why); });
     connect(m_compare, &QListWidget::itemDoubleClicked, this, [this](QListWidgetItem *it) {
         const QString name = it->data(Qt::UserRole).toString();
         if (tagIndexOf(name) >= 0) { selectTags({ name }); m_canvas->setSelectedTag(name); }
@@ -1394,6 +1407,23 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     split->setStretchFactor(0, 3);
     split->setStretchFactor(1, 2);
     split->setSizes({ 430, 230 });
+    // Session 423: the KAVACH tab has its own Add / Delete buttons, on the table each
+    // names; its tables want the height: the drawing gets a third while it is shown,
+    // its own size back after.
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this, addBtn, delBtn, split, drawingSizes = QList<int>()]() mutable {
+        const bool kavach = m_tabs->currentWidget() == m_kavach;
+        addBtn->setVisible(!kavach);
+        delBtn->setVisible(!kavach);
+        const QList<int> now = split->sizes();
+        const int total = now.value(0) + now.value(1);
+        if (kavach && now.value(1) < total * 2 / 3) {
+            drawingSizes = now;
+            split->setSizes({ total / 3, total - total / 3 });
+        } else if (!kavach && !drawingSizes.isEmpty()) {
+            split->setSizes(drawingSizes);
+            drawingSizes.clear();
+        }
+    });
 
     m_status = new StatusLine;
     m_simState = new QLabel(this);   // session 411: where the simulator's loco is
@@ -1558,7 +1588,24 @@ void StationLayoutWindow::refreshAll()
     m_canvas->setStation(m_layout);
     fillTags();
     for (int i = 1; i < 6; ++i) fillSheet(i);
-    const QStringList found = StationLayout::checks(m_layout);
+    QStringList found = StationLayout::checks(m_layout);
+    // Session 423: what the KAVACH data would not do, and the tags it names the layout lacks.
+    m_kavach->setKavach(m_layout.kavach);
+    if (!m_layout.kavach.isEmpty()) {
+        StationKavach::Station ks;
+        QString err;
+        QStringList notes;
+        if (!StationKavach::fromJson(m_layout.kavach, &ks, &err, &notes)) found << tr("KAVACH: %1").arg(err);
+        QSet<int> ids;
+        for (const StationLayout::Tag &t : m_layout.tags)
+            ids.insert((t.name.endsWith(QLatin1Char('D')) ? t.name.chopped(1) : t.name).toInt());
+        for (const QString &c : notes + StationKavach::checks(ks) + StationKavach::tagChecks(ks, ids))
+            found << tr("KAVACH: %1").arg(c);
+        m_tabs->setTabText(m_tabs->indexOf(m_kavach), ks.routes.size() == 1 ? tr("KAVACH (1 route)")
+                                                                     : tr("KAVACH (%1 routes)").arg(ks.routes.size()));
+    } else {
+        m_tabs->setTabText(m_tabs->indexOf(m_kavach), tr("KAVACH"));
+    }
     m_checks->clear();
     m_checks->addItems(found.isEmpty() ? QStringList{ tr("Nothing to report") } : found);
     m_tabs->setTabText(6, found.isEmpty() ? tr("Checks") : tr("Checks (%1)").arg(found.size()));
