@@ -10,6 +10,68 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-428"></a>
+## Session 428 — the station live on the Station Layout drawing
+
+Abhinav's *"1,2"*: the first of the two proposed after session 427 (the
+second, each copy of a repeated tag drawn in its own place, is 429). No
+answer to "locos only, or each loco's MA too": both are drawn, the MA being
+what was asked about.
+
+**What the operator sees.** Packet Maker answering as the station (session
+422): **Station… ▸ Show on the drawing** opens the layout it answers from in
+Station Layout, live:
+- the signals lit at the aspects set in Station… (over the file's); set one
+  there and the drawing follows at once (tooltip *KAVACH, live: Red*);
+- each loco the station has heard at the ABS_LOCO_LOC of its last LSRP, on
+  the line of the tag it last read, pointing the way it runs, the train drawn
+  TRAIN_LENGTH behind it;
+- the MA it was last sent: a green band from the loco along the MA's tags to
+  a bar at the MA's end; behind a loco ahead it ends 100 m short of that
+  loco's rear (session 427), and that gap is seen;
+- the SoS sent in the loco's label and colour (*Loco 1 · MA 536 m · SoS
+  Rear-end*; a SPAD is *MA 0 · SoS SPAD*, no MA drawn);
+- a line under the toolbar: *Live from Packet Maker, station 527: loco 1 at
+  160.661 km, MA 1236 m, SoS Rear-end; loco 2 at 161.246 km, MA 1670 m*.
+It follows each answer and each change in Station…; when answering stops,
+the drawing is the layout alone again. Labels of locos close together stack.
+
+**How.** `StationKavach::Loco` keeps what the station last gave the loco
+(`maRoutes`, `maSent`, `sos`), set by `answer()`. `liveViewOf()` places it
+on the layout: the MA's start from the ref tag (of a repeated number, the
+place nearest the loco), its end `maSent` on. A tag of a number the layout
+repeats is drawn at one of its places (Section_30), so the MA band only
+passes through the copies that lie on the way (429 draws every copy).
+
+**Files.** `stationkavach.{h,cpp}` (`Loco` gains what was sent);
+`stationlayoutwindow.{h,cpp}` (`LiveLoco`, `LiveView`, `setLiveView`,
+`liveLocoRect`, `liveMaPath`, `liveViewOf`, `showLiveStation`,
+`clearLiveStation`, the live line); `stationkavachpanel.{h,cpp}` (Show on
+the drawing); `packetmakerdialog.{h,cpp}` (opens and feeds it);
+`tests/screenshot_main.cpp` (`SHOT_LIVE`, `SHOT_ZOOM`);
+`docs/STATION_KAVACH.md`; `CLAUDE.md`; `tests/test_session428.cpp` (new),
+`tests/tests.pro`.
+
+**Tests.** `session428` (27 checks). Both locos of
+`replay/loco_{1,2}_1_27062026_151052.cap` through the station to loco 1's
+first answer: the station remembers loco 1 was sent S50-S48, MA 1236 m, SoS
+Rear-end, and loco 2 MA 1670 m; the live view puts loco 1's MA end at
+160896 m (loco 2 at 161246 m less 250 m less 100 m) and loco 2's at S48's
+foot (161330 m); drawn at their locations, the MA band ending short of loco
+2's rear, the tooltips, the line in words, cleared. Then through Packet
+Maker over loopback with `replay/loco_1_1_27062026_140226.cap`: Station… ▸
+Show on the drawing opens the layout answered from; A904 Red live, no loco
+heard; after the real LSRP 50548, loco 1 at 163821 m, MA 0, SoS SPAD; A904
+set in Station…: the drawing follows; answering stopped: no longer live.
+Looked at in the screenshot harness (light and dark).
+- **Not tested:** with live locos; with a layout the window has edited
+  since it opened (the live view follows the window's tags).
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: 441 suites / 11,096 checks, menu
+audit, smoke.
+
+---
+
 <a id="session-427"></a>
 ## Session 427 — the Stationary KAVACH and a loco ahead: MA cut behind it, Rear-end SoS
 

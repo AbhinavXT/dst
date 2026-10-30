@@ -123,7 +123,7 @@ The three features once queued here are all done:
   Station Layout ▸ KAVACH (423); the routes and the MA drawn on the layout
   (424); a route's tags picked by clicking the drawing (425); SoS SPAD to a
   loco past a Red signal (426); the MA cut behind a loco ahead, Rear-end SoS
-  echoed (427).
+  echoed (427); the station live on the drawing: aspects, locos, MAs (428).
   `docs/STATION_KAVACH.md`. Next steps proposed there under "Not yet".
 
 Before proposing a feature, search `CHANGELOG.md` for it. **Queued:** the

@@ -42,7 +42,7 @@ class QTableWidget;
 class StationKavachEditor;
 class StatusLine;
 class UndoLog;
-namespace StationKavach { struct Station; }
+namespace StationKavach { struct Station; struct State; struct Loco; }
 
 #include <functional>
 
@@ -98,6 +98,31 @@ public:
     // Where section `i` is drawn: its tags' places, in order (tests).
     QPolygonF kavachPath(int i) const;
     QRectF kavachMaEndRect() const { return m_kavachMaEnd; }   // null when hidden
+    // Session 428: the station live, as Packet Maker answers as it: the
+    // signals at their live aspects (over the KAVACH tab's), each loco the
+    // station has heard at its ABS_LOCO_LOC, drawn its TRAIN_LENGTH long,
+    // and the MA it was last sent: from the loco along the MA's tags to
+    // where the MA ends. An empty view hides it all.
+    struct LiveLoco {
+        int     id = 0;
+        qint64  absLoc = 0;
+        int     sign = 1;              // 1: heading for rising locations
+        int     trainLength = 0;
+        QString laneTag;               // the tag it last read (the layout's name): its lane
+        QStringList maTags;            // the MA's tags ahead of it, in order
+        qint64  maEnd = -1;            // where the MA ends (abs loc); -1: none sent
+        QString maText;                // "MA 1236 m", "MA 0"
+        QString sos;                   // "SoS SPAD", "SoS Rear-end"; "" none
+    };
+    struct LiveView {
+        QVector<KavachSignal> signalList;
+        QVector<LiveLoco> locos;
+        bool isEmpty() const { return signalList.isEmpty() && locos.isEmpty(); }
+    };
+    void setLiveView(const LiveView &v);
+    const LiveView &liveView() const { return m_liveView; }
+    QRectF liveLocoRect(int i) const;      // loco i's front (tests); null when not drawn
+    QPolygonF liveMaPath(int i) const;     // its MA, from the loco to the MA end
     // Session 425: picking a KAVACH route's tags. A click on a tag picks it
     // (tagPicked) instead of selecting or dragging it; Esc ends picking.
     void setPicking(bool on);
@@ -220,6 +245,7 @@ private:
     QHash<QString, int> m_runStates;   // session 227
     KavachView m_kavachView;           // session 424
     QRectF  m_kavachMaEnd;
+    LiveView m_liveView;               // session 428
     bool    m_picking = false;         // session 425
     QString m_simLine;                 // session 411
     double  m_simLoc = 0;
@@ -240,6 +266,11 @@ private:
 // tag names. *missing: the tags the layout does not hold (not drawn).
 StationLayoutCanvas::KavachView kavachViewOf(const StationLayout::Layout &l, const StationKavach::Station &s,
                                              int route, QStringList *missing = nullptr);
+// Session 428: the drawing's view of the station live: `st`'s aspects, and
+// each loco of `locos` the station has heard (absLoc >= 0) with the MA it
+// was last sent, placed by the layout's tag locations.
+StationLayoutCanvas::LiveView liveViewOf(const StationLayout::Layout &l, const StationKavach::Station &s,
+                                         const StationKavach::State &st, const QList<StationKavach::Loco> &locos);
 
 class StationLayoutWindow : public QWidget
 {
@@ -358,6 +389,13 @@ public:
     void clearSimulator();             // the simulator went elsewhere, or closed
     QString simulatorLine() const { return m_canvas->simLine(); }
     QLabel *simulatorState() const { return m_simState; }
+    // Session 428: Packet Maker answering as the station shows it here
+    // (Station… ▸ Show on the drawing): the drawing's live view, and in
+    // words under it. `from` names who sends it ("Packet Maker").
+    void showLiveStation(const StationKavach::Station &s, const StationKavach::State &st,
+                         const QList<StationKavach::Loco> &locos, const QString &from);
+    void clearLiveStation();
+    QLabel *liveState() const { return m_liveState; }
     // The menu a right-click on the drawing opens (built, not shown: tests).
     QMenu *contextMenuFor(const QString &tag, const QString &line, qint64 locM, bool aboveLanes);
 
@@ -415,6 +453,7 @@ private:
     QPointer<LocoSimWindow> m_sim;
     bool m_simInView = false;          // the loco was in view at its last move
     QLabel *m_simState = nullptr;
+    QLabel *m_liveState = nullptr;     // session 428
     StationKavachEditor *m_kavach = nullptr;   // session 423
     StatusLine *m_status = nullptr;
     UndoLog *m_undo = nullptr;

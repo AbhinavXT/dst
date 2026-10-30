@@ -5,6 +5,7 @@
 #include <QHeaderView>
 #include <QLabel>
 #include <QPlainTextEdit>
+#include <QPushButton>
 #include <QSplitter>
 #include <QTabWidget>
 #include <QTableWidget>
@@ -59,6 +60,12 @@ StationKavachPanel::StationKavachPanel(const QVector<QPair<qint64, QString>> &as
     split->addWidget(tabs);
     split->addWidget(m_answers);
     lay->addWidget(split, 1);
+    m_drawing = new QPushButton(tr("Show on the drawing"), this);
+    m_drawing->setObjectName(QStringLiteral("skDrawing"));
+    m_drawing->setToolTip(tr("The station's layout in Station Layout, live: the signals at these aspects, each\n"
+                             "loco where its last LSRP put it, and the MA it was last sent."));
+    connect(m_drawing, &QPushButton::clicked, this, &StationKavachPanel::drawingRequested);
+    lay->addWidget(m_drawing, 0, Qt::AlignRight);
     resize(640, 520);
 }
 

@@ -150,6 +150,29 @@ The drawing places each tag name once, as the layout's own drawing does:
 a route through a tag listed more than once is drawn through one of its
 places, so it can jump from block to block; hovering it says which tags.
 
+## The station live on the drawing (session 428)
+
+While Packet Maker answers as the station, **Station… ▸ Show on the
+drawing** opens the layout it answers from in Station Layout and draws the
+station as it is now:
+
+- each signal lit at the aspect set in Station… (over the file's). Change
+  one there and the drawing follows at once. Hover it: *KAVACH, live: Red*;
+- each loco the station has heard, at the ABS_LOCO_LOC of its last LSRP, on
+  the line of the tag it last read, pointing the way it runs, its train
+  drawn TRAIN_LENGTH behind it;
+- the MA it was last sent: a green band from the loco along the MA's tags to
+  a bar where the MA ends. A loco ahead (session 427) shows as the MA ending
+  100 m short of its rear;
+- the SoS sent, in the loco's label and colour: *Loco 1 · MA 536 m · SoS
+  Rear-end*; a SPAD (session 426) is *MA 0 · SoS SPAD*, with no MA drawn.
+
+A line under the toolbar says it in words: *Live from Packet Maker, station
+527: loco 1 at 160.661 km, MA 1236 m, SoS Rear-end; loco 2 at 161.246 km,
+MA 1670 m*. It follows every answer. Stop answering, and the drawing goes
+back to the layout alone. The MA's start is placed from the ref tag (of a
+number the layout lists more than once, its place nearest the loco).
+
 ## Picking a route's tags on the drawing (session 425)
 
 Under the route's tables, **Pick on drawing**: then click the route's tags
@@ -226,4 +249,5 @@ signal's MA in metres (give the block section as a route). Not tested
 against a live loco: the engine's answers are checked against real station
 frames only. No import from a firm's Table-of-Control sheet yet (waiting for
 a real sheet to read). The drawing shows the aspects the file starts
-with, not Packet Maker ▸ Station…'s live ones.
+with on the KAVACH tab; Packet Maker's live ones under Station… ▸ Show on the
+drawing (session 428).

@@ -14,6 +14,7 @@
 #include "messageheader.h"
 #include "packetpreset.h"
 #include "stationkavachpanel.h"
+#include "stationlayoutwindow.h"
 #include "sessionkeystore.h"
 #include "stationanswer.h"
 #include <QRandomGenerator>
@@ -57,6 +58,8 @@
 #include <QTimer>
 #include <QFile>
 #include <QTextBlock>
+
+#include <algorithm>
 
 // ---- small helpers ---------------------------------------------------------
 
@@ -825,6 +828,8 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
         if (!m_stnPanel) {
             m_stnPanel = new StationKavachPanel(m_builder.encoder().enumChoices(QStringLiteral("sigAspect")), this);
             m_stnPanel->setStation(m_station, &m_stnState);
+            connect(m_stnPanel, &StationKavachPanel::stateChanged, this, [this]() { showStationLive(); });
+            connect(m_stnPanel, &StationKavachPanel::drawingRequested, this, [this]() { showStationDrawing(); });
         }
         m_stnPanel->show();
         m_stnPanel->raise();
@@ -839,6 +844,7 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
     connect(m_answerLoco, &QCheckBox::toggled, this, [this](bool on) {
         m_stnPanelBtn->setEnabled(on && answeringAsStation());
         if (!m_stnPanelBtn->isEnabled() && m_stnPanel) m_stnPanel->hide();
+        if (!m_stnPanelBtn->isEnabled() && m_stnDrawing) m_stnDrawing->clearLiveStation();   // no longer live
     });
     auto *replyTimer = new QTimer(this);
     replyTimer->start(250);
@@ -1983,6 +1989,36 @@ bool PacketMakerDialog::answeringAsStation() const
     return m_answerFrom && m_answerFrom->currentIndex() == 1;
 }
 
+StationLayoutWindow *PacketMakerDialog::stationDrawing() const { return m_stnDrawing.data(); }
+
+StationLayoutWindow *PacketMakerDialog::showStationDrawing()
+{
+    if (!m_stnDrawing) {
+        auto *w = new StationLayoutWindow(this);
+        if (!w->openFile(m_stnLayoutPath)) {
+            m_status->fail(tr("The station layout %1 did not open in Station Layout.").arg(m_stnLayoutPath));
+            w->close();
+            return nullptr;
+        }
+        m_stnDrawing = w;
+    }
+    showStationLive();
+    m_stnDrawing->show();
+    m_stnDrawing->raise();
+    return m_stnDrawing;
+}
+
+void PacketMakerDialog::showStationLive()
+{
+    if (!m_stnDrawing) return;
+    if (!m_answerLoco->isChecked() || !answeringAsStation()) { m_stnDrawing->clearLiveStation(); return; }
+    QList<StationKavach::Loco> locos;
+    QList<int> ids = m_stnLocos.keys();
+    std::sort(ids.begin(), ids.end());
+    for (int id : ids) locos << m_stnLocos.value(id);
+    m_stnDrawing->showLiveStation(m_station, m_stnState, locos, tr("Packet Maker"));
+}
+
 bool PacketMakerDialog::startAnswering()
 {
     if (answeringAsStation()) {
@@ -2008,7 +2044,9 @@ bool PacketMakerDialog::startAnswering()
         m_station = station;
         m_stnState = StationKavach::State::initial(station);
         m_stnLocos.clear();
+        m_stnLayoutPath = m_layoutEdit->text().trimmed();
         if (m_stnPanel) m_stnPanel->setStation(m_station, &m_stnState);
+        showStationLive();
         const QStringList bad = StationKavach::checks(station);
         if (!bad.isEmpty())
             m_status->warn(tr("Answering as station %1 while armed; the data: %2").arg(station.stationId).arg(bad.join(QStringLiteral("; "))));
@@ -2087,6 +2125,7 @@ void PacketMakerDialog::answerLsrp(const QHash<QString, qint64> &lsrp)
             if (m_stnPanel) m_stnPanel->showAnswer(locoId, tr("LSRP %1 NOT answered: %2").arg(fn).arg(a.why), {});
             return;
         }
+        showStationLive();   // session 428: where it is, what it was given
         if (!a.checks.isEmpty()) m_status->warn(tr("Loco %1: %2").arg(locoId).arg(a.checks.join(QStringLiteral("; "))));
         if (m_stnPanel) m_stnPanel->showAnswer(locoId, tr("LSRP %1 answered: %2").arg(fn).arg(a.note), a.checks);
         sendAnswer(QStringLiteral("slrp"),

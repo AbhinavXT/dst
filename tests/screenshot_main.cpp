@@ -8,6 +8,7 @@
 #include <QApplication>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QScrollArea>
 #include <QPixmap>
 #include <QTableView>
 #include <QHeaderView>
@@ -66,6 +67,7 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "trackdiagramwindow.h"
 #include "stationlayoutwindow.h"
 #include "stationkavacheditor.h"
+#include "stationkavach.h"
 #include "testcatalogwindow.h"
 #include "packetmatrixdialog.h"
 #include <QTemporaryDir>
@@ -656,6 +658,39 @@ int main(int argc, char **argv)
                         StationLayout::Layout l = w->station();
                         l.kavach = from.kavach;
                         w->setStation(l);
+                    }
+                }
+                // Session 428: SHOT_LIVE=id:absLoc:trainLength:route:refTag:maSent:sos;...: the station
+                // live, those locos heard (the route a row of the KAVACH data), as Packet Maker shows it.
+                if (!qEnvironmentVariableIsEmpty("SHOT_LIVE")) {
+                    StationKavach::Station ks;
+                    StationKavach::fromJson(w->station().kavach, &ks);
+                    QList<StationKavach::Loco> locos;
+                    for (const QString &one : qEnvironmentVariable("SHOT_LIVE").split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
+                        const QStringList f = one.split(QLatin1Char(':'));
+                        if (f.size() < 7) continue;
+                        StationKavach::Loco o;
+                        o.id = f[0].toInt();
+                        o.absLoc = f[1].toLongLong();
+                        o.trainLength = f[2].toInt();
+                        o.route = f[3].toInt();
+                        o.maRoutes = { o.route };
+                        o.refTag = f[4].toInt();
+                        o.maSent = f[5].toLongLong();
+                        o.sos = f[6].toInt();
+                        o.dir = 1;
+                        locos << o;
+                    }
+                    w->resize(1280, 900);
+                    w->showLiveStation(ks, StationKavach::State::initial(ks), locos, QStringLiteral("Packet Maker"));
+                    // SHOT_ZOOM=<z>: zoomed in on the first loco.
+                    if (!qEnvironmentVariableIsEmpty("SHOT_ZOOM") && !locos.isEmpty()) {
+                        w->show();
+                        w->canvas()->grab();
+                        w->canvas()->setZoom(qEnvironmentVariable("SHOT_ZOOM").toDouble(), w->canvas()->xOf(locos.first().absLoc));
+                        w->canvas()->grab();
+                        if (auto *sa = w->findChild<QScrollArea *>())
+                            sa->ensureVisible(int(w->canvas()->liveLocoRect(0).center().x()), int(w->canvas()->liveLocoRect(0).center().y()), 450, 120);
                     }
                 }
                 if (!qEnvironmentVariableIsEmpty("SHOT_KAVACH")) {

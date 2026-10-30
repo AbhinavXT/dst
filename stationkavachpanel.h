@@ -14,6 +14,8 @@
 //              state does not agree with
 //
 //  It edits the State it is given; the next LSRP is answered with it.
+//  Session 428: Show on the drawing (drawingRequested): the station live
+//  on the Station Layout drawing, the locos and their MAs on it.
 // =====================================================================
 #include <QDialog>
 #include <QPair>
@@ -22,6 +24,7 @@
 #include "stationkavach.h"
 
 class QPlainTextEdit;
+class QPushButton;
 class QTableWidget;
 
 class StationKavachPanel : public QDialog {
@@ -32,8 +35,11 @@ public:
     void setStation(const StationKavach::Station &s, StationKavach::State *st);
     void showAnswer(int locoId, const QString &text, const QStringList &checks);
 
+    QPushButton *drawingButton() const { return m_drawing; }
+
 signals:
     void stateChanged();
+    void drawingRequested();           // session 428
 
 private:
     void rebuild();
@@ -42,6 +48,7 @@ private:
     StationKavach::State  *m_state = nullptr;
     QTableWidget *m_signals = nullptr, *m_points = nullptr, *m_occupied = nullptr, *m_routes = nullptr, *m_tsr = nullptr;
     QPlainTextEdit *m_answers = nullptr;
+    QPushButton *m_drawing = nullptr;
     QHash<int, QString> m_lastAnswer;   // by loco
 };
 

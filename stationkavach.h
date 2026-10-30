@@ -160,6 +160,12 @@ struct Loco {
     int     refTag = -1;
     int     profId = 0;                // last REF_PROF_ID issued (0: none yet)
     QByteArray profKey;                // what that profile held
+    // Session 428: what it was last given (Station Layout draws it): the
+    // MA's sections (route indexes, [0] the route it is on), MA_W_R_T_SIG,
+    // DEST_LOCO_SOS. maSent -1: nothing sent yet.
+    QVector<int> maRoutes;
+    qint64  maSent = -1;
+    int     sos = 0;
 };
 
 struct Answer {

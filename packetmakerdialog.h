@@ -14,6 +14,7 @@
 // =====================================================================
 #include <QDialog>
 #include <QHash>
+#include <QPointer>
 #include <QSet>
 #include <QVector>
 #include <QByteArray>
@@ -48,6 +49,7 @@ class QTableWidget;
 
 class SubPacketWindow;
 class StationKavachPanel;
+class StationLayoutWindow;
 
 class PacketMakerDialog : public QDialog {
     Q_OBJECT
@@ -105,6 +107,11 @@ public:
     // Session 422: answering as the station's routes, its live state (the
     // signals' aspects, the points, ...) as the station would see it.
     StationKavach::State *stationState() { return &m_stnState; }
+    // Session 428: Station… (null until opened) and its Show on the drawing:
+    // the layout answered from, in Station Layout, the station live on it.
+    StationKavachPanel *stationPanel() const { return m_stnPanel; }
+    StationLayoutWindow *stationDrawing() const;
+    StationLayoutWindow *showStationDrawing();
 
 signals:
     void loopbackRequested(const QString &captureLine);
@@ -399,6 +406,9 @@ private:
     QHash<int, QByteArray> m_locoKeys;     // session key by loco id, from its ARP
     QPushButton *m_stnPanelBtn = nullptr;
     StationKavachPanel *m_stnPanel = nullptr;   // Station…: the live state
+    QPointer<StationLayoutWindow> m_stnDrawing; // session 428: the station live on its layout
+    QString m_stnLayoutPath;                    // the layout answering started from
+    void showStationLive();
     bool answeringAsStation() const;
     quint16 m_stnRandomForTest = 0;
     QString m_pendingCaptype;              // send log's Packet, when not the form's

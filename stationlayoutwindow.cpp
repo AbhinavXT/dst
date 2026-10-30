@@ -480,6 +480,34 @@ void StationLayoutCanvas::setKavachView(const KavachView &v)
     update();
 }
 
+void StationLayoutCanvas::setLiveView(const LiveView &v)
+{
+    m_liveView = v;
+    update();
+}
+
+QRectF StationLayoutCanvas::liveLocoRect(int i) const
+{
+    if (i < 0 || i >= m_liveView.locos.size()) return QRectF();
+    const LiveLoco &k = m_liveView.locos.at(i);
+    if (!m_loc.contains(k.laneTag)) return QRectF();
+    const double y = tagPos(k.laneTag, xOf(m_loc.value(k.laneTag))).y();
+    return QRectF(xOf(k.absLoc) - 15, y - 7, 30, 14);
+}
+
+QPolygonF StationLayoutCanvas::liveMaPath(int i) const
+{
+    QPolygonF out;
+    const QRectF r = liveLocoRect(i);
+    if (r.isNull() || m_liveView.locos.at(i).maEnd < 0) return out;
+    const LiveLoco &k = m_liveView.locos.at(i);
+    out << r.center();
+    for (const QString &n : k.maTags)
+        if (m_loc.contains(n)) out << tagPos(n, xOf(m_loc.value(n)));
+    out << QPointF(xOf(k.maEnd), out.last().y());
+    return out;
+}
+
 void StationLayoutCanvas::setPicking(bool on)
 {
     m_picking = on;
@@ -826,6 +854,21 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
             m_hits << Hit{ QRectF(path.at(j), path.at(j + 1)).normalized().adjusted(-2, -9, 2, 9), QString(), tip };
     }
 
+    // ---- session 428: each live loco's MA, from it to where the MA ends, under the lanes ------
+    for (int i = 0; i < m_liveView.locos.size(); ++i) {
+        const QPolygonF path = liveMaPath(i);
+        if (path.size() < 2) continue;
+        QColor c = UiColor::ok();
+        c.setAlpha(palette().color(QPalette::Base).lightness() < 128 ? 190 : 120);
+        p.setPen(QPen(c, 11, Qt::SolidLine, Qt::FlatCap, Qt::RoundJoin));
+        p.setBrush(Qt::NoBrush);
+        p.drawPolyline(path);
+        const LiveLoco &k = m_liveView.locos.at(i);
+        const QString tip = tr("Loco %1: %2, to %3").arg(k.id).arg(k.maText, km(k.maEnd));
+        for (int j = 0; j + 1 < path.size(); ++j)
+            m_hits << Hit{ QRectF(path.at(j), path.at(j + 1)).normalized().adjusted(-2, -6, 2, 6), QString(), tip };
+    }
+
     // ---- lanes: one band colour per TIN section (H2.17, H2.18) --------------------------------
     struct Run { int lane, tin; double from, to; };
     QVector<Run> runs;
@@ -893,6 +936,11 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
     // aspect, and one the signals sheet lacks is drawn at its foot tag too.
     QHash<QString, int> kAspect;
     for (const KavachSignal &k : m_kavachView.signalList) kAspect.insert(k.name, k.aspect);
+    QVector<KavachSignal> kSignals = m_kavachView.signalList;
+    for (const KavachSignal &k : m_liveView.signalList) {   // session 428: the live aspects over the file's
+        if (!kAspect.contains(k.name)) kSignals << k;
+        kAspect.insert(k.name, k.aspect);
+    }
     struct Sig { QString name, foot, tip; int index; };
     QVector<Sig> sigs;
     QSet<QString> sheetNames;
@@ -902,7 +950,7 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         sigs << Sig{ s.name, s.footTag,
                      tr("Signal %1 (id %2, station %3) at foot tag %4").arg(s.name).arg(s.sigId).arg(s.stationId).arg(s.footTag), si };
     }
-    for (const KavachSignal &k : m_kavachView.signalList)
+    for (const KavachSignal &k : kSignals)
         if (!sheetNames.contains(k.name))
             sigs << Sig{ k.name, k.footTag, tr("Signal %1 (KAVACH data; not in the signals sheet) at foot tag %2").arg(k.name, k.footTag), -1 };
     auto lampsFor = [](int a) -> QStringList {
@@ -934,7 +982,8 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
                 p.setBrush(UiColor::signalLamp(lamps.at(k)));
                 p.drawEllipse(QPointF(x + 8 * k, y + 20), 3.5, 3.5);
             }
-            tip += QLatin1Char('\n') + tr("KAVACH: %1").arg(StationKavach::aspectName(a));
+            tip += QLatin1Char('\n') + (m_liveView.signalList.isEmpty() ? tr("KAVACH: %1") : tr("KAVACH, live: %1"))
+                                            .arg(StationKavach::aspectName(a));
         } else {
             p.setPen(QPen(UiColor::signalLamp(QStringLiteral("red")), 2));
             p.drawLine(QPointF(x, y + 8), QPointF(x, y + 18));
@@ -1146,6 +1195,56 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         p.drawText(box, Qt::AlignCenter, label);
         m_hits << Hit{ r, QString(), tr("Loco Simulator: line %1 at %2").arg(m_simLine, km(qint64(std::llround(m_simLoc)))) };
     }
+    // Session 428: the locos the live station has heard: the train its length
+    // back from the loco, the MA's end, the SoS sent. Labels of locos close
+    // together stack, not overprint.
+    QVector<QRectF> liveLabels;
+    for (int i = 0; i < m_liveView.locos.size(); ++i) {
+        const QRectF r = liveLocoRect(i);
+        if (r.isNull()) continue;
+        const LiveLoco &k = m_liveView.locos.at(i);
+        const double y = r.center().y(), nose = k.sign * 7;
+        const double back = k.sign > 0 ? r.left() : r.right(), front = k.sign > 0 ? r.right() : r.left();
+        if (k.trainLength > 0) {
+            const double rear = xOf(k.absLoc - k.sign * k.trainLength);
+            p.setPen(QPen(text, 1));
+            p.setBrush(palette().color(QPalette::Base));
+            p.drawRect(QRectF(QPointF(qMin(rear, r.center().x()), y - 4), QPointF(qMax(rear, r.center().x()), y + 4)));
+        }
+        QPolygonF body;
+        body << QPointF(back, r.top()) << QPointF(front - nose, r.top()) << QPointF(front, y)
+             << QPointF(front - nose, r.bottom()) << QPointF(back, r.bottom());
+        p.setPen(QPen(text, 1.2));
+        p.setBrush(k.sos.isEmpty() ? UiColor::accent() : UiColor::error());
+        p.drawPolygon(body);
+        p.setBrush(Qt::NoBrush);
+        const QString label = k.sos.isEmpty() ? tr("Loco %1 · %2").arg(k.id).arg(k.maText)
+                                              : tr("Loco %1 · %2 · %3").arg(k.id).arg(k.maText, k.sos);
+        const int w = fm.horizontalAdvance(label) + 6;
+        QRectF box(r.center().x() - w / 2.0, r.top() - 3 - lh, w, lh);
+        for (int up = 0; up < 6 && std::any_of(liveLabels.cbegin(), liveLabels.cend(),
+                                               [&box](const QRectF &o) { return o.intersects(box); }); ++up)
+            box.translate(0, -lh);
+        liveLabels << box;
+        p.setPen(Qt::NoPen);
+        p.setBrush(palette().color(QPalette::Base));
+        p.drawRect(box);
+        p.setBrush(Qt::NoBrush);
+        p.setPen(k.sos.isEmpty() ? UiColor::accent() : UiColor::error());
+        p.drawText(box, Qt::AlignCenter, label);
+        QString tip = tr("Loco %1 at %2, %3 m long").arg(k.id).arg(km(k.absLoc)).arg(k.trainLength);
+        tip += QLatin1Char('\n') + (k.maEnd >= 0 ? tr("%1, to %2").arg(k.maText, km(k.maEnd)) : k.maText);
+        if (!k.sos.isEmpty()) tip += QLatin1Char('\n') + k.sos;
+        m_hits << Hit{ r.united(box), QString(), tip };
+        const QPolygonF ma = liveMaPath(i);
+        if (ma.size() >= 2) {
+            const QPointF e = ma.last();
+            p.setPen(QPen(UiColor::ok(), 3, Qt::SolidLine, Qt::FlatCap));
+            p.drawLine(QPointF(e.x(), e.y() - 12), QPointF(e.x(), e.y() + 12));
+            m_hits << Hit{ QRectF(e.x() - 4, e.y() - 12, 8, 24), QString(),
+                           tr("End of loco %1's MA: %2, at %3").arg(k.id).arg(k.maText, km(k.maEnd)) };
+        }
+    }
     // Session 223: the box being drawn (Shift + drag).
     if (!m_band.isNull()) {
         p.setPen(QPen(UiColor::selectedMark(), 1, Qt::DashLine));
@@ -1355,6 +1454,98 @@ StationLayoutCanvas::KavachView kavachViewOf(const StationLayout::Layout &l, con
     }
     v.maText = QObject::tr("MA %1 m").arg(sx.maEnd);
     return v;
+}
+
+StationLayoutCanvas::LiveView liveViewOf(const StationLayout::Layout &l, const StationKavach::Station &s,
+                                         const StationKavach::State &st, const QList<StationKavach::Loco> &locos)
+{
+    StationLayoutCanvas::LiveView v;
+    const StationLayoutCanvas::KavachView names = kavachViewOf(l, s, -1);
+    QHash<int, QString> nameOf;   // as kavachViewOf names them
+    for (const StationLayout::Tag &t : l.tags) {
+        const bool dup = isDuplicateName(t.name);
+        bool ok = false;
+        const int id = (dup ? t.name.chopped(1) : t.name).toInt(&ok);
+        if (ok && (!dup || !nameOf.contains(id))) nameOf.insert(id, t.name);
+    }
+    for (StationLayoutCanvas::KavachSignal k : names.signalList) {
+        k.aspect = st.aspectOf(s, k.name);
+        v.signalList << k;
+    }
+    const QHash<int, QVector<qint64>> locs = StationLayout::tagLocationsByNumber(l);
+    const QHash<QString, qint64> byName = StationLayout::tagLocations(l);
+    for (const StationKavach::Loco &o : locos) {
+        if (o.absLoc < 0) continue;
+        StationLayoutCanvas::LiveLoco k;
+        k.id = o.id;
+        k.absLoc = o.absLoc;
+        k.trainLength = o.trainLength;
+        const StationKavach::Route *r0 = !o.maRoutes.isEmpty() && o.maRoutes.first() >= 0 && o.maRoutes.first() < s.routes.size()
+                                             ? &s.routes.at(o.maRoutes.first()) : nullptr;
+        k.sign = (r0 ? r0->pktDir : o.dir) == 2 ? -1 : 1;
+        k.laneTag = nameOf.value(o.refTag);
+        if (k.laneTag.isEmpty()) {   // no tag on a route read yet: the layout's tag nearest it
+            qint64 best = -1;
+            for (auto it = byName.cbegin(); it != byName.cend(); ++it)
+                if (best < 0 || std::llabs(it.value() - o.absLoc) < best) { best = std::llabs(it.value() - o.absLoc); k.laneTag = it.key(); }
+        }
+        k.maText = o.maSent < 0 ? QObject::tr("no MA sent yet") : QObject::tr("MA %1 m").arg(o.maSent);
+        if (o.maSent == 0) k.maText = QObject::tr("MA 0");
+        if (o.sos == 4) k.sos = QObject::tr("SoS SPAD");
+        else if (o.sos == 5) k.sos = QObject::tr("SoS Rear-end");
+        // Where the MA ends: from the start signal (the ref tag's place nearest the loco, less its distance).
+        if (r0 && o.maSent > 0 && locs.contains(o.refTag)) {
+            qint64 refDist = -1;
+            for (int i = 0, d = 0; i < r0->tags.size(); ++i) {
+                d += i ? r0->tags[i].dist : 0;
+                if (r0->tags[i].tag == o.refTag) { refDist = d; break; }
+            }
+            if (refDist >= 0) {
+                const QVector<qint64> at = locs.value(o.refTag);
+                qint64 refLoc = at.first();
+                for (qint64 x : at) if (std::llabs(o.absLoc - x) < std::llabs(o.absLoc - refLoc)) refLoc = x;
+                const qint64 start = refLoc - k.sign * refDist;
+                const qint64 self = (o.absLoc - start) * k.sign;
+                k.maEnd = start + k.sign * o.maSent;
+                qint64 d = 0;
+                for (int i = 0; i < o.maRoutes.size(); ++i) {
+                    if (o.maRoutes[i] < 0 || o.maRoutes[i] >= s.routes.size()) break;
+                    const QVector<StationKavach::RouteTag> &ts = s.routes[o.maRoutes[i]].tags;
+                    for (int j = (i ? 1 : 0); j < ts.size(); ++j) {
+                        d += j ? ts[j].dist : 0;
+                        // A number the layout repeats is drawn at one of its places: only when that one is on the way.
+                        const QString n = nameOf.value(ts[j].tag);
+                        if (d > self && d < o.maSent && !n.isEmpty() && byName.value(n) == start + k.sign * d) k.maTags << n;
+                    }
+                }
+            }
+        }
+        v.locos << k;
+    }
+    return v;
+}
+
+void StationLayoutWindow::showLiveStation(const StationKavach::Station &s, const StationKavach::State &st,
+                                          const QList<StationKavach::Loco> &locos, const QString &from)
+{
+    const StationLayoutCanvas::LiveView v = liveViewOf(m_layout, s, st, locos);
+    m_canvas->setLiveView(v);
+    QStringList parts;
+    for (const StationLayoutCanvas::LiveLoco &k : v.locos) {
+        QString t = tr("loco %1 at %2, %3").arg(k.id).arg(km(k.absLoc), k.maText);
+        if (!k.sos.isEmpty()) t += QStringLiteral(", ") + k.sos;
+        parts << t;
+    }
+    m_liveState->setText(tr("Live from %1, station %2: %3").arg(from).arg(s.stationId)
+                             .arg(parts.isEmpty() ? tr("no loco heard yet") : parts.join(QStringLiteral("; "))));
+    m_liveState->show();
+}
+
+void StationLayoutWindow::clearLiveStation()
+{
+    m_canvas->setLiveView(StationLayoutCanvas::LiveView());
+    m_liveState->clear();
+    m_liveState->hide();
 }
 
 void StationLayoutWindow::updateKavachView()
@@ -1613,9 +1804,14 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     m_simState = new QLabel(this);   // session 411: where the simulator's loco is
     m_simState->setWordWrap(true);
     m_simState->hide();
+    m_liveState = new QLabel(this);   // session 428: the station live, from Packet Maker
+    m_liveState->setObjectName(QStringLiteral("slLiveState"));
+    m_liveState->setWordWrap(true);
+    m_liveState->hide();
     auto *root = new QVBoxLayout(this);
     root->addLayout(bar);
     root->addWidget(m_simState);
+    root->addWidget(m_liveState);
     root->addWidget(split, 1);
     root->addWidget(m_status);
 
@@ -2844,6 +3040,7 @@ bool StationLayoutWindow::exportDrawing(const QString &path)
     c.setFont(m_canvas->font());
     c.setStation(m_layout);
     c.setKavachView(m_canvas->kavachView());   // session 424: the KAVACH route as shown
+    c.setLiveView(m_canvas->liveView());       // session 428: and the station live
     c.resize(qMax(2400, m_canvas->width()), 100);
     c.resize(c.width(), c.minimumSizeHint().height());
     bool ok = false;

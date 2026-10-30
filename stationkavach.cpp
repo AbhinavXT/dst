@@ -550,6 +550,9 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
             a.subs << ma;
             loco->route = ri;
             loco->refTag = ref;
+            loco->maRoutes = { ri };
+            loco->maSent = 0;
+            loco->sos = 4;
             a.note = QObject::tr("SPAD: loco %1 m past %2 at %3: SoS SPAD, no authority, MA 0; ref tag %4")
                          .arg(past).arg(r0.exit, aspectName(aspect)).arg(ref);
             a.checks << QObject::tr("loco past %1 at %2 (SPAD)").arg(r0.exit, aspectName(aspect));
@@ -697,6 +700,9 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
     }
     l.route = ri;
     l.refTag = ref;
+    l.maRoutes = sx.routes;
+    l.maSent = maSent;
+    l.sos = rearEnd ? 5 : 0;
     a.header.insert(QStringLiteral("REF_PROF_ID"), l.profId);
     a.fullProfile = lsrp.value(QStringLiteral("LAST_REF_PROFILE_NUM")) != l.profId;
     a.subs << ma;
