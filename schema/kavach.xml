@@ -572,6 +572,23 @@
       <map v="105" label="%v (LKAVACH_LDLU_COUNTER_MESSAGE)"/>
       <map default="true" label="%v"/>
     </enum>
+    <!-- @biu_beat / @biu_beatrx (session 420): a CANopen NMT state byte (Annexure-1 2.1). -->
+    <enum name="biuNmtState">
+      <map v="0"   label="%v (boot-up)"/>
+      <map v="4"   label="%v (stopped)"/>
+      <map v="5"   label="%v (operational)"/>
+      <map v="127" label="%v (pre-operational)"/>
+      <map default="true" label="%v (?)"/>
+    </enum>
+    <!-- @biu_nmt (session 420): the NMT command specifier. -->
+    <enum name="biuNmtCs">
+      <map v="1"   label="%v (start remote node)"/>
+      <map v="2"   label="%v (stop remote node)"/>
+      <map v="128" label="%v (enter pre-operational)"/>
+      <map v="129" label="%v (reset node)"/>
+      <map v="130" label="%v (reset communication)"/>
+      <map default="true" label="%v (?)"/>
+    </enum>
     <!-- @dlcount (session 403): Send_Counter_Messege_To_Data_Logger's counter_value. -->
     <enum name="dlCounter">
       <map v="0" label="%v (Isolation counter)"/>
@@ -2224,6 +2241,102 @@
     <field name="spare"              bits="1"/>
     <field name="crc"                bits="32" hex="8"/>
     <field name="eof"                bits="16" hex="4"/>
+  </packet>
+
+  <!-- ===================================================================
+       @biu_* (session 420): the BIU frames, both ways, as the VCC copies
+       them to DLConsole (docs/biu-firmware, biu_dlconsole_mirror; patch
+       419). Each is the CAN frame's data bytes, no COB-ID, no length
+       (RDSO MP.0.01.00.31 Rev.05 Annexure-1 2.2; biuprotocol.h).
+       Pressure bytes: 0.05 kg/cm2 per bit (format kg05); the air flow and
+       feed pipe bytes are read the same way, as biuprotocol.h reads them.
+       NO REAL CAPTURE YET: schema/fixtures/biu_synthetic.log is the
+       firmware module's own copies (tests/biugen), with the BIU's frames
+       spec-derived.
+       =================================================================== -->
+  <!-- 0x190 KAVACH -> BIU command, 8 B. -->
+  <packet name="BIU_CMD" match="captype==biu_cmd" wire="lsb-first" trailer_bytes="0">
+    <field name="speed_mps"          bits="16" format="x100"/>
+    <field name="brake_test_request" bits="1"/>
+    <field name="health"             bits="1"/>
+    <field name="bp_charging_cutout" bits="1"/>
+    <field name="biu_isolate"        bits="1"/>
+    <field name="speed_valid"        bits="1"/>
+    <field name="light_engine"       bits="1"/>
+    <field name="remote_loco"        bits="1"/>
+    <field name="dynamic_braking"    bits="1"/>
+    <field name="fault_code_ack"     bits="1"/>
+    <field name="display_code_ack"   bits="1"/>
+    <field name="a9_valid"           bits="1"/>
+    <field name="sa9_valid"          bits="1"/>
+    <pad bits="4"/>
+    <field name="a9_bp_target"       bits="8" format="kg05"/>
+    <field name="sa9_bc_target"      bits="8" format="kg05"/>
+    <field name="spare"              bits="16"/>
+  </packet>
+  <!-- 0x720 KAVACH heartbeat, 1 B: our NMT state. -->
+  <packet name="BIU_BEAT" match="captype==biu_beat" wire="lsb-first" trailer_bytes="0">
+    <field name="nmt_state" bits="8" enum="biuNmtState"/>
+  </packet>
+  <!-- 0x710 BIU heartbeat, 1 B: the BIU's NMT state. -->
+  <packet name="BIU_BEATRX" match="captype==biu_beatrx" wire="lsb-first" trailer_bytes="0">
+    <field name="biu_nmt_state" bits="8" enum="biuNmtState"/>
+  </packet>
+  <!-- 0x000 NMT from the BIU, 2 B: command, node (0x20 KAVACH, 0 all). -->
+  <packet name="BIU_NMT" match="captype==biu_nmt" wire="lsb-first" trailer_bytes="0">
+    <field name="command" bits="8" enum="biuNmtCs"/>
+    <field name="node"    bits="8" hex="2"/>
+  </packet>
+  <!-- 0x220 BIU -> KAVACH pressures, 8 B: seven bytes, then their validity bits. -->
+  <packet name="BIU_PRESS" match="captype==biu_press" wire="lsb-first" trailer_bytes="0">
+    <field name="bp"             bits="8" format="kg05"/>
+    <field name="bc"             bits="8" format="kg05"/>
+    <field name="mr"             bits="8" format="kg05"/>
+    <field name="a9_ref"         bits="8" format="kg05"/>
+    <field name="sa9_ref"        bits="8" format="kg05"/>
+    <field name="air_flow"       bits="8" format="kg05"/>
+    <field name="feed_pipe"      bits="8" format="kg05"/>
+    <field name="bp_valid"       bits="1"/>
+    <field name="bc_valid"       bits="1"/>
+    <field name="mr_valid"       bits="1"/>
+    <field name="a9_ref_valid"   bits="1"/>
+    <field name="sa9_ref_valid"  bits="1"/>
+    <field name="air_flow_valid" bits="1"/>
+    <field name="feed_pipe_valid" bits="1"/>
+    <pad bits="1"/>
+  </packet>
+  <!-- 0x320 BIU -> KAVACH codes, 8 B: isolation counter, fault and display-only codes (u16 LE), spare. -->
+  <packet name="BIU_CODES" match="captype==biu_codes" wire="lsb-first" trailer_bytes="0">
+    <field name="isolation_counter" bits="16"/>
+    <field name="fault_code"        bits="16" hex="4"/>
+    <field name="display_code"      bits="16" hex="4"/>
+    <field name="spare"             bits="16"/>
+  </packet>
+  <!-- 0x420 BIU -> KAVACH discretes, 8 B: three status bytes, spare. -->
+  <packet name="BIU_DISC" match="captype==biu_disc" wire="lsb-first" trailer_bytes="0">
+    <field name="biu_healthy"               bits="1"/>
+    <field name="cmd_overridden_by_pilot"   bits="1"/>
+    <field name="pilot_overridden_by_biu"   bits="1"/>
+    <field name="manual_isolate"            bits="1"/>
+    <field name="bp_charging_cutout"        bits="1"/>
+    <field name="emergency_valve"           bits="1"/>
+    <field name="power_cutoff_relay"        bits="1"/>
+    <pad bits="1"/>
+    <field name="panel_test_success"        bits="1"/>
+    <field name="panel_test_fail"           bits="1"/>
+    <field name="panel_test_in_progress"    bits="1"/>
+    <pad bits="5"/>
+    <!-- byte 3 named as the bench shows it (Biu::statusBitNames); biuprotocol.h's
+         StBpSelectValveOn / StBcSelectValveOn / St*Ok are these bits: "select" = control, "Ok" = healthy. -->
+    <field name="bp_cutout_valve_on"        bits="1"/>
+    <field name="bp_control_valve_on"       bits="1"/>
+    <field name="bc_control_valve_on"       bits="1"/>
+    <field name="emergency_valve_on"        bits="1"/>
+    <field name="bp_cutout_valve_healthy"   bits="1"/>
+    <field name="bp_control_valve_healthy"  bits="1"/>
+    <field name="bc_control_valve_healthy"  bits="1"/>
+    <field name="emergency_valve_healthy"   bits="1"/>
+    <field name="spare"                     bits="40"/>
   </packet>
 
   <!-- @lout in the old cab's STRUCT_LOCO_OUTPUT (session 360): every output acts on 1. -->

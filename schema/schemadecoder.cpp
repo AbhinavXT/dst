@@ -233,6 +233,8 @@ QString Decoder::composite(const QString &name, qint64 v)
         return QStringLiteral("%1 m").arg(double(v) / 10.0, 0, 'f', 1);
     if (name == "x100")                               // @sos sensor_speed x 100
         return QString::number(double(v) / 100.0, 'f', 2);
+    if (name == "kg05")                               // @biu_* pressures, 0.05 kg/cm2 per bit
+        return QStringLiteral("%1 kg/cm\u00B2 (%2)").arg(double(v) * 0.05, 0, 'f', 2).arg(v);
     return QString::number(v);
 }
 

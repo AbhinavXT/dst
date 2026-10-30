@@ -75,6 +75,9 @@
 //    full rate (the simulator's "Brake build-up time"; 0 = at once). It acts
 //    until the VCC commands the release (A9 5.0, SA9 0). The air way above
 //    stays, for a test of the plant's faults.
+//    (session 420) The command can also come from the VCC's log: its
+//    @biu_cmd copies of what it put on CAN (docs/biu-firmware,
+//    biu_dlconsole_mirror), read as the BIU reads them (biuCommandTargets).
 // =============================================================================
 #include <QByteArray>
 #include <QtGlobal>
@@ -128,7 +131,8 @@ struct BrakeRates {
 double brakeDeceleration(const BrakeRates &rates, double bpKgcm2, double bcKgcm2);
 
 // Session 418: what slows the loco: the BIU's command, or the bench's air.
-enum class BrakeSource { Command, Air };
+// Session 420: or the VCC's own @biu_cmd copies (a real BIU on CAN, no bench).
+enum class BrakeSource { Command, Air, VccLog };
 // The brake a command asks for, from its BP target (A9) and BC target (SA9),
 // each when valid: BP half way down to FSB (1.75) or lower is EB, half way to
 // NB (3.95) FSB, half way to released (4.7) NB; BP charged with BC over the
@@ -138,6 +142,19 @@ QString   brakeTypeName(BrakeType type);   // "released", "NB", "FSB", "EB", "LE
 BrakeType commandedBrake(const BrakeRates &rates, double bpKgcm2, double bcKgcm2);
 // m/s^2: NB the NB rate, FSB and LE full service, EB emergency, released 0.
 double    brakeTypeRate(const BrakeRates &rates, BrakeType type);
+
+// Session 420: the BP and BC a BIU command asks for, as the BIU follows it:
+// A9 / SA9 when valid, else the released BP / 0; nothing while the command
+// isolates the BIU (the loco pilot's brakes then). False for anything that
+// is not an 8-byte 0x190 data field. A target marked valid above its range
+// (A9 6.0, SA9 4.0) is still followed, as the bench's BIU follows it
+// (BiuSim notes it), and flagged here so the Drive tab can say so.
+struct CommandTargets {
+    double bp = 0, bc = 0;
+    bool   isolated = false;
+    bool   a9Above = false, sa9Above = false;
+};
+bool biuCommandTargets(const QByteArray &data, const BrakeRates &rates, CommandTargets *out);
 
 // Session 405: a tag frame's fault, set per tag on the RFID tab.
 enum class TagFault { None, Late, Twice, BadCrc };

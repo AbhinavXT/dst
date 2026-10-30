@@ -6,6 +6,7 @@
 #include "tagsenddialog.h"
 #include "routestrip.h"
 #include "biusim.h"
+#include "capturedecoder.h"
 #include "settings.h"
 #include "simwidgets.h"
 #include "speedgauge.h"
@@ -319,20 +320,23 @@ QWidget *LocoSimWindow::buildDriveTab()
 
     controls->addWidget(labelNamed(tr("Brake"), "muted", loco), 3, 0);
     auto *brakeRow = new QHBoxLayout;
-    m_brakeFollow = new QCheckBox(tr("From the Brake Test Bench"), loco);
+    m_brakeFollow = new QCheckBox(tr("Brake the loco"), loco);
     m_brakeFollow->setObjectName(QStringLiteral("locoSimBrakeFollow"));
-    m_brakeFollow->setToolTip(tr("What the VCC commands the BIU slows the loco; "
-                                 "while it brakes, the brake wins over the drive"));
+    m_brakeFollow->setToolTip(tr("The source on the right slows the loco (the BIU's command, the bench's air or "
+                                 "the VCC's @biu_cmd); while it brakes, the brake wins over the drive"));
     brakeRow->addWidget(m_brakeFollow);
     // Session 418: the command's brake type, as LocoTcasSimulator, or the air.
     m_brakeSource = new QComboBox(loco);
     m_brakeSource->setObjectName(QStringLiteral("locoSimBrakeSource"));
     m_brakeSource->addItem(tr("by the BIU's command"), int(LocoSim::BrakeSource::Command));
     m_brakeSource->addItem(tr("by the bench's air"), int(LocoSim::BrakeSource::Air));
+    m_brakeSource->addItem(tr("by the VCC's @biu_cmd"), int(LocoSim::BrakeSource::VccLog));
     m_brakeSource->setToolTip(tr("BIU's command: A9 / SA9 read as NB, FSB, EB or LE, that brake's rate at once "
                                  "(or over the build-up time on Settings), as LocoTcasSimulator brakes.\n"
                                  "Bench's air: the rate follows BC and BP as they move, so the bench's plant "
-                                 "faults (slow, leak, stuck) change the braking."));
+                                 "faults (slow, leak, stuck) change the braking.\n"
+                                 "VCC's @biu_cmd: the command as the VCC copies it to the log (a real BIU on CAN, "
+                                 "no bench): the same brakes as the BIU's command, from the live @biu_cmd lines."));
     brakeRow->addWidget(m_brakeSource);
     brakeRow->addSpacing(8);
     m_brakeState = labelNamed(QString(), "mono", loco);
@@ -1781,6 +1785,13 @@ void LocoSimWindow::resetHealthClock(int reader)
 void LocoSimWindow::healthTick()
 {
     const qint64 now = m_clock();
+    // Session 420: stopped, nothing else re-reads the @biu_cmd's age.
+    if (!running() && m_logKnown && brakeSource() == LocoSim::BrakeSource::VccLog
+        && now - m_logMs > kBiuCmdStaleMs) {
+        const bool was = m_motion.braking();
+        applyBrake();
+        if (was != m_motion.braking()) showMotion();
+    }
     for (int reader = 1; reader <= 2; ++reader) {
         if (!m_readerOn[reader - 1]->isChecked() || now < m_healthDue[reader - 1]) continue;
         m_healthDue[reader - 1] = now + LocoSim::kHealthPeriodMs[reader - 1];
@@ -2648,6 +2659,36 @@ void LocoSimWindow::observeCommand(double bpTargetKgcm2, double bcTargetKgcm2)
     if (was != m_motion.braking()) showMotion();
 }
 
+bool LocoSimWindow::observeBiuCmdLine(const QString &line)
+{
+    const CaptureLine cap = CaptureDecoder::parseLine(line);
+    LocoSim::CommandTargets t;
+    if (!cap.valid || cap.type != CapType::BiuCmd || !LocoSim::biuCommandTargets(cap.bytes, brakeRates(), &t)) return false;
+    const qint64 now = m_clock();
+    const QString from = tr("loco %1 VCC %2").arg(cap.locoId).arg(cap.ctrlId);
+    // One loco's BIU: the source followed holds until it has been silent.
+    const bool other = cap.locoId != m_logLoco || cap.ctrlId != m_logVcc;
+    if (m_logKnown && other && now - m_logMs <= kBiuCmdStaleMs) {
+        ++m_logIgnored;
+        m_logIgnoredFrom = from;
+        return false;
+    }
+    if (other) m_logIgnored = 0;   // a new source: the count was against the old one
+    ++m_logLines;
+    m_logKnown = true;
+    m_log = t;
+    m_logMs = now;
+    m_logLoco = cap.locoId;
+    m_logVcc = cap.ctrlId;
+    m_logFrom = from;
+    if (brakeSource() == LocoSim::BrakeSource::VccLog) {
+        const bool was = m_motion.braking();
+        applyBrake();
+        if (was != m_motion.braking()) showMotion();
+    }
+    return true;
+}
+
 void LocoSimWindow::setBrakeSource(LocoSim::BrakeSource source)
 {
     m_brakeSource->setCurrentIndex(m_brakeSource->findData(int(source)));
@@ -2706,15 +2747,33 @@ void LocoSimWindow::applyBrake()
     if (!m_brakeState || !m_fullBc || !m_buildUp || !m_brakeSource) return;
     const bool follows = m_brakeFollow->isChecked();
     const LocoSim::BrakeRates rates = brakeRates();
-    if (brakeSource() == LocoSim::BrakeSource::Command) {
-        const LocoSim::BrakeType type = m_cmdKnown ? LocoSim::commandedBrake(rates, m_cmdBp, m_cmdBc)
-                                                   : LocoSim::BrakeType::Released;
+    const LocoSim::BrakeSource source = brakeSource();
+    if (source != LocoSim::BrakeSource::Air) {
+        // The bench's BIU (session 418), or the VCC's @biu_cmd lines (session 420).
+        const bool fromLog = source == LocoSim::BrakeSource::VccLog;
+        const qint64 age = fromLog && m_logKnown ? m_clock() - m_logMs : 0;
+        const bool known = fromLog ? m_logKnown && age <= kBiuCmdStaleMs : m_cmdKnown;
+        const double bp = fromLog ? m_log.bp : m_cmdBp, bc = fromLog ? m_log.bc : m_cmdBc;
+        const LocoSim::BrakeType type = known ? LocoSim::commandedBrake(rates, bp, bc) : LocoSim::BrakeType::Released;
         const double mps2 = follows ? LocoSim::brakeTypeRate(rates, type) : 0.0;
         m_motion.setBrakeBuildUp(rates.buildUpSeconds);
         m_motion.setBrake(mps2);
-        const QString cmd = tr("A9 %1 \u00B7 SA9 %2 kg/cm\u00B2").arg(m_cmdBp, 0, 'f', 2).arg(m_cmdBc, 0, 'f', 2);
+        QString cmd = tr("A9 %1 \u00B7 SA9 %2 kg/cm\u00B2").arg(bp, 0, 'f', 2).arg(bc, 0, 'f', 2);
+        if (fromLog) {
+            cmd = m_log.isolated ? tr("BIU isolated: the loco pilot's brakes") : cmd;
+            if (m_log.a9Above) cmd += tr(" \u00B7 A9 marked valid, above 6.0");
+            if (m_log.sa9Above) cmd += tr(" \u00B7 SA9 marked valid, above 4.0");
+            cmd += tr(" \u00B7 @biu_cmd, %1").arg(m_logFrom);
+            if (m_logIgnored > 0)
+                cmd += tr(" \u00B7 %n not taken from another source (last %1)", nullptr, m_logIgnored).arg(m_logIgnoredFrom);
+        }
         if (!follows) m_brakeState->setText(tr("off: nothing slows the loco"));
-        else if (!m_cmdKnown) m_brakeState->setText(tr("open Tools \u25B8 Simulators \u25B8 Brake Test Bench"));
+        else if (fromLog && !m_logKnown)
+            m_brakeState->setText(tr("no @biu_cmd from the VCC yet (its biu_dlconsole_mirror copies)"));
+        else if (fromLog && !known)
+            m_brakeState->setText(tr("no @biu_cmd for %1 s: released \u00B7 last from %2")
+                                      .arg(age / 1000.0, 0, 'f', 1).arg(m_logFrom));
+        else if (!known) m_brakeState->setText(tr("open Tools \u25B8 Simulators \u25B8 Brake Test Bench"));
         else if (!m_motion.braking()) m_brakeState->setText(tr("released \u00B7 %1").arg(cmd));
         else if (m_motion.brakeEffort() < 1)
             m_brakeState->setText(tr("braking %1 %2 of %3 m/s\u00B2 (building up) \u00B7 %4")
@@ -2766,8 +2825,10 @@ void LocoSimWindow::loadSettings()
     m_emergency->setValue(settings.value(QStringLiteral("brakeEmergency"), rates.emergencyMps2).toDouble());
     m_fullBc->setValue(settings.value(QStringLiteral("brakeFullBc"), rates.fullBcKgcm2).toDouble());
     m_buildUp->setValue(settings.value(QStringLiteral("brakeBuildUp"), rates.buildUpSeconds).toDouble());
-    setBrakeSource(settings.value(QStringLiteral("brakeSource")).toString() == QLatin1String("air")
-                       ? LocoSim::BrakeSource::Air : LocoSim::BrakeSource::Command);
+    const QString source = settings.value(QStringLiteral("brakeSource")).toString();
+    setBrakeSource(source == QLatin1String("air")   ? LocoSim::BrakeSource::Air
+                   : source == QLatin1String("log") ? LocoSim::BrakeSource::VccLog
+                                                    : LocoSim::BrakeSource::Command);
     applyBrake();
 
     for (int reader = 0; reader < 2; ++reader)
@@ -2811,7 +2872,9 @@ void LocoSimWindow::saveSettings() const
     settings.setValue(QStringLiteral("brakeFullBc"), m_fullBc->value());
     settings.setValue(QStringLiteral("brakeBuildUp"), m_buildUp->value());
     settings.setValue(QStringLiteral("brakeSource"),
-                      brakeSource() == LocoSim::BrakeSource::Air ? QStringLiteral("air") : QStringLiteral("command"));
+                      brakeSource() == LocoSim::BrakeSource::Air      ? QStringLiteral("air")
+                      : brakeSource() == LocoSim::BrakeSource::VccLog ? QStringLiteral("log")
+                                                                      : QStringLiteral("command"));
     for (int reader = 0; reader < 2; ++reader)
         settings.setValue(QStringLiteral("rfidReader%1").arg(reader + 1), m_readerOn[reader]->isChecked());
     settings.setValue(QStringLiteral("rfidReader2OwnPort"), m_reader2Port->checkedId() == 1);

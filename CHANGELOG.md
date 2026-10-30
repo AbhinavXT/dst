@@ -10,6 +10,68 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-420"></a>
+## Session 420 — DLConsole reads the @biu_* copies; the Loco Simulator brakes by the VCC's @biu_cmd
+
+Patch 419 made the VCC copy every BIU frame to DLConsole; this patch reads
+them. Finished after a closed session, with the code review's findings fixed.
+
+**Why.** With a real BIU on CAN there is no Brake Test Bench, so the Loco
+Simulator had nothing to brake from, and the copies arrived as lines nothing
+decoded.
+
+**What the operator sees.**
+- The seven lines (`@biu_cmd`, `@biu_beat`, `@biu_nmt`, `@biu_beatrx`,
+  `@biu_press`, `@biu_codes`, `@biu_disc`) decode field by field like any
+  capture line: the command's bits, A9 / SA9 and the pressures in kg/cm²
+  (0.05 per bit, the raw value beside), the NMT states and commands by name.
+  Sent (command, our heartbeat) are Out; the BIU's frames are In.
+- Loco Simulator ▸ Drive ▸ Brake: a third source, **by the VCC's @biu_cmd**:
+  the same brakes as by the BIU's command (NB, FSB, EB, LE, at once or over
+  the build-up time), from the live lines. The label names the source
+  (`@biu_cmd, loco 1 VCC 1`); a BIU isolated by the command says "the loco
+  pilot's brakes" and does not brake.
+- One loco, one BIU: the first loco and VCC heard are followed; a line from
+  another loco or VCC is not taken while the followed one has been heard in
+  the last 2 s, and the label counts them ("1 not taken from another source
+  (last loco 2 VCC 3)"). After 2 s of silence the next source heard is taken.
+- No line for 2 s: released, "no @biu_cmd for N s", counting, whether the
+  simulator runs or not (the 100 ms health tick re-reads it when stopped).
+- A9 above 6.0 or SA9 above 4.0 marked valid: followed, as the bench's BIU
+  follows it, and the label says "A9 marked valid, above 6.0".
+- The checkbox is now **Brake the loco** (it was "From the Brake Test Bench",
+  for a while "Follow the VCC's brake"): it switches whichever source is
+  picked. The source is saved (`brakeSource=log`).
+- Only live traffic reaches the simulator (UDP, serial, the Packet Maker
+  loopback); a .dlr streamed "as live traffic" is live by design and brakes
+  it too. File replays decode in their own windows and do not.
+
+**Files.** capturedecoder.{h,cpp} (seven CapTypes), schema/kavach.xml (seven
+packets, biuNmtState / biuNmtCs; the `@dlcount` comment back above its enum),
+schema/schemadecoder.cpp and schema/engine.py (`kg05`), locosim.{h,cpp}
+(`BrakeSource::VccLog`, `biuCommandTargets`), locosimwindow.{h,cpp},
+mainwindow_tools.cpp (the lines routed, the prefix read without a copy),
+schema/biu_oracle.py + schema/validate_biu.py (new validator),
+schema/fixtures/biu_synthetic.log + tests/biugen/make_fixture.c (the fixture
+and its generator), tests/test_session420.cpp.
+
+**Tests.** `validate_biu.py`: 129/129 frames match the oracle (struct and bit
+masks, as the firmware reads them). `session420` (36 checks): the tokens,
+types and directions; `@biu_cmd` FSB decoded bit by bit, `@biu_beat`,
+`@biu_nmt`; the targets (EB, isolated, not valid, above range, 7 bytes); the
+simulator by `@biu_cmd`, stopped: EB, another loco's and another VCC's lines
+not taken, stale released by the health tick, the next source taken,
+isolated, off, the Command source unaffected; the source saved.
+- **Synthetic only:** no real `@biu_*` line has been captured. The fixture is
+  the firmware module's own copies (tests/biugen), the BIU's frames
+  spec-derived. Not tested with a real BIU or a real VCC.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: 17 validators (validate_biu.py new),
+433 suites / 10836 checks, menu audit, headless smoke. session308 and
+session310 count the schema's packets and enums: 38 / 65 now, SLRP at line 963.
+
+---
+
 <a id="session-419"></a>
 ## Session 419 — the BIU firmware copies every BIU frame to DLConsole (@biu_cmd, @biu_beat, ...)
 

@@ -73,8 +73,13 @@ enum class CapType {
                               // no CRC (session 267)
     Lout,                     // @lout the 16-bit output word the VCC sends
                               // the output cards, 2 B LE (session 359)
-    DlCount                   // @dlcount LKAVACH -> LDLU counter message:
+    DlCount,                  // @dlcount LKAVACH -> LDLU counter message:
                               // 8 B header, counter u8, CRC-32 LE, 13 B (session 403)
+    // Session 420: the BIU frames as the VCC copies them (biu_dlconsole_mirror),
+    // each its CAN data bytes, no CRC: sent, the 0x190 command and 0x720
+    // heartbeat; received, NMT 0x000, the BIU's heartbeat 0x710 and its
+    // pressures 0x220, codes 0x320 and discretes 0x420.
+    BiuCmd, BiuBeat, BiuNmt, BiuBeatRx, BiuPress, BiuCodes, BiuDisc
 };
 
 enum class CapDir { Unknown = 0, In, Out };   // provisional per-type direction

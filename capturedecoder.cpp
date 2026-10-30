@@ -460,6 +460,13 @@ CapType typeFromToken(const QString &token)
     if (token == "lout")    return CapType::Lout;
     if (token == "dllog" || token == "dl_log") return CapType::DlLog;
     if (token == "dlcount") return CapType::DlCount;
+    if (token == "biu_cmd")    return CapType::BiuCmd;
+    if (token == "biu_beat")   return CapType::BiuBeat;
+    if (token == "biu_nmt")    return CapType::BiuNmt;
+    if (token == "biu_beatrx") return CapType::BiuBeatRx;
+    if (token == "biu_press")  return CapType::BiuPress;
+    if (token == "biu_codes")  return CapType::BiuCodes;
+    if (token == "biu_disc")   return CapType::BiuDisc;
     if (token == "speed")   return CapType::Speed;
     if (token == "analog_top")    return CapType::AnalogTop;
     if (token == "analog_bottom") return CapType::AnalogBottom;
@@ -542,6 +549,13 @@ const char *typeLabel(CapType t)
     case CapType::Lout:     return "lout";
     case CapType::DlLog:    return "dl log";
     case CapType::DlCount:  return "dl count";
+    case CapType::BiuCmd:    return "biu command";
+    case CapType::BiuBeat:   return "biu heartbeat (sent)";
+    case CapType::BiuNmt:    return "biu nmt";
+    case CapType::BiuBeatRx: return "biu heartbeat (received)";
+    case CapType::BiuPress:  return "biu pressures";
+    case CapType::BiuCodes:  return "biu codes";
+    case CapType::BiuDisc:   return "biu discretes";
     case CapType::Speed:    return "speed";
     case CapType::AnalogTop:    return "analog top";
     case CapType::AnalogBottom: return "analog bottom";
@@ -579,6 +593,13 @@ CapDir directionFor(CapType t)
     case CapType::Lout:     return CapDir::Out;   // VCC -> output cards
     case CapType::DlLog:    return CapDir::Out;   // LKAVACH -> LDLU, logged out
     case CapType::DlCount:  return CapDir::Out;   // LKAVACH -> LDLU, logged out
+    case CapType::BiuCmd:                         // session 420: VCC -> BIU
+    case CapType::BiuBeat:  return CapDir::Out;
+    case CapType::BiuNmt:                         // BIU -> VCC
+    case CapType::BiuBeatRx:
+    case CapType::BiuPress:
+    case CapType::BiuCodes:
+    case CapType::BiuDisc:  return CapDir::In;
     case CapType::Speed:                          // tachometer pulses, sensed
     case CapType::AnalogTop:
     case CapType::AnalogBottom: return CapDir::In; // analog (pressure) inputs, sensed
@@ -1616,6 +1637,14 @@ QVector<FieldRow> describe(const CaptureLine &c, const QHash<int, qint64> *tagLo
     case CapType::Speed: r += schemaRows(b, QStringLiteral("speed"), nullptr, -1, rawValues); break;
     // @dlcount (session 403): the counter message LKAVACH sends the LDLU.
     case CapType::DlCount: r += schemaRows(b, QStringLiteral("dlcount"), nullptr, -1, rawValues); break;
+    // @biu_* (session 420): the BIU frames' CAN data bytes, as the VCC copies them.
+    case CapType::BiuCmd:    r += schemaRows(b, QStringLiteral("biu_cmd"), nullptr, -1, rawValues); break;
+    case CapType::BiuBeat:   r += schemaRows(b, QStringLiteral("biu_beat"), nullptr, -1, rawValues); break;
+    case CapType::BiuNmt:    r += schemaRows(b, QStringLiteral("biu_nmt"), nullptr, -1, rawValues); break;
+    case CapType::BiuBeatRx: r += schemaRows(b, QStringLiteral("biu_beatrx"), nullptr, -1, rawValues); break;
+    case CapType::BiuPress:  r += schemaRows(b, QStringLiteral("biu_press"), nullptr, -1, rawValues); break;
+    case CapType::BiuCodes:  r += schemaRows(b, QStringLiteral("biu_codes"), nullptr, -1, rawValues); break;
+    case CapType::BiuDisc:   r += schemaRows(b, QStringLiteral("biu_disc"), nullptr, -1, rawValues); break;
     case CapType::AnalogTop:
         r += schemaRows(b, QStringLiteral("analog_top"), nullptr, -1, rawValues); break;
     case CapType::AnalogBottom:

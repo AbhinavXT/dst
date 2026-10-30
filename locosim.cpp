@@ -1,5 +1,7 @@
 #include "locosim.h"
 
+#include "biuprotocol.h"
+
 #include <QtEndian>
 #include <algorithm>
 #include <cmath>
@@ -130,6 +132,18 @@ double brakeTypeRate(const BrakeRates &rates, BrakeType type)
     case BrakeType::Released:    break;
     }
     return 0;
+}
+
+bool biuCommandTargets(const QByteArray &data, const BrakeRates &rates, CommandTargets *out)
+{
+    Biu::Command c;
+    if (!out || data.size() != 8 || !Biu::decodeCommand(data, &c)) return false;
+    out->isolated = c.bit1(Biu::CmdBiuIsolate);
+    out->bp = !out->isolated && c.a9Valid() ? c.a9() : rates.releasedBpKgcm2;
+    out->bc = !out->isolated && c.sa9Valid() ? c.sa9() : 0.0;
+    out->a9Above  = c.a9Valid() && c.a9() > Biu::kA9ValidMax + 1e-9;
+    out->sa9Above = c.sa9Valid() && c.sa9() > Biu::kSa9ValidMax + 1e-9;
+    return true;
 }
 
 void Motion::setSpeed(double kmh)

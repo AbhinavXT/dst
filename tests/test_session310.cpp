@@ -180,7 +180,7 @@ TEST_SUITE(session310)
     CHECK(s.insert(node, Place::LastChild, first, &node, &why), "its field");
     const QVector<QByteArray> aapFrames = frames310(QStringLiteral("aap"), 1);
     Schema::Decoder dw;
-    CHECK(dw.loadData(s.text()) && dw.packetCount() == 32, "32 packets now");
+    CHECK(dw.loadData(s.text()) && dw.packetCount() == 39, "39 packets now");
     const QVector<FieldRow> rows = aapFrames.isEmpty() ? QVector<FieldRow>() : dw.decode(aapFrames.first(), {}, QStringLiteral("weather"));
     bool found = false;
     for (const FieldRow &r : rows) {
@@ -258,7 +258,7 @@ TEST_SUITE(session310)
     CHECK(!s.move(slrp, -1, &node, &why) && why.contains(QLatin1String("first packet")), "SLRP is the first packet");
     s.undo();
     CHECK(s.remove(named310(s.doc(), QStringLiteral("packet"), QStringLiteral("AEP")), &why)
-              && packets310(s.doc()).size() == 30
+              && packets310(s.doc()).size() == 37
               && s.text().count("Additional Emergency Packet") == xml.count("Additional Emergency Packet") - 1,
           "AEP deleted with its comment");
     s.undo();
@@ -349,12 +349,12 @@ TEST_SUITE(session310)
     win.selectContainer(QStringLiteral("packet"), QStringLiteral("AEP"));
     CHECK(win.deleteContainer(false), "AEP deleted");
     QApplication::processEvents();
-    CHECK(category(QStringLiteral("Packets")) == QLatin1String("Packets (30)") && win.selectedNode() > 0
+    CHECK(category(QStringLiteral("Packets")) == QLatin1String("Packets (37)") && win.selectedNode() > 0
               && SchemaEdit::isContainer(win.session().doc(), win.selectedNode()),
-          "Packets (30); another packet selected");
+          "Packets (37); another packet selected");
     while (win.session().canUndo()) win.undo();
     QApplication::processEvents();
-    CHECK(!win.session().dirty() && category(QStringLiteral("Packets")) == QLatin1String("Packets (31)"), "all undone");
+    CHECK(!win.session().dirty() && category(QStringLiteral("Packets")) == QLatin1String("Packets (38)"), "all undone");
     win.close();
 
     SchemaEditorWindow ro(QStringLiteral(":/schema/kavach.xml"));

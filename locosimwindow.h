@@ -55,6 +55,8 @@
 //              LocoTcasSimulator brakes: NB, FSB, EB or LE, each its fixed
 //              rate at once (or over a build-up time), until the VCC
 //              releases (LocoSim::commandedBrake).
+//              (session 420) or by the VCC's @biu_cmd log lines, the copies
+//              of what it put on CAN to a real BIU: the same brakes, no bench.
 // =============================================================================
 #include "locosim.h"
 #include "scenario.h"
@@ -136,6 +138,14 @@ public:
     void   followBench(BrakeBenchWindow *bench);    // its air brakes the loco while it is open
     void   observeAir(double bpKgcm2, double bcKgcm2);
     void   observeCommand(double bpTargetKgcm2, double bcTargetKgcm2);   // session 418
+    // Session 420: a live @biu_cmd line (MainWindow routes them here); true
+    // if taken. Brakes the loco when the source is the VCC's log. The first
+    // loco and VCC heard are followed; another's lines are counted and not
+    // taken until the followed one has been silent for kBiuCmdStaleMs.
+    bool   observeBiuCmdLine(const QString &line);
+    int    biuCmdLines() const { return m_logLines; }
+    int    biuCmdIgnored() const { return m_logIgnored; }
+    static constexpr qint64 kBiuCmdStaleMs = 2000;   // older: the command is not known
     void   setBrakeSource(LocoSim::BrakeSource source);
     LocoSim::BrakeSource brakeSource() const;
     void   setBrakeFollows(bool on);
@@ -313,6 +323,14 @@ private:
     bool            m_cmdKnown = false;     // session 418: the bench's targets
     double          m_cmdBp = 0;
     double          m_cmdBc = 0;
+    bool            m_logKnown = false;     // session 420: the VCC's @biu_cmd
+    LocoSim::CommandTargets m_log;
+    qint64          m_logMs = 0;
+    QString         m_logFrom;              // "loco 1 VCC 2"
+    int             m_logLoco = -1, m_logVcc = -1;
+    int             m_logLines = 0;
+    int             m_logIgnored = 0;       // lines from another loco / VCC
+    QString         m_logIgnoredFrom;
     QComboBox      *m_brakeSource = nullptr;
     QDoubleSpinBox *m_buildUp = nullptr;
     QCheckBox      *m_brakeFollow = nullptr;
