@@ -43,6 +43,18 @@ profile 2 acknowledged: MA only*.
 - **The ref tag** is the last tag the loco read, when the route holds it.
   `DIST_PKT_START` is minus its distance from the start signal;
   `APPR_SIG_DIST` is from it to the signal ahead.
+- **SPAD** (session 426). When the loco's `ABS_LOCO_LOC` is past the foot
+  of its route's exit signal while that shows Red (or stop board,
+  unidentified; calling-on aside), the answer is **SoS SPAD**:
+  `DEST_LOCO_SOS` 4, `AUTHORITY_TYPE` 0, `MA_W_R_T_SIG` 0,
+  `DIST_PKT_START` 0, `NEXT_SIG_ASPECT` 0, `APPR_SIG_DIST` from the ref tag
+  to the signal, the MA alone, the profile id kept. Where the ref tag is
+  comes from the layout's own tags (their abs_loc; of a number listed
+  more than once, the place nearest the loco): a layout without tags
+  cannot see a SPAD. This is station 527's answer to loco 1 standing 1 m
+  past A904 in `replay/loco_1_1_27062026_140226.cap`, every frame of it
+  (MAC aside: that capture has no session keys). What set it off is not in
+  the capture (it starts with the SoS on); "past the foot" is our reading.
 - **The checks.** A point lying the wrong way, an occupied track circuit
   or TIN, a Green or Double Yellow with Red ahead, an aspect wanting more
   sections than there are routes: each is **said**, and the answer is
@@ -196,7 +208,8 @@ start (`d`, `start`, `sd`, `dist`).
 
 Not modelled: the TSR route table's OHE poles (TSR rows are placed by
 distance), Temporary Single Line working, train length, shortened MA,
-SoS, the next station's communication, the absolute-block last stop
+SoS other than SPAD (Rear-end: waiting for the rule), the next station's
+communication, the absolute-block last stop
 signal's MA in metres (give the block section as a route). Not tested
 against a live loco: the engine's answers are checked against real station
 frames only. No import from a firm's Table-of-Control sheet yet (waiting for

@@ -10,6 +10,68 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-426"></a>
+## Session 426 — the Stationary KAVACH sees a SPAD: SoS to a loco past a Red signal
+
+Item 3 of Abhinav's *"1,2,3"* (more station behaviour). Asked first, with
+what the real frames hold: of 3514 SLRPs in `replay/`, shortened MA, train
+length and next-station communication are never set; only SoS is, by
+station 527, SPAD 140 times and Rear-end 11. Answered: *"SPAD, then
+Rear-end"*. This is SPAD.
+
+**What the operator sees.** Packet Maker answering as the station (session
+422): a loco whose LSRP puts it past the foot of its route's exit signal
+while that signal shows Red is answered **SoS SPAD** instead of an MA. The
+send log says *SPAD: loco 1 m past A904 at Red: SoS SPAD, no authority, MA
+0; ref tag 902*, and Station… lists *loco past A904 at Red (SPAD)*. As soon
+as the loco is no longer past a Red signal (the aspect changed, or calling-on
+given), the answers are the usual MA again.
+
+**The rule, from station 527's own frames.** In
+`replay/loco_1_1_27062026_140226.cap` loco 1 stands in Trip at 163821 m, 1 m
+past A904's foot (Section_30, block 2: tag 902 at 163620, A904 200 m on). The
+station answers every LSRP with: `DEST_LOCO_SOS` 4, `AUTHORITY_TYPE` 0,
+`MA_W_R_T_SIG` 0, `DIST_PKT_START` 0, `NEXT_SIG_ASPECT` 0, `APPR_SIG_DIST`
+200 (ref tag to the signal), A904's `CUR_SIG_INFO` (0x12F60, the fixture's
+own), the MA sub-packet alone, `REF_PROF_ID` kept at 4. DLConsole now sends
+exactly that. **Not in the capture:** the moment the SoS began (it starts
+with it on), so "ABS_LOCO_LOC past the signal's foot" is our reading of the
+trigger, not something seen; nor the moment it ended (the capture jumps to
+another run).
+
+**How the station knows where the loco is.** The KAVACH data has route
+distances only; the ref tag's place comes from the layout's own tags
+(`StationLayout::tagLocationsByNumber`, new; of a number listed more than
+once, the place nearest the loco). Packet Maker fills it from the layout
+file it answers from. A layout without tags cannot see a SPAD; said in
+`docs/STATION_KAVACH.md`.
+
+**Files.** `stationkavach.{h,cpp}` (`Station::tagLocs`, the SPAD answer);
+`stationlayout.{h,cpp}` (`tagLocationsByNumber`; Station Layout's location
+check and tag picking use it now); `packetmakerdialog.cpp`;
+`stationlayoutwindow.cpp`; `docs/STATION_KAVACH.md`; `CLAUDE.md`;
+`tests/test_session426.cpp` (new), `tests/tests.pro`.
+
+**Tests.** `session426` (24 checks) on the real frames: LSRP 50548 answered
+as station 527's SLRP 50549 field for field (MAC aside: no session keys in
+that capture), and **all 59 LSRP / SLRP pairs of the SPAD stretch (50548 to
+50764) the same**; the loco's profile kept and its route and ref noted. Not
+a SPAD: A904 Yellow; the loco at the foot (163820 m), not past it; calling-on;
+no tag locations; the route run Reverse. A SPAD at A900 from tag 898 (10 m
+past). Packet Maker, armed with Section_30 plus the 527 data (A904 at Red)
+saved as a layout file, answers the real ARP and LSRP 50548 over loopback
+with the real SLRP's fields (FRAME_NUM and profile id aside: ours answers
+that frame, to a loco new to it).
+- **Not tested:** against a live loco; how a real loco and DMI take it
+  beyond what the capture shows.
+- **Not built:** Rear-end SoS (next; its MA rule is not yet derived); SoS
+  for an overlap or a loco past a Red signal on a route it is not on.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: 17 validators, 439 suites / 11055
+checks, menu audit (203), headless smoke.
+
+---
+
 <a id="session-425"></a>
 ## Session 425 — a KAVACH route's tags picked by clicking them on the drawing
 

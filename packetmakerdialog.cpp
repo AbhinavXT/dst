@@ -2003,6 +2003,7 @@ bool PacketMakerDialog::startAnswering()
                                .arg(err.isEmpty() ? QString() : QStringLiteral(": ") + err));
             return false;
         }
+        station.tagLocs = StationLayout::tagLocationsByNumber(layout);   // session 426: SPAD seen
         m_aapFields = aap.header;
         m_station = station;
         m_stnState = StationKavach::State::initial(station);

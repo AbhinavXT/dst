@@ -121,7 +121,8 @@ The three features once queued here are all done:
   routes as Table-of-Control rows, MA in sections from the aspects, profile
   cut at the MA end, live state in Packet Maker ▸ Station… (422); edited in
   Station Layout ▸ KAVACH (423); the routes and the MA drawn on the layout
-  (424); a route's tags picked by clicking the drawing (425).
+  (424); a route's tags picked by clicking the drawing (425); SoS SPAD to a
+  loco past a Red signal (426).
   `docs/STATION_KAVACH.md`. Next steps proposed there under "Not yet".
 
 Before proposing a feature, search `CHANGELOG.md` for it. **Queued:** the

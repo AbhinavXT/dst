@@ -1535,14 +1535,7 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     // Session 424: the route selected, and the MA's sections on from it, drawn while the tab is shown.
     connect(m_kavach, &StationKavachEditor::routeSelected, this, [this]() { updateKavachView(); });
     // Session 425: the selected route's tags picked on the drawing.
-    m_kavach->setTagLocations([this](int id) {
-        QVector<qint64> out;
-        for (const StationLayout::Tag &t : m_layout.tags) {
-            const StationLayout::TagInfo in = StationLayout::info(t);
-            if (t.name == QString::number(id) && in.ok) out << in.absLoc;
-        }
-        return out;
-    });
+    m_kavach->setTagLocations([this](int id) { return StationLayout::tagLocationsByNumber(m_layout).value(id); });
     connect(m_kavach, &StationKavachEditor::pickingChanged, this, [this](bool on) {
         m_canvas->setPicking(on);
         if (on) {
@@ -1801,13 +1794,7 @@ void StationLayoutWindow::refreshAll()
         for (const StationLayout::Tag &t : m_layout.tags)
             ids.insert((t.name.endsWith(QLatin1Char('D')) ? t.name.chopped(1) : t.name).toInt());
         // Session 424: and where the layout's tags do not lie as the routes' linking distances say.
-        QHash<int, QVector<qint64>> locs;
-        for (const StationLayout::Tag &t : m_layout.tags) {
-            bool ok = false;
-            const int id = t.name.toInt(&ok);   // main tags only: a duplicate ("…D") lies apart
-            const StationLayout::TagInfo in = StationLayout::info(t);
-            if (ok && in.ok) locs[id] << in.absLoc;
-        }
+        const QHash<int, QVector<qint64>> locs = StationLayout::tagLocationsByNumber(m_layout);
         for (const QString &c : notes + StationKavach::checks(ks) + StationKavach::tagChecks(ks, ids)
                                     + StationKavach::locationChecks(ks, locs))
             found << tr("KAVACH: %1").arg(c);

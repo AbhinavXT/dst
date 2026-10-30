@@ -194,6 +194,18 @@ QHash<QString, qint64> tagLocations(const Layout &l)
     return out;
 }
 
+QHash<int, QVector<qint64>> tagLocationsByNumber(const Layout &l)
+{
+    QHash<int, QVector<qint64>> out;
+    for (const Tag &t : l.tags) {
+        bool ok = false;
+        const int id = t.name.toInt(&ok);   // main tags only: a duplicate ("…D") lies apart
+        const TagInfo in = info(t);
+        if (ok && in.ok) out[id] << in.absLoc;
+    }
+    return out;
+}
+
 QHash<QString, QString> lineOfTag(const Layout &l)
 {
     QHash<QString, QString> out;

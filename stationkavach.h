@@ -35,6 +35,11 @@
 //            a new REF_PROF_ID whenever it changes, sent in full until the
 //            loco's LAST_REF_PROFILE_NUM acknowledges it, the MA alone
 //            after that.
+//    SPAD    session 426: the loco's ABS_LOCO_LOC past the foot of the
+//            route's exit signal while it shows Red, calling-on aside (the
+//            layout's tag locations give where the ref tag is): DEST_LOCO_SOS
+//            4, AUTHORITY_TYPE 0, MA 0, DIST_PKT_START 0, the MA alone, as
+//            station 527 answered loco 1 past A904 (27 Jun 2026, 14:02).
 //    ref     LAST_REF_RFID = the last tag the loco read, when it is on the
 //            route; DIST_PKT_START = minus its distance from the start
 //            signal; APPR_SIG_DIST = from it to the signal ahead.
@@ -93,6 +98,11 @@ struct Station {
     QVector<Signal> signalList;
     QVector<Route>  routes;
     QHash<int, int> sections;          // aspect -> MA sections, overriding the defaults
+    // Session 426: tag number -> the abs_loc of each tag of that number in
+    // the layout (StationLayout::tagLocationsByNumber): not in the "kavach"
+    // block. With it the station sees a loco past the Red signal ahead
+    // (SPAD); empty, it cannot.
+    QHash<int, QVector<qint64>> tagLocs;
     int signalIndex(const QString &name) const;
     QStringList pointNames() const;    // every point, track circuit and TIN a route names
     QStringList trackCircuitNames() const;

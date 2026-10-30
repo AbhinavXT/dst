@@ -123,6 +123,9 @@ QStringList checks(const Layout &l);
 // --- drawing helpers -----------------------------------------------------------
 // Tag name -> abs_loc, for every tag that decodes.
 QHash<QString, qint64> tagLocations(const Layout &l);
+// Session 426: tag number -> the abs_loc of every main tag of that number
+// (more than one when the layout lists the number more than once).
+QHash<int, QVector<qint64>> tagLocationsByNumber(const Layout &l);
 // Tag name -> its line (from the lines sheet; first line wins).
 QHash<QString, QString> lineOfTag(const Layout &l);
 

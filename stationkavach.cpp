@@ -520,6 +520,40 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
         if (r0.tags[i].tag == ref) { refDist = d; break; }
     }
 
+    // Session 426: past the foot of the Red signal ahead (SPAD): SoS, no authority, the MA alone.
+    if (holds(r0, tag) && redLike(st.aspectOf(s, r0.exit)) && s.tagLocs.contains(ref)
+        && lsrp.contains(QStringLiteral("ABS_LOCO_LOC"))) {
+        const qint64 abs = lsrp.value(QStringLiteral("ABS_LOCO_LOC"));
+        const QVector<qint64> at = s.tagLocs.value(ref);
+        qint64 refLoc = at.first();    // of a number listed more than once, the place nearest the loco
+        for (qint64 x : at) if (std::llabs(abs - x) < std::llabs(abs - refLoc)) refLoc = x;
+        const qint64 past = refDist + (abs - refLoc) * (r0.pktDir == 2 ? -1 : 1) - r0.length();
+        if (past > 0) {
+            const int aspect = st.aspectOf(s, r0.exit);
+            const int sigIdx = s.signalIndex(r0.exit);
+            a.header = { { "PKT_TYPE", 9 }, { "FRAME_NUM", lsrp.value(QStringLiteral("FRAME_NUM")) },
+                         { "SOURCE_STN_ID", s.stationId }, { "STN_VERSION", s.stnVersion },
+                         { "DEST_LOCO_ID", lsrp.value(QStringLiteral("SOURCE_LOCO_ID")) }, { "REF_PROF_ID", loco->profId },
+                         { "LAST_REF_RFID", ref }, { "DIST_PKT_START", 0 }, { "PKT_DIR", r0.pktDir } };
+            Schema::SubEntry ma;
+            ma.type = 0;
+            ma.values = { { "FRAME_OFFSET", 0 }, { "DEST_LOCO_SOS", 4 }, { "TRAIN_SECTION_TYPE", r0.sectionType },
+                          { "CUR_SIG_INFO", sigIdx < 0 ? 0 : s.signalList[sigIdx].sigInfo }, { "CUR_SIG_ASPECT", aspect },
+                          { "NEXT_SIG_ASPECT", 0 }, { "APPR_SIG_DIST", r0.length() - refDist }, { "AUTHORITY_TYPE", 0 },
+                          { "MA_W_R_T_SIG", 0 }, { "REQ_SHORTEN_MA", 0 }, { "TRN_LEN_INFO_STS", 0 }, { "NEXT_STN_COMM", 0 } };
+            QString bad;
+            if (!fits(enc, ma, &bad)) { a.why = bad; return a; }
+            a.subs << ma;
+            loco->route = ri;
+            loco->refTag = ref;
+            a.note = QObject::tr("SPAD: loco %1 m past %2 at %3: SoS SPAD, no authority, MA 0; ref tag %4")
+                         .arg(past).arg(r0.exit, aspectName(aspect)).arg(ref);
+            a.checks << QObject::tr("loco past %1 at %2 (SPAD)").arg(r0.exit, aspectName(aspect));
+            a.ok = true;
+            return a;
+        }
+    }
+
     // The sections: this route, then on from each exit signal.
     const Sections sx = sectionsFrom(s, st, ri);
     if (!sx.broken.isEmpty()) { a.why = sx.broken; return a; }
