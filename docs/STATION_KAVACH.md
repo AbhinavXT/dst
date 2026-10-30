@@ -256,6 +256,9 @@ communication, the absolute-block last stop
 signal's MA in metres (give the block section as a route). Not tested
 against a live loco: the engine's answers are checked against real station
 frames only. No import from a firm's Table-of-Control sheet yet (waiting for
-a real sheet to read). The drawing shows the aspects the file starts
+a real sheet to read: for LPI, station 527, the ToC is TC.1005B, named on
+its tag-TIN layout in RDSO Annexure-H, page 9). The layout itself can be
+checked against that drawing: Station Layout ▸ Open ▸ Compare with ▸ A
+tag-layout drawing (session 430). The drawing shows the aspects the file starts
 with on the KAVACH tab; Packet Maker's live ones under Station… ▸ Show on the
 drawing (session 428).

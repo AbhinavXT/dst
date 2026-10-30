@@ -17,6 +17,7 @@
 //  loops below UP main, turnout tags on the points, the yard drawn wider.
 // =============================================================================
 
+#include "layoutdrawing.h"
 #include "planrun.h"
 #include "rfidtag.h"
 #include "stationlayout.h"
@@ -62,6 +63,10 @@ public:
     void setSelectedTag(const QString &name);
     // Session 226: tags that differ from a compared file: ringed, by kind.
     void setDiffTags(const QHash<QString, int> &kinds);   // name -> StationLayout::TagChange::Kind
+    // Session 430: by tag key (tagKeys): only that tag of a repeated name is ringed.
+    void setDiffTags(const QHash<QString, int> &kinds, bool byKey);
+    const QHash<QString, int> &diffTags() const { return m_diffKinds; }
+    bool diffByKey() const { return m_diffByKey; }
     // Session 227: a loco's run over the layout: name -> PlanRun::State, ringed.
     void setRunStates(const QHash<QString, int> &states);
     // Session 411: the Loco Simulator running one of the lines: the loco on
@@ -246,6 +251,7 @@ private:
     MeasureEnd m_measureA, m_measureB;
     QPoint m_hover;
     QHash<QString, int> m_diffKinds;   // session 226
+    bool m_diffByKey = false;          // session 430
     QHash<QString, int> m_runStates;   // session 227
     KavachView m_kavachView;           // session 424
     QRectF  m_kavachMaEnd;
@@ -360,6 +366,13 @@ public:
     void compareWith(const StationLayout::Layout &other, const QString &label);
     void clearCompare();
     const StationLayout::Diff &comparison() const { return m_diff; }
+    // Session 430: compare with a station's tag-TIN layout drawing (a built-in
+    // one, or a .json): the Compare tab lists what the drawing shows that the
+    // layout's tags do not say; the drawing rings those tags. Follows edits
+    // like a compared file; Stop comparing ends it.
+    bool compareWithDrawing(const QString &path);
+    void compareWithDrawing(const LayoutDrawing::Drawing &d);
+    const QVector<LayoutDrawing::Finding> &drawingFindings() const { return m_findings; }
     // Session 227: a loco's run over the layout. Every @rfid read of the log
     // against the layout's tags: read (the same 16 bytes), different (the same
     // id, other bytes: the fields named), not read. "Not read" is judged only
@@ -450,6 +463,9 @@ private:
     StationLayout::Layout m_compareTo;
     QString m_compareLabel;
     StationLayout::Diff m_diff;
+    bool m_againstDrawing = false;                 // session 430
+    LayoutDrawing::Drawing m_drawingRef;
+    QVector<LayoutDrawing::Finding> m_findings;
     void fillCompare();
     void updateKavachView();           // session 424
     QLabel *m_other = nullptr;

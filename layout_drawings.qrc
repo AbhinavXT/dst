@@ -1,0 +1,7 @@
+<!-- Session 430: tag-TIN layout drawings read off by hand, to check a station
+     layout against (Station Layout > Open > Compare with > A tag-layout drawing). -->
+<RCC>
+    <qresource prefix="/">
+        <file>layout_drawings/LPI_527.json</file>
+    </qresource>
+</RCC>

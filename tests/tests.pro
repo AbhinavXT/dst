@@ -326,6 +326,7 @@ SOURCES += \
     test_session427.cpp \
     test_session428.cpp \
     test_session429.cpp \
+    test_session430.cpp \
     test_session213.cpp \
     test_session214.cpp \
     test_session215.cpp \

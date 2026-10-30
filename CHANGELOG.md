@@ -10,6 +10,91 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-430"></a>
+## Session 430 — a station layout checked against its tag-TIN layout drawing
+
+Abhinav's *"do 1"*: of the two things proposed from RDSO's Annexure-H
+(the RFID tag-TIN layout guidelines, Amdt-3, 08.08.2023), the first.
+
+**Why.** There is no firm's Table-of-Control sheet yet, but page 9 of
+Annexure-H is HBL's real tag / TIN layout of **Lingampalli (LPI), station
+527**: the station Section_30.xlsx, the KAVACH fixtures and the 27 June
+captures come from. Its title block names the ToC to ask for: **TC.1005B**
+(SIP IPU.1005B Alt-1). Nothing checked a layout file against the drawing
+it is meant to follow.
+
+**What the operator sees.** Station Layout ▸ Open ▸ Compare with ▸ **A
+tag-layout drawing** ▸ *Lingampalli (LPI), station 527* (or a drawing
+.json). The Compare tab lists, one line each, what the drawing shows and
+the layout's tags do not say:
+- a tag at another kilometre (*tag 566: 158.412 km on the drawing, 153.412
+  km in the layout (-5000 m)*);
+- a tag of another kind than the drawing's letter and triangle (*tag 4: the
+  drawing shows S◁ (Signal foot tag, reverse); the tag says type 9
+  (Normal), placement 0 (In line section)*);
+- TINs other than the colours either side (*tag 18: N-56 | N-84 either side
+  on the drawing (reverse | nominal); the tag says tin_rev 56, tin_nom 85*);
+- a number again within the drawing's stretch; a layout tag in the stretch
+  the drawing does not have;
+- signals: a name at another foot tag, a signal the sheet does not have, a
+  sheet signal where the drawing has another;
+- by line, the drawing's tags the layout does not have.
+
+A layout that repeats a stretch is matched by the copy nearest the
+drawing's kilometre, and the drawing rings that copy only (by tag key,
+session 429). Double-click a row to select its tag. It follows edits and
+Undo like Compare; Stop comparing ends it.
+
+**The drawing as data.** `layout_drawings/LPI_527.json`, read off the PDF
+by hand at 900 dpi: 84 tags (number, km, N/S/T/X/L, the way the triangle
+points, line, the TIN section either side, drawn dashed or red), 26
+signals at their foot tags, the station centre line at 161.060 km. The
+reading was checked independently: the library's own
+`Originals/station_lingampalli.xlsx` (the Python tool's, real tags) agrees
+with every TIN read off the colours, on every tag the two share but 800,
+which it has 6.7 km away.
+
+**Seen on the real files.**
+- station_lingampalli.xlsx: 35 lines. Tags 4, 6, 16 (S◁ on the drawing:
+  BSLB, SH10, SH8) and 566, 15, 5, 3 (S▷) are programmed as In line section;
+  566, 598, 600, 551 are 5 km earlier; S1649 at tag 910 where the drawing
+  has S1647; OEM line 2's tags 42, 43 are not there.
+- Section_30.xlsx: 36 lines. Its middle block is LPI's DN main. The third
+  tag 2 at 159.660 km (patch 429's finding) is listed; tags 2, 18, 906 …
+  902 carry TIN 84 / 85 where the drawing has N-110 / N-84; 904 is only
+  in the first block, 905 where the drawing has 904.
+
+Said as what the drawing shows and what the tag says; which one is right
+is for the signatories.
+
+### Files
+
+`layoutdrawing.{h,cpp}` (new: the drawing, `fromJson`, `builtIn`,
+`check`), `layout_drawings/LPI_527.json`, `layout_drawings.qrc` (new),
+`dlcore.pri`, `dlcore_link.pri`, `stationlayoutwindow.{h,cpp}`
+(`compareWithDrawing`, `drawingFindings`, the menu, the canvas's
+`setDiffTags(kinds, byKey)`), `tests/test_session430.cpp` (new),
+`tests/tests.pro`, `docs/STATION_KAVACH.md`, `CLAUDE.md`.
+
+### Tests
+
+`session430` (34 checks): the built-in drawing (84 tags, 11 dashed, 33
+signal foot tags, 9 turnout tags, 26 signals); a station layout file is
+not a drawing; station_lingampalli.xlsx (TINs agree but 800, the eight
+kinds, 566 moved, S1649, the 8 tags not on the drawing, the 3 lines
+lacking, 35 in all); Section_30.xlsx (the third tag 2, 18's TIN 85, 904,
+905, the UP main, 36 in all); the window: the menu entry and its tooltip,
+the tab and its count, rings by key, double-click, an edit taking a line
+away, an unreadable file, Stop comparing, a file comparison afterwards.
+
+**Not tested:** the drawing's loops and sidings against a layout that has
+them with kilometres of its own (station_lingampalli.xlsx's are the only
+ones); the reading of page 10 (Telapur) was not done.
+
+Gate: Qt 5.15 and Qt 6.11 green: validators, 443 suites / 11,154 checks, menu audit, smoke.
+
+---
+
 <a id="session-429"></a>
 ## Session 429 — every tag of a repeated name drawn where it is
 

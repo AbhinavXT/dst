@@ -161,6 +161,7 @@ SOURCES += \
     $$PWD/trackdiagram.cpp \
     $$PWD/trackdiagramwindow.cpp \
     $$PWD/xlsxbook.cpp \
+    $$PWD/layoutdrawing.cpp \
     $$PWD/stationlayout.cpp \
     $$PWD/stationlayoutwindow.cpp \
     $$PWD/testcatalog.cpp \
@@ -384,6 +385,7 @@ HEADERS += \
     $$PWD/trackdiagram.h \
     $$PWD/trackdiagramwindow.h \
     $$PWD/xlsxbook.h \
+    $$PWD/layoutdrawing.h \
     $$PWD/stationlayout.h \
     $$PWD/stationlayoutwindow.h \
     $$PWD/testcatalog.h \

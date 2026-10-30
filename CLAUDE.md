@@ -124,7 +124,8 @@ The three features once queued here are all done:
   (424); a route's tags picked by clicking the drawing (425); SoS SPAD to a
   loco past a Red signal (426); the MA cut behind a loco ahead, Rear-end SoS
   echoed (427); the station live on the drawing: aspects, locos, MAs (428);
-  every tag of a repeated name drawn where it is (429).
+  every tag of a repeated name drawn where it is (429); a layout checked
+  against the station's tag-TIN layout drawing (430, LPI from Annexure-H).
   `docs/STATION_KAVACH.md`. Next steps proposed there under "Not yet".
 
 Before proposing a feature, search `CHANGELOG.md` for it. **Queued:** the

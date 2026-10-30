@@ -480,7 +480,13 @@ QRectF StationLayoutCanvas::simLocoRect() const
 
 void StationLayoutCanvas::setDiffTags(const QHash<QString, int> &kinds)
 {
+    setDiffTags(kinds, false);
+}
+
+void StationLayoutCanvas::setDiffTags(const QHash<QString, int> &kinds, bool byKey)
+{
     m_diffKinds = kinds;
+    m_diffByKey = byKey;
     update();
 }
 
@@ -1083,8 +1089,11 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
             p.drawEllipse(QPointF(x, y), 24, 24);
         }
         // Session 226: a tag that differs from the compared file (added: ok; moved / changed: warning).
-        if (m_diffKinds.contains(name) || (!dup.isEmpty() && m_diffKinds.contains(StationLayout::nameOfKey(dup)))) {
-            const int k = m_diffKinds.value(name, m_diffKinds.value(StationLayout::nameOfKey(dup)));
+        // Session 430: by key, only that tag of a repeated name.
+        const QString diffOwn = m_diffByKey ? key : name;
+        const QString diffDup = dup.isEmpty() ? QString() : m_diffByKey ? dup : StationLayout::nameOfKey(dup);
+        if (m_diffKinds.contains(diffOwn) || (!diffDup.isEmpty() && m_diffKinds.contains(diffDup))) {
+            const int k = m_diffKinds.value(diffOwn, m_diffKinds.value(diffDup));
             p.setPen(QPen(k == StationLayout::TagChange::Added ? UiColor::ok() : UiColor::warning(), 2, Qt::DotLine));
             p.setBrush(Qt::NoBrush);
             p.drawEllipse(QPointF(x, y), 16, 16);
@@ -1654,6 +1663,21 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     });
     cmpMenu->addAction(tr("Default layout (station.xlsx)"), this, [this]() { compareWith(StationLayout::defaultFile()); });
     cmpMenu->addMenu(stationLibraryMenu(cmpMenu, [this](const QString &path) { compareWith(path); }));
+    // Session 430: a station's tag-TIN layout drawing, read off by hand.
+    QMenu *drawMenu = cmpMenu->addMenu(tr("A tag-layout drawing"));
+    for (const QString &path : LayoutDrawing::builtIn()) {
+        LayoutDrawing::Drawing d;
+        if (!LayoutDrawing::load(path, &d)) continue;
+        QAction *a = drawMenu->addAction(d.title, this, [this, path]() { compareWithDrawing(path); });
+        a->setToolTip(d.source);
+    }
+    drawMenu->addSeparator();
+    drawMenu->addAction(tr("A drawing file (.json)…"), this, [this]() {
+        const QString path = QFileDialog::getOpenFileName(this, tr("Compare with a tag-layout drawing"), QFileInfo(m_path).path(),
+                                                          tr("Tag-layout drawing (*.json)"));
+        if (!path.isEmpty()) compareWithDrawing(path);
+    });
+    drawMenu->setToolTipsVisible(true);
     cmpMenu->addSeparator();
     cmpMenu->addAction(tr("Stop comparing"), this, [this]() { clearCompare(); });
     // Session 227: a loco's log over the layout.
@@ -2854,6 +2878,7 @@ bool StationLayoutWindow::compareWith(const QString &path)
 void StationLayoutWindow::compareWith(const StationLayout::Layout &other, const QString &label)
 {
     m_comparing = true;
+    m_againstDrawing = false;
     m_compareTo = other;
     m_compareLabel = label;
     fillCompare();
@@ -2862,20 +2887,67 @@ void StationLayoutWindow::compareWith(const StationLayout::Layout &other, const 
                                      : tr("%1 tag(s) and %2 other row(s) differ from %3").arg(m_diff.tags.size()).arg(m_diff.other.size()).arg(label));
 }
 
+bool StationLayoutWindow::compareWithDrawing(const QString &path)
+{
+    LayoutDrawing::Drawing d;
+    QString err;
+    if (!LayoutDrawing::load(path, &d, &err)) {
+        m_status->fail(tr("Could not read %1: %2").arg(QFileInfo(path).fileName(), err));
+        return false;
+    }
+    if (d.title.isEmpty()) d.title = QFileInfo(path).fileName();
+    compareWithDrawing(d);
+    return true;
+}
+
+void StationLayoutWindow::compareWithDrawing(const LayoutDrawing::Drawing &d)
+{
+    m_comparing = true;
+    m_againstDrawing = true;
+    m_drawingRef = d;
+    m_compareTo = StationLayout::Layout();
+    m_compareLabel = d.title;
+    fillCompare();
+    m_tabs->setCurrentWidget(m_compare);
+    m_status->state(m_findings.isEmpty() ? tr("The layout says what the drawing %1 shows").arg(d.title)
+                                         : tr("%n line(s) where the layout and the drawing %1 differ", nullptr, m_findings.size()).arg(d.title));
+}
+
 void StationLayoutWindow::clearCompare()
 {
     m_comparing = false;
+    m_againstDrawing = false;
     m_compareTo = StationLayout::Layout();
+    m_drawingRef = LayoutDrawing::Drawing();
     fillCompare();
 }
 
 void StationLayoutWindow::fillCompare()
 {
-    m_diff = m_comparing ? StationLayout::diff(m_compareTo, m_layout) : StationLayout::Diff();
+    m_diff = m_comparing && !m_againstDrawing ? StationLayout::diff(m_compareTo, m_layout) : StationLayout::Diff();
+    m_findings = m_comparing && m_againstDrawing ? LayoutDrawing::check(m_drawingRef, m_layout) : QVector<LayoutDrawing::Finding>();
     m_compare->clear();
     QHash<QString, int> kinds;
+    if (m_againstDrawing) {
+        // Session 430: what the drawing shows that the layout's tags do not say.
+        m_compare->addItem(tr("Against the drawing %1 (%2):").arg(m_drawingRef.title, m_drawingRef.source));
+        if (m_findings.isEmpty()) m_compare->addItem(tr("The layout says what the drawing shows"));
+        for (const LayoutDrawing::Finding &f : m_findings) {
+            auto *it = new QListWidgetItem(f.text, m_compare);
+            it->setData(Qt::UserRole, f.key);
+            using F = LayoutDrawing::Finding;
+            it->setForeground(f.kind == F::NotInLayout ? UiColor::error() : f.kind == F::NotOnDrawing ? UiColor::ok() : UiColor::warning());
+            if (f.key.isEmpty()) continue;
+            kinds.insert(f.key, f.kind == F::NotOnDrawing ? StationLayout::TagChange::Added
+                              : f.kind == F::Moved && !kinds.contains(f.key) ? StationLayout::TagChange::Moved
+                                                                              : StationLayout::TagChange::Changed);
+        }
+        m_canvas->setDiffTags(kinds, true);
+        m_tabs->setTabText(m_tabs->indexOf(m_compare), tr("Compare (%1)").arg(m_findings.size()));
+        return;
+    }
     if (!m_comparing) {
-        m_compare->addItem(tr("Not comparing. Open ▸ Compare with: a file, the default or a library layout"));
+        m_compare->addItem(tr("Not comparing. Open ▸ Compare with: a file, the default or a library layout, or a tag-layout drawing"));
     } else if (m_diff.isEmpty()) {
         m_compare->addItem(tr("Same as %1").arg(m_compareLabel));
     } else {
