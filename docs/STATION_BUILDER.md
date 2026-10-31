@@ -133,6 +133,26 @@ points.
   a signal in one list and not the other, a route's signal with no KAVACH
   row. Listed under the Routes step.
 
+## Speed and gradient profile (session 462)
+
+On the SSP and Gradient tabs of a route, **Profile ▾**:
+- **Paste from the track profile sheet…**: the text as the firm's sheet
+  prints it.
+  - SSP: `(U,110,1670)` groups (or lines "length km/h").
+  - Gradient: the average lines `F 1 in 209 1245`, `R 1 in 260 105`,
+    `LEVEL 320`.
+
+  The rows replace the route's, and must cover it exactly: a station whose
+  profile does not cover its route refuses the whole answer.
+- **Cover the route…**: the rest of the route as one row, at a speed or
+  level.
+- **Split a row…**: a row in two, at a distance from the entry signal.
+
+Each row also shows where it starts and its speed or gradient in words
+(110 km/h; F 4 ‰, about 1 in 250; Level). Gradient values are 1000/N
+truncated, rise uphill, fall and level downhill, as station 527 sends
+them.
+
 ## The tag form
 
 Select a tag (on the drawing or in the Tags table) and turn on View ▸

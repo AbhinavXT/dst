@@ -132,7 +132,8 @@ TEST_SUITE(session423)
           "its LC gate: the schema's columns, d 506, id 191");
     QTableWidget *ssp = ed->listTable(StationKavachEditor::Ssp);
     QStringList sspCols;
-    for (int c = 0; c < ssp->columnCount(); ++c) sspCols << ssp->horizontalHeaderItem(c)->text();
+    for (int c = 0; c < ssp->columnCount(); ++c)   // session 462's read-only helper columns aside
+        if (ssp->horizontalHeaderItem(c)->data(Qt::UserRole).toString() != QLatin1String("helper")) sspCols << ssp->horizontalHeaderItem(c)->text();
     CHECK(sspCols == (QStringList{ "d", "u", "a", "b", "c" }), "SSP columns d, u, a, b, c: class follows from them");
 
     // ---- edits: one Undo step each; Checks follow ----

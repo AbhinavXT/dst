@@ -10,6 +10,72 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-462"></a>
+## Session 462 — a route's speed and gradient profile, as the firm's sheet writes it
+
+The plan's 462 (docs/STATION_TEST_RIG_PLAN.md): SSP and gradient rows
+filled in the way HBL's track profile table prints them, made to cover the
+route, split, and read in km/h and "1 in N" instead of schema codes.
+
+**What it does.**
+- **`StationProfile`** (`stationprofile.{h,cpp}`, new):
+  - **SSP:** `(U,110,1670)` groups, or lines "length km/h". Speed / 5 into
+    `u`.
+  - **Gradient:** "F 1 in 209 1245", "R 1 in 260 105", "LEVEL 320", or the
+    bracketed "(F 1 in 150, 445)", several on a line. Rise is uphill, fall
+    and level downhill; the value is 1000/N truncated (kavach_sheets.py's
+    rule).
+  - **Refused by name:**
+    - a speed off the 5 km/h steps or over 250;
+    - category speeds (A/B/C: the table takes them);
+    - a length past 15 bits;
+    - 1000/N past the 5-bit value;
+    - anything else.
+  - **`cover`**: the rest of the route as one row. **`split`**: a row at a
+    distance from the entry. In words: "110 km/h", "F 4 ‰ (about 1 in
+    250)", "Level".
+- **KAVACH tab, SSP and Gradient tabs:**
+  - **Profile ▾** (shown on those two tabs):
+    - *Paste from the track profile sheet…* replaces the route's rows,
+      refused unless they cover the route, since the station would refuse
+      its whole answer;
+    - *Cover the route…*;
+    - *Split a row…*;
+
+    each one Undo step.
+  - Two read-only columns: where each row starts, and the speed or
+    gradient in words. They are not read back as fields.
+
+**Seen.** HBL's LPI track profile table 2.0.3, as printed: `(U,110,1670)`
+and `F 1 in 209 1245 / LEVEL 320 / R 1 in 260 105` give exactly S50-S48's
+rows. These are the rows station 527's own SLRPs carry (session 456).
+
+**Files.** `stationprofile.{h,cpp}` (new, `dlcore.pri`);
+`stationkavacheditor.{h,cpp}` (Profile, `pasteProfile`, `coverProfile`,
+`splitProfile`, the helper columns); `tests/test_session462.cpp` (new),
+`tests/tests.pro`; `tests/test_session423.cpp` (its SSP column check skips
+the helper columns); `docs/STATION_BUILDER.md`.
+
+**Tests.** `session462` (25 checks):
+- The sheet's real SSP and gradient text gives S50-S48's rows.
+- Lines and the bracketed form parse; five refusals, by name.
+- Cover and split, and their refusals.
+- The words.
+- In the KAVACH tab:
+  - a gradient pasted in one edit; one covering 1000 of 1670 m refused;
+  - a split;
+  - the km/h, From entry and Gradient columns;
+  - a length typed with the helper columns not taken as fields;
+  - Cover refused when the rows already cover the route.
+
+**Not tested:** pasting a whole route table's SSP column at once (each
+route's rows are pasted on their own route).
+
+**Gate.** Green on Qt 5.15 and Qt 6: validators (18), 473 suites / 11,986 checks, menu
+audit, smoke.
+
+---
+
 <a id="session-461"></a>
 ## Session 461 — a station's signals and the MA each route would get
 

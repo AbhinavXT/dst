@@ -106,6 +106,12 @@ public:
     bool setSignalInfo(int row, qint64 info);
     QDialog *signalInfoDialog(int row);
     QTableWidget *maTable() const { return m_maTable; }
+    // Session 462: the selected route's SSP or gradient pasted as the track profile sheet
+    // prints it (StationProfile; refused unless the rows cover the route), the rest of the
+    // route covered (SSP km/h, gradient per thousand level 0), a row split at `at` m.
+    bool pasteProfile(List l, const QString &text);
+    bool coverProfile(List l, int value);
+    bool splitProfile(List l, int at);
 
 signals:
     // The new "kavach" block (empty: removed) and the Undo label.
@@ -142,6 +148,7 @@ private:
     QPushButton *m_poles = nullptr;    // session 457
     QPushButton *m_propose = nullptr;  // session 460
     QTableWidget *m_maTable = nullptr; // session 461
+    QPushButton *m_profile = nullptr;  // session 462
     void fillMaTable();
     QStackedWidget *m_stack = nullptr;
     QPushButton *m_start = nullptr;

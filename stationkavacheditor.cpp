@@ -1,11 +1,14 @@
 #include "stationkavacheditor.h"
 
 #include "stationlayout.h"
+#include "stationprofile.h"
 #include "stationsignals.h"
 #include "uicolors.h"
 
 #include <QCheckBox>
 #include <QComboBox>
+#include <QInputDialog>
+#include <QMenu>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFormLayout>
@@ -310,7 +313,40 @@ StationKavachEditor::StationKavachEditor(QWidget *parent) : QWidget(parent)
     m_poles = button(tr("TSR by OHE poles…"), QStringLiteral("skeTsrPoles"), detail);
     m_poles->setToolTip(tr("A TSR from one OHE pole to another of a TSR route (the station's TSR route table): "
                            "a TSR row on each route it covers, from where the poles lie"));
-    dv->addWidget(withButtons(m_listTabs, { addRow, delRow, m_pick, m_poles }, detail), 1);
+    // Session 462: SSP and gradient as the firm's track profile sheet writes them.
+    m_profile = button(tr("Profile"), QStringLiteral("skeProfile"), detail);
+    m_profile->setToolTip(tr("SSP and gradient rows pasted as the track profile sheet prints them, made to cover the "
+                             "route, or a row split"));
+    auto *pm = new QMenu(m_profile);
+    pm->addAction(tr("Paste from the track profile sheet…"), this, [this]() {
+        const List l = List(m_listTabs->currentIndex());
+        bool ok = false;
+        const QString text = QInputDialog::getMultiLineText(this, tr("Paste %1").arg(tr(kListTitle[l])),
+            l == Ssp ? tr("As the sheet prints it: (U,110,1670) groups, or lines \"length km/h\". The rows replace the route's "
+                          "and must cover its %1 m.").arg(m_station.routes.value(m_route).length())
+                     : tr("As the sheet prints the average gradients: F 1 in 209 1245 / R 1 in 260 105 / LEVEL 320, one a line. "
+                          "The rows replace the route's and must cover its %1 m.").arg(m_station.routes.value(m_route).length()),
+            QString(), &ok);
+        if (ok) pasteProfile(l, text);
+    });
+    pm->addAction(tr("Cover the route…"), this, [this]() {
+        const List l = List(m_listTabs->currentIndex());
+        bool ok = false;
+        const int v = l == Ssp ? QInputDialog::getInt(this, tr("Cover the route"), tr("The rest of the route at (km/h, 5 km/h steps)"), 100, 0, 250, 5, &ok)
+                               : QInputDialog::getInt(this, tr("Cover the route"), tr("The rest of the route level (0), or per thousand"), 0, 0, 31, 1, &ok);
+        if (ok) coverProfile(l, v);
+    });
+    pm->addAction(tr("Split a row…"), this, [this]() {
+        const List l = List(m_listTabs->currentIndex());
+        bool ok = false;
+        const int at = QInputDialog::getInt(this, tr("Split a row"), tr("Where, in metres from the entry signal"), 0, 1,
+                                            std::max(1, m_station.routes.value(m_route).length() - 1), 1, &ok);
+        if (ok) splitProfile(l, at);
+    });
+    m_profile->setMenu(pm);
+    m_profile->hide();
+    connect(m_listTabs, &QTabWidget::currentChanged, this, [this](int i) { m_profile->setVisible(i == Ssp || i == Gradient); });
+    dv->addWidget(withButtons(m_listTabs, { addRow, delRow, m_pick, m_profile, m_poles }, detail), 1);
     connect(m_listTabs, &QTabWidget::currentChanged, this, [this, addRow, delRow](int i) {   // session 461: the MA tab is read-only
         addRow->setEnabled(i < ListCount);
         delRow->setEnabled(i < ListCount);
@@ -625,12 +661,28 @@ void StationKavachEditor::fillRoute()
             for (const QString &k : x.keys())
                 if (!cols.contains(k) && !((l == Ssp || l == Tsr) && k == QLatin1String("class"))) cols << k;
         QTableWidget *t = m_lists[l];
-        t->setColumnCount(cols.size());
+        // Session 462: SSP and gradient rows read in words beside their fields: where each starts, km/h, 1 in N.
+        const QStringList helpers = l == Ssp ? QStringList{ tr("From entry (m)"), tr("km/h") }
+                                  : l == Gradient ? QStringList{ tr("From entry (m)"), tr("Gradient") } : QStringList();
+        t->setColumnCount(cols.size() + helpers.size());
         for (int c = m_listCols[l].size(); c < cols.size(); ++c) t->setHorizontalHeaderItem(c, new QTableWidgetItem(cols[c]));
+        for (int h = 0; h < helpers.size(); ++h) {
+            auto *head = new QTableWidgetItem(helpers[h]);
+            head->setData(Qt::UserRole, QStringLiteral("helper"));
+            head->setToolTip(tr("Worked out from the row's fields; not sent, not edited"));
+            t->setHorizontalHeaderItem(cols.size() + h, head);
+        }
         t->setRowCount(rows.size());
-        for (int i = 0; i < rows.size(); ++i)
+        qint64 from = 0;
+        for (int i = 0; i < rows.size(); ++i) {
             for (int c = 0; c < cols.size(); ++c)
                 t->setItem(i, c, item(rows[i].contains(cols[c]) ? QString::number(rows[i].value(cols[c])) : QString()));
+            if (!helpers.isEmpty()) {
+                t->setItem(i, cols.size(), readOnly(QString::number(from)));
+                t->setItem(i, cols.size() + 1, readOnly(l == Ssp ? StationProfile::speedText(rows[i]) : StationProfile::gradientText(rows[i])));
+                from += rows[i].value(QStringLiteral("d"));
+            }
+        }
         t->resizeColumnsToContents();
         QString title = tr("%1 (%2)").arg(tr(kListTitle[l])).arg(rows.size());
         if ((l == Ssp || l == Gradient) && !rows.isEmpty()) {
@@ -783,6 +835,7 @@ void StationKavachEditor::onListEdited(List l)
             if (s.isEmpty()) continue;
             qint64 v = 0;
             const QString col = t->horizontalHeaderItem(c) ? t->horizontalHeaderItem(c)->text() : QString();
+            if (t->horizontalHeaderItem(c) && t->horizontalHeaderItem(c)->data(Qt::UserRole).toString() == QLatin1String("helper")) continue;
             if (!number(s, &v, false))
                 return refuse(tr("route %1, %2 row %3: %4 = \"%5\" is not a number")
                                   .arg(r.name, tr(kListTitle[l])).arg(i + 1).arg(col, s));
@@ -1130,4 +1183,59 @@ QDialog *StationKavachEditor::signalInfoDialog(int row)
     connect(buttons, &QDialogButtonBox::rejected, d, &QDialog::reject);
     connect(buttons, &QDialogButtonBox::accepted, d, [this, d, row, read]() { if (setSignalInfo(row, read())) d->accept(); });
     return d;
+}
+
+// ---- session 462: the speed and gradient profile -------------------------------------
+
+namespace {
+QVector<StationKavach::Row> *profileRows(StationKavach::Route &r, int l)
+{
+    return l == StationKavachEditor::Ssp ? &r.ssp : l == StationKavachEditor::Gradient ? &r.gradient : nullptr;
+}
+}
+
+bool StationKavachEditor::pasteProfile(List l, const QString &text)
+{
+    if (m_route < 0 || m_route >= m_station.routes.size() || (l != Ssp && l != Gradient)) { refuse(tr("Select a route, and its SSP or gradient")); return false; }
+    QString err;
+    const QVector<Row> rows = l == Ssp ? StationProfile::parseSsp(text, &err) : StationProfile::parseGradient(text, &err);
+    if (rows.isEmpty()) { refuse(tr("Nothing pasted: %1").arg(err)); return false; }
+    Station next = m_station;
+    Route &r = next.routes[m_route];
+    if (StationProfile::covered(rows) != r.length()) {
+        refuse(tr("Nothing pasted: the rows cover %1 m of route %2's %3 m, and the station would refuse its whole answer")
+                   .arg(StationProfile::covered(rows)).arg(r.name).arg(r.length()));
+        return false;
+    }
+    *profileRows(r, l) = rows;
+    commit(next, tr("paste KAVACH route %1 %2").arg(r.name, tr(kListTitle[l]).toLower()));
+    emit said(tr("Route %1: %2 %3 rows pasted, covering its %4 m").arg(r.name).arg(rows.size()).arg(tr(kListTitle[l])).arg(r.length()));
+    return true;
+}
+
+bool StationKavachEditor::coverProfile(List l, int value)
+{
+    if (m_route < 0 || m_route >= m_station.routes.size() || (l != Ssp && l != Gradient)) { refuse(tr("Select a route, and its SSP or gradient")); return false; }
+    Station next = m_station;
+    Route &r = next.routes[m_route];
+    Row fill = l == Ssp ? Row{ { QStringLiteral("class"), 0 }, { QStringLiteral("u"), value / 5 } }
+                        : Row{ { QStringLiteral("dir"), 0 }, { QStringLiteral("value"), value } };
+    if (l == Ssp && value % 5 != 0) { refuse(tr("%1 km/h is not a speed the SSP holds (5 km/h steps)").arg(value)); return false; }
+    QString err;
+    const QVector<Row> rows = StationProfile::cover(*profileRows(r, l), r.length(), fill, &err);
+    if (!err.isEmpty()) { refuse(tr("Nothing covered: %1").arg(err)); return false; }
+    *profileRows(r, l) = rows;
+    commit(next, tr("cover KAVACH route %1 %2").arg(r.name, tr(kListTitle[l]).toLower()));
+    return true;
+}
+
+bool StationKavachEditor::splitProfile(List l, int at)
+{
+    if (m_route < 0 || m_route >= m_station.routes.size() || (l != Ssp && l != Gradient)) { refuse(tr("Select a route, and its SSP or gradient")); return false; }
+    Station next = m_station;
+    Route &r = next.routes[m_route];
+    QString err;
+    if (!StationProfile::split(profileRows(r, l), at, &err)) { refuse(tr("Not split: %1").arg(err)); return false; }
+    commit(next, tr("split KAVACH route %1 %2 at %3 m").arg(r.name, tr(kListTitle[l]).toLower()).arg(at));
+    return true;
 }
