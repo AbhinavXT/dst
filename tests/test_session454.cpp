@@ -142,6 +142,9 @@ TEST_SUITE(session454)
     CHECK(title == QStringLiteral("Checks (%1)").arg(shown.size()), "the tab counts them with the layout's own");
     CHECK(w.openFile(QString::fromLatin1(kDir) + QStringLiteral("NPL-TLPR_IB/station_526.json")), "the clean one opens");
     list = checksList(w, &title);
-    CHECK(items(list) == QStringList{ QStringLiteral("Nothing to report") } && title == QStringLiteral("Checks"),
-          "nothing to report");
+    // Session 455: the file carries the IB's Table of Control too, whose own
+    // checks are listed (session455); its tag sheet gives none.
+    sheet = 0;
+    for (const QString &s : items(list)) sheet += s.startsWith(QStringLiteral("Sheet: "));
+    CHECK(list && sheet == 0, "its tag sheet: nothing to report");
 }

@@ -1,7 +1,7 @@
 {
  "format": "dlconsole-station-layout",
  "version": 1,
- "comment": "Read from the KAVACH sheets by scripts/kavach_sheets.py (session 454): KAVACH_RFID_TAG_DATA_SKP_V2.0.0_pages16-23.html. Station 523: the station ID most of its normal tags carry. Its location 140126 is not on the sheets: the middle of its tags, for the drawing.",
+ "comment": "Read from the KAVACH sheets by scripts/kavach_sheets.py (sessions 454-455): KAVACH_RFID_TAG_DATA_SKP_V2.0.0_pages16-23.html. Station 523: the station ID most of its normal tags carry. Its location 140126 is not on the sheets: the middle of its tags, for the drawing.",
  "tags": [
   {
    "name": "384",

@@ -349,6 +349,7 @@ SOURCES += \
     test_session452.cpp \
     test_session453.cpp \
     test_session454.cpp \
+    test_session455.cpp \
     test_session213.cpp \
     test_session214.cpp \
     test_session215.cpp \

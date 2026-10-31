@@ -145,7 +145,8 @@ The three features once queued here are all done:
   the drawing exported on paper with a title block (439).
 - **A firm's KAVACH sheets read into a station** (`scripts/kavach_sheets.py`,
   `docs/KAVACH_SHEETS.md`): the RFID tag data, every field checked against
-  its bits (454). HBL's 2023 PDFs (GGD … LPI) stay local in
+  its bits (454); the Table of Control as Stationary KAVACH routes, folders
+  read together as one stretch, hand-overs from the border table (455). HBL's 2023 PDFs (GGD … LPI) stay local in
   `tests/fixtures/kavach_sheets/` (git-ignored).
 - **Themes:** 14, six of them dark: Dark, Nord, Mocha, and One Dark,
   Solarized Dark, Gruvbox Dark (434).

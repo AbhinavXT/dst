@@ -2555,8 +2555,9 @@ void StationLayoutWindow::refreshAll()
         QSet<int> ids;
         for (const StationLayout::Tag &t : m_layout.tags)
             ids.insert((t.name.endsWith(QLatin1Char('D')) ? t.name.chopped(1) : t.name).toInt());
-        // Session 424: and where the layout's tags do not lie as the routes' linking distances say.
-        const QHash<int, QVector<qint64>> locs = StationLayout::tagLocationsByNumber(m_layout);
+        // Session 424: and where the layout's tags do not lie as the routes' linking distances say
+        // (session 455: a junction tag at either of its two locations).
+        const QHash<int, QVector<qint64>> locs = StationLayout::tagLocationsByNumber(m_layout, true);
         for (const QString &c : notes + StationKavach::checks(ks) + StationKavach::tagChecks(ks, ids)
                                     + StationKavach::locationChecks(ks, locs))
             found << tr("KAVACH: %1").arg(c);

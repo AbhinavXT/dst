@@ -305,9 +305,8 @@ tag (0 to 9 frames late, no rule seen: DLConsole moves it at once), track
 locking of a point and flank protection (the data names neither), a train
 across a point counted on both lines. Not tested
 against a live loco: the engine's answers are checked against real station
-frames only. No import from a firm's Table-of-Control sheet yet (waiting for
-a real sheet to read: for LPI, station 527, the ToC is TC.1005B, named on
-its tag-TIN layout in RDSO Annexure-H, page 9). The layout itself can be
+frames only. A firm's Table of Control is read by
+`scripts/kavach_sheets.py` (session 455; docs/KAVACH_SHEETS.md). The layout itself can be
 checked against that drawing: Station Layout ▸ Open ▸ Compare with ▸ A
 tag-layout drawing (session 430). The drawing shows the aspects the file starts
 with on the KAVACH tab; Packet Maker's live ones under Station… ▸ Show on the

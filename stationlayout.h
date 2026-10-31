@@ -171,7 +171,11 @@ QStringList checks(const Layout &l);
 QHash<QString, qint64> tagLocations(const Layout &l);
 // Session 426: tag number -> the abs_loc of every main tag of that number
 // (more than one when the layout lists the number more than once).
-QHash<int, QVector<qint64>> tagLocationsByNumber(const Layout &l);
+// Session 455: `junctionBoth` adds an adjustment / junction tag's abs_loc_2,
+// the other line's location: a route over the junction may count from either
+// (HBL's R-454: 131270 on one line, 131163 on the other). For the linking
+// distance check; not for placing a loco.
+QHash<int, QVector<qint64>> tagLocationsByNumber(const Layout &l, bool junctionBoth = false);
 // Tag name -> its line (from the lines sheet; first line wins).
 QHash<QString, QString> lineOfTag(const Layout &l);
 // Session 429: a key for each tag of the layout, in order: its name; the

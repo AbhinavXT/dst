@@ -268,14 +268,19 @@ QHash<QString, qint64> tagLocations(const Layout &l)
     return out;
 }
 
-QHash<int, QVector<qint64>> tagLocationsByNumber(const Layout &l)
+QHash<int, QVector<qint64>> tagLocationsByNumber(const Layout &l, bool junctionBoth)
 {
     QHash<int, QVector<qint64>> out;
     for (const Tag &t : l.tags) {
         bool ok = false;
         const int id = t.name.toInt(&ok);   // main tags only: a duplicate ("…D") lies apart
         const TagInfo in = info(t);
-        if (ok && in.ok) out[id] << in.absLoc;
+        if (!ok || !in.ok) continue;
+        out[id] << in.absLoc;
+        if (junctionBoth && in.type == 12) {
+            const QHash<QString, qint64> v = RfidTag::values(RfidTag::fromPages(t.pageX, t.pageY));
+            if (v.contains(QStringLiteral("abs_loc_2"))) out[id] << v.value(QStringLiteral("abs_loc_2"));
+        }
     }
     return out;
 }

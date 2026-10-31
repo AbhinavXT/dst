@@ -12,8 +12,9 @@ reading on real sheets.
   2. What those pages are known to hold (checked by hand against the PDFs):
      the tags, and each disagreement the sheets print.
   3. The whole pack, when it is on this machine (tests/fixtures/kavach_sheets/,
-     git-ignored: the PDFs stay local), needs pdftotext: 712 tags in eight
-     sections and the notes each gives. Skipped, and said, when absent.
+     git-ignored: the PDFs stay local), needs pdftotext, read together as one
+     stretch: 712 tags in eight sections, their routes, the hand-overs, and the
+     notes each gives. Skipped, and said, when absent.
 
 Usage:  python3 validate_kavach_sheets.py
 """
@@ -28,16 +29,18 @@ import kavach_sheets  # noqa: E402
 FIXTURES = os.path.join(HERE, "fixtures", "kavach_sheets")
 LOCAL = os.path.join(HERE, "..", "tests", "fixtures", "kavach_sheets")
 
-# Section folder -> (station id, tags, sheet notes) for the whole local pack.
+# Section folder -> (station id, its own tags, tags in the file (with those
+# copied from the next sections for the routes ending on them), routes, sheet
+# notes) for the whole local pack, read together.
 PACK = {
-    "GGD-21-07-2023": (521, 108, 2),
-    "SKP-GGD IB": (522, 40, 0),
-    "SKP-21-07-2023": (523, 136, 15),
-    "SKP-NPL IB-21-07-2023": (524, 28, 0),
-    "NPL": (525, 160, 4),
-    "NPL-TLPR IB": (526, 22, 0),
-    "TLPR": (501, 74, 0),
-    "LPI": (527, 144, 1),
+    "GGD-21-07-2023": (521, 108, 110, 21, 5),
+    "SKP-GGD IB": (522, 40, 44, 6, 1),
+    "SKP-21-07-2023": (523, 136, 140, 24, 20),
+    "SKP-NPL IB-21-07-2023": (524, 28, 32, 6, 2),
+    "NPL": (525, 160, 164, 30, 8),
+    "NPL-TLPR IB": (526, 22, 26, 5, 1),
+    "TLPR": (501, 74, 78, 17, 6),
+    "LPI": (527, 144, 146, 30, 5),
 }
 
 total = ok = 0
@@ -84,6 +87,30 @@ def main():
         check(kavach_sheets.decode(t["177"]["page_x"], t["177"]["page_y"])["absLoc"] == 155566,
               "NPL-TLPR IB: tag 177 at 155566 m (the layout and ToC say 155.556)")
         check(t["175D"]["page_x"] == "faaaaa8262ac2bd9", "NPL-TLPR IB: 175D's PAGE-X as printed")
+        # session 455: its Table of Control
+        k = lay.get("kavach", {})
+        r = {x["name"]: x for x in k.get("routes", [])}
+        check(len(r) == 5, "NPL-TLPR IB ToC: 5 routes (rows 1-4 and 6)")
+        a = r.get("S9D-S9 ID Down Main", {})
+        check([(x["dist"], x["tag"]) for x in a.get("tags", [])] == [(0, 134), (746, 136), (250, 138)]
+              and a.get("pkt_dir") == 1 and a.get("section_type") == 1 and a.get("tin") == 86,
+              "S9D-S9 ID: (R-134,746), (R-136,250) to S9 ID's foot R-138, Nominal, absolute block, TIN 86")
+        a = r.get("S14 ID-S14 UP Main", {})
+        check([(x["dist"], x["tag"], x.get("dup_dir", 0)) for x in a.get("tags", [])] == [(0, 175, 1), (780, 177, 1), (240, 179, 1)]
+              and a.get("pkt_dir") == 2,
+              "S14 ID-S14: 780 m and 240 m as printed (the tags lie 770 and 250), Reverse, each duplicate 4 m back")
+        a = r.get("NPL S9/S2D TLPR-R-148 (501) Down Main", {})
+        check(a.get("next_stn") == 501 and a.get("tags", [{}])[-1] == {"dist": 230, "tag": 148} and a.get("os_speed") == 15,
+              "S9/S2D into the block: the last 230 m to TLPR's border tag R-148, handed over to 501, OS 15 km/h")
+        sig = {g["name"]: g["foot_tag"] for g in k.get("signals", [])}
+        check(sig.get("S9D") == 134 and sig.get("S14") == 179 and sig.get("R-183 (525)") == 183,
+              "the signals at their foot tags, NPL's border signal by its tag")
+        lines = {x["name"]: x["tags"] for x in lay["lines"]}
+        check(lines.get("Down Main", [])[:3] == ["134", "134D", "136"] and lines.get("UP Main", [])[:2] == ["181", "181D"],
+              "the lines from the routes, in location order")
+        check(sorted(kavach_sheets.read_station_id(kavach_sheets.read_pages(os.path.join(FIXTURES, "NPL-TLPR_IB", f)))
+                     for f in os.listdir(os.path.join(FIXTURES, "NPL-TLPR_IB")) if "CONTROL" in f) == [526],
+              "the ToC's own Station ID: 526")
     lay, notes = got.get("SKP_extract", (None, []))
     if lay:
         check(len(lay["tags"]) == 42, "SKP pages 16-23: 42 tags")
@@ -112,19 +139,44 @@ def main():
         print("  NOTE: tests/fixtures/kavach_sheets/ (the PDFs) is not on this machine: the whole pack not read")
     elif not shutil.which("pdftotext"):
         print("  NOTE: pdftotext not found: the local PDFs not read")
+    elif not all(os.path.isdir(os.path.join(LOCAL, d)) for d in PACK):
+        check(False, "local pack: a section folder is missing")
     else:
-        n = 0
-        for d, (sid, ntags, nnotes) in PACK.items():
-            src = os.path.join(LOCAL, d)
-            if not os.path.isdir(src):
-                check(False, f"local pack: {d} missing")
-                continue
-            lay, notes = kavach_sheets.station_layout(src)
-            check(lay is not None and lay["stations"][0]["station_id"] == sid, f"{d}: station {sid}")
-            check(lay is not None and len(lay["tags"]) == ntags, f"{d}: {ntags} tags")
+        folders = [os.path.join(LOCAL, d) for d in PACK]
+        pack = kavach_sheets.read_pack(folders)
+        got = {s.folder: (s, kavach_sheets.build_layout(s, pack)) for s in pack.sections}
+        own = 0
+        allnotes = []
+        for d, (sid, nown, ntags, nroutes, nnotes) in PACK.items():
+            sec, (lay, notes) = got[os.path.join(LOCAL, d)]
+            allnotes += notes
+            check(sec.station_id == sid, f"{d}: station {sid}")
+            check(len(sec.tags) == nown, f"{d}: {nown} tags on its sheet")
+            check(lay is not None and len(lay["tags"]) == ntags, f"{d}: {ntags} tags in the file")
+            check(lay is not None and len(lay.get("kavach", {}).get("routes", [])) == nroutes, f"{d}: {nroutes} routes")
             check(len(notes) == nnotes, f"{d}: {nnotes} sheet notes (got {len(notes)})")
-            n += len(lay["tags"]) if lay else 0
-        check(n == 712, "the whole pack: 712 tags")
+            own += len(sec.tags)
+        check(own == 712, "the whole pack: 712 tags")
+        routes = {}
+        for d in PACK:
+            lay = got[os.path.join(LOCAL, d)][1][0]
+            for r in lay.get("kavach", {}).get("routes", []):
+                routes[(d, r["name"])] = r
+        r = routes.get(("GGD-21-07-2023", "S6-S7D (522) Down Main"), {})
+        check(r.get("next_stn") == 522 and r.get("loc_reset") == {"start": 1611, "correction": 107, "adj_dir": 1},
+              "GGD S6 into the IB: handed over to 522 at SKP-GGD IB's S7D, location reset 107 m at 1611 m, Nominal")
+        r = routes.get(("NPL-TLPR IB", "NPL S9/S2D TLPR-S2 ID (501) Down Main"), {})
+        check(r.get("next_stn") == 501, "the IB's S9/S2D route ends at TLPR's S2 ID, named from TLPR's ToC")
+        check(has(allnotes, "TLPR", "#13", "add up to 1034 m", "says 1024 m"), "TLPR #13: 1034 m of links, 1024 m given")
+        check(has(allnotes, "TLPR", "#12", "add up to 2600 m", "says 2361 m"), "TLPR #12: 2600 m of links, 2361 m given")
+        check(has(allnotes, "GGD", "#7 S1 → -", "stops at R-516, 199 m of the 1125 m given: not a route"),
+              "GGD #7: a Red / Nil row with a sequence of one link is not made a route")
+        check(has(allnotes, "LPI", "#31 S1637 → -", "590 m of the 790 m given"), "LPI #31: 590 m of 790 m")
+        check(has(allnotes, "SKP", "Border RFID given for S6 (station 524) is R-374, the foot tag of this station's S6"),
+              "SKP: its border RFIDs are its own last stop signals' foot tags")
+        check(has(allnotes, "TLPR", "#7", "3 MA sections", "at Green"), "TLPR #7: 3 MA sections at Green")
+        r = routes.get(("TLPR", "S15 TLPR/14D NPL-TLPR IB-S14 ID (526) Up Main Line"), {})
+        check([x["dist"] for x in r.get("tags", [])] == [0, 40, 110, 654, 230], "TLPR #13's 654 m kept as printed")
     print(f"kavach sheets: {ok}/{total} {'PASS' if ok == total else 'FAIL'}")
     return 0 if ok == total else 1
 

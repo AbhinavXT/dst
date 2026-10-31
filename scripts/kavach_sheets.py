@@ -13,7 +13,16 @@ Read so far:
                            as printed (they are what is programmed); each
                            printed field row is checked against the bits its
                            bit positions name, the CRC-30, and each main tag
-                           against its duplicate.
+                           against its duplicate.                (454)
+  the TABLE OF CONTROL     every route row as a Stationary KAVACH route: its
+                           signals, RFID sequence and linking distances,
+                           points, track circuits, TINs, section type, OS
+                           speed; the next station and location reset from
+                           the "Last Stop Signal" table; the layout's lines
+                           and signals from the routes.          (455)
+
+Folders given together are read as one stretch: a route that runs into the
+next section ends on that section's tag and signal, which are copied in.
 
 A sheet is read through `pdftotext -bbox` (poppler): words and where they
 are on the page, so a table's columns line up by position. The .html that
@@ -371,7 +380,234 @@ def check_tags(tags, src):
     return notes
 
 
-# ---- a station folder -------------------------------------------------------
+# ---- the TABLE OF CONTROL ---------------------------------------------------
+def lines_of(ws, tol=3.5):
+    """Words -> visual lines [(y centre, [words])], top to bottom."""
+    out = []
+    for w in sorted(ws, key=lambda w: (w.yc, w.x0)):
+        if out and abs(out[-1][0] - w.yc) < tol:
+            out[-1][1].append(w)
+        else:
+            out.append((w.yc, [w]))
+    return out
+
+
+def cell(ws):
+    t = " ".join(" ".join(w.t for w in sorted(ln, key=lambda w: w.x0)) for _, ln in lines_of(ws)).strip()
+    return re.sub(r"\bCom mon\b", "Common", t)     # a word the PDF breaks
+
+
+# A header cell's text (its words top to bottom) -> the column it is. Two
+# cells hold two columns: "Requires Points in Route / Normal | Reverse" and,
+# on some sheets, "Check RFID Sequence / Entry Signal Foot Tag | (Linking ...)".
+HEADERS = [("sno", lambda t: t.startswith("S.")),
+           ("foot", lambda t: t.startswith("Entry Signal Foot")),
+           ("entry", lambda t: t.startswith("Entry Signal")),
+           ("exit", lambda t: t.startswith("Exit Signal")),
+           ("section", lambda t: t.startswith("Section")),
+           ("line", lambda t: t == "Line"),
+           ("tsrms", lambda t: "Route Id" in t),
+           ("sigtype", lambda t: t.startswith("Signal")),
+           ("asp_entry", lambda t: t.startswith("Aspects of Entry")),
+           ("asp_exit", lambda t: t.startswith("Requires Aspects")),
+           ("next_sections", lambda t: t.startswith("Requires Next")),
+           ("points", lambda t: t.startswith("Requires Points")),
+           ("tcs", lambda t: t.startswith("Requires Track")),
+           ("tins", lambda t: "Identification" in t),
+           ("tins_overlap", lambda t: "Overlap" in t),
+           ("seq", lambda t: t.startswith("Check RFID")),
+           ("distance", lambda t: t.startswith("Distance")),
+           ("ma", lambda t: t.startswith("Movement")),
+           ("os_speed", lambda t: t.startswith("Authorized"))]
+
+
+def toc_columns(ws):
+    """[(column, x from, x to)] from the header words, or None on a page without the table."""
+    s = next((w for w in ws if w.t in ("S.", "S.No", "S.No.")), None)
+    if not s:
+        return None, None, None
+    hdr = [w for w in ws if s.y0 - 40 < w.yc < s.y1 + 34]
+    spans = []
+    for w in sorted(hdr, key=lambda w: w.x0):
+        if spans and w.x0 <= spans[-1][1] + 1:
+            spans[-1][1] = max(spans[-1][1], w.x1)
+            spans[-1][2].append(w)
+        else:
+            spans.append([w.x0, w.x1, [w]])
+    named = []
+    for x0, x1, words in spans:
+        t = " ".join(w.t for w in sorted(words, key=lambda w: (round(w.y0), w.x0)))
+        key = next((k for k, f in HEADERS if f(t)), None)
+        if t.startswith("No") and named and named[-1][0] == "sno":
+            named[-1] = ("sno", named[-1][1], x1)
+        elif key == "sigtype" and named and named[-1][0] == "sigtype":
+            named[-1] = ("sigtype", named[-1][1], x1)
+        elif key == "points":
+            nw = next((w for w in words if w.t == "Normal"), None)
+            rw = next((w for w in words if w.t == "Reverse"), None)
+            mid = (nw.x1 + rw.x0) / 2 if nw and rw else (x0 + x1) / 2
+            named += [("points_n", x0, mid), ("points_r", mid, x1)]
+        elif key == "seq":
+            foot = next((w for w in words if w.t == "Foot"), None)
+            paren = [w.x0 for w in words if w.t.startswith("(")]
+            if foot and paren and min(paren) > foot.x1:
+                split = (foot.x1 + min(paren)) / 2
+                named += [("foot", x0, split), ("seq", split, x1)]
+            else:
+                named.append(("seq", x0, x1))
+        elif key is None and named and named[-1][0] == "seq":
+            named[-1] = ("seq", named[-1][1], x1)        # "," "En-" of a wrapped heading
+        else:
+            named.append((key or "?", x0, x1))
+    cols = []
+    for i, (key, x0, x1) in enumerate(named):
+        lo = (named[i - 1][2] + x0) / 2 if i else 0
+        hi = (x1 + named[i + 1][1]) / 2 if i + 1 < len(named) else 1e9
+        cols.append((key, lo, hi))
+    return cols, s, max(w.y1 for w in hdr)
+
+
+def read_toc(pages):
+    """Every route row: its cells by column, the page, and its aspect sub-rows."""
+    rows = []
+    for pi, ws in enumerate(pages):
+        cols, s, hdr_bottom = toc_columns(ws)
+        if not cols:
+            continue
+        colx = {k: (a, b) for k, a, b in cols}
+        if not {"sno", "entry", "exit", "seq"} <= set(colx):
+            continue
+
+        def incol(w, key):
+            a, b = colx.get(key, (0, -1))
+            return a <= (w.x0 + w.x1) / 2 < b
+
+        # The table ends at the title block.
+        foot_y = min([w.y0 for w in ws if w.t in ("Last", "REF:", "PREPARED", "SIGNAL", "TELECOMMUNICATIONS")
+                      and w.y0 > s.y1 + 40] + [1e9])
+        body = [w for w in ws if hdr_bottom < w.yc and w.y0 < foot_y]
+        anchors = sorted([w for w in body if incol(w, "sno") and re.fullmatch(r"\d{1,3}", w.t)], key=lambda w: w.yc)
+        if not anchors:
+            continue
+        # Every cell is centred on its row, as the S.No is, so the rows tile:
+        # each boundary is the one before reflected in the next S.No's centre.
+        # Cells can touch (no gap to split on), so this, not the gaps.
+        c = [a.yc for a in anchors]
+        prev = min([w.y0 for w in body if w.yc < c[0]] + [anchors[0].y0]) - 1.5
+        bounds = []
+        for i in range(len(c)):
+            nxt = 2 * c[i] - prev
+            if i + 1 < len(c) and not (c[i] < nxt < c[i + 1]):
+                nxt = (c[i] + c[i + 1]) / 2
+            if i + 1 == len(c):
+                nxt = foot_y
+            bounds.append((prev, nxt))
+            prev = nxt
+        for a, (top, bot) in zip(anchors, bounds):
+            rw = [w for w in body if top <= w.yc < bot]
+            r = {"sno": int(a.t), "page": pi + 1}
+            for key, lo, hi in cols:
+                if key not in ("sno", "?"):
+                    r[key] = cell([w for w in rw if lo <= (w.x0 + w.x1) / 2 < hi])
+            for key in ("entry", "exit"):     # a name wrapped in its cell: "S15 TLPR/ 14D NPL- TLPR IB"
+                r[key] = re.sub(r"([/-])\s+", r"\1", r.get(key, "")).strip()
+            # The aspect sub-rows: the exit signal's aspect and the MA sections beside it.
+            r["subs"] = []
+            for y, ln in lines_of([w for w in rw if incol(w, "ma")]):
+                ex = cell([w for w in rw if incol(w, "asp_exit") and abs(w.yc - y) < 6])
+                r["subs"].append((ex, " ".join(w.t for w in ln)))
+            rows.append(r)
+    return rows
+
+
+def read_station_id(pages):
+    for ws in pages[:1]:
+        for i, w in enumerate(ws):
+            if w.t == "ID:" and i > 0 and ws[i - 1].t == "Station":
+                nxt = [v for v in ws if abs(v.yc - w.yc) < 4 and v.x0 > w.x1 and re.fullmatch(r"\d{1,4}", v.t)]
+                if nxt:
+                    return int(min(nxt, key=lambda v: v.x0).t)
+    return None
+
+
+def read_borders(pages):
+    """The "Last Stop Signal for entering into Auto/Block Section" table: per
+    row the signal, the next station, its border tag and that tag's location,
+    and the location reset when one is given (distance from start, correction,
+    loco direction after it)."""
+    out = []
+    for pi, ws in enumerate(pages):
+        last = next((w for w in ws if w.t == "Last"), None)
+        if not last:
+            continue
+        hdr = [w for w in ws if last.y0 - 5 <= w.y0 <= last.y0 + 60 and w.x0 >= last.x0 - 5]
+        lss = next((w for w in hdr if w.t == "LSS"), None)
+        idw = next((w for w in hdr if w.t == "Id"), None)
+        if not lss or not idw:
+            continue
+        hdr_bottom = max(w.y1 for w in hdr)
+        endw = next((w for w in ws if w.t == "Signals" and w.y0 > hdr_bottom), None)
+        end_y = endw.y0 if endw else hdr_bottom + 200
+        right = max(w.x1 for w in hdr)
+        body = [w for w in ws if hdr_bottom < w.yc < end_y and last.x0 - 5 <= w.x0 <= right + 20]
+        rfids = sorted([w for w in body if re.match(r"R-\d+", w.t)], key=lambda w: w.yc)
+        cy = [w.yc for w in rfids]
+        for i, rw in enumerate(rfids):
+            top = (cy[i - 1] + cy[i]) / 2 if i else hdr_bottom
+            bot = (cy[i] + cy[i + 1]) / 2 if i + 1 < len(cy) else end_y
+            row = [w for w in body if top <= w.yc < bot]
+            name = cell([w for w in row if w.x1 < lss.x0 - 2])
+            sid = [w for w in row if re.fullmatch(r"\d{1,3}", w.t)
+                   and abs((w.x0 + w.x1) / 2 - (idw.x0 + idw.x1) / 2) < 25]
+            m = re.match(r"R-(\d+),?(\d*)", rw.t)
+            loc = m.group(2)
+            if not loc:
+                nxt = [w for w in row if w.x0 > rw.x1 - 1 and re.fullmatch(r"\d{5,7}", w.t) and abs(w.yc - rw.yc) < 15]
+                loc = min(nxt, key=lambda w: w.x0).t if nxt else ""
+            after = sorted([w for w in row if w.x0 > rw.x1 + 30 and abs(w.yc - rw.yc) < 15
+                            and not re.fullmatch(r"\d{5,7}", w.t)], key=lambda w: w.x0)
+            rest = [w.t for w in after][:3]
+            reset = None
+            if len(rest) == 3 and rest[0].isdigit() and rest[1].isdigit() and rest[2] in ("Nominal", "Reverse"):
+                reset = {"start": int(rest[0]), "correction": int(rest[1]),
+                         "adj_dir": 1 if rest[2] == "Nominal" else 2}
+            out.append({"page": pi + 1, "lss": name, "next_stn": int(sid[0].t) if sid else None,
+                        "border_tag": int(m.group(1)), "border_loc": int(loc) if loc else None, "reset": reset})
+    return out
+
+
+def links(seq):
+    """('dist-first' | 'tag-first' | None, [(tag, distance)]) from an RFID sequence cell.
+
+    dist-first, "(0, R-148), (774, R-150)": each distance is from the tag before.
+    tag-first, "(R-134, 746), (R-136, 250)": each distance is to the tag after;
+    the last one's runs to the exit signal's foot tag, which the cell does not name.
+    A tag written without its "R-" ("(200,989)") is still the tag.
+    """
+    s = re.sub(r"\s+", "", seq)
+    out, fmt = [], None
+    for m in re.finditer(r"\((R-)?(\d+),(R-)?(\d+)\)?", s):
+        if m.group(1):
+            fmt = fmt or "tag-first"
+            out.append((int(m.group(2)), int(m.group(4))))
+        else:
+            fmt = fmt or "dist-first"
+            out.append((int(m.group(4)), int(m.group(2))))
+    return fmt, out
+
+
+SECTION_TYPES = {"station section": 0, "absolute block": 1, "auto section": 2, "auto": 2,
+                 "automatic section": 2, "autoblock": 2}
+ASPECT_SECTIONS = {"Green": 4, "Double Yellow": 3, "Yellow": 2, "Red": 1}   # Annexure-I, as Station KAVACH has them
+
+
+def names_list(text):
+    """'P-11, P-13' -> ['P-11', 'P-13']; '-' -> []. A note in brackets ('(W12R)') is dropped."""
+    text = re.sub(r"\([^)]*\)", "", text or "")
+    return [x for x in re.split(r"[,\s]+", text) if x.strip("-")]
+
+
+# ---- a station folder, and several together ----------------------------------
 def sheets_in(folder):
     out = {}
     for name in sorted(os.listdir(folder)):
@@ -381,46 +617,330 @@ def sheets_in(folder):
     return out
 
 
-def station_layout(folder):
-    """(layout dict, notes) for one station / IB folder."""
-    sheets = sheets_in(folder)
-    notes, sources = [], []
-    tags = []
-    for path in sheets.get("tags", []):
-        src = os.path.basename(path)
-        sources.append(src)
-        t = read_tag_sheet(read_pages(path), first_page(path))
-        notes += check_tags(t, src)
-        tags += t
-    if not tags:
-        return None, [f"{folder}: no RFID tag data sheet"]
-    # The station: the ID most of its own normal tags carry in the nominal direction.
-    ids = Counter()
-    locs = []
-    for t in tags:
-        d = decode(t.px, t.py)
-        if d["crcOk"] and d["type"] == 9:
-            ids[d["stnNom"]] += 1
-            locs.append(d["absLoc"])
-    station_id = ids.most_common(1)[0][0] if ids else 0
-    centre = (min(locs) + max(locs)) // 2 if locs else 0
+class Section:
+    """What one station / IB folder's sheets hold."""
+
+    def __init__(self, folder):
+        self.folder = folder
+        self.sources, self.notes = [], []
+        self.tags, self.rows, self.borders = [], [], []
+        self.toc_src, self.toc_station = "", None
+        sheets = sheets_in(folder)
+        for path in sheets.get("tags", []):
+            src = os.path.basename(path)
+            self.sources.append(src)
+            t = read_tag_sheet(read_pages(path), first_page(path))
+            self.notes += check_tags(t, src)
+            self.tags += t
+        for path in sheets.get("toc", []):
+            self.toc_src = os.path.basename(path)
+            self.sources.append(self.toc_src)
+            pages = read_pages(path)
+            self.rows += read_toc(pages)
+            self.borders += read_borders(pages)
+            self.toc_station = self.toc_station or read_station_id(pages)
+        ids = Counter()
+        self.locs = []
+        for t in self.tags:
+            d = decode(t.px, t.py)
+            if d["crcOk"] and d["type"] == 9:
+                ids[d["stnNom"]] += 1
+                self.locs.append(d["absLoc"])
+        self.station_id = ids.most_common(1)[0][0] if ids else (self.toc_station or 0)
+        if self.toc_station is not None and ids and self.toc_station != self.station_id:
+            self.notes.append(f"{self.toc_src}: Station ID {self.toc_station}; most of the tags say {self.station_id}")
+
+    def tag_loc(self, number):
+        """number -> abs_loc of its main tag here (CRC-30 holding), or None."""
+        for t in self.tags:
+            if t.number == number and not t.is_dup:
+                d = decode(t.px, t.py)
+                return d["absLoc"] if d["crcOk"] else None
+        return None
+
+
+class Pack:
+    """Every section read together: a route that runs into the next section
+    finds its tags and signals there."""
+
+    def __init__(self, sections):
+        self.sections = sections
+
+    def tag_loc(self, number, near=None, prefer=None):
+        """abs_loc of main tag `number`: in `prefer` first, else the section's copy nearest `near`."""
+        if prefer is not None:
+            v = prefer.tag_loc(number)
+            if v is not None:
+                return v
+        found = [v for s in self.sections for v in [s.tag_loc(number)] if v is not None]
+        if not found:
+            return None
+        return min(found, key=lambda v: abs(v - near)) if near is not None else found[0]
+
+    def dup_behind(self, number, prefer):
+        """True when tag `number`'s duplicate lies 4 m back from its main tag (dup_dir 1,
+        "Reverse(-)", as station 527 sends it); False when ahead or unknown."""
+        for s in [prefer] + [x for x in self.sections if x is not prefer]:
+            m = d = None
+            for t in s.tags:
+                if t.number == number:
+                    v = decode(t.px, t.py)
+                    if v["crcOk"]:
+                        if t.is_dup:
+                            d = v["absLoc"]
+                        else:
+                            m = v["absLoc"]
+            if m is not None and d is not None:
+                return d < m
+        return False
+
+    def section_of(self, station_id):
+        return next((s for s in self.sections if s.station_id == station_id), None)
+
+    def tags_at(self, loc):
+        return [(s, t.number) for s in self.sections for t in s.tags
+                if not t.is_dup and s.tag_loc(t.number) == loc]
+
+
+def kavach_of(sec, pack):
+    """The "kavach" block from the Table of Control: (block or None, notes, tag numbers it needs)."""
+    if not sec.rows:
+        return None, [], set()
+    notes, src = [], sec.toc_src
+    foot = {}                      # this station's signals: name -> foot tag (its rows' entry foot tag)
+    for r in sec.rows:
+        m = re.search(r"R-?\s*0*(\d+)", r.get("foot", ""))
+        if r["entry"] and m:
+            f = int(m.group(1))
+            if foot.setdefault(r["entry"], f) != f:
+                notes.append(f"{src} p{r['page']} #{r['sno']}: {r['entry']}'s foot tag is R-{f} here, "
+                             f"R-{foot[r['entry']]} in an earlier row")
+    borders = {b["border_tag"]: b for b in sec.borders}
+    for b in sec.borders:
+        own = [n for n, f in foot.items() if f == b["border_tag"]]
+        if own:
+            notes.append(f"{src} p{b['page']}: the Next Station Border RFID given for {b['lss'] or 'its last stop signal'} "
+                         f"(station {b['next_stn']}) is R-{b['border_tag']}, the foot tag of this station's {own[0]}")
+    signals, routes, needed, names = {}, [], set(), Counter()
+    for r in sec.rows:
+        where = f"{src} p{r['page']} #{r['sno']} {r['entry']} → {r['exit']}"
+        fmt, ls = links(r.get("seq", ""))
+        if not ls:
+            notes.append(f"{where}: no RFID sequence: not a route")
+            continue
+        if fmt == "dist-first":
+            seq = [(t, d) for t, d in ls]
+            if seq[0][1] != 0:
+                notes.append(f"{where}: the RFID sequence starts {seq[0][1]} m from R-{seq[0][0]}, not at 0")
+        else:
+            seq = [(ls[0][0], 0)] + [(ls[i][0], ls[i - 1][1]) for i in range(1, len(ls))]
+        last_tag, last_d = (seq[-1][0], 0) if fmt == "dist-first" else (ls[-1][0], ls[-1][1])
+        stated = int(r["distance"]) if re.fullmatch(r"\d+", r.get("distance", "")) else None
+        total = sum(d for _, d in seq) + (last_d if fmt == "tag-first" else 0)
+        # Which way: the tags' locations (rising: Nominal; the first and the
+        # farthest tag the sheets place), else the line.
+        placed = []
+        for t, _ in seq:
+            v = pack.tag_loc(t, near=placed[0] if placed else None, prefer=sec)
+            if v is not None:
+                placed.append(v)
+        here = pack.tag_loc(seq[0][0], prefer=sec)
+        if len(placed) > 1 and placed[-1] != placed[0]:
+            pkt_dir = 1 if placed[-1] > placed[0] else 2
+        else:
+            pkt_dir = 2 if re.match(r"(?i)up", r.get("line", "")) else 1
+            notes.append(f"{where}: the tags' locations do not give the direction: {'Reverse' if pkt_dir == 2 else 'Nominal'} "
+                         f"from the line ({r.get('line', '')})")
+        exit_name, next_stn = r["exit"], 0
+        border = None
+        if fmt == "tag-first":
+            # The last distance runs to the exit signal's foot tag: this station's
+            # signal, else the next station's border tag, else whatever tag lies there.
+            want = None if here is None else pack.tag_loc(last_tag, near=here, prefer=sec)
+            want = None if want is None else want + (last_d if pkt_dir == 1 else -last_d)
+            end = foot.get(exit_name) if exit_name not in ("", "-") else None
+            if end is None:
+                b = next((b for b in sec.borders if b["border_loc"] == want), None)
+                end = b["border_tag"] if b else None
+            if end is None and want is not None:
+                at = pack.tags_at(want)
+                end = at[0][1] if at else None
+            if end is None:
+                notes.append(f"{where}: the RFID sequence's last {last_d} m from R-{last_tag} ends on no tag "
+                             f"this station or its neighbours' sheets name: not a route")
+                continue
+            seq.append((end, last_d))
+        if exit_name in ("", "-"):
+            border = borders.get(seq[-1][0])
+            if not border:
+                stop = f"R-{seq[-1][0]}"
+                sofar = sum(d for _, d in seq)
+                notes.append(f"{where} ({r.get('asp_entry', '')} / {r.get('asp_exit', '')}, {r.get('os_speed', '')} km/h): "
+                             f"no exit signal and its RFID sequence stops at {stop}, {sofar} m"
+                             + (f" of the {stated} m given" if stated is not None else "") + ": not a route")
+                continue
+            nsec = pack.section_of(border["next_stn"]) if border["next_stn"] else None
+            other = None
+            if nsec:
+                other = next((x["entry"] for x in nsec.rows
+                              if re.sub(r"\D", "", x.get("foot", "")).lstrip("0") == str(seq[-1][0])), None)
+            exit_name = f"{other or 'R-' + str(seq[-1][0])} ({border['next_stn'] or 'next station'})"
+        # A block or auto route that ends on the "Last Stop Signal" table's
+        # border tag: the loco is handed over to the next station there.
+        if border is None and SECTION_TYPES.get(r.get("section", "").strip().lower()) in (1, 2):
+            border = borders.get(seq[-1][0])
+        if border:
+            next_stn = border["next_stn"] or 0
+        if stated is not None and stated != sum(d for _, d in seq):
+            notes.append(f"{where}: the linking distances add up to {sum(d for _, d in seq)} m; the Distance column says {stated} m")
+        # The MA sections against the aspect of the exit signal.
+        said = set()
+        for ex, n in r.get("subs", []):
+            ex = ex.strip()
+            if ex in ASPECT_SECTIONS and n.isdigit() and int(n) != ASPECT_SECTIONS[ex] and (ex, n) not in said:
+                said.add((ex, n))
+                notes.append(f"{where}: {n} MA sections with {exit_name} at {ex}; Station KAVACH gives "
+                             f"{ASPECT_SECTIONS[ex]} unless the file says otherwise")
+        sect = SECTION_TYPES.get(r.get("section", "").strip().lower())
+        if sect is None:
+            notes.append(f"{where}: section type {r.get('section')!r} is not one Annexure-I names: Station Section (0) taken")
+            sect = 0
+        speeds = re.findall(r"\d+", r.get("os_speed", ""))
+        calling_on = "calling" in r.get("sigtype", "").lower()
+        tcs = [x for x in names_list(r.get("tcs", "")) if x.lower() != "occupied"]
+        if "occupied" in r.get("tcs", "").lower():
+            tcs = []            # a calling-on route wants its track circuit occupied: not a "must be clear"
+        route = {"name": "", "entry": r["entry"], "exit": exit_name, "pkt_dir": pkt_dir, "section_type": sect,
+                 "authority": 1 if calling_on else 2, "os_speed": int(speeds[-1]) if speeds else 0,
+                 "points_normal": names_list(r.get("points_n", "")),
+                 "points_reverse": names_list(r.get("points_r", "")),
+                 "track_circuits": tcs,
+                 "tins": names_list(r.get("tins", "")) + names_list(r.get("tins_overlap", "")),
+                 "dist_dup_tag": 4, "tin": 0,
+                 "tags": [dict({"dist": d, "tag": t}, **({"dup_dir": 1} if pack.dup_behind(t, sec) else {}))
+                          for t, d in seq],
+                 "adj_tins": [], "ssp": [], "gradient": [], "lc": [], "turnouts": [], "track_conditions": [], "tsr": []}
+        if next_stn:
+            route["next_stn"] = next_stn
+        if border and border.get("reset"):
+            route["loc_reset"] = border["reset"]
+        # The route's TIN: its entry foot tag's, the way it runs.
+        for t in sec.tags:
+            if t.number == seq[0][0] and not t.is_dup:
+                d = decode(t.px, t.py)
+                if d["crcOk"] and d["type"] == 9:
+                    route["tin"] = d["tinNom"] if pkt_dir == 1 else d["tinRev"]
+        line = re.sub(r"\s+", " ", r.get("line", "")).strip(" -")
+        base = f"{r['entry']}-{exit_name}" + (f" {line}" if line else "")
+        names[base] += 1
+        route["name"] = base
+        route["_line"] = line
+        route["_sno"] = r["sno"]
+        routes.append(route)
+        signals.setdefault(r["entry"], seq[0][0])
+        signals.setdefault(exit_name, seq[-1][0])
+        needed.update(t for t, _ in seq)
+    for rt in routes:                       # the same entry, exit and line twice: the S.No tells them apart
+        if names[rt["name"]] > 1:
+            rt["name"] += f" #{rt['_sno']}"
+    for name, f in signals.items():
+        if name in foot and foot[name] != f:
+            notes.append(f"{src}: signal {name}'s foot tag is R-{foot[name]} as an entry, R-{f} as an exit")
+    block = {"station_id": sec.station_id, "stn_version": 0,
+             "signals": [{"name": n, "foot_tag": foot.get(n, f), "sig_info": 0, "aspect": 1} for n, f in signals.items()],
+             "routes": routes}
+    return block, notes, needed
+
+
+def build_layout(sec, pack):
+    """(layout dict, notes) for one section of the pack."""
+    notes = list(sec.notes)
+    if not sec.tags:
+        return None, [f"{sec.folder}: no RFID tag data sheet"]
+    kav, knotes, needed = kavach_of(sec, pack)
+    notes += knotes
+    tags = list(sec.tags)
     names = Counter(t.name for t in tags)
     for n, c in names.items():
         if c > 1:
             notes.append(f"tag {n} is printed {c} times")
+    # A route here that runs onto another section's tags: those tags, from that section's sheet.
+    own = {t.number for t in sec.tags}
+    copied = []
+    for number in sorted(needed - own):
+        near = sec.locs[len(sec.locs) // 2] if sec.locs else None
+        best = None
+        for other in pack.sections:
+            if other is sec:
+                continue
+            v = other.tag_loc(number)
+            if v is not None and (best is None or (near is not None and abs(v - near) < abs(best[1] - near))):
+                best = (other, v)
+        if best:
+            tags += [t for t in best[0].tags if t.number == number]
+            copied.append(f"R-{number} ({best[0].station_id})")
+    if copied:
+        notes.append(f"tags copied from the next sections' tag data, for the routes that end on them: {', '.join(copied)}")
     layout = {
         "format": FORMAT,
-        "version": 1,
-        "comment": (f"Read from the KAVACH sheets by scripts/kavach_sheets.py (session 454): {', '.join(sources)}. "
-                    f"Station {station_id}: the station ID most of its normal tags carry. Its location {centre} "
-                    f"is not on the sheets: the middle of its tags, for the drawing."),
+        "version": 2 if kav else 1,
+        "comment": (f"Read from the KAVACH sheets by scripts/kavach_sheets.py (sessions 454-455): {', '.join(sec.sources)}. "
+                    f"Station {sec.station_id}: the station ID most of its normal tags carry. Its location "
+                    f"{(min(sec.locs) + max(sec.locs)) // 2 if sec.locs else 0} is not on the sheets: the middle of its "
+                    f"tags, for the drawing."),
         "tags": [{"name": t.name, "page_x": t.px, "page_y": t.py} for t in tags],
         "signals": [], "points": [], "lines": [],
-        "stations": [{"station_id": station_id, "location": centre}],
+        "stations": [{"station_id": sec.station_id,
+                      "location": (min(sec.locs) + max(sec.locs)) // 2 if sec.locs else 0}],
         "texts": [], "other_sheets": [],
-        "sheet_notes": notes,
     }
+    if kav:
+        # The lines: each tag on the line most of the routes through it name, in location order.
+        votes = {}
+        for rt in kav["routes"]:
+            for x in rt["tags"]:
+                votes.setdefault(x["tag"], Counter())[rt["_line"] or "(line not given)"] += 1
+        loc_of = {}
+        for t in tags:
+            if not t.is_dup:
+                d = decode(t.px, t.py)
+                if d["crcOk"]:
+                    loc_of[t.number] = d["absLoc"]
+        lines = {}
+        for number, v in votes.items():
+            lines.setdefault(v.most_common(1)[0][0], []).append(number)
+        tagnames = {t.name for t in tags}
+        for name, numbers in lines.items():
+            order = sorted(numbers, key=lambda n: loc_of.get(n, 0))
+            names_in = []
+            for n in order:
+                names_in += [x for x in (str(n), f"{n}D") if x in tagnames]
+            layout["lines"].append({"name": name, "line": name, "tags": names_in})
+        for g in kav["signals"]:
+            if str(g["foot_tag"]) in tagnames:
+                m = re.search(r"\((\d+)\)$", g["name"])
+                layout["signals"].append({"foot_tag": str(g["foot_tag"]), "signal": g["name"], "sig_id": 0,
+                                          "station_id": int(m.group(1)) if m else sec.station_id})
+        for rt in kav["routes"]:
+            del rt["_line"], rt["_sno"]
+        layout["kavach"] = kav
+    layout["sheet_notes"] = notes
     return layout, notes
+
+
+def read_pack(folders):
+    return Pack([Section(f) for f in folders])
+
+
+def import_pack(folders):
+    """{folder: (layout, notes)} for folders read together."""
+    pack = read_pack(folders)
+    return {s.folder: build_layout(s, pack) for s in pack.sections}
+
+
+def station_layout(folder):
+    """(layout dict, notes) for one station / IB folder read on its own."""
+    return import_pack([folder])[folder]
 
 
 def layout_text(layout):
@@ -440,8 +960,9 @@ def main(argv):
         print(__doc__)
         return 64
     rc = 0
+    done = import_pack(args)
     for folder in args:
-        layout, notes = station_layout(folder)
+        layout, notes = done[folder]
         if layout is None:
             print("\n".join(notes))
             rc = 1
@@ -450,7 +971,8 @@ def main(argv):
         out = os.path.join(outdir or folder, f"station_{sid}.json")
         with open(out, "w", encoding="utf-8") as fh:
             fh.write(layout_text(layout))
-        print(f"{out}: {len(layout['tags'])} tags, {len(notes)} sheet notes")
+        routes = len(layout.get("kavach", {}).get("routes", []))
+        print(f"{out}: {len(layout['tags'])} tags, {routes} routes, {len(notes)} sheet notes")
         for n in notes:
             print("   ", n)
     return rc

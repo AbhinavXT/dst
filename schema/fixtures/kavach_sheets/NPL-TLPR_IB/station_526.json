@@ -1,7 +1,7 @@
 {
  "format": "dlconsole-station-layout",
- "version": 1,
- "comment": "Read from the KAVACH sheets by scripts/kavach_sheets.py (session 454): KAVACH_RFID_TAG_DATA_NPL-TLPR-IB_2.0.2.html. Station 526: the station ID most of its normal tags carry. Its location 154515 is not on the sheets: the middle of its tags, for the drawing.",
+ "version": 2,
+ "comment": "Read from the KAVACH sheets by scripts/kavach_sheets.py (sessions 454-455): KAVACH_RFID_TAG_DATA_NPL-TLPR-IB_2.0.2.html, KAVACH_TABLE_OF_CONTROL_NPL-TLPR-IB_2.0.1.html. Station 526: the station ID most of its normal tags carry. Its location 154515 is not on the sheets: the middle of its tags, for the drawing.",
  "tags": [
   {
    "name": "134",
@@ -114,9 +114,75 @@
    "page_y": "a4e2998082810701"
   }
  ],
- "signals": [],
+ "signals": [
+  {
+   "foot_tag": "134",
+   "signal": "S9D",
+   "sig_id": 0,
+   "station_id": 526
+  },
+  {
+   "foot_tag": "138",
+   "signal": "S9 ID",
+   "sig_id": 0,
+   "station_id": 526
+  },
+  {
+   "foot_tag": "142",
+   "signal": "NPL S9/S2D TLPR",
+   "sig_id": 0,
+   "station_id": 526
+  },
+  {
+   "foot_tag": "175",
+   "signal": "S14 ID",
+   "sig_id": 0,
+   "station_id": 526
+  },
+  {
+   "foot_tag": "179",
+   "signal": "S14",
+   "sig_id": 0,
+   "station_id": 526
+  }
+ ],
  "points": [],
- "lines": [],
+ "lines": [
+  {
+   "name": "Down Main",
+   "line": "Down Main",
+   "tags": [
+    "134",
+    "134D",
+    "136",
+    "136D",
+    "138",
+    "138D",
+    "140",
+    "140D",
+    "142",
+    "142D",
+    "144",
+    "144D",
+    "146",
+    "146D"
+   ]
+  },
+  {
+   "name": "UP Main",
+   "line": "UP Main",
+   "tags": [
+    "181",
+    "181D",
+    "179",
+    "179D",
+    "177",
+    "177D",
+    "175",
+    "175D"
+   ]
+  }
+ ],
  "stations": [
   {
    "station_id": 526,
@@ -125,5 +191,246 @@
  ],
  "texts": [],
  "other_sheets": [],
+ "kavach": {
+  "station_id": 526,
+  "stn_version": 0,
+  "signals": [
+   {
+    "name": "S9D",
+    "foot_tag": 134,
+    "sig_info": 0,
+    "aspect": 1
+   },
+   {
+    "name": "S9 ID",
+    "foot_tag": 138,
+    "sig_info": 0,
+    "aspect": 1
+   },
+   {
+    "name": "NPL S9/S2D TLPR",
+    "foot_tag": 142,
+    "sig_info": 0,
+    "aspect": 1
+   },
+   {
+    "name": "R-148 (501)",
+    "foot_tag": 148,
+    "sig_info": 0,
+    "aspect": 1
+   },
+   {
+    "name": "S14 ID",
+    "foot_tag": 175,
+    "sig_info": 0,
+    "aspect": 1
+   },
+   {
+    "name": "S14",
+    "foot_tag": 179,
+    "sig_info": 0,
+    "aspect": 1
+   },
+   {
+    "name": "R-183 (525)",
+    "foot_tag": 183,
+    "sig_info": 0,
+    "aspect": 1
+   }
+  ],
+  "routes": [
+   {
+    "name": "S9D-S9 ID Down Main",
+    "entry": "S9D",
+    "exit": "S9 ID",
+    "pkt_dir": 1,
+    "section_type": 1,
+    "authority": 2,
+    "os_speed": 0,
+    "points_normal": [],
+    "points_reverse": [],
+    "track_circuits": [],
+    "tins": [],
+    "dist_dup_tag": 4,
+    "tin": 86,
+    "tags": [
+     {
+      "dist": 0,
+      "tag": 134
+     },
+     {
+      "dist": 746,
+      "tag": 136
+     },
+     {
+      "dist": 250,
+      "tag": 138
+     }
+    ],
+    "adj_tins": [],
+    "ssp": [],
+    "gradient": [],
+    "lc": [],
+    "turnouts": [],
+    "track_conditions": [],
+    "tsr": []
+   },
+   {
+    "name": "S9 ID-NPL S9/S2D TLPR Down Main",
+    "entry": "S9 ID",
+    "exit": "NPL S9/S2D TLPR",
+    "pkt_dir": 1,
+    "section_type": 1,
+    "authority": 2,
+    "os_speed": 0,
+    "points_normal": [],
+    "points_reverse": [],
+    "track_circuits": [],
+    "tins": [],
+    "dist_dup_tag": 4,
+    "tin": 86,
+    "tags": [
+     {
+      "dist": 0,
+      "tag": 138
+     },
+     {
+      "dist": 792,
+      "tag": 140
+     },
+     {
+      "dist": 250,
+      "tag": 142
+     }
+    ],
+    "adj_tins": [],
+    "ssp": [],
+    "gradient": [],
+    "lc": [],
+    "turnouts": [],
+    "track_conditions": [],
+    "tsr": []
+   },
+   {
+    "name": "NPL S9/S2D TLPR-R-148 (501) Down Main",
+    "entry": "NPL S9/S2D TLPR",
+    "exit": "R-148 (501)",
+    "pkt_dir": 1,
+    "section_type": 1,
+    "authority": 2,
+    "os_speed": 15,
+    "points_normal": [],
+    "points_reverse": [],
+    "track_circuits": [],
+    "tins": [],
+    "dist_dup_tag": 4,
+    "tin": 86,
+    "tags": [
+     {
+      "dist": 0,
+      "tag": 142
+     },
+     {
+      "dist": 48,
+      "tag": 144
+     },
+     {
+      "dist": 737,
+      "tag": 146
+     },
+     {
+      "dist": 230,
+      "tag": 148
+     }
+    ],
+    "adj_tins": [],
+    "ssp": [],
+    "gradient": [],
+    "lc": [],
+    "turnouts": [],
+    "track_conditions": [],
+    "tsr": [],
+    "next_stn": 501
+   },
+   {
+    "name": "S14 ID-S14 UP Main",
+    "entry": "S14 ID",
+    "exit": "S14",
+    "pkt_dir": 2,
+    "section_type": 1,
+    "authority": 2,
+    "os_speed": 0,
+    "points_normal": [],
+    "points_reverse": [],
+    "track_circuits": [],
+    "tins": [],
+    "dist_dup_tag": 4,
+    "tin": 85,
+    "tags": [
+     {
+      "dist": 0,
+      "tag": 175,
+      "dup_dir": 1
+     },
+     {
+      "dist": 780,
+      "tag": 177,
+      "dup_dir": 1
+     },
+     {
+      "dist": 240,
+      "tag": 179,
+      "dup_dir": 1
+     }
+    ],
+    "adj_tins": [],
+    "ssp": [],
+    "gradient": [],
+    "lc": [],
+    "turnouts": [],
+    "track_conditions": [],
+    "tsr": []
+   },
+   {
+    "name": "S14-R-183 (525) UP Main",
+    "entry": "S14",
+    "exit": "R-183 (525)",
+    "pkt_dir": 2,
+    "section_type": 1,
+    "authority": 2,
+    "os_speed": 15,
+    "points_normal": [],
+    "points_reverse": [],
+    "track_circuits": [],
+    "tins": [],
+    "dist_dup_tag": 4,
+    "tin": 85,
+    "tags": [
+     {
+      "dist": 0,
+      "tag": 179,
+      "dup_dir": 1
+     },
+     {
+      "dist": 691,
+      "tag": 181,
+      "dup_dir": 1
+     },
+     {
+      "dist": 250,
+      "tag": 183
+     }
+    ],
+    "adj_tins": [],
+    "ssp": [],
+    "gradient": [],
+    "lc": [],
+    "turnouts": [],
+    "track_conditions": [],
+    "tsr": [],
+    "next_stn": 525
+   }
+  ]
+ },
  "sheet_notes": []
 }

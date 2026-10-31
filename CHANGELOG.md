@@ -10,6 +10,116 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-455"></a>
+## Session 455 — a firm's Table of Control read into Stationary KAVACH routes
+
+The second of Abhinav's *"do 1, 2, 3"* for HBL's 2023 KAVACH sheets: the
+Table of Control. `docs/STATION_KAVACH.md` had *"No import from a firm's
+Table-of-Control sheet yet (waiting for a real sheet to read)"*. Now there
+are eight.
+
+**What it does.** `scripts/kavach_sheets.py` reads the ToC alongside the
+tag data. The table's columns come from where its header words are and its
+rows from the S.No. Every cell is centred on its row, so each row boundary
+is the one before reflected in the next S.No: cells can touch with no gap
+to split on.
+
+Every route row becomes a Stationary KAVACH route:
+- **Name and signals:** `entry-exit line`, the entry signal at the row's
+  foot tag.
+- **The RFID sequence**, in either of the two ways HBL writes it:
+  - `(d, R-x)`: each distance is from the tag before.
+  - `(R-x, d)`: each distance is to the tag after; the last runs to the
+    exit signal's foot tag, which the cell does not name. That tag is
+    found as the exit signal's foot tag in another row, the border table's
+    tag at that distance, or the tag the sheets place there.
+- **Direction:** from the tags' locations.
+- **The rest of the row:** section type; FS, or OS for calling-on, with
+  the OS speed; points Normal and Reverse; the track circuits to be clear;
+  TINs including the overlap's; the route's TIN from its entry foot tag;
+  each tag's `dup_dir` from where its duplicate lies (as station 527's
+  SLRPs send it).
+- **Hand-over:** from the "Last Stop Signal" table, a block or auto route
+  ending on its border tag gets the next station (`next_stn`, session 447)
+  and the location reset it gives. GGD's S6: 107 m at 1611 m, Nominal,
+  which is the junction tag R-454's two locations apart.
+- **Signals and lines for the drawing:** each tag on the line most routes
+  through it name.
+- **Folders given together are one stretch.** A route into the next section
+  ends on that section's tag (copied in), its exit named from that
+  section's ToC: `S2 ID (501)`.
+- **Notes:**
+  - a row not made a route (no exit and a sequence that stops, no
+    sequence);
+  - the Distance column against the links;
+  - MA sections against the exit aspect;
+  - the ToC's Station ID;
+  - a border RFID that is the station's own foot tag.
+
+**C++.** `StationLayout::tagLocationsByNumber(l, true)` adds a junction
+tag's `abs_loc_2`. Station Layout's linking-distance check uses it: a route
+over GGD's R-454 counts from 131163 on one line and 131270 on the other.
+Placing a loco (SPAD, Packet Maker) is unchanged.
+
+**What the operator sees.** Open the station file: the KAVACH tab holds
+its routes, the drawing its lines and signals. Under Checks, the linking
+distances the tags do not bear out and the tags the routes name that no
+sheet has. Packet Maker's station answers a loco from them.
+
+**Seen on the real sheets.**
+- **Routes:** 151 rows, 139 routes.
+- **Checks DLConsole raises:**
+  - TLPR #13's 654 m where R-171 and R-173 lie 644 m apart;
+  - the IB's 780 / 240 m against R-177;
+  - SKP's routes over seven tags no sheet has;
+  - GGD's S25 onto R-673 (station 520, not in the pack).
+- **Notes:**
+  - TLPR #12 (2600 m of links, 2361 m given) and #13 (1034 / 1024);
+  - nine "S1 → -" Red / Nil rows that stop after a link or two (or have
+    none), not made routes;
+  - LPI #31 (590 of 790 m);
+  - TLPR #7 and NPL #1 giving 3 MA sections where the exit aspect gives 4
+    or 2;
+  - SKP's border RFIDs being its own S6 and S35 foot tags, so SKP hands
+    over nowhere.
+- **Hand-overs:** each section to the next (501 → 527, 526; 521 → 522;
+  522 → 523, 521; 524 → 525, 523; 525 → 526, 524; 526 → 501, 525;
+  527 → 501).
+
+**Files.** `scripts/kavach_sheets.py` (`read_toc`, `read_borders`, `links`,
+`Section`, `Pack`, `kavach_of`, `build_layout`, `read_pack`);
+`schema/validate_kavach_sheets.py`;
+`schema/fixtures/kavach_sheets/NPL-TLPR_IB/` (+ its ToC, the goldens again);
+`stationlayout.{h,cpp}`, `stationlayoutwindow.cpp`;
+`tests/test_session455.cpp` (new), `tests/test_session454.cpp` (the clean
+IB now has route checks: its last check is about sheet notes only),
+`tests/tests.pro`; `docs/KAVACH_SHEETS.md`, `docs/STATION_KAVACH.md`,
+`CLAUDE.md`.
+
+**Tests.**
+- `validate_kavach_sheets.py` (83 checks):
+  - the IB's five routes: S9D-S9 ID's links, direction, section, TIN;
+    S14 ID-S14 as printed with `dup_dir` 1; S9/S2D's last 230 m to R-148
+    and hand-over to 501; the signals; the lines; the ToC's Station ID;
+  - the whole local pack read together: each section's tags (own and in
+    the file), routes and notes; GGD's hand-over with its reset; TLPR #12
+    and #13; GGD #7; LPI #31; SKP's border RFIDs; TLPR #7; the 654 kept as
+    printed.
+- `session455` (21 checks): the routes, the checks they raise (the two
+  R-177 lines, the next stations' tags), the junction locations, the
+  station answering a loco at R-134 (S9 ID Green: 3053 m and handed over
+  to 501; Red: 996 m), the window.
+- **Not tested:**
+  - the aspect / MA columns beyond the note;
+  - signal info and STN version (not on the sheets: 0; signals start at
+    Red);
+  - a route whose sequence runs over a junction tag in the in-app answer.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators (18), 466 suites /
+11,807 checks, menu audit, smoke.
+
+---
+
 <a id="session-454"></a>
 ## Session 454 — a firm's RFID tag data sheet read into a station layout
 
