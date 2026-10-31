@@ -104,6 +104,9 @@ struct Station {
     // block. With it the station sees a loco past the Red signal ahead
     // (SPAD); empty, it cannot.
     QHash<int, QVector<qint64>> tagLocs;
+    // Session 445: tag number -> its line (the lines sheet): a loco coming
+    // the other way on the same line is seen (Head-on). Empty: it is not.
+    QHash<int, QString> tagLine;
     int signalIndex(const QString &name) const;
     QStringList pointNames() const;    // every point, track circuit and TIN a route names
     QStringList trackCircuitNames() const;
@@ -153,6 +156,9 @@ struct State {
     QHash<QString, int>  routes;
     QSet<QString>        entered;
     bool                 interlocking = false;
+    // Session 445: SoS the operator sends: loco id -> sosType (1 Foreign
+    // RFID, 6 Head-on, 7 Shunt violation, 8 Station General); 0: every loco.
+    QHash<int, int>      sos;
     QHash<QString, int>  authority;    // route -> authType, overriding the file's
     QSet<QString>        tsrOff;       // "route/id": TSRs switched off
     static State initial(const Station &s);
@@ -218,6 +224,14 @@ Sections sectionsFrom(const Station &s, const State &st, int route);
 // reporting EMERGENCY_STATUS 5 is answered DEST_LOCO_SOS 5 (Rear-end).
 // Both as station 527 answered loco 1 behind loco 2 in
 // replay/loco_{1,2}_1_27062026_151052.cap.
+// Session 445: the other SoS kinds. A loco coming the other way on the
+// same line, ahead within the MA: DEST_LOCO_SOS 6 (Head-on), the MA cut
+// kRearMargin short of its front; one reporting EMERGENCY_STATUS 4 is
+// answered 6 too. Past the foot of a Red signal in LOCO_MODE 10 (Shunting):
+// 7 (Shunt violation) where SPAD would be 4. A tag the layout does not hold,
+// on no route, read by a loco the station has placed: 1 (Foreign RFID).
+// The operator's (State::sos) over all of these; the MA is kept (the SoS is
+// what brakes), but for SPAD / Shunt violation.
 constexpr qint64 kRearMargin = 100;
 Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString, qint64> &lsrp,
               const Schema::Encoder &enc, const QList<Loco> &others = {});

@@ -7,7 +7,9 @@
 #include <QLabel>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QHBoxLayout>
 #include <QSignalBlocker>
+#include <QSpinBox>
 #include <QSplitter>
 #include <QTabWidget>
 #include <QTableWidget>
@@ -59,6 +61,54 @@ StationKavachPanel::StationKavachPanel(const QVector<QPair<qint64, QString>> &as
         emit stateChanged();
     });
     opts->addWidget(m_interlocking);
+    // Session 445: SoS from the station.
+    auto *sosRow = new QHBoxLayout;
+    m_general = new QCheckBox(tr("Station General SoS"), this);
+    m_general->setObjectName(QStringLiteral("skGeneralSos"));
+    m_general->setToolTip(tr("Every loco answered gets DEST_LOCO_SOS 8 (Station General SoS) until unticked"));
+    connect(m_general, &QCheckBox::toggled, this, [this](bool on) {
+        if (!m_state) return;
+        if (on) m_state->sos.insert(0, 8); else m_state->sos.remove(0);
+        showSos();
+        emit stateChanged();
+    });
+    m_sosLoco = new QSpinBox(this);
+    m_sosLoco->setObjectName(QStringLiteral("skSosLoco"));
+    m_sosLoco->setRange(1, 1048575);   // SOURCE_LOCO_ID: 20 bits
+    m_sosLoco->setPrefix(tr("loco "));
+    m_sosKind = new QComboBox(this);
+    m_sosKind->setObjectName(QStringLiteral("skSosKind"));
+    m_sosKind->addItem(tr("Foreign RFID (1)"), 1);
+    m_sosKind->addItem(tr("Head-on (6)"), 6);
+    m_sosKind->addItem(tr("Shunt violation (7)"), 7);
+    m_sosKind->addItem(tr("Station General (8)"), 8);
+    auto *sendSos = new QPushButton(tr("Send SoS"), this);
+    sendSos->setObjectName(QStringLiteral("skSosSend"));
+    sendSos->setToolTip(tr("That loco's answers carry this DEST_LOCO_SOS until cleared"));
+    auto *clearSos = new QPushButton(tr("Clear"), this);
+    clearSos->setObjectName(QStringLiteral("skSosClear"));
+    connect(sendSos, &QPushButton::clicked, this, [this]() {
+        if (!m_state) return;
+        m_state->sos.insert(m_sosLoco->value(), m_sosKind->currentData().toInt());
+        showSos();
+        emit stateChanged();
+    });
+    connect(clearSos, &QPushButton::clicked, this, [this]() {
+        if (!m_state) return;
+        m_state->sos.remove(m_sosLoco->value());
+        showSos();
+        emit stateChanged();
+    });
+    m_sosNow = new QLabel(this);
+    m_sosNow->setObjectName(QStringLiteral("skSosNow"));
+    sosRow->addWidget(m_general);
+    sosRow->addSpacing(12);
+    sosRow->addWidget(m_sosLoco);
+    sosRow->addWidget(m_sosKind);
+    sosRow->addWidget(sendSos);
+    sosRow->addWidget(clearSos);
+    sosRow->addWidget(m_sosNow, 1);
+    lay->addLayout(sosRow);
     auto *split = new QSplitter(Qt::Vertical, this);
     auto *tabs = new QTabWidget(split);
     m_signals = table({ tr("Signal"), tr("Foot tag"), tr("Aspect") }, QStringLiteral("skSignals"), tabs);
@@ -111,7 +161,10 @@ void StationKavachPanel::rebuild()
     {
         const QSignalBlocker block(m_interlocking);
         m_interlocking->setChecked(st->interlocking);
+        const QSignalBlocker blockGeneral(m_general);
+        m_general->setChecked(st->sos.value(0) == 8);
     }
+    showSos();
 
     m_signals->setRowCount(m_station.signalList.size());
     for (int i = 0; i < m_station.signalList.size(); ++i) {
@@ -207,6 +260,17 @@ void StationKavachPanel::rebuild()
             m_tsr->setCellWidget(t++, 2, b);
         }
     }
+}
+
+void StationKavachPanel::showSos()
+{
+    if (!m_state) return;
+    QList<int> ids = m_state->sos.keys();
+    std::sort(ids.begin(), ids.end());
+    QStringList parts;
+    for (int id : ids)
+        if (id) parts << tr("loco %1: %2").arg(id).arg(m_state->sos.value(id));
+    m_sosNow->setText(parts.isEmpty() ? QString() : tr("SoS sent: %1").arg(parts.join(QStringLiteral(", "))));
 }
 
 void StationKavachPanel::showInterlocking(const QStringList &events)

@@ -1763,6 +1763,10 @@ StationLayoutCanvas::LiveView liveViewOf(const StationLayout::Layout &l, const S
         if (o.maSent == 0) k.maText = QObject::tr("MA 0");
         if (o.sos == 4) k.sos = QObject::tr("SoS SPAD");
         else if (o.sos == 5) k.sos = QObject::tr("SoS Rear-end");
+        else if (o.sos == 1) k.sos = QObject::tr("SoS Foreign RFID");   // session 445
+        else if (o.sos == 6) k.sos = QObject::tr("SoS Head-on");
+        else if (o.sos == 7) k.sos = QObject::tr("SoS Shunt violation");
+        else if (o.sos == 8) k.sos = QObject::tr("SoS Station General");
         // Where the MA ends: from the start signal (the ref tag's place nearest the loco, less its distance).
         if (r0 && o.maSent > 0 && refLoc >= 0) {
             qint64 refDist = -1;

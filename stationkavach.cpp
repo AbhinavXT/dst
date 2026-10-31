@@ -549,9 +549,11 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
                          { "SOURCE_STN_ID", s.stationId }, { "STN_VERSION", s.stnVersion },
                          { "DEST_LOCO_ID", lsrp.value(QStringLiteral("SOURCE_LOCO_ID")) }, { "REF_PROF_ID", loco->profId },
                          { "LAST_REF_RFID", ref }, { "DIST_PKT_START", 0 }, { "PKT_DIR", r0.pktDir } };
+            // Session 445: in Shunting mode it is a Shunt violation.
+            const int kind = lsrp.value(QStringLiteral("LOCO_MODE")) == 10 ? 7 : 4;
             Schema::SubEntry ma;
             ma.type = 0;
-            ma.values = { { "FRAME_OFFSET", 0 }, { "DEST_LOCO_SOS", 4 }, { "TRAIN_SECTION_TYPE", r0.sectionType },
+            ma.values = { { "FRAME_OFFSET", 0 }, { "DEST_LOCO_SOS", kind }, { "TRAIN_SECTION_TYPE", r0.sectionType },
                           { "CUR_SIG_INFO", sigIdx < 0 ? 0 : s.signalList[sigIdx].sigInfo }, { "CUR_SIG_ASPECT", aspect },
                           { "NEXT_SIG_ASPECT", 0 }, { "APPR_SIG_DIST", r0.length() - refDist }, { "AUTHORITY_TYPE", 0 },
                           { "MA_W_R_T_SIG", 0 }, { "REQ_SHORTEN_MA", 0 }, { "TRN_LEN_INFO_STS", 0 }, { "NEXT_STN_COMM", 0 } };
@@ -562,10 +564,11 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
             loco->refTag = ref;
             loco->maRoutes = { ri };
             loco->maSent = 0;
-            loco->sos = 4;
-            a.note = QObject::tr("SPAD: loco %1 m past %2 at %3: SoS SPAD, no authority, MA 0; ref tag %4")
-                         .arg(past).arg(r0.exit, aspectName(aspect)).arg(ref);
-            a.checks << QObject::tr("loco past %1 at %2 (SPAD)").arg(r0.exit, aspectName(aspect));
+            loco->sos = kind;
+            const QString what = kind == 7 ? QObject::tr("Shunt violation") : QObject::tr("SPAD");
+            a.note = QObject::tr("%5: loco %1 m past %2 at %3: SoS %5, no authority, MA 0; ref tag %4")
+                         .arg(past).arg(r0.exit, aspectName(aspect)).arg(ref).arg(what);
+            a.checks << QObject::tr("loco past %1 at %2 (%3)").arg(r0.exit, aspectName(aspect), what);
             a.ok = true;
             return a;
         }
@@ -604,7 +607,46 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
             }
         }
     }
+    // Session 445: a loco coming the other way on the same line, its front ahead within the MA.
+    bool headOn = lsrp.value(QStringLiteral("EMERGENCY_STATUS")) == 4;
+    QString headNote;
+    if (!others.isEmpty() && !s.tagLine.isEmpty() && s.tagLocs.contains(ref) && lsrp.contains(QStringLiteral("ABS_LOCO_LOC"))
+        && (dir == 1 || dir == 2)) {
+        const int sign = r0.pktDir == 2 ? -1 : 1;
+        const qint64 abs = lsrp.value(QStringLiteral("ABS_LOCO_LOC"));
+        const QVector<qint64> at = s.tagLocs.value(ref);
+        qint64 refLoc = at.first();
+        for (qint64 x : at) if (std::llabs(abs - x) < std::llabs(abs - refLoc)) refLoc = x;
+        const qint64 startAbs = refLoc - sign * refDist;
+        const qint64 self = (abs - startAbs) * sign;
+        const QString line = s.tagLine.value(tag);
+        for (const Loco &o : others) {
+            if (o.id == loco->id || o.absLoc <= 0 || (o.dir != 1 && o.dir != 2) || o.dir == dir) continue;
+            if (line.isEmpty() || s.tagLine.value(o.lastTag) != line) continue;
+            const qint64 front = (o.absLoc - startAbs) * sign;
+            if (front <= self || front > maEnd) continue;
+            headOn = true;
+            const qint64 cut = std::max<qint64>(0, front - kRearMargin);
+            if (cut < maSent) {
+                maSent = cut;
+                cutNote = QObject::tr("MA cut to %1 m: loco %2 coming the other way, its front at %3 m, less %4 m")
+                              .arg(cut).arg(o.id).arg(front).arg(kRearMargin);
+            }
+            headNote = QObject::tr("; SoS Head-on: loco %1 coming the other way on %2").arg(o.id).arg(line);
+        }
+    }
+    if (headOn && headNote.isEmpty()) headNote = QObject::tr("; SoS Head-on (the loco reports it)");
     const bool rearEnd = lsrp.value(QStringLiteral("EMERGENCY_STATUS")) == 5;
+    // Session 445: a tag the layout does not hold, on no route, read by a loco the station has placed.
+    const bool foreign = !s.tagLocs.isEmpty() && tag > 0 && !s.tagLocs.contains(tag) && entering.isEmpty() && holding.isEmpty();
+    int sos = rearEnd ? 5 : 0;
+    if (headOn) sos = 6;
+    if (foreign) sos = 1;
+    QString sosNote;
+    if (st.sos.contains(loco->id) || st.sos.contains(0)) {
+        sos = st.sos.contains(loco->id) ? st.sos.value(loco->id) : st.sos.value(0);
+        sosNote = QObject::tr("; SoS %1 (the operator's)").arg(sos);
+    }
     QStringList notes;
     if (entering.size() > 1 || (entering.isEmpty() && holding.size() > 1))
         if (!pointsSet(r0, st)) notes << QObject::tr("no route from tag %1 has its points set; %2 taken").arg(tag).arg(r0.name);
@@ -630,7 +672,7 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
                  { "LAST_REF_RFID", ref }, { "DIST_PKT_START", -refDist }, { "PKT_DIR", r0.pktDir } };
     Schema::SubEntry ma;
     ma.type = 0;
-    ma.values = { { "FRAME_OFFSET", 0 }, { "DEST_LOCO_SOS", rearEnd ? 5 : 0 }, { "TRAIN_SECTION_TYPE", r0.sectionType },
+    ma.values = { { "FRAME_OFFSET", 0 }, { "DEST_LOCO_SOS", sos }, { "TRAIN_SECTION_TYPE", r0.sectionType },
                   { "CUR_SIG_INFO", sigIdx < 0 ? 0 : s.signalList[sigIdx].sigInfo }, { "CUR_SIG_ASPECT", curAspect },
                   { "NEXT_SIG_ASPECT", nextAspect }, { "APPR_SIG_DIST", appr }, { "AUTHORITY_TYPE", auth },
                   { "MA_W_R_T_SIG", maSent }, { "REQ_SHORTEN_MA", 0 }, { "TRN_LEN_INFO_STS", 0 }, { "NEXT_STN_COMM", 0 } };
@@ -712,7 +754,7 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
     l.refTag = ref;
     l.maRoutes = sx.routes;
     l.maSent = maSent;
-    l.sos = rearEnd ? 5 : 0;
+    l.sos = sos;
     a.header.insert(QStringLiteral("REF_PROF_ID"), l.profId);
     a.fullProfile = lsrp.value(QStringLiteral("LAST_REF_PROFILE_NUM")) != l.profId;
     a.subs << ma;
@@ -725,7 +767,10 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
                  .arg(maSent).arg(ref).arg(appr).arg(l.profId)
                  .arg(a.fullProfile ? QObject::tr("in full") : QObject::tr("acknowledged: MA only"));
     if (!cutNote.isEmpty()) a.note += QStringLiteral("; ") + cutNote;
-    if (rearEnd) a.note += QObject::tr("; SoS Rear-end (the loco reports it)");
+    if (!sosNote.isEmpty()) a.note += sosNote;
+    else if (foreign) a.note += QObject::tr("; SoS Foreign RFID: tag %1 is not in the layout").arg(tag);
+    else if (headOn) a.note += headNote;
+    else if (rearEnd) a.note += QObject::tr("; SoS Rear-end (the loco reports it)");
     if (!notes.isEmpty()) a.checks = notes + a.checks;
     a.ok = true;
     return a;

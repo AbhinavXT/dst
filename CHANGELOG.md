@@ -10,6 +10,55 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-445"></a>
+## Session 445 — the other SoS kinds: Head-on, Shunt violation, Foreign RFID, Station General
+
+Abhinav's list for a full station simulator, item 5.
+
+**What the operator sees.** The station answers a loco with DEST_LOCO_SOS:
+- **6, Head-on** when another loco is coming the other way on the same line
+  (the lines of the tags they last read), its front ahead within the MA; the
+  MA is cut 100 m short of that front: *MA cut to 758 m: loco 2 coming the
+  other way, its front at 858 m, less 100 m; SoS Head-on: loco 2 coming the
+  other way on DM*. A loco reporting EMERGENCY_STATUS 4 (Head-On Collision) is
+  answered 6 too (as Rear-end, 427);
+- **7, Shunt violation** instead of 4 (SPAD) when the loco past the Red
+  signal is in Shunting mode (LOCO_MODE 10);
+- **1, Foreign RFID** when a loco the station has placed reads a tag the
+  layout does not hold and no route names;
+- **the operator's**: Station… has a row above its tabs: **Station General
+  SoS** (8 to every loco answered, until unticked), and an SoS to one loco
+  (loco, kind: Foreign RFID, Head-on, Shunt violation, Station General; **Send
+  SoS**, **Clear**), shown (*SoS sent: loco 2: 6*). The operator's comes
+  first.
+The drawing's loco label names each kind (*SoS Head-on*, …).
+
+**Choices.** Our reading, none of it in a capture (no SoS other than SPAD and
+Rear-end in `replay/`): the MA is kept with these SoS (the SoS is what
+brakes), cut for Head-on; Shunt violation as SPAD while shunting; Foreign
+RFID only for a loco already placed on a route. Head-on needs the layout's
+lines sheet (Packet Maker gives the station the line of each tag).
+
+**Files.** `stationkavach.{h,cpp}` (`Station::tagLine`, `State::sos`),
+`stationkavachpanel.{h,cpp}` (the SoS row), `stationlayoutwindow.cpp` (the
+labels), `packetmakerdialog.cpp`, `tests/test_session445.cpp` (new),
+`tests/tests.pro`.
+
+**Tests.** `session445` (19 checks) on station 527's data, station_527.xml's
+tags and lines and the real LSRPs: loco 1 at tag 906 (162066 m), loco 2 as it
+really was (UM): no SoS, MA 1956 m; loco 2 put on DM at 162722 m coming the
+other way: SoS 6, MA 758 m, said; beyond the MA: none; EMERGENCY_STATUS 4:
+echoed. The real SPAD LSRP 50548 (27 Jun): 4; in Shunting mode: 7, MA 0. Tag
+1023 (not in the layout): 1; tag 59 (in it, on no route): none. Every real
+LSRP of station 527's 8 Oct runs answered: none with an SoS, as the station
+sent none. The operator's: 8 to all, 7 to loco 1 over it; Station…'s controls.
+- **Not tested:** with live locos; how a loco and DMI take SoS 1, 6, 7, 8 from
+  a station.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 457 suites / 11,643 checks, menu audit, smoke.
+
+---
+
 <a id="session-444"></a>
 ## Session 444 — a route that is not free is not set; a signal whose route is not free is held at Red
 

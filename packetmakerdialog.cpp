@@ -2053,6 +2053,7 @@ bool PacketMakerDialog::startAnswering()
         m_stnState = StationKavach::State::initial(station);
         m_stnLocos.clear();
         m_stnTrack = StationInterlock::trackOf(layout);   // session 441
+        m_station.tagLine = m_stnTrack.lineOfTag;          // session 445: Head-on seen
         m_stnState.interlocking = !m_stnTrack.isEmpty();  // session 442: with track circuits, on
         m_stnTrackNotes.clear();
         m_stnLayoutPath = m_layoutEdit->text().trimmed();

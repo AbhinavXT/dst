@@ -16,6 +16,8 @@
 //  It edits the State it is given; the next LSRP is answered with it.
 //  Session 442: Interlocking: the station works its signals from the track
 //  circuits (StationInterlock); a point a set route holds is not thrown.
+//  Session 445: SoS: Station General SoS to every loco; an SoS to one loco
+//  (Foreign RFID, Head-on, Shunt violation, Station General) until cleared.
 //  Session 428: Show on the drawing (drawingRequested): the station live
 //  on the Station Layout drawing, the locos and their MAs on it.
 // =====================================================================
@@ -26,6 +28,9 @@
 #include "stationkavach.h"
 
 class QCheckBox;
+class QComboBox;
+class QLabel;
+class QSpinBox;
 class QPlainTextEdit;
 class QPushButton;
 class QTableWidget;
@@ -58,6 +63,11 @@ private:
     QPlainTextEdit *m_answers = nullptr;
     QPlainTextEdit *m_events = nullptr;     // session 442
     QCheckBox *m_interlocking = nullptr;
+    QCheckBox *m_general = nullptr;         // session 445: Station General SoS
+    QSpinBox *m_sosLoco = nullptr;
+    QComboBox *m_sosKind = nullptr;
+    QLabel *m_sosNow = nullptr;
+    void showSos();
     QPushButton *m_drawing = nullptr;
     QHash<int, QString> m_lastAnswer;   // by loco
 };

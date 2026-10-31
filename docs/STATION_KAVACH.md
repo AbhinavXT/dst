@@ -272,6 +272,12 @@ keeps where every loco is from each **ARP and LSRP** it hears.
   occupied or a route set from another signal runs over one of its circuits;
   a signal off whose route is not free (a point the wrong way, a circuit
   occupied) is held at Red, said why.
+- **SoS** (session 445). Head-on (6): a loco coming the other way on the same
+  line, its front ahead within the MA (the MA cut 100 m short of it), or one
+  reporting EMERGENCY_STATUS 4. Shunt violation (7): past a Red signal in
+  Shunting mode. Foreign RFID (1): a tag the layout does not hold, on no
+  route, read by a loco already placed. Station… sends Station General SoS
+  (8) to every loco, or any of them to one loco.
 
 ## Not yet
 
