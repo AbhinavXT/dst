@@ -282,6 +282,10 @@ keeps where every loco is from each **ARP and LSRP** it hears.
   MA, off by default). A signal gone back: REQ_SHORTEN_MA 1 and NEW_MA while
   the loco keeps its MA; the shorter MA once it grants it (NEW_MA_REPLY 1);
   the one it holds while it rejects it (2).
+- **Hand-over** (session 447). A route's *Next station* (Routes column,
+  `"next_stn"`): while the MA reaches it, NEXT_STN_COMM 1 and
+  APPR_STN_ILC_IBS_ID. An ARP to another station (APPROACHING_STN_ID) is left
+  unanswered, the loco still placed.
 
 ## Not yet
 

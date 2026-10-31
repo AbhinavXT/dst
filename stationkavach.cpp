@@ -347,6 +347,7 @@ bool fromJson(const QJsonObject &o, Station *out, QString *err, QStringList *not
         r.turnouts = rows(x.value(QStringLiteral("turnouts")));
         r.trackConditions = rows(x.value(QStringLiteral("track_conditions")));
         r.tsr = rows(x.value(QStringLiteral("tsr")));
+        r.nextStn = int(num(x, "next_stn"));   // session 447
         if (r.name.isEmpty() || r.tags.isEmpty()) {
             if (notes) *notes << QObject::tr("a route without a name or tags: skipped");
             continue;
@@ -398,6 +399,7 @@ QJsonObject toJson(const Station &s)
         x.insert(QStringLiteral("turnouts"), rowArray(r.turnouts));
         x.insert(QStringLiteral("track_conditions"), rowArray(r.trackConditions));
         x.insert(QStringLiteral("tsr"), rowArray(r.tsr));
+        if (r.nextStn) x.insert(QStringLiteral("next_stn"), r.nextStn);   // session 447
         routes.append(x);
     }
     o.insert(QStringLiteral("routes"), routes);
@@ -677,6 +679,13 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
                   { "NEXT_SIG_ASPECT", nextAspect }, { "APPR_SIG_DIST", appr }, { "AUTHORITY_TYPE", auth },
                   { "MA_W_R_T_SIG", maSent }, { "REQ_SHORTEN_MA", 0 }, { "TRN_LEN_INFO_STS", 0 }, { "NEXT_STN_COMM", 0 } };
     if (auth == 1) ma.values.insert(QStringLiteral("AUTHORIZED_SPEED"), r0.osSpeed);
+    // Session 447: the MA reaching a route handed over to the next station.
+    QString handNote;
+    if (secs.last()->nextStn > 0) {
+        ma.values.insert(QStringLiteral("NEXT_STN_COMM"), 1);
+        ma.values.insert(QStringLiteral("APPR_STN_ILC_IBS_ID"), secs.last()->nextStn);
+        handNote = QObject::tr("; hands over to station %1 (NEXT_STN_COMM, route %2)").arg(secs.last()->nextStn).arg(secs.last()->name);
+    }
 
     // Session 446 (State::askShorten): an MA shorter than the one the loco holds on this route (a signal gone
     // back, a route cancelled: not a loco ahead, not an SoS) is asked for first
@@ -794,6 +803,7 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
                  .arg(a.fullProfile ? QObject::tr("in full") : QObject::tr("acknowledged: MA only"));
     if (!cutNote.isEmpty()) a.note += QStringLiteral("; ") + cutNote;
     a.note += shortNote;
+    a.note += handNote;
     if (!sosNote.isEmpty()) a.note += sosNote;
     else if (foreign) a.note += QObject::tr("; SoS Foreign RFID: tag %1 is not in the layout").arg(tag);
     else if (headOn) a.note += headNote;

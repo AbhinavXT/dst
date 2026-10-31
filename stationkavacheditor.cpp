@@ -34,7 +34,7 @@ const char *const kListRepeat[] = { "", "speed", "grad", "lc", "to", "tc", "tsr"
 const char *const kListTitle[] = { "Tags", "SSP", "Gradient", "LC gates", "Turnouts", "Track conditions", "TSR" };
 
 enum RouteCol { RName, REntry, RExit, RDir, RSection, RAuth, ROsSpeed, RPointsN, RPointsR, RTrack, RTins,
-                RDupDist, RAdjTins, RTin, RLocReset, RLength, RouteCols };
+                RDupDist, RAdjTins, RTin, RLocReset, RNextStn, RLength, RouteCols };
 
 QTableWidget *makeTable(const QStringList &headers, const QString &name, QWidget *parent)
 {
@@ -188,7 +188,7 @@ StationKavachEditor::StationKavachEditor(QWidget *parent) : QWidget(parent)
 
     m_routes = makeTable({ tr("Route"), tr("Entry"), tr("Exit"), tr("Direction"), tr("Section"), tr("Authority"),
                            tr("OS speed"), tr("Points normal"), tr("Points reverse"), tr("Track circuits"), tr("TINs"),
-                           tr("Dup tag dist"), tr("Adjacent TINs"), tr("TIN"), tr("Loc reset"), tr("Length") },
+                           tr("Dup tag dist"), tr("Adjacent TINs"), tr("TIN"), tr("Loc reset"), tr("Next station"), tr("Length") },
                          QStringLiteral("skeRoutes"), upper);
     const QString list = tr("names separated by commas");
     m_routes->horizontalHeaderItem(RName)->setToolTip(tr("One row of the Table of Control: entry signal → exit signal"));
@@ -201,6 +201,9 @@ StationKavachEditor::StationKavachEditor(QWidget *parent) : QWidget(parent)
     m_routes->horizontalHeaderItem(RAdjTins)->setToolTip(tr("TagLinking adjacent line TINs: numbers separated by commas"));
     m_routes->horizontalHeaderItem(RLocReset)->setToolTip(tr("Absolute location reset: \"start, direction, correction\" "
                                                              "(start from the entry signal, m); empty for none"));
+    m_routes->horizontalHeaderItem(RNextStn)->setToolTip(tr("Session 447: the next station's KAVACH id (APPR_STN_ILC_IBS_ID, 1-65535) when the "
+                                                            "loco is handed over to it on this route (NEXT_STN_COMM 1 while the MA "
+                                                            "reaches it); empty for none"));
     m_routes->horizontalHeaderItem(RLength)->setToolTip(tr("Entry foot tag to exit foot tag: the tags' linking distances added"));
     auto *addRoute = button(tr("Add route"), QStringLiteral("skeAddRoute"), upper);
     auto *copyRoute = button(tr("Copy route"), QStringLiteral("skeCopyRoute"), upper);
@@ -480,6 +483,7 @@ void StationKavachEditor::fill()
         m_routes->setItem(i, RLocReset, item(r.locReset ? QStringLiteral("%1, %2, %3").arg(r.locResetStart)
                                                               .arg(r.adjLocoDir).arg(r.absLocCorrection)
                                                         : QString()));
+        m_routes->setItem(i, RNextStn, item(r.nextStn ? QString::number(r.nextStn) : QString()));
         m_routes->setItem(i, RLength, readOnly(tr("%1 m").arg(r.length())));
     }
     m_routes->resizeColumnsToContents();
@@ -663,6 +667,9 @@ void StationKavachEditor::onRoutesEdited()
             x.adjLocoDir = int(b);
             x.absLocCorrection = c;
         }
+        if (!number(cell(m_routes, r, RNextStn), &v) || v < 0 || v > 65535)
+            return refuse(tr("route %1: the next station is a KAVACH id, 1 to 65535 (empty: none)").arg(x.name));
+        x.nextStn = int(v);
     }
     commit(next, tr("edit KAVACH routes"));
 }

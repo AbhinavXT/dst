@@ -2106,6 +2106,12 @@ void PacketMakerDialog::answerArp(const CaptureLine &c, const QHash<QString, qin
         if (m_stnPanel) m_stnPanel->refresh();
         showStationLive();
     }
+    // Session 447: an ARP to another station (the loco handed over to it) is that station's.
+    const qint64 appr = arp.value(QStringLiteral("APPROACHING_STN_ID"));
+    if (answeringAsStation() && appr != 0 && appr != m_station.stationId) {
+        m_status->warn(tr("ARP from loco %1 is for station %2: not answered by station %3").arg(locoId).arg(appr).arg(m_station.stationId));
+        return;
+    }
     if (!m_keys->haveSet(0, c.locoId) || !m_keys->haveSet(1, c.locoId)) {
         m_status->fail(tr("ARP from loco %1 not answered — no auth keys for it in the log.").arg(locoId));
         return;

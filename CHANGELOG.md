@@ -10,6 +10,47 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-447"></a>
+## Session 447 — the hand-over to the next station (NEXT_STN_COMM)
+
+Abhinav's list for a full station simulator, item 7.
+
+**What the operator sees.**
+- Station Layout ▸ KAVACH ▸ Routes: a **Next station** column: the next
+  station's KAVACH id (1-65535; empty: none) on the route where the loco is
+  handed over to it. A number outside that range is refused, said.
+- While the MA reaches that route (its last section), the SLRP carries
+  NEXT_STN_COMM 1 and APPR_STN_ILC_IBS_ID: *hands over to station 501
+  (NEXT_STN_COMM, route A900-A904 DN Auto)*.
+- Packet Maker answering as the station leaves an ARP to another station
+  (APPROACHING_STN_ID neither 0 nor its own) unanswered: *ARP from loco 1 is
+  for station 501: not answered by station 527*. Where the loco is, it still
+  notes (441).
+
+**The file.** The route's `"next_stn": 501` in the `"kavach"` block (left out
+when none).
+
+**Not done.** Two stations answering side by side (527 handing a loco to
+501 in one Packet Maker): Packet Maker answers as one station. A second
+Packet Maker on another station's layout would answer that station's ARPs.
+
+**Files.** `stationkavach.{h,cpp}` (`Route::nextStn`, `next_stn`),
+`stationkavacheditor.cpp` (the column), `packetmakerdialog.cpp` (an ARP to
+another station), `tests/test_session447.cpp` (new),
+`tests/test_session423.cpp` (Length is now column 16), `tests/tests.pro`.
+
+**Tests.** `session447` (13 checks): next_stn written and read back; the
+real LSRP 40380 with A900 Yellow: NEXT_STN_COMM 1, station 501, it encodes
+and reads back; A900 Red: none. The editor's column: 501 set, 70000 refused.
+Packet Maker: loco 1's real ARP approaching station 501
+(`loco_1_1_26062026_162418.cap`): not answered, said; where it is noted.
+- **Not tested:** what a loco does with NEXT_STN_COMM (no capture has it: 0
+  in all 3,514 SLRPs).
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 459 suites / 11,670 checks, menu audit, smoke.
+
+---
+
 <a id="session-446"></a>
 ## Session 446 — a shortened MA asked for first (REQ_SHORTEN_MA)
 

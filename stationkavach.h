@@ -90,6 +90,7 @@ struct Route {
     bool    locReset = false;
     int     locResetStart = 0, adjLocoDir = 0;
     qint64  absLocCorrection = 0;
+    int     nextStn = 0;               // session 447: APPR_STN_ILC_IBS_ID handed over to (0: none)
     QVector<Row> ssp, gradient, lc, turnouts, trackConditions, tsr;   // schema field names
     int     length() const;            // entry foot to exit foot, m
 };
@@ -229,6 +230,9 @@ Sections sectionsFrom(const Station &s, const State &st, int route);
 // reporting EMERGENCY_STATUS 5 is answered DEST_LOCO_SOS 5 (Rear-end).
 // Both as station 527 answered loco 1 behind loco 2 in
 // replay/loco_{1,2}_1_27062026_151052.cap.
+// Session 447: hand-over. When the last section of the MA is a route with a
+// next station (Route::nextStn, "next_stn"), the MA carries NEXT_STN_COMM 1
+// and APPR_STN_ILC_IBS_ID: the loco is to talk to that station next.
 // Session 445: the other SoS kinds. A loco coming the other way on the
 // same line, ahead within the MA: DEST_LOCO_SOS 6 (Head-on), the MA cut
 // kRearMargin short of its front; one reporting EMERGENCY_STATUS 4 is

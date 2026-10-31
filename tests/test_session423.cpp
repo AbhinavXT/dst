@@ -106,8 +106,8 @@ TEST_SUITE(session423)
               && cellText(sigs, 2, 2) == QStringLiteral("77664"),
           "4 signals; A900: foot tag 900, signal info 77664");
     CHECK(routes->rowCount() == 3 && cellText(routes, 1, 0) == QStringLiteral("S43-A900 DN Auto")
-              && cellText(routes, 1, 15) == QStringLiteral("1116 m"),
-          "3 routes; S43-A900 is 1116 m");
+              && cellText(routes, 1, 16) == QStringLiteral("1116 m"),
+          "3 routes; S43-A900 is 1116 m (Length after Next station, session 447)");
     auto *auth0 = qobject_cast<QComboBox *>(routes->cellWidget(0, 5));
     auto *os0 = qobject_cast<QComboBox *>(routes->cellWidget(0, 6));
     CHECK(auth0 && auth0->currentData().toInt() == 1 && os0 && os0->currentData().toInt() == 20,
