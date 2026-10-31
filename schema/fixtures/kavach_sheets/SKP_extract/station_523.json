@@ -1,0 +1,243 @@
+{
+ "format": "dlconsole-station-layout",
+ "version": 1,
+ "comment": "Read from the KAVACH sheets by scripts/kavach_sheets.py (session 454): KAVACH_RFID_TAG_DATA_SKP_V2.0.0_pages16-23.html. Station 523: the station ID most of its normal tags carry. Its location 140126 is not on the sheets: the middle of its tags, for the drawing.",
+ "tags": [
+  {
+   "name": "384",
+   "page_x": "587070000000000",
+   "page_y": "b572b93400010581"
+  },
+  {
+   "name": "384D",
+   "page_x": "587070000000000",
+   "page_y": "71044e8480010581"
+  },
+  {
+   "name": "385",
+   "page_x": "05870782253a6059",
+   "page_y": "e6a5f11408010581"
+  },
+  {
+   "name": "385D",
+   "page_x": "05870782253e6059",
+   "page_y": "22d306a488010581"
+  },
+  {
+   "name": "386",
+   "page_x": "0587878225c46099",
+   "page_y": "2e36d04800010581"
+  },
+  {
+   "name": "386D",
+   "page_x": "0587878225c06099",
+   "page_y": "ea4027f880010581"
+  },
+  {
+   "name": "387",
+   "page_x": "0587800225ec60d9",
+   "page_y": "a464491c00010581"
+  },
+  {
+   "name": "387D",
+   "page_x": "0587800225e860d9",
+   "page_y": "6012beac8001058"
+  },
+  {
+   "name": "393",
+   "page_x": "0580000221aa6259",
+   "page_y": "03d686de28010581"
+  },
+  {
+   "name": "393D",
+   "page_x": "0580000221a66259",
+   "page_y": "ca40432aa8010581"
+  },
+  {
+   "name": "392",
+   "page_x": "0580000221a06219",
+   "page_y": "8f9b32af28010581"
+  },
+  {
+   "name": "392D",
+   "page_x": "05800002219c6219",
+   "page_y": "6a4d5ac3a8010581"
+  },
+  {
+   "name": "371",
+   "page_x": "0580000220745cd9",
+   "page_y": "b8fc1ddf28010581"
+  },
+  {
+   "name": "371D",
+   "page_x": "0580000220705cd9",
+   "page_y": "7c8aea6fa8010581"
+  },
+  {
+   "name": "373",
+   "page_x": "05800002207e5d59",
+   "page_y": "6e7c093e28010581"
+  },
+  {
+   "name": "373D",
+   "page_x": "05800002207a5d59",
+   "page_y": "aa0afe8ea8010581"
+  },
+  {
+   "name": "388",
+   "page_x": "0580000226146119",
+   "page_y": "705ecf3120010581"
+  },
+  {
+   "name": "388D",
+   "page_x": "0580000226186119",
+   "page_y": "b84dc4fea0010581"
+  },
+  {
+   "name": "389",
+   "page_x": "05800002261e6159",
+   "page_y": "fd96b57b20010581"
+  },
+  {
+   "name": "389D",
+   "page_x": "0580000226226159",
+   "page_y": "1840dd17a0010581"
+  },
+  {
+   "name": "396",
+   "page_x": "05838102213f6319",
+   "page_y": "44ba46d818010581"
+  },
+  {
+   "name": "396D",
+   "page_x": "05838102213f6319",
+   "page_y": "465ddbc498010581"
+  },
+  {
+   "name": "400",
+   "page_x": "584810000000000",
+   "page_y": "2f89965c18010581"
+  },
+  {
+   "name": "400D",
+   "page_x": "584810000000000",
+   "page_y": "2d6e0b4098010581"
+  },
+  {
+   "name": "397",
+   "page_x": "0581028221df6359",
+   "page_y": "beff8e6418010581"
+  },
+  {
+   "name": "397D",
+   "page_x": "0581028221df6359",
+   "page_y": "bc18137898010581"
+  },
+  {
+   "name": "401",
+   "page_x": "581050000000000",
+   "page_y": "a00cd38018010581"
+  },
+  {
+   "name": "401D",
+   "page_x": "581050000000000",
+   "page_y": "a2eb4e9c98010581"
+  },
+  {
+   "name": "403",
+   "page_x": "05828682224064d9",
+   "page_y": "7ea11d0018010581"
+  },
+  {
+   "name": "403D",
+   "page_x": "05828682224064d9",
+   "page_y": "7c46801c98010581"
+  },
+  {
+   "name": "402",
+   "page_x": "05860302256a6499",
+   "page_y": "a401756018010581"
+  },
+  {
+   "name": "402D",
+   "page_x": "05860302256a6499",
+   "page_y": "a6e6e87c98010581"
+  },
+  {
+   "name": "398",
+   "page_x": "0583008225d76399",
+   "page_y": "521149e018010581"
+  },
+  {
+   "name": "398D",
+   "page_x": "0583008225d76399",
+   "page_y": "50f6d4fc98010581"
+  },
+  {
+   "name": "404",
+   "page_x": "05878082257c6519",
+   "page_y": "e3f7c11818010581"
+  },
+  {
+   "name": "404D",
+   "page_x": "05878082257c6519",
+   "page_y": "e1105c0498010581"
+  },
+  {
+   "name": "399",
+   "page_x": "05808402264d63d9",
+   "page_y": "d6f53c5018010581"
+  },
+  {
+   "name": "399D",
+   "page_x": "05808402264d63d9",
+   "page_y": "d412a14c98010581"
+  },
+  {
+   "name": "372",
+   "page_x": "0004040226dc5d1a",
+   "page_y": "f6f7fa8806bc1050"
+  },
+  {
+   "name": "372D",
+   "page_x": "0004040226e05d1a",
+   "page_y": "132192e486bc1050"
+  },
+  {
+   "name": "347",
+   "page_x": "02abab822c2f56da",
+   "page_y": "dec9acf806971052"
+  },
+  {
+   "name": "347D",
+   "page_x": "02abab822c2b56da",
+   "page_y": "1abf5b4886971052"
+  }
+ ],
+ "signals": [],
+ "points": [],
+ "lines": [],
+ "stations": [
+  {
+   "station_id": 523,
+   "location": 140126
+  }
+ ],
+ "texts": [],
+ "other_sheets": [],
+ "sheet_notes": [
+  "KAVACH_RFID_TAG_DATA_SKP_V2.0.0_pages16-23.html p23: the bit position 'Y-14-Y12' (c, ”4”- d, “5”- e, “6”- Out of Range(display xx) names no bit of a tag: that row is not checked for 372M, 372D, 347M, 347D",
+  "KAVACH_RFID_TAG_DATA_SKP_V2.0.0_pages16-23.html p23: the bit position 'Y131' (Tag Duplication (0 – Main Tag, 1 – Duplicate) names no bit of a tag: that row is not checked for 372M, 372D, 347M, 347D",
+  "KAVACH_RFID_TAG_DATA_SKP_V2.0.0_pages16-23.html p16, tag 384M: type (X3-X0) printed 9, the pages hold 0; version (X5-X4) printed 1, the pages hold 0; unique id (X15-X6) printed 384, the pages hold 0; abs_loc (X38-X16) printed 140352, the pages hold 0; CRC-30 2d5cae4d in PAGE-Y, 2ea04a54 computed (PAGE-X is not 16 digits). The printed fields make PAGE-X 0587070224406019 PAGE-Y b572b93400010581, CRC-30 2d5cae4d, the CRC printed",
+  "KAVACH_RFID_TAG_DATA_SKP_V2.0.0_pages16-23.html p16, tag 384D: type (X3-X0) printed 9, the pages hold 0; version (X5-X4) printed 1, the pages hold 0; unique id (X15-X6) printed 384, the pages hold 0; abs_loc (X38-X16) printed 140356, the pages hold 0; CRC-30 1c4113a1 in PAGE-Y, 2e19ad13 computed; the pages say main tag (PAGE-X is not 16 digits). The printed fields make PAGE-X 0587070224446019 PAGE-Y 71044e8480010581, CRC-30 1c4113a1, the CRC printed",
+  "KAVACH_RFID_TAG_DATA_SKP_V2.0.0_pages16-23.html p17, tag 387D: station nominal (Y6-Y0 & X63-X55) printed 523, the pages hold 45067; station reverse (Y22-Y7) printed 523, the pages hold 32; placement (Y30-Y27) printed 0, the pages hold 9; comm reverse (Y33) printed 0, the pages hold 1; CRC 1804afab printed, 01804afa in PAGE-Y; CRC-30 01804afa in PAGE-Y, 38cf167b computed (PAGE-Y is not 16 digits). The printed fields make PAGE-X 0587800225e860d9 PAGE-Y 6012beac80010581, CRC-30 1804afab, the CRC printed",
+  "KAVACH_RFID_TAG_DATA_SKP_V2.0.0_pages16-23.html p18, tag 388D: comm nominal (Y32) printed 1, the pages hold 0; comm reverse (Y33) printed 0, the pages hold 1. The printed fields make PAGE-X 0580000226186119 PAGE-Y b9c80ac5a0010581, CRC-30 2e7202b1, not the 2e13713f printed",
+  "KAVACH_RFID_TAG_DATA_SKP_V2.0.0_pages16-23.html p19, tag 400M: type (X3-X0) printed 9, the pages hold 0; version (X5-X4) printed 1, the pages hold 0; unique id (X15-X6) printed 400, the pages hold 0; abs_loc (X38-X16) printed 139650, the pages hold 0; CRC-30 0be26597 in PAGE-Y, 367638c2 computed (PAGE-X is not 16 digits). The printed fields make PAGE-X 0584810221826419 PAGE-Y 2f89965c18010581, CRC-30 0be26597, the CRC printed",
+  "KAVACH_RFID_TAG_DATA_SKP_V2.0.0_pages16-23.html p19, tag 400D: type (X3-X0) printed 9, the pages hold 0; version (X5-X4) printed 1, the pages hold 0; unique id (X15-X6) printed 400, the pages hold 0; abs_loc (X38-X16) printed 139650, the pages hold 0; CRC-30 0b5b82d0 in PAGE-Y, 36cfdf85 computed; the pages say main tag (PAGE-X is not 16 digits). The printed fields make PAGE-X 0584810221826419 PAGE-Y 2d6e0b4098010581, CRC-30 0b5b82d0, the CRC printed",
+  "KAVACH_RFID_TAG_DATA_SKP_V2.0.0_pages16-23.html p20, tag 401M: type (X3-X0) printed 9, the pages hold 0; version (X5-X4) printed 1, the pages hold 0; unique id (X15-X6) printed 401, the pages hold 0; abs_loc (X38-X16) printed 139832, the pages hold 0; CRC 280000 printed, 280334e0 in PAGE-Y; CRC-30 280334e0 in PAGE-Y, 2839e6b2 computed (PAGE-X is not 16 digits). The printed fields make PAGE-X 0581050222386459 PAGE-Y a00cd38018010581, CRC-30 280334e0, not the 00280000 printed",
+  "KAVACH_RFID_TAG_DATA_SKP_V2.0.0_pages16-23.html p20, tag 401D: type (X3-X0) printed 9, the pages hold 0; version (X5-X4) printed 1, the pages hold 0; unique id (X15-X6) printed 401, the pages hold 0; abs_loc (X38-X16) printed 139832, the pages hold 0; CRC-30 28bad3a7 in PAGE-Y, 288001f5 computed; the pages say main tag (PAGE-X is not 16 digits). The printed fields make PAGE-X 0581050222386459 PAGE-Y a2eb4e9c98010581, CRC-30 28bad3a7, the CRC printed",
+  "KAVACH_RFID_TAG_DATA_SKP_V2.0.0_pages16-23.html p23, tag 347M: Applicable Direction (Y1) printed 0, the pages hold 1. The printed fields make PAGE-X 02abab822c2f56da PAGE-Y 79519f0006971050, CRC-30 1e5467c0, not the 37b26b3e printed",
+  "KAVACH_RFID_TAG_DATA_SKP_V2.0.0_pages16-23.html p23, tag 347D: Applicable Direction (Y1) printed 0, the pages hold 1. The printed fields make PAGE-X 02abab822c2b56da PAGE-Y bd2768b086971050, CRC-30 2f49da2c, not the 06afd6d2 printed",
+  "KAVACH_RFID_TAG_DATA_SKP_V2.0.0_pages16-23.html: tag 388M and 388D differ in commNom (1 / 0), commRev (0 / 1)"
+ ]
+}

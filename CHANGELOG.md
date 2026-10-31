@@ -10,6 +10,100 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-454"></a>
+## Session 454 — a firm's RFID tag data sheet read into a station layout
+
+Abhinav, of the uses proposed for HBL's 2023 KAVACH sheets (GGD … LPI, the
+Lingampalli–Gulaguda stretch): *"do 1, 2, 3, keep the PDFs local-only"*, then
+5 and 6. This is 1: the tag data sheet. 2 (the Table of Control), 3 (the
+track profile), 5 (TSR by OHE pole) and 6 (the whole stretch) follow as
+their own patches.
+
+**What it does.** `scripts/kavach_sheets.py FOLDER … [-o OUTDIR]` reads a
+station's or IB section's sheets and writes `station_<id>.json`, which
+Station Layout opens. It reads PDFs through poppler's `pdftotext -bbox`
+(words and their positions, so a table's columns line up), or the `.html`
+that command writes. Standard library Python, plus the repo's
+`schema/rfid_oracle.py` for the CRC-30.
+- Every tag column goes in exactly as its PAGE-X / PAGE-Y are printed:
+  those words are what is programmed. It is named by its label (134M →
+  `134`, 134D → `134D`).
+- Every printed field row is checked against the bits **its own bit
+  positions** name (`X38-X16`, `Y6-Y0 & X63-X55`, the LC tag's `Y0-X63`).
+  The check needs no table of field names, so it works the same for
+  normal, LC, adjacent-line and junction tags.
+- Checked as well: the CRC-30; the label against the unique id and the
+  duplicate bit; each main tag against its duplicate (every field the same
+  but the location, 0 or 4 m apart).
+- Nothing is corrected. Each disagreement is a line in the file's new
+  `sheet_notes`, naming the sheet, page and tag. Where the printed fields
+  make other words, the line gives them and says whether their CRC-30 is the
+  one printed.
+- A bit position that names no bit of a tag is reported and its row is
+  not checked. HBL's LC sheets print `Y131` and `Y-14-Y12`, and whether
+  `Y131` means Y31 or Y13 is not guessed.
+- The station is the ID most of its normal tags carry. Its location is not
+  on the sheets, so it is put at the middle of its tags, for the drawing
+  only, and the file's comment says so.
+
+**What the operator sees.** Station Layout opens the file: its tags, the
+drawing, and under **Checks** each note as `Sheet: …` next to the layout's
+own checks (a CRC-30 that does not hold, a tag named for another). The notes
+are kept in the JSON, the station XML (`<sheet_notes><note>`) and the tool's
+.xlsx (a `sheet_notes` sheet). Compare says when they differ.
+
+**Seen on the real sheets (712 tags, eight sections).**
+- **SKP 2.0.0** (the version SCR approved on 5 Jul 2023):
+  - 384M/D, 400M/D and 401M had their PAGE-X turned into numbers by a
+    spreadsheet (`587070000000000` for `0587070224406019`). The printed
+    fields make the right words, with the printed CRC.
+  - 387D's PAGE-Y is a digit short; 366M's PAGE-X too.
+  - 376M's PAGE-Y is rounded (`9624560000000000`).
+  - 401M's CRC cell reads `280000`.
+  - 388D's comm bits are swapped against its printed row and its main tag.
+  - LC tags 347M/D print applicable direction 0; their pages hold 1.
+- **LPI 2.0.7:** 6D's pages say main tag.
+- **GGD, NPL and SKP:** their LC pages print `Y131` and `Y-14-Y12`.
+- GGD, the IBs, NPL and TLPR otherwise agree with themselves.
+
+Said as what each sheet shows; which one is right is for the signatories.
+
+**Kept local.** The PDFs go in `tests/fixtures/kavach_sheets/`
+(git-ignored). Committed: extracts as `pdftotext -bbox` writes them, in
+`schema/fixtures/kavach_sheets/`. They are all of NPL-TLPR IB's tag data,
+SKP pages 16-23 and LPI pages 1 and 12 (`_pages16-23.html`, so the notes
+give the sheet's own page numbers), with the `station_<id>.json` each gives.
+
+**Files.** `scripts/kavach_sheets.py`, `schema/validate_kavach_sheets.py`,
+`schema/fixtures/kavach_sheets/` (new); `stationlayout.{h,cpp}`
+(`Layout::sheetNotes`: JSON, XML, the tool's sheets, `diff`);
+`stationlayoutwindow.cpp` (Checks); `tests/test_session454.cpp` (new),
+`tests/tests.pro`; `docs/KAVACH_SHEETS.md` (new); `.gitignore`.
+
+**Tests.**
+- `validate_kavach_sheets.py` (gate stage 1, 51 checks):
+  - each extract gives its committed `station_<id>.json` byte for byte;
+  - NPL-TLPR IB: 22 tags, every CRC-30 holding, no notes, 177 at 155566 m;
+  - SKP: 384M's number and the words its fields make, 401M's CRC cell,
+    387D a digit short, 388D's comm bits and 388M against 388D, 347M's
+    direction, `Y131` / `Y-14-Y12` named, a clean tag silent, 384 kept as
+    printed;
+  - LPI: 6D, and page 12's two-line station rows read;
+  - with the local PDFs: each section's station ID, tag count and note
+    count, 712 tags in all.
+- `session454` (29 checks): the files open; tags decode under their names;
+  the notes round-trip JSON, XML and the tool's sheets; Compare; LPI's 6D;
+  the window lists the 13 SKP notes as `Sheet: …` and counts them, and says
+  nothing to report for the clean IB.
+- **Not tested:** a firm other than HBL (one template seen); tag types 11
+  and 12 only through their bit rows; a sheet read on Windows (poppler's
+  zip there is not tried).
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators (18), 465 suites /
+11,786 checks, menu audit, smoke.
+
+---
+
 <a id="session-453"></a>
 ## Session 453 — the brake chain: each brake KAVACH applied, link by link
 

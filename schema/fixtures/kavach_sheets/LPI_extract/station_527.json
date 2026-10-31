@@ -1,0 +1,81 @@
+{
+ "format": "dlconsole-station-layout",
+ "version": 1,
+ "comment": "Read from the KAVACH sheets by scripts/kavach_sheets.py (session 454): KAVCH_RFID_TAG_DATA_LPI_V2.0.7_pages1-1.html, KAVCH_RFID_TAG_DATA_LPI_V2.0.7_pages12-12.html. Station 527: the station ID most of its normal tags carry. Its location 160114 is not on the sheets: the middle of its tags, for the drawing.",
+ "tags": [
+  {
+   "name": "2",
+   "page_x": "07b737026fac0099",
+   "page_y": "379015c80a00fa81"
+  },
+  {
+   "name": "2D",
+   "page_x": "07b737026fb00099",
+   "page_y": "e5c6b4b48a00fa81"
+  },
+  {
+   "name": "4",
+   "page_x": "07b71902719b0119",
+   "page_y": "b20205e410010781"
+  },
+  {
+   "name": "4D",
+   "page_x": "07b7190271970119",
+   "page_y": "7b94c01090010781"
+  },
+  {
+   "name": "6",
+   "page_x": "07991a0273390199",
+   "page_y": "83603ce010010781"
+  },
+  {
+   "name": "6D",
+   "page_x": "07991a0273350199",
+   "page_y": "4811640810010781"
+  },
+  {
+   "name": "26",
+   "page_x": "07801e0271f90699",
+   "page_y": "cf0f9b6808010781"
+  },
+  {
+   "name": "26D",
+   "page_x": "07801e0271fd0699",
+   "page_y": "0b796cd888010781"
+  },
+  {
+   "name": "27",
+   "page_x": "079e1e02722306d9",
+   "page_y": "ba3d229400010781"
+  },
+  {
+   "name": "27D",
+   "page_x": "079e1e02721f06d9",
+   "page_y": "5feb4af880010781"
+  },
+  {
+   "name": "28",
+   "page_x": "079e1e8273170719",
+   "page_y": "3e5e992410010781"
+  },
+  {
+   "name": "28D",
+   "page_x": "079e1e8273130719",
+   "page_y": "fa286e9490010781"
+  }
+ ],
+ "signals": [],
+ "points": [],
+ "lines": [],
+ "stations": [
+  {
+   "station_id": 527,
+   "location": 160114
+  }
+ ],
+ "texts": [],
+ "other_sheets": [],
+ "sheet_notes": [
+  "KAVCH_RFID_TAG_DATA_LPI_V2.0.7_pages1-1.html p1, tag 6D: duplication (Y31) printed 1, the pages hold 0. The printed fields make PAGE-X 07991a0273350199 PAGE-Y 4af6f91490010781, CRC-30 12bdbe45, not the 12045902 printed"
+ ]
+}

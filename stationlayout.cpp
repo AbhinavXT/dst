@@ -25,6 +25,7 @@ namespace {
 
 const char *kFormat = "dlconsole-station-layout";
 const char *kKavachSheet = "kavach";
+const char *kSheetNotes = "sheet_notes";   // session 454
 
 // The tool's sheets, and their columns in its order. A column listed in
 // `numbers` is written as a number on export.
@@ -454,6 +455,11 @@ bool fromSheets(const QVector<XlsxBook::Sheet> &sheets, Layout *out, QString *er
             else if (notes) *notes << QStringLiteral("the kavach sheet is not JSON: not read");
             continue;
         }
+        if (sh.name == QLatin1String(kSheetNotes)) {
+            for (const XlsxBook::Row &r : sh.rows)
+                if (!r.isEmpty() && !r.first().toString().isEmpty()) l.sheetNotes << r.first().toString();
+            continue;
+        }
         if (!known) l.otherSheets << sh;
     }
     *out = l;
@@ -510,6 +516,12 @@ QVector<XlsxBook::Sheet> toSheets(const Layout &l)
             if (!line.isEmpty()) k.rows << XlsxBook::Row{ QString::fromUtf8(line) };
         out << k;
     }
+    if (!l.sheetNotes.isEmpty()) {
+        XlsxBook::Sheet k;
+        k.name = QLatin1String(kSheetNotes);
+        for (const QString &n : l.sheetNotes) k.rows << XlsxBook::Row{ n };
+        out << k;
+    }
     return out;
 }
 
@@ -560,6 +572,7 @@ QByteArray toJson(const Layout &l)
     for (const XlsxBook::Sheet &sh : l.otherSheets) a.append(sheetJson(sh));
     root.insert(QStringLiteral("other_sheets"), a);
     if (!l.kavach.isEmpty()) root.insert(QStringLiteral("kavach"), l.kavach);
+    if (!l.sheetNotes.isEmpty()) root.insert(QStringLiteral("sheet_notes"), QJsonArray::fromStringList(l.sheetNotes));
     return QJsonDocument(root).toJson(QJsonDocument::Indented);
 }
 
@@ -618,6 +631,8 @@ bool fromJson(const QByteArray &json, Layout *out, QString *err, QStringList *no
     }
     for (const QJsonValue &v : arr("other_sheets")) l.otherSheets << sheetFromJson(v.toObject());
     l.kavach = root.value(QStringLiteral("kavach")).toObject();
+    for (const QJsonValue &v : root.value(QStringLiteral("sheet_notes")).toArray())
+        if (!v.toString().isEmpty()) l.sheetNotes << v.toString();
     *out = l;
     return true;
 }
@@ -890,6 +905,11 @@ QByteArray toXml(const Layout &l, const QString &name, QStringList *notes)
         w.writeCharacters(QString::fromUtf8(QJsonDocument(l.kavach).toJson(QJsonDocument::Compact)));
         w.writeEndElement();
     }
+    if (!l.sheetNotes.isEmpty()) {   // session 454
+        w.writeStartElement(QStringLiteral("sheet_notes"));
+        for (const QString &n : l.sheetNotes) w.writeTextElement(QStringLiteral("note"), n);
+        w.writeEndElement();
+    }
 
     // Which tags carry each TIN, in each direction: for people and tools reading the file.
     QMap<int, QVector<QPair<QString, QString>>> tins;
@@ -1117,6 +1137,15 @@ bool fromXml(const QByteArray &xml, Layout *out, QString *err, QStringList *note
             const QJsonDocument doc = QJsonDocument::fromJson(r.readElementText().toUtf8());
             if (doc.isObject()) l.kavach = doc.object();
             else note(QStringLiteral("<kavach> is not JSON: not read"));
+        } else if (group == QLatin1String("sheet_notes")) {   // session 454
+            while (r.readNextStartElement()) {
+                if (r.name() == QLatin1String("note")) {
+                    const QString n = r.readElementText();
+                    if (!n.isEmpty()) l.sheetNotes << n;
+                } else {
+                    r.skipCurrentElement();
+                }
+            }
         } else {
             if (group != QLatin1String("tins")) note(QStringLiteral("<%1> is not read").arg(group));   // <tins> is derived
             r.skipCurrentElement();
@@ -1269,6 +1298,8 @@ Diff diff(const Layout &from, const Layout &to)
         d.other << (from.kavach.isEmpty() ? QStringLiteral("KAVACH data added")
                     : to.kavach.isEmpty() ? QStringLiteral("KAVACH data removed")
                                           : QStringLiteral("KAVACH data changed (signals, routes or profiles)"));
+    if (from.sheetNotes != to.sheetNotes)
+        d.other << QStringLiteral("sheet notes: %1 -> %2").arg(from.sheetNotes.size()).arg(to.sheetNotes.size());
     std::sort(d.other.begin(), d.other.end());
     return d;
 }

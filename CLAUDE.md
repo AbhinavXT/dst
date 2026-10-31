@@ -55,10 +55,11 @@ Nothing is committed as a patch unless **all** of these are green:
 ./verify.sh            # validators, unit suite, menu audit, headless smoke
 ```
 
-- 16 Python golden validators (`schema/validate_*.py`) against `replay/`
+- 18 Python golden validators (`schema/validate_*.py`) against `replay/`
   (`validate_rdir.py` and `validate_dlcount.py` against synthetic fixtures
   until real `@rdir` / `@dlcount` captures exist; `@sos` and `@dllog` are
-  real since patch 273).
+  real since patch 273; `validate_kavach_sheets.py` against extracts of
+  HBL's KAVACH sheets, and the whole pack when the local PDFs are there).
 - Unit suite `dltests` (152 suites / 4898 checks at patch 96). Run one suite
   with `cd tests && ../build-verify/tests/dltests <suite>`.
 - Menu audit (`tests/menuaudit_main.cpp`, 138 checks): builds the real
@@ -142,6 +143,10 @@ The three features once queued here are all done:
   drawing, sent to Packet Maker's live station or kept as a what-if (435,
   436); a form beside the drawing (437); a new signal with its heads (438);
   the drawing exported on paper with a title block (439).
+- **A firm's KAVACH sheets read into a station** (`scripts/kavach_sheets.py`,
+  `docs/KAVACH_SHEETS.md`): the RFID tag data, every field checked against
+  its bits (454). HBL's 2023 PDFs (GGD … LPI) stay local in
+  `tests/fixtures/kavach_sheets/` (git-ignored).
 - **Themes:** 14, six of them dark: Dark, Nord, Mocha, and One Dark,
   Solarized Dark, Gruvbox Dark (434).
 

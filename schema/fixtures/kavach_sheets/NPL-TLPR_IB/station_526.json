@@ -1,0 +1,129 @@
+{
+ "format": "dlconsole-station-layout",
+ "version": 1,
+ "comment": "Read from the KAVACH sheets by scripts/kavach_sheets.py (session 454): KAVACH_RFID_TAG_DATA_NPL-TLPR-IB_2.0.2.html. Station 526: the station ID most of its normal tags carry. Its location 154515 is not on the sheets: the middle of its tags, for the drawing.",
+ "tags": [
+  {
+   "name": "134",
+   "page_x": "072b2b0254762199",
+   "page_y": "3025a5d408810681"
+  },
+  {
+   "name": "134D",
+   "page_x": "072b2b02547a2199",
+   "page_y": "f9b3602088810681"
+  },
+  {
+   "name": "136",
+   "page_x": "072b2b0257602219",
+   "page_y": "660bf08402810701"
+  },
+  {
+   "name": "136D",
+   "page_x": "072b2b0257642219",
+   "page_y": "a27d073482810701"
+  },
+  {
+   "name": "138",
+   "page_x": "072b2b02585a2299",
+   "page_y": "11422ad40a810701"
+  },
+  {
+   "name": "138D",
+   "page_x": "072b2b02585e2299",
+   "page_y": "d534dd648a810701"
+  },
+  {
+   "name": "140",
+   "page_x": "072b2b025b722319",
+   "page_y": "c3fd67e802810701"
+  },
+  {
+   "name": "140D",
+   "page_x": "072b2b025b762319",
+   "page_y": "078b905882810701"
+  },
+  {
+   "name": "142",
+   "page_x": "072b2b025c6c2399",
+   "page_y": "7b37f2c40a810701"
+  },
+  {
+   "name": "142D",
+   "page_x": "072b2b025c702399",
+   "page_y": "a96153b88a810701"
+  },
+  {
+   "name": "144",
+   "page_x": "072b2b025c9c2419",
+   "page_y": "8c4758b402810701"
+  },
+  {
+   "name": "144D",
+   "page_x": "072b2b025ca02419",
+   "page_y": "699130d882810701"
+  },
+  {
+   "name": "146",
+   "page_x": "072b2b025f7d2499",
+   "page_y": "97688afc02810701"
+  },
+  {
+   "name": "146D",
+   "page_x": "072b2b025f812499",
+   "page_y": "c3bc54f082810701"
+  },
+  {
+   "name": "175",
+   "page_x": "faaaaa8262b02bd9",
+   "page_y": "eca8113012810700"
+  },
+  {
+   "name": "175D",
+   "page_x": "faaaaa8262ac2bd9",
+   "page_y": "3efeb04c92810700"
+  },
+  {
+   "name": "177",
+   "page_x": "072aaa825fae2c59",
+   "page_y": "03f40e7c02810701"
+  },
+  {
+   "name": "177D",
+   "page_x": "072aaa825faa2c59",
+   "page_y": "c782f9cc82810701"
+  },
+  {
+   "name": "179",
+   "page_x": "072aaa825eb42cd9",
+   "page_y": "4524c44c12810701"
+  },
+  {
+   "name": "179D",
+   "page_x": "072aaa825eb02cd9",
+   "page_y": "815233fc92810701"
+  },
+  {
+   "name": "181",
+   "page_x": "072aaa825c012d59",
+   "page_y": "e709d74402810701"
+  },
+  {
+   "name": "181D",
+   "page_x": "072aaa825bfd2d59",
+   "page_y": "a4e2998082810701"
+  }
+ ],
+ "signals": [],
+ "points": [],
+ "lines": [],
+ "stations": [
+  {
+   "station_id": 526,
+   "location": 154515
+  }
+ ],
+ "texts": [],
+ "other_sheets": [],
+ "sheet_notes": []
+}

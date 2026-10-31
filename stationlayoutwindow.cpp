@@ -2543,6 +2543,8 @@ void StationLayoutWindow::refreshAll()
     fillTags();
     for (int i = 1; i < 6; ++i) fillSheet(i);
     QStringList found = StationLayout::checks(m_layout);
+    // Session 454: what the KAVACH sheets the layout was read from do not agree on.
+    for (const QString &n : m_layout.sheetNotes) found << tr("Sheet: %1").arg(n);
     // Session 423: what the KAVACH data would not do, and the tags it names the layout lacks.
     m_kavach->setKavach(m_layout.kavach);
     if (!m_layout.kavach.isEmpty()) {

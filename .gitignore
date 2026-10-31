@@ -46,6 +46,9 @@ build/
 # session195 checks against them when present and says it skipped them when not.
 tests/fixtures/tags_sim/
 tests/fixtures/station_layout/
+# HBL's KAVACH sheets (tag data, Table of Control, track profile, TSR routes):
+# the PDFs stay local (session 454); small extracts live in schema/fixtures/kavach_sheets/.
+tests/fixtures/kavach_sheets/
 
 # macOS Finder / Qt Creator clangd (per machine)
 .DS_Store

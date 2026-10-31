@@ -17,6 +17,8 @@
 //    kavach    session 422: the Stationary KAVACH data (stationkavach.h), as
 //              JSON: one line of it per row in column A ("kavach" in the
 //              own file). The Python tool does not read it.
+//    sheet_notes  session 454: what the KAVACH sheets the layout was read
+//              from do not agree on (Layout::sheetNotes), one per row.
 //  Any other sheet (relaymap, adjustment, …) is carried through untouched:
 //  DLConsole has no use for it (relaymap is NMS field-input data), but the
 //  Python tool reads it, so an exported file keeps it.
@@ -73,8 +75,13 @@ struct Layout {
     QVector<Text>    texts;
     QVector<XlsxBook::Sheet> otherSheets;   // relaymap, adjustment, ...: carried, not used
     QJsonObject kavach;                     // session 422: StationKavach::fromJson reads it
+    // Session 454: what the firm's KAVACH sheets the layout was read from
+    // (scripts/kavach_sheets.py) do not agree on, one line each. Kept and
+    // listed under Checks as "Sheet: ..."; nothing in DLConsole changes them.
+    QStringList sheetNotes;
     bool isEmpty() const { return tags.isEmpty() && signalList.isEmpty() && points.isEmpty() && lines.isEmpty()
-                                  && stations.isEmpty() && texts.isEmpty() && otherSheets.isEmpty() && kavach.isEmpty(); }
+                                  && stations.isEmpty() && texts.isEmpty() && otherSheets.isEmpty() && kavach.isEmpty()
+                                  && sheetNotes.isEmpty(); }
 };
 
 // --- files -------------------------------------------------------------------
