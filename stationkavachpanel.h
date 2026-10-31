@@ -34,6 +34,8 @@ public:
     // Shows `s`, editing `st` (kept by the caller, outliving the panel's use of it).
     void setStation(const StationKavach::Station &s, StationKavach::State *st);
     void showAnswer(int locoId, const QString &text, const QStringList &checks);
+    // Session 435: the state changed elsewhere (the Station Layout drawing): shown again, answers kept.
+    void refresh() { rebuild(); }
 
     QPushButton *drawingButton() const { return m_drawing; }
 

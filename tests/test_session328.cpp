@@ -17,7 +17,7 @@
 //  Abhinav: "The new windows should work with all themes". Most of what the
 //  window draws is a palette role or a UiColor, which test_contrastaudit
 //  already holds in every theme. What it mixes itself is checked here, in
-//  each of the eleven themes, with the colour-blind-safe colours off and on:
+//  each theme (eleven then; fourteen since session 434), with the colour-blind-safe colours off and on:
 //    - a tile's text and icons on its own fill (plain, On = tinted with the
 //      accent, Fault = tinted with the warning colour): 4.5 : 1, 7 : 1 in
 //      High Contrast;
@@ -65,7 +65,7 @@ TEST_SUITE(session328)
         }
     }
     UiColor::setColorBlindSafe(false);
-    CHECK(themes == 22, "fixture: eleven themes, colour-blind-safe off and on");
+    CHECK(themes == 2 * ThemeUtil::all().size(), "fixture: every theme (14 since session 434), colour-blind-safe off and on");
     CHECK(inkShort == 0, qPrintable(QStringLiteral("tile text and icons reach 4.5 : 1 (7 : 1 High Contrast) on their own fill "
                                                    "in every theme; short in: %1").arg(shortWhere.join(QStringLiteral(", ")))));
     CHECK(rimShort == 0, qPrintable(QStringLiteral("a lit lamp's rim reaches 3 : 1 (7 : 1 High Contrast) on the card for every "

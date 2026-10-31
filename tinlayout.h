@@ -46,6 +46,22 @@ QRectF drawTag(QPainter &p, const QPointF &c, QChar letter, Shape s, const QColo
 QRectF drawIdBox(QPainter &p, const QPointF &bottom, const QString &text);
 QString idText(const QString &tagName);       // "981" -> "R-981"
 
+// Session 432: a signal as the SIP and the tag-TIN layouts draw it: a mast
+// from `foot` (its top, on the track's edge; an arrow there points at the
+// track), an arm, and the heads outwards in `dir` (1: towards rising x, the
+// way a train it faces runs). A main head's lamps touch, from the mast: Red
+// (three bars), Yellow (a slash), Green (a bar), a second Yellow (4 aspects);
+// a shunt disc (position light: three small lamps) nearest the mast; a
+// calling-on lamp, small, behind it. `lit` (Lamp flags): those lamps filled
+// in their colour (the KAVACH aspect), the others drawn as on the sheets.
+// Returns where it went.
+// Session 435: `indicator` 1-6, a junction route indicator: five small lamps
+// on an arm under the main head, 1-3 behind the mast's side, 4-6 ahead,
+// steeper towards 3 and 4; LampIndicator lights them.
+struct SignalHead { int aspects = 3; bool callingOn = false, shunt = false; int indicator = 0; };   // aspects 0: a shunt signal only
+enum Lamp { LampRed = 1, LampYellow = 2, LampGreen = 4, LampYellow2 = 8, LampCallingOn = 16, LampIndicator = 32 };
+QRectF drawSignal(QPainter &p, const QPointF &foot, const SignalHead &head, int dir, int lit, const QColor &ink);
+
 }  // namespace TinLayout
 
 #endif  // TINLAYOUT_H

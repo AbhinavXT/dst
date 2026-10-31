@@ -11,16 +11,25 @@
 #include "tagbuilderwindow.h"
 #include "uicolors.h"
 #include "undolog.h"
+#include "theme.h"
 #include "tinlayout.h"
+#include "uistyle.h"
 #include "windowgeometry.h"
 
+#include <QAction>
+#include <QActionGroup>
 #include <QCloseEvent>
+#include <QComboBox>
 #include <QContextMenuEvent>
+#include <QDate>
 #include <QDateTime>
 #include <QDialog>
 #include <QDir>
 #include <QDialogButtonBox>
+#include <QCheckBox>
 #include <QFormLayout>
+#include <QRegularExpressionValidator>
+#include <QSpinBox>
 #include <QInputDialog>
 #include <QLineEdit>
 #include <QFileDialog>
@@ -42,7 +51,9 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QScrollBar>
+#include <QSignalBlocker>
 #include <QSplitter>
+#include <QStyledItemDelegate>
 #include <QTabWidget>
 #include <QTableWidget>
 #include <QToolButton>
@@ -152,6 +163,7 @@ void StationLayoutCanvas::layoutLanes()
     // Session 233: a line a point joins but the lines sheet does not list
     // (22.20.xlsx: lines has DM only, its points join DM to DL1, DL2) still
     // gets its lane, so the point is drawn rather than left in the table.
+    m_circuits = StationLayout::circuits(m_l);   // session 436
     m_extraLines.clear();
     QSet<QString> listed;
     for (const StationLayout::Line &ln : m_l.lines) listed.insert(ln.line);
@@ -358,7 +370,7 @@ int StationLayoutCanvas::legend(QPainter *p, int top, int w) const
     const QFont small = smallFont();
     const QFontMetrics fm(small);
     const int lh = fm.height(), rowH = lh + 8;
-    enum Kind { Letter, Same, Ahead, Band, NonKavach, Flagged, Centre, IdBox, Note };
+    enum Kind { Letter, Same, Ahead, Band, NonKavach, Flagged, Centre, IdBox, MainSignal, ShuntSignal, CallingOn, Note };
     struct Item { Kind kind; QChar letter; QString label; };
     QVector<Item> items;
     for (const char c : { 'N', 'S', 'T', 'X', 'D', 'G', 'L', 'A' })
@@ -370,6 +382,10 @@ int StationLayoutCanvas::legend(QPainter *p, int top, int w) const
     items.append({ NonKavach, QChar(), tr("TIN 0: non-Kavach") });
     items.append({ Flagged, QLatin1Char('N'), tr("named in Checks") });
     items.append({ Centre, QChar(), tr("station centre line") });
+    // Session 432: the signals, as the SIP draws them.
+    items.append({ MainSignal, QChar(), tr("signal: Red, Yellow, Green (a lit lamp: its KAVACH aspect)") });
+    items.append({ ShuntSignal, QChar(), tr("shunt signal") });
+    items.append({ CallingOn, QChar(), tr("calling-on") });
     items.append({ Note, QChar(), m_knots.size() > 2 ? tr("To scale by absolute location, the yard wider than the block sections (see the km scale). Drag a tag along its line to move it")
                                          : tr("To scale by absolute location. Drag a tag along its line to move it") });
 
@@ -387,7 +403,8 @@ int StationLayoutCanvas::legend(QPainter *p, int top, int w) const
         p->setFont(small);
     }
     for (const Item &it : items) {
-        const int sw = it.kind == IdBox ? fm.horizontalAdvance(QStringLiteral("R-981")) + 8 : it.kind == Note ? 0 : 22;
+        const int sw = it.kind == IdBox ? fm.horizontalAdvance(QStringLiteral("R-981")) + 8 : it.kind == Note ? 0
+                     : it.kind == MainSignal ? 36 : it.kind == ShuntSignal || it.kind == CallingOn ? 26 : 22;
         const int iw = sw + (sw ? 6 : 0) + fm.horizontalAdvance(it.label) + 18;
         if (x > x0 && x + iw > right) { ++row; x = x0; }
         if (p) {
@@ -408,6 +425,14 @@ int StationLayoutCanvas::legend(QPainter *p, int top, int w) const
                 p->drawLine(QPointF(c.x(), cy - lh / 2.0), QPointF(c.x(), cy + lh / 2.0));
                 break;
             case IdBox: TinLayout::drawIdBox(*p, QPointF(c.x(), cy + lh / 2.0), QStringLiteral("R-981")); break;
+            case MainSignal: case ShuntSignal: case CallingOn: {
+                TinLayout::SignalHead h;
+                h.aspects = it.kind == MainSignal ? 3 : it.kind == ShuntSignal ? 0 : 2;
+                h.callingOn = it.kind == CallingOn;
+                const QColor ink = palette().color(QPalette::Text);
+                TinLayout::drawSignal(*p, QPointF(x + (it.kind == CallingOn ? 10 : 3), cy - 13), h, 1, 0, ink);
+                break;
+            }
             case Note: break;
             }
             p->setPen(UiColor::muted());
@@ -698,6 +723,10 @@ void StationLayoutCanvas::mouseDoubleClickEvent(QMouseEvent *e)
 {
     for (const Hit &h : m_hits)
         if (!h.tag.isEmpty() && h.rect.contains(e->pos())) { emit tagDoubleClicked(h.tag); return; }
+    for (const Hit &h : m_hits)   // session 435
+        if (h.point >= 0 && h.rect.contains(e->pos())) { emit pointThrowRequested(h.point); return; }
+    for (const Hit &h : m_hits)   // session 436
+        if (!h.circuit.isEmpty() && h.rect.contains(e->pos())) { emit circuitToggleRequested(h.circuit); return; }
 }
 
 QString StationLayoutCanvas::lineAt(double y) const
@@ -712,6 +741,24 @@ void StationLayoutCanvas::contextMenuEvent(QContextMenuEvent *e)
     QString tag;
     for (const Hit &h : m_hits)
         if (!h.tag.isEmpty() && h.rect.contains(e->pos())) { tag = h.tag; break; }
+    // Session 435: a point: its own menu.
+    if (tag.isEmpty())
+        for (const Hit &h : m_hits)
+            if (h.point >= 0 && h.rect.contains(e->pos())) {
+                setSelectedPoint(h.point);
+                emit pointClicked(h.point);
+                emit pointContextRequested(e->globalPos(), h.point);
+                return;
+            }
+    // Session 433: a signal of the sheet: its own menu.
+    if (tag.isEmpty())
+        for (const Hit &h : m_hits)
+            if (h.signal >= 0 && h.rect.contains(e->pos())) {
+                setSelectedSignal(h.signal);
+                emit signalClicked(h.signal);
+                emit signalContextRequested(e->globalPos(), h.signal);
+                return;
+            }
     const qint64 loc = locAt(qBound(double(kLeft), double(e->pos().x()), double(width() - kRight)));
     emit contextRequested(e->globalPos(), tag, lineAt(e->pos().y()), loc, e->pos().y() < laneY(0) - kLaneGap / 2.0);
 }
@@ -821,6 +868,16 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
             else p.drawLine(a, b);
         }
         p.setPen(c.isValid() ? QPen(c, 7, Qt::SolidLine, Qt::FlatCap) : QPen(UiColor::frame(), oneLine ? 3 : 2));
+        // Session 435: with the station's state, a Normal point's turnout drawn
+        // faint and dashed, a Reverse one bold: the way a train would go.
+        const bool reverse = m_liveView.reversePoints.contains(pt.name);
+        if (m_liveView.pointsShown && !reverse) {
+            QColor faint = c.isValid() ? c : UiColor::frame();
+            faint.setAlpha(110);
+            p.setPen(QPen(faint, 3, Qt::DashLine, Qt::FlatCap));
+        } else if (m_liveView.pointsShown) {
+            p.setPen(QPen(c.isValid() ? c : UiColor::accent(), 8, Qt::SolidLine, Qt::FlatCap));
+        }
         if (oneLine) {
             p.drawLine(QPointF(a.x(), a.y() - 8), QPointF(a.x(), a.y() + 8));
             b = QPointF(a.x(), a.y() + 8);
@@ -828,14 +885,18 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
             p.drawLine(a, b);
         }
         const QPointF mid = oneLine ? QPointF(a.x(), a.y() - 8) : (a + b) / 2.0;
-        const int w = fm.horizontalAdvance(pt.name) + 4;
+        const QString ptLabel = m_liveView.pointsShown ? pt.name + (reverse ? QStringLiteral(" R") : QStringLiteral(" N")) : pt.name;
+        const int w = fm.horizontalAdvance(ptLabel) + 4;
         if (placeLabel(ptEnds, 0, mid.x() + w / 2.0 + 3, w, 1) >= 0) {
             p.setPen(pi == m_selPoint ? text : ink);
-            p.drawText(QRectF(mid.x() + 3, mid.y() - lh / 2.0, w, lh), Qt::AlignLeft | Qt::AlignVCenter, pt.name);
+            p.drawText(QRectF(mid.x() + 3, mid.y() - lh / 2.0, w, lh), Qt::AlignLeft | Qt::AlignVCenter, ptLabel);
         }
         QRectF r(qMin(a.x(), b.x()) - 3, qMin(a.y(), b.y()) - 3, std::fabs(b.x() - a.x()) + 6, std::fabs(b.y() - a.y()) + 6);
         if (oneLine) r = QRectF(a.x() - 6, a.y() - 10, 12, 20);
-        Hit h{ r, QString(), tr("Point %1: %2 on %3 to %4 on %5").arg(pt.name, km(pt.loc1), pt.line1, km(pt.loc2), pt.line2) };
+        QString ptTip = tr("Point %1: %2 on %3 to %4 on %5").arg(pt.name, km(pt.loc1), pt.line1, km(pt.loc2), pt.line2);
+        if (m_liveView.pointsShown)
+            ptTip += QLatin1Char('\n') + (reverse ? tr("Reverse") : tr("Normal")) + tr(": double-click to throw it, right-click for its menu");
+        Hit h{ r, QString(), ptTip };
         h.point = pi;
         m_hits << h;
     }
@@ -854,6 +915,21 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
             dupOf.insert(mainKeyOf(key), key);
     auto inSet = [&](const QString &k) { return isDuplicateName(StationLayout::nameOfKey(k)) && dupOf.value(mainKeyOf(k)) == k; };
     auto xAt = [&](const QString &n) { return n == m_dragTag && m_dragX >= 0 ? m_dragX : xOf(m_loc.value(n)); };
+
+    // ---- session 435: the routes set, under the lanes --------------------------------------------
+    for (const KavachSection &k : m_liveView.routesSet) {
+        QPolygonF path;
+        for (const QString &n : k.tags)
+            if (m_loc.contains(n)) path << tagPos(n, xOf(m_loc.value(n)));
+        if (path.isEmpty()) continue;
+        QColor c = UiColor::ok();
+        c.setAlpha(palette().color(QPalette::Base).lightness() < 128 ? 150 : 90);
+        p.setPen(QPen(c, 13, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.setBrush(Qt::NoBrush);
+        if (path.size() == 1) p.drawPoint(path.first());
+        else p.drawPolyline(path);
+        m_hits << Hit{ path.boundingRect().adjusted(-4, -7, 4, 7), QString(), tr("Route %1 set").arg(k.route) };
+    }
 
     // ---- session 424: the KAVACH route and the MA's sections on, under the lanes ---------------
     for (int i = 0; i < m_kavachView.sections.size(); ++i) {
@@ -953,6 +1029,29 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         }
     }
 
+    // ---- session 436: the track circuits: their joints across the line, red when occupied ---------
+    for (const StationLayout::Circuit &tc : m_circuits) {
+        if (!m_laneOfLine.contains(tc.line)) continue;
+        const double y = laneY(m_laneOfLine.value(tc.line));
+        // A circuit at a location only: a short mark there.
+        const double x1 = xOf(tc.from) - (tc.from == tc.to ? 4 : 0), x2 = xOf(tc.to) + (tc.from == tc.to ? 4 : 0);
+        const bool occ = m_liveView.occupied.contains(tc.name);
+        if (occ) {
+            QColor c = UiColor::error();
+            c.setAlpha(200);
+            p.setPen(QPen(c, 6, Qt::SolidLine, Qt::FlatCap));
+            p.drawLine(QPointF(x1, y), QPointF(x2, y));
+        }
+        p.setPen(QPen(text, 1.2));
+        for (const double x : { x1, x2 }) p.drawLine(QPointF(x, y - 6), QPointF(x, y + 6));
+        QString tip = tc.from == tc.to ? tr("Track circuit %1 (cid %2) on %3 at %4 (no ends in the file)").arg(tc.name).arg(tc.cid).arg(tc.line, km(tc.from))
+                                       : tr("Track circuit %1 (cid %2) on %3: %4 to %5").arg(tc.name).arg(tc.cid).arg(tc.line, km(tc.from), km(tc.to));
+        if (m_liveView.pointsShown) tip += QLatin1Char('\n') + (occ ? tr("Occupied") : tr("Clear")) + tr(": double-click to change");
+        Hit h{ QRectF(qMin(x1, x2), y - 4, std::fabs(x2 - x1), 8), QString(), tip };
+        h.circuit = tc.name;
+        m_hits << h;
+    }
+
     // ---- signals at their foot tags ---------------------------------------------------------------
     // Session 424: with the KAVACH tab's view, a KAVACH signal is lit by its
     // aspect, and one the signals sheet lacks is drawn at its foot tag too.
@@ -963,24 +1062,63 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         if (!kAspect.contains(k.name)) kSignals << k;
         kAspect.insert(k.name, k.aspect);
     }
-    struct Sig { QString name, foot, tip; int index; };
+    // Session 432: drawn as the SIP and the tag-TIN layouts draw them (TinLayout::drawSignal).
+    struct Sig { QString name, foot, tip; int index; StationLayout::SignalLook look; QString heads; };   // heads: said last in the tooltip
     QVector<Sig> sigs;
     QSet<QString> sheetNames;
+    auto lookText = [](const StationLayout::SignalLook &k) {
+        QString t = k.aspects > 0 ? tr("%1-aspect main signal").arg(k.aspects) : tr("shunt signal");
+        if (k.aspects > 0 && k.shunt) t += tr(", a shunt signal below it");
+        if (k.callingOn) t += tr(", calling-on");
+        if (k.indicator > 0) t += tr(", route indicator at position %1").arg(k.indicator);
+        return t;
+    };
+    // A route's signal at a foot tag a station signal stands at (the station XML
+    // has both) is that signal: not drawn again, named in its tooltip.
+    QHash<QString, QStringList> routeNames;
+    for (const StationLayout::Signal &s : m_l.signalList)
+        if (s.route.isEmpty()) routeNames[s.footTag];
+    for (const StationLayout::Signal &s : m_l.signalList)
+        if (!s.route.isEmpty() && routeNames.contains(s.footTag)) routeNames[s.footTag] << tr("%1 on route %2").arg(s.name, s.route);
     for (int si = 0; si < m_l.signalList.size(); ++si) {
         const StationLayout::Signal &s = m_l.signalList.at(si);
         sheetNames.insert(s.name);
-        sigs << Sig{ s.name, s.footTag,
-                     tr("Signal %1 (id %2, station %3) at foot tag %4").arg(s.name).arg(s.sigId).arg(s.stationId).arg(s.footTag), si };
+        if (!s.route.isEmpty() && routeNames.contains(s.footTag)) continue;
+        const StationLayout::SignalLook k = StationLayout::lookOf(s);
+        const QString tip = s.route.isEmpty() ? tr("Signal %1 (id %2, station %3) at foot tag %4").arg(s.name).arg(s.sigId).arg(s.stationId).arg(s.footTag)
+                                              : tr("Signal %1 (id %2) of route %3 at foot tag %4").arg(s.name).arg(s.sigId).arg(s.route, s.footTag);
+        QString heads = lookText(k) + (s.aspects < 0 ? tr(" (from its name; right-click to set it)") : QString());
+        if (s.route.isEmpty() && !routeNames.value(s.footTag).isEmpty())
+            heads += QLatin1Char('\n') + tr("Also: %1").arg(routeNames.value(s.footTag).join(QStringLiteral(", ")));
+        sigs << Sig{ s.name, s.footTag, tip, si, k, heads };
     }
     for (const KavachSignal &k : kSignals)
-        if (!sheetNames.contains(k.name))
-            sigs << Sig{ k.name, k.footTag, tr("Signal %1 (KAVACH data; not in the signals sheet) at foot tag %2").arg(k.name, k.footTag), -1 };
-    auto lampsFor = [](int a) -> QStringList {
-        if (a == 10 || a == 12 || a == 13) return { QStringLiteral("yellow"), QStringLiteral("yellow") };
-        if ((a >= 2 && a <= 8) || a >= 32) return { QStringLiteral("yellow") };
-        if (a == 11 || a == 14) return { QStringLiteral("green") };
-        if (a == 15) return { QStringLiteral("red"), QStringLiteral("white") };
-        return { QStringLiteral("red") };
+        if (!sheetNames.contains(k.name)) {
+            StationLayout::Signal s;
+            s.name = k.name;
+            sigs << Sig{ k.name, k.footTag, tr("Signal %1 (KAVACH data; not in the signals sheet) at foot tag %2").arg(k.name, k.footTag),
+                         -1, StationLayout::lookOf(s), QString() };
+        }
+    // The lamps an aspect lights (TinLayout::Lamp flags).
+    auto lampsFor = [](int a) -> int {
+        if (a == 12 || a == 13) return TinLayout::LampYellow | TinLayout::LampYellow2 | TinLayout::LampIndicator;
+        if (a == 10) return TinLayout::LampYellow | TinLayout::LampYellow2;
+        if (a >= 3 && a <= 8) return TinLayout::LampYellow | TinLayout::LampIndicator;
+        if (a == 2 || a >= 32) return TinLayout::LampYellow;
+        if (a == 11 || a == 14) return TinLayout::LampGreen;
+        if (a == 15) return TinLayout::LampRed | TinLayout::LampCallingOn;
+        return TinLayout::LampRed;
+    };
+    // The way a signal faces: its foot tag's placement (1 nominal, 2 reverse,
+    // 6 both), else the way its tag set's triangle points (H2.15), else nominal.
+    auto facing = [this](const QString &key) {
+        const StationLayout::TagInfo in = m_info.value(key);
+        if (in.ok && in.placement == 2) return -1;
+        if (in.ok && (in.placement == 1 || in.placement == 6)) return 1;
+        const QStringList dups = m_keysOf.value(StationLayout::nameOfKey(key) + QLatin1Char('D'));
+        if (!dups.isEmpty() && m_loc.contains(dups.first()) && m_loc.contains(key) && m_loc.value(dups.first()) != m_loc.value(key))
+            return m_loc.value(dups.first()) > m_loc.value(key) ? 1 : -1;
+        return 1;
     };
     QHash<int, QVector<double>> sigEnds;
     // Session 429: a foot tag the layout lists more than once: the k-th sheet
@@ -996,41 +1134,45 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         const int si = g.index;
         const double x = xOf(m_loc.value(foot));
         const double y = tagPos(foot, x).y();
+        QString tip = g.tip;
+        TinLayout::SignalHead head;
+        head.aspects = g.look.aspects;
+        head.callingOn = g.look.callingOn;
+        head.shunt = g.look.shunt;
+        head.indicator = g.look.indicator;
+        int lit = 0;
+        if (kAspect.contains(g.name)) {
+            const int a = kAspect.value(g.name);
+            lit = lampsFor(a);
+            if (head.aspects > 0 && head.aspects < 4 && (lit & TinLayout::LampYellow2)) head.aspects = 4;   // Double Yellow needs the fourth lamp
+            // Session 435: the aspect names the route indicator's position (sigAspect 3-8: 1-6; 12: 1; 13: 4).
+            if (lit & TinLayout::LampIndicator) head.indicator = a >= 3 && a <= 8 ? a - 2 : a == 12 ? 1 : 4;
+            tip += QLatin1Char('\n') + (m_liveView.signalList.isEmpty() ? tr("KAVACH: %1")
+                                         : m_liveView.whatIf ? tr("KAVACH, what-if: %1") : tr("KAVACH, live: %1"))
+                                            .arg(StationKavach::aspectName(a));
+        }
+        if (!g.heads.isEmpty()) tip += QLatin1Char('\n') + g.heads;
+        const QRectF sym = TinLayout::drawSignal(p, QPointF(x, y + 8), head, facing(foot), lit, text);
         if (si >= 0 && si == m_selSignal) {
             p.setPen(QPen(UiColor::accent(), 2));
             p.setBrush(Qt::NoBrush);
-            p.drawRoundedRect(QRectF(x - 7, y + 6, 14, 20), 3, 3);
-        }
-        QString tip = g.tip;
-        if (kAspect.contains(g.name)) {
-            const int a = kAspect.value(g.name);
-            const QStringList lamps = lampsFor(a);
-            p.setPen(QPen(text, 1.5));
-            p.drawLine(QPointF(x, y + 8), QPointF(x, y + 16));
-            for (int k = 0; k < lamps.size(); ++k) {
-                p.setPen(QPen(text, 1));
-                p.setBrush(UiColor::signalLamp(lamps.at(k)));
-                p.drawEllipse(QPointF(x + 8 * k, y + 20), 3.5, 3.5);
-            }
-            tip += QLatin1Char('\n') + (m_liveView.signalList.isEmpty() ? tr("KAVACH: %1") : tr("KAVACH, live: %1"))
-                                            .arg(StationKavach::aspectName(a));
-        } else {
-            p.setPen(QPen(UiColor::signalLamp(QStringLiteral("red")), 2));
-            p.drawLine(QPointF(x, y + 8), QPointF(x, y + 18));
-            p.setBrush(UiColor::signalLamp(QStringLiteral("red")));
-            p.drawEllipse(QPointF(x, y + 20), 3, 3);
+            p.drawRoundedRect(sym.adjusted(-3, -2, 3, 2), 3, 3);
         }
         p.setBrush(Qt::NoBrush);
         const int w = fm.horizontalAdvance(g.name) + 4;
-        const int row = placeLabel(sigEnds, m_lane.value(foot, 0), x, w, 2);
+        const double lx = sym.center().x();
+        const int row = placeLabel(sigEnds, m_lane.value(foot, 0), lx, w, 2);
         if (row >= 0) {
             QFont f = p.font();
             if (si >= 0 && si == m_selSignal) { f.setBold(true); p.setFont(f); }
             p.setPen(text);
-            p.drawText(QRectF(x - w / 2.0 - 4, y + 24 + row * lh, w + 8, lh), Qt::AlignCenter, g.name);
+            p.drawText(QRectF(lx - w / 2.0 - 4, sym.bottom() + 1 + row * lh, w + 8, lh), Qt::AlignCenter, g.name);
             if (si >= 0 && si == m_selSignal) { f.setBold(false); p.setFont(f); }
         }
-        Hit h{ QRectF(x - 6, y + 8, 12, 16 + lh), QString(), tip };
+        // Centred on the mast (where the foot tag is), wide enough for the heads either side.
+        const double half = qMax(x - sym.left(), sym.right() - x) + 2;
+        Hit h{ QRectF(x - half, sym.top(), 2 * half, sym.height() + lh), QString(), tip };
+        h.symbol = sym;
         h.signal = si;
         m_hits << h;
     }
@@ -1427,6 +1569,48 @@ namespace {
 // in StationLayout::toSheets(): signals, points, lines, station, texts.
 const char *kTabNames[] = { "Tags", "Signals", "Points", "Lines", "Station", "Texts" };
 
+// Session 433: the Signals tab's aspects, calling_on and shunt columns, picked
+// from a list (the value written; "" = not said, the drawing decides).
+class SignalLookDelegate : public QStyledItemDelegate
+{
+public:
+    using QStyledItemDelegate::QStyledItemDelegate;
+    static QVector<QPair<QString, QString>> choices(const QString &column)
+    {
+        if (column == QLatin1String("aspects"))
+            return { { QObject::tr("(from its name)"), QString() }, { QObject::tr("2: Red, Yellow"), QStringLiteral("2") },
+                     { QObject::tr("3: Red, Yellow, Green"), QStringLiteral("3") },
+                     { QObject::tr("4: Red, Yellow, Green, Yellow"), QStringLiteral("4") },
+                     { QObject::tr("0: a shunt signal only"), QStringLiteral("0") } };
+        if (column == QLatin1String("calling_on") || column == QLatin1String("shunt"))
+            return { { QObject::tr("no"), QString() }, { QObject::tr("yes"), QStringLiteral("1") } };
+        return {};
+    }
+    static QString column(const QModelIndex &i) { return i.model()->headerData(i.column(), Qt::Horizontal).toString(); }
+    QWidget *createEditor(QWidget *parent, const QStyleOptionViewItem &o, const QModelIndex &i) const override
+    {
+        const auto c = choices(column(i));
+        if (c.isEmpty()) return QStyledItemDelegate::createEditor(parent, o, i);
+        auto *box = new QComboBox(parent);
+        for (const auto &x : c) box->addItem(x.first, x.second);
+        return box;
+    }
+    void setEditorData(QWidget *w, const QModelIndex &i) const override
+    {
+        if (auto *box = qobject_cast<QComboBox *>(w)) {
+            const int at = box->findData(i.data().toString());
+            box->setCurrentIndex(qMax(0, at));
+            return;
+        }
+        QStyledItemDelegate::setEditorData(w, i);
+    }
+    void setModelData(QWidget *w, QAbstractItemModel *m, const QModelIndex &i) const override
+    {
+        if (auto *box = qobject_cast<QComboBox *>(w)) { m->setData(i, box->currentData().toString()); return; }
+        QStyledItemDelegate::setModelData(w, m, i);
+    }
+};
+
 QTableWidget *makeTable(QWidget *parent)
 {
     auto *t = new QTableWidget(parent);
@@ -1607,7 +1791,77 @@ StationLayoutCanvas::LiveView liveViewOf(const StationLayout::Layout &l, const S
 void StationLayoutWindow::showLiveStation(const StationKavach::Station &s, const StationKavach::State &st,
                                           const QList<StationKavach::Loco> &locos, const QString &from)
 {
-    const StationLayoutCanvas::LiveView v = liveViewOf(m_layout, s, st, locos);
+    // Session 435: kept, so the drawing can edit it and send it back.
+    m_lvStation = s;
+    m_lvState = st;
+    m_lvLocos = locos;
+    m_lvFrom = from;
+    m_lvLive = m_lvActive = true;
+    refreshLive();
+}
+
+void StationLayoutWindow::clearLiveStation()
+{
+    m_lvLive = m_lvActive = false;
+    m_lvRoutes.clear();
+    m_lvLocos.clear();
+    m_canvas->setLiveView(StationLayoutCanvas::LiveView());
+    m_liveState->clear();
+    m_liveState->hide();
+}
+
+// ---- session 435: the station's state edited on the drawing -----------------------------------
+
+bool StationLayoutWindow::ensureLive()
+{
+    if (m_lvActive) return true;
+    // Not live: a what-if from the layout's KAVACH data (or none: its signals by name).
+    StationKavach::Station s;
+    if (!m_layout.kavach.isEmpty()) StationKavach::fromJson(m_layout.kavach, &s);
+    m_lvStation = s;
+    m_lvState = StationKavach::State::initial(s);
+    m_lvLocos.clear();
+    m_lvRoutes.clear();
+    m_lvFrom = tr("this drawing (what-if: not sent to a station)");
+    m_lvActive = true;
+    return true;
+}
+
+QString StationLayoutWindow::kavachPointName(const QString &layoutPoint) const
+{
+    auto bare = [](QString n) {
+        n = n.trimmed();
+        if (n.startsWith(QLatin1Char('P'), Qt::CaseInsensitive)) n.remove(0, 1);
+        return n;
+    };
+    for (const QString &n : m_lvStation.pointNames())
+        if (n == layoutPoint || bare(n) == bare(layoutPoint)) return n;
+    return layoutPoint;
+}
+
+void StationLayoutWindow::refreshLive()
+{
+    if (!m_lvActive) return;
+    StationLayoutCanvas::LiveView v = liveViewOf(m_layout, m_lvStation, m_lvState, m_lvLocos);
+    // A layout signal the KAVACH data lacks, given an aspect here, is drawn with it too.
+    QSet<QString> shown;
+    for (const StationLayoutCanvas::KavachSignal &k : v.signalList) shown.insert(k.name);
+    for (const StationLayout::Signal &sg : m_layout.signalList)
+        if (!shown.contains(sg.name) && m_lvState.aspect.contains(sg.name)) {
+            v.signalList << StationLayoutCanvas::KavachSignal{ sg.name, sg.footTag, m_lvState.aspect.value(sg.name) };
+            shown.insert(sg.name);
+        }
+    v.pointsShown = true;
+    v.whatIf = !m_lvLive;
+    for (const StationLayout::Point &pt : m_layout.points)
+        if (m_lvState.reverse.contains(kavachPointName(pt.name))) v.reversePoints.insert(pt.name);
+    v.occupied = m_lvState.occupied;   // session 436
+    QStringList set;
+    for (auto it = m_lvRoutes.cbegin(); it != m_lvRoutes.cend(); ++it) {
+        const StationLayoutCanvas::KavachView kv = kavachViewOf(m_layout, m_lvStation, it.value());
+        if (!kv.sections.isEmpty()) v.routesSet << kv.sections.first();
+        set << m_lvStation.routes.value(it.value()).name;
+    }
     m_canvas->setLiveView(v);
     QStringList parts;
     for (const StationLayoutCanvas::LiveLoco &k : v.locos) {
@@ -1615,16 +1869,127 @@ void StationLayoutWindow::showLiveStation(const StationKavach::Station &s, const
         if (!k.sos.isEmpty()) t += QStringLiteral(", ") + k.sos;
         parts << t;
     }
-    m_liveState->setText(tr("Live from %1, station %2: %3").arg(from).arg(s.stationId)
-                             .arg(parts.isEmpty() ? tr("no loco heard yet") : parts.join(QStringLiteral("; "))));
+    QString line = m_lvLive ? tr("Live from %1, station %2: %3").arg(m_lvFrom).arg(m_lvStation.stationId)
+                                  .arg(parts.isEmpty() ? tr("no loco heard yet") : parts.join(QStringLiteral("; ")))
+                            : tr("Signals and points from %1").arg(m_lvFrom);
+    if (!set.isEmpty()) { set.sort(); line += tr(" · routes set: %1").arg(set.join(QStringLiteral(", "))); }
+    m_liveState->setText(line);
+    if (m_formKind == 3) showForm(m_formKind, m_formIndex);   // session 437: a point's form says how it lies
+    m_liveState->setToolTip(tr("Right-click a signal for its aspect or a route from it; double-click a point to throw it"));
     m_liveState->show();
 }
 
-void StationLayoutWindow::clearLiveStation()
+void StationLayoutWindow::liveEdited(const QString &what)
 {
-    m_canvas->setLiveView(StationLayoutCanvas::LiveView());
-    m_liveState->clear();
-    m_liveState->hide();
+    if (m_lvLive) emit liveStateEdited(m_lvState);
+    refreshLive();
+    m_status->ok(m_lvLive ? tr("%1: sent to %2").arg(what, m_lvFrom) : tr("%1 (what-if: not sent to a station)").arg(what));
+}
+
+bool StationLayoutWindow::setLiveAspect(const QString &signal, int aspect)
+{
+    if (signal.isEmpty() || aspect < 0 || aspect > 63) return false;
+    ensureLive();
+    m_lvState.aspect.insert(signal, aspect);
+    liveEdited(tr("%1 %2").arg(signal, StationKavach::aspectName(aspect)));
+    return true;
+}
+
+bool StationLayoutWindow::setLivePoint(const QString &point, bool reverse)
+{
+    if (point.isEmpty()) return false;
+    ensureLive();
+    const QString name = kavachPointName(point);
+    if (reverse) m_lvState.reverse.insert(name); else m_lvState.reverse.remove(name);
+    // A route set through it the other way is no longer set.
+    for (auto it = m_lvRoutes.begin(); it != m_lvRoutes.end();) {
+        const StationKavach::Route &r = m_lvStation.routes.at(it.value());
+        if ((reverse ? r.pointsNormal : r.pointsReverse).contains(name)) it = m_lvRoutes.erase(it); else ++it;
+    }
+    liveEdited(tr("point %1 %2").arg(point, reverse ? tr("Reverse") : tr("Normal")));
+    return true;
+}
+
+bool StationLayoutWindow::setLiveRoute(int route)
+{
+    ensureLive();
+    if (route < 0 || route >= m_lvStation.routes.size()) return false;
+    const StationKavach::Route &r = m_lvStation.routes.at(route);
+    for (const QString &p : r.pointsNormal) m_lvState.reverse.remove(p);
+    for (const QString &p : r.pointsReverse) m_lvState.reverse.insert(p);
+    // Another route set from the same signal, or through these points the other way, gives way.
+    for (auto it = m_lvRoutes.begin(); it != m_lvRoutes.end();) {
+        const StationKavach::Route &o = m_lvStation.routes.at(it.value());
+        bool clash = it.key() == r.entry;
+        for (const QString &p : o.pointsNormal) clash = clash || r.pointsReverse.contains(p);
+        for (const QString &p : o.pointsReverse) clash = clash || r.pointsNormal.contains(p);
+        if (clash) it = m_lvRoutes.erase(it); else ++it;
+    }
+    m_lvRoutes.insert(r.entry, route);
+    // The entry signal off: a diverging route with its route indicator, else Yellow (a
+    // proceed aspect it already shows is kept).
+    int indicator = 0;
+    for (const StationLayout::Signal &sg : m_layout.signalList) if (sg.name == r.entry && sg.indicator > 0) indicator = sg.indicator;
+    const int now = m_lvState.aspectOf(m_lvStation, r.entry);
+    int aspect = now <= 1 || now == 15 ? 2 : now;
+    if (!r.pointsReverse.isEmpty() && indicator > 0) aspect = 2 + indicator;
+    m_lvState.aspect.insert(r.entry, aspect);
+    liveEdited(tr("route %1 set, %2 %3").arg(r.name, r.entry, StationKavach::aspectName(aspect)));
+    return true;
+}
+
+bool StationLayoutWindow::setLiveOccupied(const QString &circuit, bool occupied)
+{
+    if (circuit.isEmpty()) return false;
+    ensureLive();
+    if (occupied) m_lvState.occupied.insert(circuit); else m_lvState.occupied.remove(circuit);
+    liveEdited(tr("track circuit %1 %2").arg(circuit, occupied ? tr("occupied") : tr("clear")));
+    return true;
+}
+
+bool StationLayoutWindow::cancelLiveRoute(const QString &entrySignal)
+{
+    if (!m_lvRoutes.contains(entrySignal)) return false;
+    const QString name = m_lvStation.routes.value(m_lvRoutes.value(entrySignal)).name;
+    m_lvRoutes.remove(entrySignal);
+    m_lvState.aspect.insert(entrySignal, 1);
+    liveEdited(tr("route %1 cancelled, %2 Red").arg(name, entrySignal));
+    return true;
+}
+
+bool StationLayoutWindow::setSignalIndicator(int index, int position)
+{
+    if (index < 0 || index >= m_layout.signalList.size() || position < 0 || position > 6) return false;
+    if (m_layout.signalList.at(index).indicator == position) return true;
+    const StationLayout::Layout before = m_layout;
+    m_layout.signalList[index].indicator = position;
+    changed(tr("signal %1's route indicator").arg(m_layout.signalList.at(index).name), before);
+    m_canvas->setSelectedSignal(index);
+    return true;
+}
+
+QMenu *StationLayoutWindow::pointMenuFor(int index)
+{
+    if (index < 0 || index >= m_layout.points.size()) return nullptr;
+    const QString name = m_layout.points.at(index).name;
+    if (m_lvActive == false) ensureLive();
+    const bool reverse = m_lvState.reverse.contains(kavachPointName(name));
+    auto *menu = new QMenu(this);
+    menu->addSection(tr("Point %1").arg(name));
+    QAction *n = menu->addAction(tr("Normal"));
+    QAction *r = menu->addAction(tr("Reverse"));
+    n->setCheckable(true);
+    r->setCheckable(true);
+    n->setChecked(!reverse);
+    r->setChecked(reverse);
+    connect(n, &QAction::triggered, this, [this, name]() { setLivePoint(name, false); });
+    connect(r, &QAction::triggered, this, [this, name]() { setLivePoint(name, true); });
+    menu->addSeparator();
+    menu->addAction(tr("Show its row"), this, [this, index]() {
+        setTablesShown(true);
+        selectSheetRow(2, index);
+    });
+    return menu;
 }
 
 void StationLayoutWindow::updateKavachView()
@@ -1647,7 +2012,7 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     auto *openBtn = new QPushButton(tr("Open"), this);
     auto *openMenu = new QMenu(openBtn);
     QAction *openFileAct = openMenu->addAction(tr("Open file…"));
-    openFileAct->setToolTip(tr("A DLConsole station layout (.json)"));
+    openFileAct->setToolTip(tr("A station XML (station_<id>.xml) or a DLConsole station layout (.json)"));
     QAction *defaultAct = openMenu->addAction(tr("Default layout (station.xlsx)"));
     openMenu->addMenu(stationLibraryMenu(openMenu, [this](const QString &path) {
         if (confirmDiscard()) openFile(path);
@@ -1656,9 +2021,9 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     // Session 226: compare the open layout with another station file.
     openMenu->addSeparator();
     QMenu *cmpMenu = openMenu->addMenu(tr("Compare with"));
-    cmpMenu->addAction(tr("A file (.json or .xlsx)…"), this, [this]() {
+    cmpMenu->addAction(tr("A file (.xml, .json or .xlsx)…"), this, [this]() {
         const QString path = QFileDialog::getOpenFileName(this, tr("Compare with"), QFileInfo(m_path).path(),
-                                                          tr("Station layout (*.json *.xlsx)"));
+                                                          tr("Station layout (*.xml *.json *.xlsx)"));
         if (!path.isEmpty()) compareWith(path);
     });
     cmpMenu->addAction(tr("Default layout (station.xlsx)"), this, [this]() { compareWith(StationLayout::defaultFile()); });
@@ -1753,7 +2118,17 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     m_measureBtn->setCheckable(true);
     m_measureBtn->setToolTip(tr("Click a start and an end on the drawing: the distance between them along the track. "
                                 "A tag, signal or point under the click gives its location. Esc clears"));
-    for (QWidget *w : std::initializer_list<QWidget *>{ m_measureBtn, zoomOut, zoomIn, fit, undoBtn }) bar->addWidget(w);
+    // Sessions 433, 437: what is shown with the drawing, one button (the bar fits wider fonts).
+    auto *viewBtn = new QPushButton(tr("View"), this);
+    viewBtn->setObjectName(QStringLiteral("stationLayoutView"));
+    auto *viewMenu = new QMenu(viewBtn);
+    viewMenu->setToolTipsVisible(true);
+    m_formBtn = viewMenu->addAction(tr("Form beside the drawing"));
+    m_formBtn->setObjectName(QStringLiteral("stationLayoutFormButton"));
+    m_tablesBtn = viewMenu->addAction(tr("Tables under it"));
+    m_tablesBtn->setObjectName(QStringLiteral("stationLayoutTables"));
+    viewBtn->setMenu(viewMenu);
+    for (QWidget *w : std::initializer_list<QWidget *>{ m_measureBtn, zoomOut, zoomIn, fit, viewBtn, undoBtn }) bar->addWidget(w);
 
     m_canvas = new StationLayoutCanvas(this);
     m_scroll = new QScrollArea(this);
@@ -1863,16 +2238,64 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     connect(fixCrcBtn, &QPushButton::clicked, this, [this]() { fixAllCrcs(); });
     rowBar->addStretch(1);
     auto *bottom = new QWidget(this);
+    m_bottom = bottom;
     auto *bl = new QVBoxLayout(bottom);
     bl->setContentsMargins(0, 0, 0, 0);
     bl->addWidget(m_tabs, 1);
     bl->addLayout(rowBar);
+    // Session 433: the drawing alone, the whole window (Ctrl+T, or the button).
+    m_tablesBtn->setCheckable(true);
+    m_tablesBtn->setChecked(true);
+    m_tablesBtn->setToolTip(tr("Show or hide the tables under the drawing (%1): hidden, the drawing has the whole window")
+                                .arg(QKeySequence(Qt::CTRL | Qt::Key_T).toString(QKeySequence::NativeText)));
+    connect(m_tablesBtn, &QAction::toggled, this, [this](bool on) { setTablesShown(on); });
+    m_tablesBtn->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_T));
+    m_tablesBtn->setShortcutContext(Qt::WindowShortcut);
+    addAction(m_tablesBtn);
+    // Session 433: the signals' look picked from a list, not typed.
+    m_tables.at(1)->setItemDelegate(new SignalLookDelegate(m_tables.at(1)));
 
+    // Session 437: the form for what is selected, beside the drawing.
+    m_form = new QWidget(this);
+    m_form->setObjectName(QStringLiteral("stationLayoutForm"));
+    auto *fl = new QVBoxLayout(m_form);
+    fl->setContentsMargins(8, 4, 4, 4);
+    m_formTitle = new QLabel(m_form);
+    QFont tf = m_formTitle->font();
+    tf.setBold(true);
+    m_formTitle->setFont(tf);
+    fl->addWidget(m_formTitle);
+    auto *fields = new QWidget(m_form);
+    m_formLayout = new QFormLayout(fields);
+    m_formLayout->setContentsMargins(0, 0, 0, 0);
+    fl->addWidget(fields);
+    m_formApply = new QPushButton(tr("Apply"), m_form);
+    m_formApply->setObjectName(QStringLiteral("formApply"));
+    m_formApply->setToolTip(tr("Make the change (one Undo step)"));
+    connect(m_formApply, &QPushButton::clicked, this, [this]() { applyForm(); });
+    fl->addWidget(m_formApply);
+    fl->addStretch(1);
+    m_form->setMinimumWidth(240);
+    m_form->setMaximumWidth(380);
+    auto *across = new QSplitter(Qt::Horizontal, this);
+    across->addWidget(m_scroll);
+    across->addWidget(m_form);
+    across->setStretchFactor(0, 1);
+    across->setStretchFactor(1, 0);
+    across->setCollapsible(0, false);
+    m_formBtn->setCheckable(true);
+    m_formBtn->setChecked(false);   // hidden at first: the drawing keeps its width
+    m_form->hide();
+    m_formBtn->setToolTip(tr("Show or hide the form beside the drawing (the selected tag, signal or point)"));
+    connect(m_formBtn, &QAction::toggled, this, [this](bool on) { setFormShown(on); });
     auto *split = new QSplitter(Qt::Vertical, this);
-    split->addWidget(m_scroll);
+    split->addWidget(across);
     split->addWidget(bottom);
     split->setStretchFactor(0, 3);
     split->setStretchFactor(1, 2);
+    // Session 433: the tables' own minimum (the KAVACH tab's) left the drawing a
+    // third of the window; a smaller one lets it have the 430 it is given.
+    bottom->setMinimumHeight(140);
     split->setSizes({ 430, 230 });
     // Session 423: the KAVACH tab has its own Add / Delete buttons, on the table each
     // names; its tables want the height: the drawing gets a third while it is shown,
@@ -1920,7 +2343,7 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     connect(openFileAct, &QAction::triggered, this, [this]() {
         if (!confirmDiscard()) return;
         const QString path = QFileDialog::getOpenFileName(this, tr("Open station layout"), QFileInfo(m_path).path(),
-                                                          tr("Station layout (*.json)"));
+                                                          tr("Station layout (*.xml *.json)"));
         if (!path.isEmpty()) openFile(path);
     });
     connect(importBtn, &QPushButton::clicked, this, [this]() {
@@ -1929,12 +2352,14 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
                                                           tr("Station spreadsheet (*.xlsx)"));
         if (!path.isEmpty()) openFile(path);
     });
+    // Session 431: the station XML first (station_<id>.xml); the JSON as before.
     auto saveAs = [this]() {
+        QString filter;
         QString path = QFileDialog::getSaveFileName(this, tr("Save station layout"),
-                                                    m_path.isEmpty() ? QStringLiteral("station_layout.json") : m_path,
-                                                    tr("Station layout (*.json)"));
+                                                    m_path.isEmpty() ? suggestedXmlName() : m_path,
+                                                    tr("Station XML (*.xml);;DLConsole station layout (*.json)"), &filter);
         if (path.isEmpty()) return;
-        if (QFileInfo(path).suffix().isEmpty()) path += QStringLiteral(".json");
+        if (QFileInfo(path).suffix().isEmpty()) path += filter.contains(QLatin1String("json")) ? QStringLiteral(".json") : QStringLiteral(".xml");
         saveFile(path);
     };
     connect(saveAsBtn, &QPushButton::clicked, this, saveAs);
@@ -1981,7 +2406,14 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
         const QStringList sel = selectedTags();
         m_canvas->setMarkedTags(QSet<QString>(sel.cbegin(), sel.cend()));
         if (r >= 0 && r < m_layout.tags.size() && !m_updating && !m_selecting) emit tagSelected(m_layout.tags.at(r).name);
+        if (!m_updating && r >= 0) showForm(1, r);   // session 437
     });
+    // Session 437: a signal's or a point's row selected (a click on the drawing selects it): its form.
+    for (int sheet : { 1, 2 })
+        connect(m_tables.at(sheet), &QTableWidget::itemSelectionChanged, this, [this, sheet]() {
+            const int r = m_tables.at(sheet)->currentRow();
+            if (!m_updating && r >= 0) showForm(sheet == 1 ? 2 : 3, r);
+        });
     connect(m_canvas, &StationLayoutCanvas::tagsBoxed, this, [this](const QStringList &names) {
         selectTags(names);
         m_status->state(tr("%n tag(s) selected: right-click for Shift, Set a field, Delete", nullptr, names.size()));
@@ -2043,6 +2475,29 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
                 menu->setAttribute(Qt::WA_DeleteOnClose);
                 menu->popup(at);
             });
+    connect(m_canvas, &StationLayoutCanvas::signalContextRequested, this, [this](const QPoint &at, int index) {
+        if (QMenu *menu = signalMenuFor(index)) {
+            menu->setAttribute(Qt::WA_DeleteOnClose);
+            menu->popup(at);
+        }
+    });
+    // Session 435: points thrown on the drawing.
+    connect(m_canvas, &StationLayoutCanvas::pointThrowRequested, this, [this](int i) {
+        if (i < 0 || i >= m_layout.points.size()) return;
+        ensureLive();
+        const QString name = m_layout.points.at(i).name;
+        setLivePoint(name, !m_lvState.reverse.contains(kavachPointName(name)));
+    });
+    connect(m_canvas, &StationLayoutCanvas::circuitToggleRequested, this, [this](const QString &name) {   // session 436
+        ensureLive();
+        setLiveOccupied(name, !m_lvState.occupied.contains(name));
+    });
+    connect(m_canvas, &StationLayoutCanvas::pointContextRequested, this, [this](const QPoint &at, int index) {
+        if (QMenu *menu = pointMenuFor(index)) {
+            menu->setAttribute(Qt::WA_DeleteOnClose);
+            menu->popup(at);
+        }
+    });
     connect(m_canvas, &StationLayoutCanvas::tagDoubleClicked, this, [this](const QString &name) { openInTagBuilder(name); });
     connect(m_canvas, &StationLayoutCanvas::tagDragged, this, [this](const QString &name, qint64 loc) { moveTag(name, loc); });
     connect(m_undo, &UndoLog::undone, this, [this](const QString &label, bool restored) {
@@ -2063,6 +2518,7 @@ void StationLayoutWindow::setModified(bool on)
 
 void StationLayoutWindow::setStation(const StationLayout::Layout &l)
 {
+    if (!m_lvLive && m_lvActive) clearLiveStation();   // session 435: a what-if was the other layout's
     m_layout = l;
     m_undo->clear();
     refreshAll();
@@ -2108,6 +2564,7 @@ void StationLayoutWindow::refreshAll()
                                           "them; relaymap is NMS field-input data):\n") + other.join(QLatin1Char('\n')));
     m_status->state(tr("%1 tags · %2 signals · %3 lines · %4 points").arg(m_layout.tags.size())
                         .arg(m_layout.signalList.size()).arg(m_layout.lines.size()).arg(m_layout.points.size()));
+    showForm(m_formKind, m_formIndex);   // session 437: the form follows edits and Undo
     emit stationChanged();
 }
 
@@ -2373,6 +2830,71 @@ bool StationLayoutWindow::addText(const StationLayout::Text &t)
 }
 
 namespace {
+// Session 437 / 438: a signal's fields in a form (the panel beside the drawing,
+// the new-signal dialog), and the signal they make.
+struct SignalFields {
+    QLineEdit *name = nullptr, *route = nullptr;
+    QComboBox *foot = nullptr, *aspects = nullptr, *indicator = nullptr;
+    QSpinBox *sigId = nullptr, *station = nullptr;
+    QCheckBox *callingOn = nullptr, *shunt = nullptr;
+    StationLayout::Signal read(StationLayout::Signal s) const
+    {
+        s.name = name->text().trimmed();
+        s.footTag = foot->currentText().trimmed();
+        s.sigId = sigId->value();
+        s.stationId = station->value();
+        s.route = route->text().trimmed();
+        s.aspects = aspects->currentData().toInt();
+        s.callingOn = callingOn->isChecked();
+        s.shunt = shunt->isChecked();
+        s.indicator = indicator->currentData().toInt();
+        return s;
+    }
+};
+SignalFields addSignalFields(QFormLayout *f, const StationLayout::Signal &s, const QStringList &tags, QWidget *parent)
+{
+    SignalFields x;
+    auto named = [](QWidget *w, const char *n) { w->setObjectName(QLatin1String(n)); return w; };
+    x.name = new QLineEdit(s.name, parent);
+    x.foot = new QComboBox(parent);
+    x.foot->setEditable(true);
+    x.foot->addItems(tags);
+    x.foot->setCurrentText(s.footTag);
+    x.sigId = new QSpinBox(parent);
+    x.sigId->setRange(0, 999999);
+    x.sigId->setValue(int(s.sigId));
+    x.station = new QSpinBox(parent);
+    x.station->setRange(0, 65535);
+    x.station->setValue(int(s.stationId));
+    x.route = new QLineEdit(s.route, parent);
+    x.route->setPlaceholderText(QObject::tr("the station's (empty) or a route's name"));
+    x.aspects = new QComboBox(parent);
+    for (const auto &c : QVector<QPair<QString, int>>{ { QObject::tr("from its name"), -1 }, { QObject::tr("2: Red, Yellow"), 2 },
+                                                        { QObject::tr("3: Red, Yellow, Green"), 3 },
+                                                        { QObject::tr("4: Red, Yellow, Green, Yellow"), 4 },
+                                                        { QObject::tr("none: a shunt signal"), 0 } })
+        x.aspects->addItem(c.first, c.second);
+    x.aspects->setCurrentIndex(qMax(0, x.aspects->findData(s.aspects)));
+    x.callingOn = new QCheckBox(QObject::tr("calling-on"), parent);
+    x.callingOn->setChecked(s.callingOn);
+    x.shunt = new QCheckBox(QObject::tr("a shunt signal on its mast"), parent);
+    x.shunt->setChecked(s.shunt);
+    x.indicator = new QComboBox(parent);
+    x.indicator->addItem(QObject::tr("none"), 0);
+    for (int p = 1; p <= 6; ++p) x.indicator->addItem(p <= 3 ? QObject::tr("position %1 (left)").arg(p) : QObject::tr("position %1 (right)").arg(p), p);
+    x.indicator->setCurrentIndex(qMax(0, x.indicator->findData(s.indicator)));
+    f->addRow(QObject::tr("Name"), named(x.name, "formSignalName"));
+    f->addRow(QObject::tr("Foot tag"), named(x.foot, "formSignalFoot"));
+    f->addRow(QObject::tr("sig_id"), named(x.sigId, "formSignalId"));
+    f->addRow(QObject::tr("Station"), named(x.station, "formSignalStation"));
+    f->addRow(QObject::tr("Route"), named(x.route, "formSignalRoute"));
+    f->addRow(QObject::tr("Main head"), named(x.aspects, "formSignalAspects"));
+    f->addRow(QString(), named(x.callingOn, "formSignalCallingOn"));
+    f->addRow(QString(), named(x.shunt, "formSignalShunt"));
+    f->addRow(QObject::tr("Route indicator"), named(x.indicator, "formSignalIndicator"));
+    return x;
+}
+
 // A small form: one line edit per field; false when cancelled.
 bool askFields(QWidget *parent, const QString &title, const QStringList &labels, QStringList *values)
 {
@@ -2394,6 +2916,179 @@ bool askFields(QWidget *parent, const QString &title, const QStringList &labels,
     return true;
 }
 }  // namespace
+
+// ---- session 437: the form beside the drawing --------------------------------------------------
+
+void StationLayoutWindow::showForm(int kind, int index)
+{
+    if (!m_formLayout) return;
+    while (m_formLayout->rowCount() > 0) m_formLayout->removeRow(0);
+    m_formApplyFn = nullptr;
+    const bool valid = (kind == 1 && index >= 0 && index < m_layout.tags.size())
+                    || (kind == 2 && index >= 0 && index < m_layout.signalList.size())
+                    || (kind == 3 && index >= 0 && index < m_layout.points.size());
+    m_formKind = valid ? kind : 0;
+    m_formIndex = valid ? index : -1;
+    m_formApply->setEnabled(valid);
+    QStringList tagNames;
+    for (const StationLayout::Tag &t : m_layout.tags) if (!tagNames.contains(t.name)) tagNames << t.name;
+    auto readOnlyRow = [this](const QString &label, const QString &value) {
+        auto *v = new QLabel(value, m_form);
+        v->setTextInteractionFlags(Qt::TextSelectableByMouse);
+        m_formLayout->addRow(label, v);
+    };
+    if (m_formKind == 0) {
+        m_formTitle->setText(tr("Nothing selected"));
+        auto *hint = new QLabel(tr("Click a tag, a signal or a point on the drawing (or a row of its table): its fields here."), m_form);
+        hint->setWordWrap(true);
+        m_formLayout->addRow(hint);
+        return;
+    }
+    if (m_formKind == 1) {
+        const StationLayout::Tag t = m_layout.tags.at(index);
+        const StationLayout::TagInfo in = StationLayout::info(t);
+        const QString key = StationLayout::tagKeys(m_layout).value(index);
+        m_formTitle->setText(tr("Tag %1").arg(t.name));
+        auto *loc = new QLineEdit(in.ok ? QString::number(in.absLoc) : QString(), m_form);
+        loc->setObjectName(QStringLiteral("formTagLocation"));
+        loc->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("\\d{1,8}")), loc));
+        loc->setToolTip(tr("Apply re-encodes the tag at this location (CRC-30 recomputed)"));
+        m_formLayout->addRow(tr("Location (m)"), loc);
+        if (in.ok) {
+            readOnlyRow(tr("Type"), RfidTag::typeName(in.type));
+            readOnlyRow(tr("Kind"), TinLayout::notationName(TinLayout::notation(in.type, in.placement)));
+            readOnlyRow(tr("TIN nom / rev"), tr("%1 / %2").arg(in.tinNom).arg(in.tinRev));
+            readOnlyRow(tr("CRC-30"), in.crcOk ? tr("good") : tr("does not match"));
+        } else {
+            readOnlyRow(tr("Bits"), tr("page_x / page_y do not make a tag"));
+        }
+        readOnlyRow(tr("Line"), StationLayout::lineOfTag(m_layout).value(t.name));
+        auto *builder = new QPushButton(tr("Edit in Tag Builder…"), m_form);
+        connect(builder, &QPushButton::clicked, this, [this, key]() { openInTagBuilder(key); });
+        m_formLayout->addRow(builder);
+        m_formApplyFn = [this, loc, key, was = in.absLoc]() {
+            bool ok = false;
+            const qint64 v = loc->text().toLongLong(&ok);
+            if (!ok) { m_status->fail(tr("\"%1\" is not a location in metres").arg(loc->text())); return false; }
+            return v == was || moveTag(key, v);
+        };
+        return;
+    }
+    if (m_formKind == 2) {
+        const StationLayout::Signal sg = m_layout.signalList.at(index);
+        m_formTitle->setText(tr("Signal %1").arg(sg.name));
+        const SignalFields f = addSignalFields(m_formLayout, sg, tagNames, m_form);
+        m_formApplyFn = [this, f, index]() {
+            if (index >= m_layout.signalList.size()) return false;
+            const StationLayout::Signal next = f.read(m_layout.signalList.at(index));
+            if (next.name.isEmpty()) { m_status->fail(tr("A signal needs a name")); return false; }
+            if (tagIndexOf(next.footTag) < 0) { m_status->fail(tr("Tag %1 is not in the layout").arg(next.footTag)); return false; }
+            const StationLayout::Layout before = m_layout;
+            m_layout.signalList[index] = next;
+            changed(tr("edit signal %1").arg(next.name), before);
+            return true;
+        };
+        return;
+    }
+    const StationLayout::Point pt = m_layout.points.at(index);
+    m_formTitle->setText(tr("Point %1").arg(pt.name));
+    QStringList lines;
+    for (const StationLayout::Line &ln : m_layout.lines) if (!lines.contains(ln.line)) lines << ln.line;
+    auto *name = new QLineEdit(pt.name, m_form);
+    auto lineBox = [this, &lines](const QString &now) {
+        auto *b = new QComboBox(m_form);
+        b->setEditable(true);
+        b->addItems(lines);
+        b->setCurrentText(now);
+        return b;
+    };
+    auto locEdit = [this](qint64 v) {
+        auto *e = new QLineEdit(QString::number(v), m_form);
+        e->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("\\d{1,8}")), e));
+        return e;
+    };
+    QComboBox *l1 = lineBox(pt.line1), *l2 = lineBox(pt.line2);
+    QLineEdit *loc1 = locEdit(pt.loc1), *loc2 = locEdit(pt.loc2);
+    auto *tags = new QLineEdit(pt.tags, m_form);
+    name->setObjectName(QStringLiteral("formPointName"));
+    loc1->setObjectName(QStringLiteral("formPointLoc1"));
+    loc2->setObjectName(QStringLiteral("formPointLoc2"));
+    m_formLayout->addRow(tr("Name"), name);
+    m_formLayout->addRow(tr("From line"), l1);
+    m_formLayout->addRow(tr("at (m)"), loc1);
+    m_formLayout->addRow(tr("To line"), l2);
+    m_formLayout->addRow(tr("at (m)"), loc2);
+    m_formLayout->addRow(tr("Its tags"), tags);
+    if (m_lvActive) {   // session 435: as it lies
+        const bool rev = m_lvState.reverse.contains(kavachPointName(pt.name));
+        auto *thr = new QPushButton(rev ? tr("Reverse: throw to Normal") : tr("Normal: throw to Reverse"), m_form);
+        connect(thr, &QPushButton::clicked, this, [this, n = pt.name, rev]() { setLivePoint(n, !rev); });
+        m_formLayout->addRow(thr);
+    }
+    m_formApplyFn = [this, index, name, l1, l2, loc1, loc2, tags]() {
+        if (index >= m_layout.points.size()) return false;
+        StationLayout::Point p = m_layout.points.at(index);
+        p.name = name->text().trimmed();
+        p.line1 = l1->currentText().trimmed();
+        p.line2 = l2->currentText().trimmed();
+        p.loc1 = loc1->text().toLongLong();
+        p.loc2 = loc2->text().toLongLong();
+        p.tags = tags->text().trimmed();
+        if (p.name.isEmpty()) { m_status->fail(tr("A point needs a name")); return false; }
+        const StationLayout::Layout before = m_layout;
+        m_layout.points[index] = p;
+        changed(tr("edit point %1").arg(p.name), before);
+        return true;
+    };
+}
+
+bool StationLayoutWindow::applyForm()
+{
+    if (!m_formApplyFn) return false;
+    const int kind = m_formKind, index = m_formIndex;
+    const bool ok = m_formApplyFn();
+    if (ok) showForm(kind, index);   // the values as they are now
+    return ok;
+}
+
+void StationLayoutWindow::setFormShown(bool on)
+{
+    if (m_form) m_form->setVisible(on);
+    if (m_formBtn && m_formBtn->isChecked() != on) {
+        const QSignalBlocker block(m_formBtn);
+        m_formBtn->setChecked(on);
+    }
+}
+
+// ---- session 438: a new signal, its heads chosen at once ---------------------------------------
+
+bool StationLayoutWindow::newSignalAt(const QString &tag)
+{
+    StationLayout::Signal sg;
+    sg.footTag = StationLayout::nameOfKey(tag);
+    sg.stationId = m_layout.stations.isEmpty() ? 0 : m_layout.stations.first().id;
+    // The way it faces, said: from the foot tag's placement (1 nominal, 2 reverse).
+    const int ti = tagIndexOf(tag);
+    const StationLayout::TagInfo in = ti >= 0 ? StationLayout::info(m_layout.tags.at(ti)) : StationLayout::TagInfo();
+    QDialog d(this);
+    d.setObjectName(QStringLiteral("newSignalDialog"));
+    d.setWindowTitle(tr("New signal at tag %1").arg(sg.footTag));
+    auto *form = new QFormLayout(&d);
+    if (in.ok)
+        form->addRow(new QLabel(in.placement == 1 ? tr("Its foot tag says Signal foot, nominal: it faces rising km.")
+                              : in.placement == 2 ? tr("Its foot tag says Signal foot, reverse: it faces falling km.")
+                              : tr("Its foot tag is placement %1, not a signal foot tag: Checks will not say so; the tag may need it.").arg(in.placement), &d));
+    QStringList tagNames;
+    for (const StationLayout::Tag &t : m_layout.tags) if (!tagNames.contains(t.name)) tagNames << t.name;
+    const SignalFields f = addSignalFields(form, sg, tagNames, &d);
+    f.name->setFocus();
+    auto *box = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &d);
+    form->addRow(box);
+    connect(box, &QDialogButtonBox::accepted, &d, &QDialog::accept);
+    connect(box, &QDialogButtonBox::rejected, &d, &QDialog::reject);
+    if (d.exec() != QDialog::Accepted) return false;
+    return addSignal(f.read(sg));
+}
 
 QMenu *StationLayoutWindow::contextMenuFor(const QString &tag, const QString &line, qint64 locM, bool aboveLanes)
 {
@@ -2426,11 +3121,7 @@ QMenu *StationLayoutWindow::contextMenuFor(const QString &tag, const QString &li
     }
     if (!tag.isEmpty()) {
         menu->addAction(tr("Edit tag %1 in Tag Builder…").arg(StationLayout::nameOfKey(tag)), this, [this, tag]() { openInTagBuilder(tag); });
-        menu->addAction(tr("New signal at tag %1…").arg(tag), this, [this, tag, station]() {
-            QStringList v{ QString(), QString(), QString::number(station) };
-            if (!askFields(this, tr("New signal at tag %1").arg(tag), { tr("Name:"), tr("sig_id:"), tr("Station id:") }, &v)) return;
-            addSignal({ tag, v.at(0), v.at(1).toLongLong(), v.at(2).toLongLong() });
-        });
+        menu->addAction(tr("New signal at tag %1…").arg(tag), this, [this, tag]() { newSignalAt(tag); });   // session 438: with its heads
         menu->addSeparator();
     }
     if (!line.isEmpty()) {
@@ -3074,10 +3765,10 @@ bool StationLayoutWindow::openFile(const QString &path)
     setStation(l);
     Settings::setStationLayoutLastFile(path);
     const QString what = path == StationLayout::defaultFile()
-        ? tr("The built-in default layout (station.xlsx): save it as a .json to keep your changes")
+        ? tr("The built-in default layout (station.xlsx): Save as… a station XML to keep your changes")
         : path.startsWith(QStringLiteral(":/"))
-        ? tr("Built-in layout %1: save it as a .json to keep your changes").arg(QFileInfo(path).fileName())
-        : imported ? tr("Imported %1: save it as a .json to keep editing it").arg(QFileInfo(path).fileName())
+        ? tr("Built-in layout %1: Save as… a station XML to keep your changes").arg(QFileInfo(path).fileName())
+        : imported ? tr("Imported %1: Save as… a station XML to keep editing it").arg(QFileInfo(path).fileName())
                    : tr("Opened %1").arg(QFileInfo(path).fileName());
     if (notes.isEmpty()) m_status->ok(what);
     else m_status->warn(what + QStringLiteral(" · ") + notes.join(QStringLiteral("; ")));
@@ -3093,6 +3784,129 @@ bool StationLayoutWindow::saveFile(const QString &path)
     Settings::setStationLayoutLastFile(path);
     m_status->ok(tr("Saved %1").arg(path));
     return true;
+}
+
+QMenu *StationLayoutWindow::signalMenuFor(int index)
+{
+    if (index < 0 || index >= m_layout.signalList.size()) return nullptr;
+    const StationLayout::Signal sg = m_layout.signalList.at(index);
+    const StationLayout::SignalLook now = StationLayout::lookOf(sg);
+    auto *menu = new QMenu(this);
+    menu->addSection(tr("Signal %1").arg(sg.name));
+    QMenu *heads = menu->addMenu(tr("Main head"));
+    const QVector<QPair<QString, int>> kinds{ { tr("2 aspects: Red, Yellow"), 2 }, { tr("3 aspects: Red, Yellow, Green"), 3 },
+                                               { tr("4 aspects: Red, Yellow, Green, Yellow"), 4 },
+                                               { tr("None: a shunt signal"), 0 }, { tr("From its name"), -1 } };
+    auto *group = new QActionGroup(heads);
+    for (const auto &k : kinds) {
+        QAction *a = heads->addAction(k.first);
+        a->setCheckable(true);
+        a->setChecked(sg.aspects == k.second);
+        group->addAction(a);
+        const int n = k.second;
+        connect(a, &QAction::triggered, this, [this, index, n]() {
+            const StationLayout::Signal s = m_layout.signalList.value(index);
+            setSignalLook(index, n, s.callingOn, n == 0 ? false : s.shunt);
+        });
+    }
+    QAction *callOn = menu->addAction(tr("Calling-on"));
+    callOn->setCheckable(true);
+    callOn->setChecked(sg.callingOn);
+    connect(callOn, &QAction::toggled, this, [this, index](bool on) {
+        const StationLayout::Signal s = m_layout.signalList.value(index);
+        setSignalLook(index, s.aspects, on, s.shunt);
+    });
+    QAction *shunt = menu->addAction(tr("A shunt signal on its mast"));
+    shunt->setCheckable(true);
+    shunt->setChecked(now.shunt);
+    shunt->setEnabled(now.aspects > 0);
+    connect(shunt, &QAction::toggled, this, [this, index](bool on) {
+        const StationLayout::Signal s = m_layout.signalList.value(index);
+        setSignalLook(index, s.aspects, s.callingOn, on);
+    });
+    // Session 435: its route indicator, and the station's state: aspect, routes from it.
+    QMenu *ind = menu->addMenu(tr("Route indicator"));
+    for (int pos = 0; pos <= 6; ++pos) {
+        QAction *a = ind->addAction(pos == 0 ? tr("None") : pos <= 3 ? tr("Position %1 (left)").arg(pos) : tr("Position %1 (right)").arg(pos));
+        a->setCheckable(true);
+        a->setChecked(sg.indicator == pos);
+        connect(a, &QAction::triggered, this, [this, index, pos]() { setSignalIndicator(index, pos); });
+    }
+    ensureLive();
+    const int shows = m_lvState.aspectOf(m_lvStation, sg.name);
+    menu->addSection(m_lvLive ? tr("Station (live, %1)").arg(m_lvFrom) : tr("Station (what-if)"));
+    QMenu *asp = menu->addMenu(tr("Aspect: %1").arg(StationKavach::aspectName(shows)));
+    auto aspect = [this, asp, shows, name = sg.name](QMenu *in, const QString &label, int a) {
+        QAction *x = in->addAction(label);
+        x->setCheckable(true);
+        x->setChecked(shows == a);
+        connect(x, &QAction::triggered, this, [this, name, a]() { setLiveAspect(name, a); });
+        Q_UNUSED(asp)
+    };
+    aspect(asp, tr("Red"), 1);
+    aspect(asp, tr("Yellow"), 2);
+    aspect(asp, tr("Double Yellow"), 10);
+    aspect(asp, tr("Green"), 11);
+    aspect(asp, tr("Red with calling-on OFF"), 15);
+    QMenu *withInd = asp->addMenu(tr("With route indicator"));
+    for (int pos = 1; pos <= 6; ++pos)
+        aspect(withInd, tr("Yellow + position %1%2").arg(pos).arg(pos == sg.indicator ? tr(" (its indicator)") : QString()), 2 + pos);
+    aspect(withInd, tr("Double Yellow + position 1"), 12);
+    aspect(withInd, tr("Double Yellow + position 4"), 13);
+    QMenu *routes = menu->addMenu(tr("Set route"));
+    for (int i = 0; i < m_lvStation.routes.size(); ++i) {
+        const StationKavach::Route &r = m_lvStation.routes.at(i);
+        if (r.entry != sg.name) continue;
+        QString label = r.name;
+        if (!r.pointsReverse.isEmpty()) label += tr("  (points %1 Reverse)").arg(r.pointsReverse.join(QStringLiteral(", ")));
+        QAction *x = routes->addAction(label);
+        x->setCheckable(true);
+        x->setChecked(m_lvRoutes.value(sg.name, -1) == i);
+        connect(x, &QAction::triggered, this, [this, i]() { setLiveRoute(i); });
+    }
+    if (routes->isEmpty()) routes->addAction(tr("(no route from %1 in the KAVACH data)").arg(sg.name))->setEnabled(false);
+    if (m_lvRoutes.contains(sg.name))
+        menu->addAction(tr("Cancel route (%1 to Red)").arg(sg.name), this, [this, name = sg.name]() { cancelLiveRoute(name); });
+    menu->addSeparator();
+    menu->addAction(tr("Show its row"), this, [this, index]() {
+        setTablesShown(true);
+        selectSheetRow(1, index);
+    });
+    return menu;
+}
+
+bool StationLayoutWindow::setSignalLook(int index, int aspects, bool callingOn, bool shunt)
+{
+    if (index < 0 || index >= m_layout.signalList.size() || !(aspects == -1 || aspects == 0 || (aspects >= 2 && aspects <= 4))) return false;
+    const StationLayout::Signal &was = m_layout.signalList.at(index);
+    if (was.aspects == aspects && was.callingOn == callingOn && was.shunt == shunt) return true;
+    // The copy first: a reference taken before it would write into the copy too (shared data).
+    const StationLayout::Layout before = m_layout;
+    StationLayout::Signal &s = m_layout.signalList[index];
+    s.aspects = aspects;
+    s.callingOn = callingOn;
+    s.shunt = shunt;
+    const QString name = s.name;
+    changed(tr("signal %1's heads").arg(name), before);
+    m_canvas->setSelectedSignal(index);
+    return true;
+}
+
+void StationLayoutWindow::setTablesShown(bool on)
+{
+    if (m_bottom) m_bottom->setVisible(on);
+    if (m_tablesBtn && m_tablesBtn->isChecked() != on) {
+        const QSignalBlocker block(m_tablesBtn);
+        m_tablesBtn->setChecked(on);
+    }
+}
+
+bool StationLayoutWindow::tablesShown() const { return m_bottom && !m_bottom->isHidden(); }
+
+QString StationLayoutWindow::suggestedXmlName() const
+{
+    return m_layout.stations.isEmpty() ? QStringLiteral("station.xml")
+                                       : QStringLiteral("station_%1.xml").arg(m_layout.stations.first().id);
 }
 
 bool StationLayoutWindow::exportXlsx(const QString &path)
@@ -3203,7 +4017,13 @@ bool StationLayoutWindow::exportTagTable(const QString &path)
 
 bool StationLayoutWindow::exportDrawing(const QString &path)
 {
-    // A canvas of its own, wide enough for a sheet, drawn in the current theme.
+    // Session 439: the sheet on paper, black on white as the SIP / tag-TIN
+    // layouts are, whatever the theme (Light for the moment of the export).
+    const int theme = UiColor::activeTheme();
+    const bool switched = theme >= 0 && theme != int(Theme::Light);
+    if (switched) { ThemeUtil::apply(Theme::Light); UiStyle::apply(); }
+    struct Back { bool on; int t; ~Back() { if (on) { ThemeUtil::apply(Theme(t)); UiStyle::apply(); } } } back{ switched, theme };
+    // A canvas of its own, wide enough for a sheet.
     StationLayoutCanvas c;
     c.setFont(m_canvas->font());
     c.setStation(m_layout);
@@ -3226,9 +4046,16 @@ bool StationLayoutWindow::exportDrawing(const QString &path)
         pdf.setPageMargins(QMarginsF(10, 10, 10, 10), QPageLayout::Millimeter);
         QPainter painter;
         if (painter.begin(&pdf)) {
-            const double s = qMin(pdf.width() / double(c.width()), pdf.height() / double(c.height()));
+            // Session 439: a title block under the drawing, as on the SIP sheets.
+            const double mm = pdf.resolution() / 25.4;
+            const QRectF block(pdf.width() - 190 * mm, pdf.height() - 34 * mm, 190 * mm, 34 * mm);
+            const double room = block.top() - 3 * mm;
+            const double s = qMin(pdf.width() / double(c.width()), room / double(c.height()));
+            painter.save();
             painter.scale(s, s);
             c.render(&painter);
+            painter.restore();
+            drawTitleBlock(painter, block, mm);
             ok = painter.end();
         }
         ok = ok && QFileInfo(path).size() > 0;
@@ -3236,6 +4063,43 @@ bool StationLayoutWindow::exportDrawing(const QString &path)
     if (!ok) { m_status->fail(tr("Could not write %1").arg(path)); return false; }
     m_status->ok(tr("Exported the drawing to %1").arg(path));
     return true;
+}
+
+void StationLayoutWindow::drawTitleBlock(QPainter &p, const QRectF &r, double mm) const
+{
+    QStringList ids, kms;
+    for (const StationLayout::Station &s : m_layout.stations) {
+        ids << QString::number(s.id);
+        kms << km(s.location);
+    }
+    const QString file = m_path.isEmpty() ? tr("(not saved)") : QFileInfo(m_path).fileName();
+    p.save();
+    p.setPen(QPen(Qt::black, 0.35 * mm));
+    p.setBrush(Qt::NoBrush);
+    p.drawRect(r);
+    // Rows: the title; station and km; file and date; the signatories' boxes.
+    const double rowH = r.height() / 4.0;
+    for (int i = 1; i < 4; ++i) p.drawLine(QPointF(r.left(), r.top() + i * rowH), QPointF(r.right(), r.top() + i * rowH));
+    const double mid = r.left() + r.width() / 2.0;
+    for (int i = 1; i < 4; ++i) p.drawLine(QPointF(mid, r.top() + i * rowH), QPointF(mid, r.top() + (i + 1) * rowH));
+    QFont f = p.font();
+    f.setPixelSize(int(3.2 * mm));
+    f.setBold(true);
+    p.setFont(f);
+    auto cell = [&](double x, double y, double w, const QString &t) {
+        p.drawText(QRectF(x + 2 * mm, y, w - 4 * mm, rowH), Qt::AlignVCenter | Qt::AlignLeft, t);
+    };
+    cell(r.left(), r.top(), r.width(), tr("KAVACH — RFID TAG / TIN LAYOUT%1").arg(m_layout.stations.size() == 1 ? tr(", STATION %1").arg(ids.first()) : QString()));
+    f.setBold(false);
+    f.setPixelSize(int(2.6 * mm));
+    p.setFont(f);
+    cell(r.left(), r.top() + rowH, r.width() / 2.0, tr("Station ID: %1").arg(ids.isEmpty() ? tr("—") : ids.join(QStringLiteral(", "))));
+    cell(mid, r.top() + rowH, r.width() / 2.0, tr("Centre km: %1").arg(kms.isEmpty() ? tr("—") : kms.join(QStringLiteral(", "))));
+    cell(r.left(), r.top() + 2 * rowH, r.width() / 2.0, tr("File: %1").arg(file));
+    cell(mid, r.top() + 2 * rowH, r.width() / 2.0, tr("Drawn by DLConsole, %1").arg(QDate::currentDate().toString(QStringLiteral("dd.MM.yyyy"))));
+    cell(r.left(), r.top() + 3 * rowH, r.width() / 2.0, tr("Checked:"));
+    cell(mid, r.top() + 3 * rowH, r.width() / 2.0, tr("Approved:"));
+    p.restore();
 }
 
 bool StationLayoutWindow::reopenLast()

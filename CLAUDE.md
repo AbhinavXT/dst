@@ -127,6 +127,16 @@ The three features once queued here are all done:
   every tag of a repeated name drawn where it is (429); a layout checked
   against the station's tag-TIN layout drawing (430, LPI from Annexure-H).
   `docs/STATION_KAVACH.md`. Next steps proposed there under "Not yet".
+- **Station XML** (`station_<id>.xml`, kav_sim's "kavsite-xml 1") opened and
+  saved by Station Layout (431); signals drawn as on the SIP / tag-TIN
+  sheets, 2-4 aspects, calling-on, shunt (432); a signal's heads from the
+  drawing, Tables (Ctrl+T) to give the drawing the window (433).
+  Signals, route indicators, points and track circuits changed on the
+  drawing, sent to Packet Maker's live station or kept as a what-if (435,
+  436); a form beside the drawing (437); a new signal with its heads (438);
+  the drawing exported on paper with a title block (439).
+- **Themes:** 14, six of them dark: Dark, Nord, Mocha, and One Dark,
+  Solarized Dark, Gruvbox Dark (434).
 
 Before proposing a feature, search `CHANGELOG.md` for it. **Queued:** the
 Brake Test Bench follow-ups for the hardware session (real BIU frames,

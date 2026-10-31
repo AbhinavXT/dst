@@ -51,7 +51,12 @@ enum class Theme {
     Ocean        = 7,   // blue-grey, blue accent
     Lavender     = 8,   // violet-grey, violet accent
     Rose         = 9,   // rose-grey, rose accent
-    Amber        = 10   // warm grey, amber accent
+    Amber        = 10,  // warm grey, amber accent
+    // Session 434: three more dark ones, each lifted where the published
+    // scheme falls under 4.5 : 1.
+    OneDark      = 11,  // Atom / VS Code One Dark: blue-grey, soft pastels
+    SolarizedDark = 12, // Solarized Dark: deep teal, warm accents
+    GruvboxDark  = 13   // Gruvbox Dark: warm brown-grey, retro accents
 };
 
 namespace ThemeUtil {
@@ -62,7 +67,7 @@ inline QVector<Theme> all()
 {
     return { Theme::Light, Theme::Sepia, Theme::Sage, Theme::Ocean, Theme::Lavender,
              Theme::Rose, Theme::Amber, Theme::HighContrast,
-             Theme::Dark, Theme::Nord, Theme::Mocha };
+             Theme::Dark, Theme::Nord, Theme::Mocha, Theme::OneDark, Theme::SolarizedDark, Theme::GruvboxDark };
 }
 
 // The key stored in dlconsole.ini.
@@ -80,6 +85,9 @@ inline const char *toString(Theme t)
     case Theme::Lavender:     return "lavender";
     case Theme::Rose:         return "rose";
     case Theme::Amber:        return "amber";
+    case Theme::OneDark:      return "one-dark";
+    case Theme::SolarizedDark: return "solarized-dark";
+    case Theme::GruvboxDark:  return "gruvbox-dark";
     }
     return "light";
 }
@@ -110,6 +118,9 @@ inline QString label(Theme t)
     case Theme::Lavender:     return QStringLiteral("Lavender");
     case Theme::Rose:         return QStringLiteral("Rose");
     case Theme::Amber:        return QStringLiteral("Amber");
+    case Theme::OneDark:      return QStringLiteral("One Dark");
+    case Theme::SolarizedDark: return QStringLiteral("Solarized Dark");
+    case Theme::GruvboxDark:  return QStringLiteral("Gruvbox Dark");
     }
     return QStringLiteral("Light");
 }
@@ -117,7 +128,8 @@ inline QString label(Theme t)
 // Dark background? Decides which variant of a log colour rule is used.
 inline bool isDark(Theme t)
 {
-    return t == Theme::Dark || t == Theme::Nord || t == Theme::Mocha;
+    return t == Theme::Dark || t == Theme::Nord || t == Theme::Mocha
+        || t == Theme::OneDark || t == Theme::SolarizedDark || t == Theme::GruvboxDark;
 }
 
 // The colours the newer themes are defined by. Everything a theme must
@@ -243,6 +255,43 @@ inline ThemeColors colorsFor(Theme t)
               QColor(0x85, 0x89, 0xA2), QColor(0x31, 0x32, 0x44), QColor(0x58, 0x5B, 0x70),
               QColor(0x11, 0x11, 0x1B), QColor(0x0B, 0x0B, 0x12), QColor(0x2A, 0x2B, 0x3C),
               QColor(0xF3, 0x8B, 0xA8) };
+    } else if (t == Theme::OneDark) {
+        // Session 434: One Dark (Atom / VS Code). Its red #E06C75 is 3.9 : 1 on
+        // a button: lifted to #EF8A92; the comment grey lifted for disabled text;
+        // the text #ABB2BF lifted to #B9C0CC so a checked button (tinted
+        // towards the accent) still reads at 4.5 : 1.
+        c = { QColor(0x28, 0x2C, 0x34), QColor(0x21, 0x25, 0x2B), QColor(0x2C, 0x31, 0x3A),
+              QColor(0xB9, 0xC0, 0xCC), QColor(0x32, 0x38, 0x43), QColor(0x3E, 0x4C, 0x66),
+              QColor(0xFF, 0xFF, 0xFF), QColor(0x32, 0x38, 0x43), QColor(0xD7, 0xDA, 0xE0),
+              QColor(0x61, 0xAF, 0xEF), QColor(0xC9, 0x9B, 0xE0), QColor(0x8A, 0x91, 0x9D),
+              QColor(0x7F, 0x86, 0x93), QColor(0x33, 0x38, 0x42), QColor(0x4F, 0x56, 0x66),
+              QColor(0x1B, 0x1E, 0x23), QColor(0x15, 0x17, 0x1B), QColor(0x2C, 0x31, 0x3A),
+              QColor(0xEF, 0x8A, 0x92) };
+    } else if (t == Theme::SolarizedDark) {
+        // Session 434: Solarized Dark. Its body grey base0 #839496 is 4.1 : 1
+        // on base02: text lifted to #B4C2C2 (a checked button still 4.5 : 1);
+        // blue, violet, red lifted likewise.
+        c = { QColor(0x00, 0x2B, 0x36), QColor(0x00, 0x22, 0x2B), QColor(0x07, 0x36, 0x42),
+              QColor(0xB4, 0xC2, 0xC2), QColor(0x0B, 0x3C, 0x48), QColor(0x1D, 0x5A, 0x70),
+              QColor(0xFF, 0xFF, 0xFF), QColor(0x07, 0x36, 0x42), QColor(0xEE, 0xE8, 0xD5),
+              QColor(0x5C, 0xB0, 0xEE), QColor(0xAB, 0xA8, 0xEE), QColor(0x7F, 0x95, 0x99),
+              QColor(0x7A, 0x90, 0x94), QColor(0x0A, 0x3A, 0x46), QColor(0x2E, 0x5A, 0x66),
+              QColor(0x00, 0x1A, 0x21), QColor(0x00, 0x14, 0x1A), QColor(0x07, 0x36, 0x42),
+              QColor(0xF4, 0x85, 0x82) };
+    } else if (t == Theme::GruvboxDark) {
+        // Session 434: Gruvbox Dark (medium). Its blue #83A598 and red #FB4934
+        // fall under 4.5 : 1 on bg1: red lifted to #FC8670; the link and accent
+        // a clear blue #9AB8EA (its aqua sat too near the colour-blind-safe
+        // warning under deuteranopia); the text fg1 #EBDBB2 made less yellow
+        // (#E4DFD3): the colour-blind-safe accent is the text, and the cream sat
+        // 7 apart from that mode's yellow warning.
+        c = { QColor(0x28, 0x28, 0x28), QColor(0x1D, 0x20, 0x21), QColor(0x32, 0x30, 0x2F),
+              QColor(0xE4, 0xDF, 0xD3), QColor(0x3C, 0x38, 0x36), QColor(0x5A, 0x50, 0x48),
+              QColor(0xFF, 0xFF, 0xFF), QColor(0x3C, 0x38, 0x36), QColor(0xEB, 0xDB, 0xB2),
+              QColor(0x9A, 0xB8, 0xEA), QColor(0xE0, 0x9A, 0xAE), QColor(0xA8, 0x99, 0x84),
+              QColor(0x9A, 0x8C, 0x7D), QColor(0x3C, 0x38, 0x36), QColor(0x6A, 0x60, 0x58),
+              QColor(0x14, 0x16, 0x17), QColor(0x0E, 0x0F, 0x10), QColor(0x32, 0x30, 0x2F),
+              QColor(0xFC, 0x86, 0x70) };
     } else {
         // High contrast: black on white, dark frames, a strong selection.
         // For bright cabs and daylight, and anyone who wants it.

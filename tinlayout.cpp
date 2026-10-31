@@ -5,8 +5,11 @@
 #include <QApplication>
 #include <QFontMetricsF>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPalette>
 #include <QPolygonF>
+
+#include <cmath>
 
 namespace TinLayout {
 
@@ -100,5 +103,89 @@ QRectF drawIdBox(QPainter &p, const QPointF &bottom, const QString &text)
 }
 
 QString idText(const QString &tagName) { return QStringLiteral("R-") + tagName; }
+
+QRectF drawSignal(QPainter &p, const QPointF &foot, const SignalHead &head, int dir, int lit, const QColor &ink)
+{
+    const QPalette pal = QApplication::palette();
+    const double r = 4.5, cr = 2.8, sr = 7.5;       // main lamp, calling-on lamp, shunt disc
+    const double d = dir < 0 ? -1 : 1;
+    const double x = foot.x(), cy = foot.y() + 13;  // the heads' centre line
+    QRectF box(QPointF(x - 3, foot.y()), QPointF(x + 3, cy + r));
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, true);
+    const QPen thin(ink, 1.1);
+    p.setPen(thin);
+    p.setBrush(ink);
+    p.drawPolygon(QPolygonF() << QPointF(x, foot.y()) << QPointF(x - 2.5, foot.y() + 4) << QPointF(x + 2.5, foot.y() + 4));   // Qt 5: no {…}
+    p.drawLine(QPointF(x, foot.y() + 4), QPointF(x, cy + r + 1));
+
+    // Outwards: the arm, then each head touching the one before.
+    double at = x + d * 5;
+    p.drawLine(QPointF(x, cy), QPointF(at, cy));
+    if (head.shunt || head.aspects <= 0) {
+        QPainterPath disc;
+        disc.moveTo(at, cy - sr);
+        disc.arcTo(QRectF(at - sr, cy - sr, 2 * sr, 2 * sr), 90, -180 * d);
+        disc.closeSubpath();
+        p.setBrush(pal.color(QPalette::Base));
+        p.drawPath(disc);
+        p.setBrush(ink);
+        for (const QPointF &o : { QPointF(0.3, -0.45), QPointF(0.3, 0.45), QPointF(0.68, 0.0) })
+            p.drawEllipse(QPointF(at + d * sr * o.x(), cy + sr * o.y()), 1.3, 1.3);
+        box |= disc.boundingRect();
+        at += d * sr;
+    }
+    const int lamps = qBound(0, head.aspects, 4);
+    const double firstLamp = at + d * r;   // the Red lamp's centre: a route indicator hangs from it
+    const int flag[] = { LampRed, LampYellow, LampGreen, LampYellow2 };
+    const char *colour[] = { "red", "yellow", "green", "yellow" };
+    for (int i = 0; i < lamps; ++i) {
+        const QPointF c(at + d * r, cy);
+        const bool on = lit & flag[i];
+        p.setPen(thin);
+        p.setBrush(on ? UiColor::signalLamp(QLatin1String(colour[i])) : pal.color(QPalette::Base));
+        p.drawEllipse(c, r, r);
+        p.setPen(QPen(on ? UiColor::withContrast(ink, UiColor::signalLamp(QLatin1String(colour[i])), 3.0) : ink, 0.9));
+        const double k = r * 0.68;
+        if (i == 0) {                                       // Red: three bars
+            for (const double dx : { -r * 0.42, 0.0, r * 0.42 }) {
+                const double h = std::sqrt(r * r - dx * dx) * 0.86;
+                p.drawLine(QPointF(c.x() + dx, c.y() - h), QPointF(c.x() + dx, c.y() + h));
+            }
+        } else if (i == 2) {                                // Green: a bar
+            p.drawLine(QPointF(c.x() - k * 1.2, c.y()), QPointF(c.x() + k * 1.2, c.y()));
+        } else {                                            // Yellow: a slash
+            p.drawLine(QPointF(c.x() - k, c.y() + k), QPointF(c.x() + k, c.y() - k));
+        }
+        box |= QRectF(c.x() - r, c.y() - r, 2 * r, 2 * r);
+        at += d * 2 * r;
+    }
+    if (head.indicator >= 1 && head.indicator <= 6 && lamps > 0) {   // session 435: the route indicator
+        static const double degrees[] = { 30, 50, 70, 70, 50, 30 };
+        const double side = head.indicator <= 3 ? -d : d;
+        const double a = degrees[head.indicator - 1] * 3.14159265358979 / 180.0;
+        const QPointF from(firstLamp, cy + r);
+        const QPointF step(side * std::cos(a) * 3.4, std::sin(a) * 3.4);
+        p.setPen(thin);
+        p.drawLine(from, from + step * 0.6);
+        p.setBrush(lit & LampIndicator ? ink : pal.color(QPalette::Base));   // lit: solid (a white lamp on a white sheet would not show)
+        for (int i = 1; i <= 5; ++i) {
+            const QPointF c = from + step * (i + 0.2);
+            p.drawEllipse(c, 1.5, 1.5);
+            box |= QRectF(c.x() - 1.5, c.y() - 1.5, 3, 3);
+        }
+    }
+    if (head.callingOn || (lit & LampCallingOn)) {          // behind the mast, small
+        const QPointF c(x - d * (4 + cr), cy);
+        p.setPen(thin);
+        p.drawLine(QPointF(x, cy), QPointF(x - d * 4, cy));
+        p.setBrush(lit & LampCallingOn ? ink : pal.color(QPalette::Base));   // lit: solid, as the indicator
+        p.drawEllipse(c, cr, cr);
+        p.drawLine(QPointF(c.x() - cr * 0.7, c.y() + cr * 0.7), QPointF(c.x() + cr * 0.7, c.y() - cr * 0.7));
+        box |= QRectF(c.x() - cr, c.y() - cr, 2 * cr, 2 * cr);
+    }
+    p.restore();
+    return box.adjusted(-1, 0, 1, 1);
+}
 
 }  // namespace TinLayout

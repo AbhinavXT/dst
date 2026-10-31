@@ -2001,6 +2001,12 @@ StationLayoutWindow *PacketMakerDialog::showStationDrawing()
             return nullptr;
         }
         m_stnDrawing = w;
+        // Session 435: signals, points and routes changed on the drawing are the station's.
+        connect(w, &StationLayoutWindow::liveStateEdited, this, [this](const StationKavach::State &st) {
+            m_stnState = st;
+            if (m_stnPanel) m_stnPanel->refresh();
+            showStationLive();
+        });
     }
     showStationLive();
     m_stnDrawing->show();

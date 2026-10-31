@@ -168,7 +168,7 @@ TEST_SUITE(session89)
     // ---- 3. themes --------------------------------------------------------------------------
     {
         const QVector<Theme> all = ThemeUtil::all();
-        CHECK(all.size() == 11, "eleven themes");
+        CHECK(all.size() == 14, "fourteen themes (session 434 added One Dark, Solarized Dark, Gruvbox Dark)");
         for (Theme t : { Theme::Ocean, Theme::Lavender, Theme::Rose, Theme::Amber }) {
             const QString key = QString::fromLatin1(ThemeUtil::toString(t));
             CHECK(all.contains(t) && ThemeUtil::fromString(key) == t && !ThemeUtil::isDark(t),

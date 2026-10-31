@@ -82,7 +82,7 @@ TEST_SUITE(session358)
         }
         UiColor::setColorBlindSafe(false);
         ThemeUtil::apply(Theme(savedTheme));
-        CHECK(themes == 22, "fixture: eleven themes, colour-blind-safe off and on");
+        CHECK(themes == 2 * ThemeUtil::all().size(), "fixture: every theme (14 since session 434), colour-blind-safe off and on");
         CHECK(shortIn.isEmpty(), qPrintable(QStringLiteral("target mark, lit card edge and brake lamp reach 3 : 1 (7 : 1 High "
                                                            "Contrast) on the card; short in: %1").arg(shortIn.join(QStringLiteral(", ")))));
     }

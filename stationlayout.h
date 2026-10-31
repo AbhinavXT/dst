@@ -22,6 +22,10 @@
 //  Python tool reads it, so an exported file keeps it.
 //
 //  OWN FILE: JSON ("format": "dlconsole-station-layout", version 1).
+//  Session 431: or the station XML, station_<id>.xml ("kavsite-xml 1", the
+//  kav_sim Config Maker's file): one nested file with the station, its tags
+//  (decoded fields + hex), lines, points, signals, track circuits, relay
+//  map, labels, routes and a TIN index. Saved and opened like the JSON.
 //  IMPORT / EXPORT: the tool's .xlsx (XlsxBook). The tool reads every column
 //  through pandas astype(str/int), but a whole-number column read as float
 //  (one empty cell is enough) turns 981 into "981.0" — so export writes the
@@ -45,7 +49,15 @@
 namespace StationLayout {
 
 struct Tag      { QString name, pageX, pageY; };
-struct Signal   { QString footTag, name; qint64 sigId = 0, stationId = 0; };
+struct Signal   { QString footTag, name; qint64 sigId = 0, stationId = 0;
+                  QString route;      // session 431: the route a route file's signal belongs to; "" the station's
+                  // Session 432: how it is drawn. aspects: lamps of its main head (2, 3, 4;
+                  // 0 none: a shunt signal); -1 not said (lookOf). Columns aspects,
+                  // calling_on, shunt; the tool's files have none of them.
+                  int aspects = -1; bool callingOn = false, shunt = false;
+                  // Session 435: its junction route indicator's position, 1-6 (1-3
+                  // left, 4-6 right, as sigAspect numbers them); 0 none. Column indicator.
+                  int indicator = 0; };
 struct Point    { QString name; qint64 loc1 = 0; QString line1; qint64 loc2 = 0; QString line2, tags;
                   qint64 stationId = 0; QString connX, connLine, connTin; };
 struct Line     { QString name, line; QStringList tags; };
@@ -90,9 +102,36 @@ QVector<XlsxBook::Sheet> toSheets(const Layout &l);
 // station made here from scratch would not open there.
 QVector<XlsxBook::Sheet> toToolSheets(const Layout &l);
 
-// By extension: .xlsx imports / exports the tool's file, anything else is JSON.
+// Session 431: the station XML (<kavsite format="kavsite-xml 1">). Tags are
+// written as their decoded fields (type, location, tin_nom, tin_rev,
+// placement; location2, dir1, dir2 on an adjustment tag) and the 32 hex
+// digits that hold them (page_y then page_x); read back from the hex, a
+// field that disagrees with it named in *notes. Lines, points and routes
+// carry their tags as <tag id>, a point its connections as <conn x line
+// tin>. The other sheets: adjustment, circuits, relaymap and routes by name,
+// any other as <sheet name>; the KAVACH data as JSON in <kavach>. <tins>
+// (which tags carry each TIN) is derived, and not read back. `name` is the
+// root's name (the file's base name). *notes: what the XML could not hold.
+QByteArray toXml(const Layout &l, const QString &name, QStringList *notes = nullptr);
+bool fromXml(const QByteArray &xml, Layout *out, QString *err = nullptr, QStringList *notes = nullptr);
+
+// By extension: .xlsx imports / exports the tool's file, .xml the station
+// XML, anything else is JSON.
 bool load(const QString &path, Layout *out, QString *err = nullptr, QStringList *notes = nullptr);
 bool save(const QString &path, const Layout &l, QString *err = nullptr);
+
+// Session 432: the heads a signal is drawn with. Not said (aspects -1): a
+// name starting "SH" is a shunt signal (a disc, no main head), any other a
+// 3-aspect main signal (Red, Yellow, Green).
+struct SignalLook { int aspects = 3; bool callingOn = false, shunt = false; int indicator = 0; };
+SignalLook lookOf(const Signal &s);
+
+// Session 436: the track circuits of the "circuits" sheet (the station XML's
+// <circuits>): name, line, from startx to endx (m); without its ends, at
+// its location (from == to). A row without a line or any place is left out
+// (named in *notes).
+struct Circuit { int cid = 0; QString name, line; qint64 from = 0, to = 0; };
+QVector<Circuit> circuits(const Layout &l, QStringList *notes = nullptr);
 
 // --- tags --------------------------------------------------------------------
 // 'page_x="…" page_y="…"' <-> the two halves.

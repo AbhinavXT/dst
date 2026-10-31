@@ -11,10 +11,14 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QMap>
 #include <QRegularExpression>
 #include <QSaveFile>
+#include <QXmlStreamReader>
+#include <QXmlStreamWriter>
 
 #include <algorithm>
+#include <functional>
 
 namespace StationLayout {
 namespace {
@@ -29,7 +33,11 @@ const QVector<SheetSpec> &specs()
 {
     static const QVector<SheetSpec> s{
         { "tags",     { "Tag", "Page X Page Y" }, {} },
-        { "signals",  { "sig_foot_tag", "signal", "sig_id", "StationId" }, { "sig_id", "StationId" } },
+        // Session 431: "route" for a route file's signals (the station XML has them); empty in the tool's own.
+        // Session 432: aspects, calling_on, shunt: how it is drawn (empty: lookOf decides).
+        // Session 435: indicator, its junction route indicator's position (1-6).
+        { "signals",  { "sig_foot_tag", "signal", "sig_id", "StationId", "route", "aspects", "calling_on", "shunt", "indicator" },
+                      { "sig_id", "StationId", "aspects", "calling_on", "shunt", "indicator" } },
         { "points",   { "point", "location1", "line1", "location2", "line2", "tags", "StationId",
                         "conn_x_list", "conn_line_list", "conn_tin_list" }, { "location1", "location2", "StationId" } },
         { "lines",    { "name", "line", "tags" }, {} },
@@ -126,7 +134,72 @@ XlsxBook::Sheet sheetFromJson(const QJsonObject &o)
     return sh;
 }
 
+// Session 432: a signal's look from its cells; a value it cannot use named, not guessed.
+void readLook(Signal *s, const QString &aspects, const QString &callingOn, const QString &shunt,
+              const std::function<void(const QString &)> &note, const QString &indicator = QString())
+{
+    if (!indicator.isEmpty()) {   // session 435
+        bool ok = false;
+        const int n = indicator.toInt(&ok);
+        if (ok && n >= 0 && n <= 6) s->indicator = n;
+        else note(QStringLiteral("signal %1: indicator \"%2\" is not a position 1-6: none drawn").arg(s->name, indicator));
+    }
+    if (!aspects.isEmpty()) {
+        bool ok = false;
+        const int n = aspects.toInt(&ok);
+        if (ok && (n == 0 || (n >= 2 && n <= 4))) s->aspects = n;
+        else note(QStringLiteral("signal %1: aspects \"%2\" is not 0, 2, 3 or 4: drawn as not said").arg(s->name, aspects));
+    }
+    auto yes = [](const QString &v) {
+        return v == QLatin1String("1") || v.compare(QLatin1String("yes"), Qt::CaseInsensitive) == 0
+               || v.compare(QLatin1String("true"), Qt::CaseInsensitive) == 0;
+    };
+    s->callingOn = yes(callingOn);
+    s->shunt = yes(shunt);
+}
+
 }  // namespace
+
+QVector<Circuit> circuits(const Layout &l, QStringList *notes)
+{
+    QVector<Circuit> out;
+    for (const XlsxBook::Sheet &sh : l.otherSheets) {
+        if (sh.name.compare(QLatin1String("circuits"), Qt::CaseInsensitive) != 0) continue;
+        for (const auto &r : records(sh)) {
+            Circuit c;
+            c.name = text(r.value(QStringLiteral("name")));
+            c.line = text(r.value(QStringLiteral("line")));
+            c.cid = int(text(r.value(QStringLiteral("cid"))).toLongLong());
+            bool a = false, b = false;
+            c.from = text(r.value(QStringLiteral("startx"))).toLongLong(&a);
+            c.to = text(r.value(QStringLiteral("endx"))).toLongLong(&b);
+            if (!a || !b) {   // station_527.xml's L_DM, 50AT, L_UM: a location only
+                bool ok = false;
+                c.from = c.to = text(r.value(QStringLiteral("location"))).toLongLong(&ok);
+                a = b = ok;
+            }
+            if (c.name.isEmpty() || c.line.isEmpty() || !a || !b) {
+                if (notes) *notes << QStringLiteral("circuit %1: no line, or no startx / endx or location: not drawn").arg(c.name.isEmpty() ? QString::number(c.cid) : c.name);
+                continue;
+            }
+            if (c.from > c.to) std::swap(c.from, c.to);
+            out << c;
+        }
+    }
+    return out;
+}
+
+SignalLook lookOf(const Signal &s)
+{
+    SignalLook k;
+    k.callingOn = s.callingOn;
+    k.shunt = s.shunt;
+    k.indicator = s.indicator;
+    if (s.aspects >= 0) k.aspects = s.aspects;
+    else if (s.name.startsWith(QLatin1String("SH"), Qt::CaseInsensitive)) k.aspects = 0;
+    if (k.aspects == 0) k.shunt = true;   // nothing but the disc
+    return k;
+}
 
 // ---- tags -------------------------------------------------------------------------
 
@@ -320,6 +393,9 @@ bool fromSheets(const QVector<XlsxBook::Sheet> &sheets, Layout *out, QString *er
             s.name = text(r.value(QStringLiteral("signal")));
             s.sigId = num(r, "sig_id", QStringLiteral("signal %1").arg(s.name));
             s.stationId = num(r, "StationId", QStringLiteral("signal %1").arg(s.name));
+            s.route = text(r.value(QStringLiteral("route")));
+            readLook(&s, text(r.value(QStringLiteral("aspects"))), text(r.value(QStringLiteral("calling_on"))),
+                     text(r.value(QStringLiteral("shunt"))), note, text(r.value(QStringLiteral("indicator"))));
             l.signalList << s;
         }
     }
@@ -407,7 +483,10 @@ QVector<XlsxBook::Sheet> toSheets(const Layout &l)
     sheet(sp.at(0), rows);
     rows.clear();
     for (const Signal &s : l.signalList)
-        rows << QStringList{ s.footTag, s.name, QString::number(s.sigId), QString::number(s.stationId) };
+        rows << QStringList{ s.footTag, s.name, QString::number(s.sigId), QString::number(s.stationId), s.route,
+                             s.aspects >= 0 ? QString::number(s.aspects) : QString(),
+                             s.callingOn ? QStringLiteral("1") : QString(), s.shunt ? QStringLiteral("1") : QString(),
+                             s.indicator > 0 ? QString::number(s.indicator) : QString() };
     sheet(sp.at(1), rows);
     rows.clear();
     for (const Point &p : l.points)
@@ -447,9 +526,16 @@ QByteArray toJson(const Layout &l)
         a.append(QJsonObject{ { "name", t.name }, { "page_x", t.pageX }, { "page_y", t.pageY } });
     root.insert(QStringLiteral("tags"), a);
     a = QJsonArray();
-    for (const Signal &s : l.signalList)
-        a.append(QJsonObject{ { "foot_tag", s.footTag }, { "signal", s.name },
-                              { "sig_id", double(s.sigId) }, { "station_id", double(s.stationId) } });
+    for (const Signal &s : l.signalList) {
+        QJsonObject o{ { "foot_tag", s.footTag }, { "signal", s.name },
+                       { "sig_id", double(s.sigId) }, { "station_id", double(s.stationId) } };
+        if (!s.route.isEmpty()) o.insert(QStringLiteral("route"), s.route);   // session 431
+        if (s.aspects >= 0) o.insert(QStringLiteral("aspects"), s.aspects);    // session 432
+        if (s.callingOn) o.insert(QStringLiteral("calling_on"), true);
+        if (s.shunt) o.insert(QStringLiteral("shunt"), true);
+        if (s.indicator > 0) o.insert(QStringLiteral("indicator"), s.indicator);   // session 435
+        a.append(o);
+    }
     root.insert(QStringLiteral("signals"), a);
     a = QJsonArray();
     for (const Point &p : l.points)
@@ -503,7 +589,12 @@ bool fromJson(const QByteArray &json, Layout *out, QString *err, QStringList *no
     }
     for (const QJsonValue &v : arr("signals")) {
         const QJsonObject o = v.toObject();
-        l.signalList << Signal{ s(o, "foot_tag"), s(o, "signal"), n(o, "sig_id"), n(o, "station_id") };
+        Signal sg{ s(o, "foot_tag"), s(o, "signal"), n(o, "sig_id"), n(o, "station_id"), s(o, "route") };
+        sg.aspects = o.contains(QStringLiteral("aspects")) ? o.value(QStringLiteral("aspects")).toInt() : -1;
+        sg.callingOn = o.value(QStringLiteral("calling_on")).toBool();
+        sg.shunt = o.value(QStringLiteral("shunt")).toBool();
+        sg.indicator = qBound(0, o.value(QStringLiteral("indicator")).toInt(), 6);
+        l.signalList << sg;
     }
     for (const QJsonValue &v : arr("points")) {
         const QJsonObject o = v.toObject();
@@ -552,6 +643,493 @@ QString libraryGroup(const QString &path)
     return rel.contains(QLatin1Char('/')) ? rel.section(QLatin1Char('/'), 0, 0) : QString();
 }
 
+// ---- session 431: the station XML ------------------------------------------------------
+
+namespace {
+
+const char *kXmlFormat = "kavsite-xml 1";
+
+// The other sheets the XML names: sheet -> <group><row>, columns in the order
+// written (a column the sheet adds goes after them), the ones read back as
+// numbers, and the list columns written as child elements.
+struct XmlSheet { const char *sheet, *group, *row; QStringList columns, numbers; };
+const QVector<XmlSheet> &xmlSheets()
+{
+    static const QVector<XmlSheet> s{
+        { "adjustment", "adjustments", "adjustment", { "line", "adjustment_tag", "adjusted_tags" }, { "adjustment_tag" } },
+        { "circuits", "circuits", "circuit", { "cid", "name", "line", "location", "startx", "endx", "station" },
+          { "cid", "location", "startx", "endx", "station" } },
+        { "relaymap", "relays", "relay", { "EqipType", "EqipName", "EqipId", "EqipAttr", "BitPos", "StationId" },
+          { "EqipType", "EqipId", "EqipAttr", "BitPos", "StationId" } },
+        { "routes", "routes", "route", { "route", "direction", "tags" }, {} },
+    };
+    return s;
+}
+// A comma list column -> its child element (<tag id="…"/>).
+QString listChild(const QString &column)
+{
+    if (column == QLatin1String("tags")) return QStringLiteral("tag");
+    if (column == QLatin1String("adjusted_tags")) return QStringLiteral("adjusted");
+    return QString();
+}
+const QStringList &connColumns()
+{
+    static const QStringList c{ QStringLiteral("conn_x_list"), QStringLiteral("conn_line_list"), QStringLiteral("conn_tin_list") };
+    return c;
+}
+const QStringList &connAttrs()
+{
+    static const QStringList c{ QStringLiteral("x"), QStringLiteral("line"), QStringLiteral("tin") };
+    return c;
+}
+QStringList commaList(const QString &s)
+{
+    QStringList out;
+    for (const QString &x : s.split(QLatin1Char(','), Qt::SkipEmptyParts))
+        if (!x.trimmed().isEmpty()) out << x.trimmed();
+    return out;
+}
+bool xmlName(const QString &n)
+{
+    static const QRegularExpression re(QStringLiteral("^[A-Za-z_][A-Za-z0-9_.-]*$"));
+    return re.match(n).hasMatch();
+}
+// The tag type as the Config Maker names it (9..12), else its number.
+QString typeWord(int type)
+{
+    static const char *names[] = { "normal", "lc", "adjacent", "adjustment" };
+    return type >= 9 && type <= 12 ? QLatin1String(names[type - 9]) : QString::number(type);
+}
+
+// The attributes a tag is written with, in order: the fields its bits hold.
+QVector<QPair<QString, QString>> tagAttributes(const Tag &t)
+{
+    QVector<QPair<QString, QString>> a{ { QStringLiteral("tag"), t.name } };
+    const QHash<QString, qint64> v = RfidTag::values(RfidTag::fromPages(t.pageX, t.pageY));
+    if (!v.isEmpty()) {
+        const int type = int(v.value(QStringLiteral("type")));
+        auto put = [&a, &v](const char *attr, const char *field) {
+            if (v.contains(QLatin1String(field))) a.append({ QLatin1String(attr), QString::number(v.value(QLatin1String(field))) });
+        };
+        a.append({ QStringLiteral("type"), typeWord(type) });
+        put("location", type == 12 ? "abs_loc_1" : "abs_loc");
+        put("tin_nom", "tin_nom");
+        put("tin_rev", "tin_rev");
+        put("placement", "placement");
+        put("location2", "abs_loc_2");
+        put("dir1", "dir_corr_1");
+        put("dir2", "dir_corr_2");
+    }
+    // 32 hex digits when both halves are 16; else the halves as they are (a
+    // malformed tag, which Checks names), so the file does not shift its bits.
+    if (t.pageX.size() == 16 && t.pageY.size() == 16) a.append({ QStringLiteral("hex"), t.pageY + t.pageX });
+    else a << QPair<QString, QString>{ QStringLiteral("page_x"), t.pageX } << QPair<QString, QString>{ QStringLiteral("page_y"), t.pageY };
+    return a;
+}
+
+}  // namespace
+
+QByteArray toXml(const Layout &l, const QString &name, QStringList *notes)
+{
+    QByteArray out;
+    QXmlStreamWriter w(&out);
+    w.setAutoFormatting(true);
+    w.setAutoFormattingIndent(2);
+    w.writeStartDocument();
+    w.writeStartElement(QStringLiteral("kavsite"));
+    w.writeAttribute(QStringLiteral("format"), QLatin1String(kXmlFormat));
+    w.writeAttribute(QStringLiteral("name"), name);
+    if (l.stations.size() == 1) w.writeAttribute(QStringLiteral("station"), QString::number(l.stations.first().id));
+    auto ids = [&w](const QString &child, const QStringList &list) {
+        for (const QString &id : list) {
+            w.writeEmptyElement(child);
+            w.writeAttribute(QStringLiteral("id"), id);
+        }
+    };
+
+    if (!l.stations.isEmpty()) {
+        w.writeStartElement(QStringLiteral("stations"));
+        for (const Station &s : l.stations) {
+            w.writeEmptyElement(QStringLiteral("station"));
+            w.writeAttribute(QStringLiteral("stationid"), QString::number(s.id));
+            w.writeAttribute(QStringLiteral("location"), QString::number(s.location));
+        }
+        w.writeEndElement();
+    }
+    if (!l.tags.isEmpty()) {
+        w.writeStartElement(QStringLiteral("tags"));
+        for (const Tag &t : l.tags) {
+            w.writeEmptyElement(QStringLiteral("tag"));
+            for (const auto &a : tagAttributes(t)) w.writeAttribute(a.first, a.second);
+        }
+        w.writeEndElement();
+    }
+    if (!l.lines.isEmpty()) {
+        w.writeStartElement(QStringLiteral("lines"));
+        for (const Line &ln : l.lines) {
+            w.writeStartElement(QStringLiteral("line"));
+            if (!ln.name.isEmpty()) w.writeAttribute(QStringLiteral("name"), ln.name);
+            if (!ln.line.isEmpty()) w.writeAttribute(QStringLiteral("line"), ln.line);
+            ids(QStringLiteral("tag"), ln.tags);
+            w.writeEndElement();
+        }
+        w.writeEndElement();
+    }
+    if (!l.points.isEmpty()) {
+        w.writeStartElement(QStringLiteral("points"));
+        for (const Point &p : l.points) {
+            w.writeStartElement(QStringLiteral("point"));
+            w.writeAttribute(QStringLiteral("point"), p.name);
+            w.writeAttribute(QStringLiteral("location1"), QString::number(p.loc1));
+            if (!p.line1.isEmpty()) w.writeAttribute(QStringLiteral("line1"), p.line1);
+            w.writeAttribute(QStringLiteral("location2"), QString::number(p.loc2));
+            if (!p.line2.isEmpty()) w.writeAttribute(QStringLiteral("line2"), p.line2);
+            if (p.stationId) w.writeAttribute(QStringLiteral("StationId"), QString::number(p.stationId));
+            ids(QStringLiteral("tag"), commaList(p.tags));
+            // One <conn> per connection; a list shorter than the others leaves its attribute empty.
+            const QStringList xs = commaList(p.connX), ls = commaList(p.connLine), ts = commaList(p.connTin);
+            const int n = int(qMax(xs.size(), qMax(ls.size(), ts.size())));
+            if (n && (xs.size() != n || ls.size() != n || ts.size() != n) && notes)
+                *notes << QStringLiteral("point %1: conn_x_list, conn_line_list and conn_tin_list differ in length").arg(p.name);
+            for (int i = 0; i < n; ++i) {
+                w.writeEmptyElement(QStringLiteral("conn"));
+                w.writeAttribute(QStringLiteral("x"), xs.value(i));
+                w.writeAttribute(QStringLiteral("line"), ls.value(i));
+                w.writeAttribute(QStringLiteral("tin"), ts.value(i));
+            }
+            w.writeEndElement();
+        }
+        w.writeEndElement();
+    }
+    if (!l.signalList.isEmpty()) {
+        w.writeStartElement(QStringLiteral("signals"));
+        for (const Signal &s : l.signalList) {
+            w.writeEmptyElement(QStringLiteral("signal"));
+            if (!s.route.isEmpty()) w.writeAttribute(QStringLiteral("route"), s.route);
+            w.writeAttribute(QStringLiteral("sig_foot_tag"), s.footTag);
+            w.writeAttribute(QStringLiteral("signal"), s.name);
+            w.writeAttribute(QStringLiteral("sig_id"), QString::number(s.sigId));
+            if (s.stationId) w.writeAttribute(QStringLiteral("StationId"), QString::number(s.stationId));
+            if (s.aspects >= 0) w.writeAttribute(QStringLiteral("aspects"), QString::number(s.aspects));   // session 432
+            if (s.callingOn) w.writeAttribute(QStringLiteral("calling_on"), QStringLiteral("1"));
+            if (s.shunt) w.writeAttribute(QStringLiteral("shunt"), QStringLiteral("1"));
+            if (s.indicator > 0) w.writeAttribute(QStringLiteral("indicator"), QString::number(s.indicator));   // session 435
+        }
+        w.writeEndElement();
+    }
+
+    // The other sheets: the named ones in the Config Maker's order (texts between relays and routes).
+    auto otherSheet = [&l](const QString &name) -> const XlsxBook::Sheet * {
+        for (const XlsxBook::Sheet &sh : l.otherSheets)
+            if (sh.name.compare(name, Qt::CaseInsensitive) == 0) return &sh;
+        return nullptr;
+    };
+    auto writeSheet = [&](const XmlSheet &x) {
+        const XlsxBook::Sheet *sh = otherSheet(QLatin1String(x.sheet));
+        if (!sh || sh->rows.size() < 2) return;
+        QStringList header;
+        for (const QVariant &h : sh->rows.first()) header << text(h);
+        w.writeStartElement(QLatin1String(x.group));
+        for (int r = 1; r < sh->rows.size(); ++r) {
+            const XlsxBook::Row &row = sh->rows.at(r);
+            w.writeStartElement(QLatin1String(x.row));
+            // A cell under no header (the tool's files have notes there: relaymap's "Red", "NORMAL")
+            // is written by its place, c7 for the seventh column.
+            for (int c = 0; c < row.size(); ++c) {
+                const QVariant &cell = row.at(c);   // text as it is (the tool's files have "S50     ")
+                const QString v = cell.userType() == QMetaType::QString ? cell.toString() : text(cell);
+                const QString h = header.value(c);
+                if (v.isEmpty() || !listChild(h).isEmpty()) continue;
+                if (h.isEmpty()) w.writeAttribute(QStringLiteral("c%1").arg(c + 1), v);
+                else if (xmlName(h)) w.writeAttribute(h, v);
+                else if (notes) *notes << QStringLiteral("%1: column \"%2\" is not an XML name, not written").arg(sh->name, h);
+            }
+            for (int c = 0; c < header.size(); ++c)
+                if (!listChild(header.at(c)).isEmpty()) ids(listChild(header.at(c)), commaList(text(row.value(c))));
+            w.writeEndElement();
+        }
+        w.writeEndElement();
+    };
+    const QVector<XmlSheet> &xs = xmlSheets();
+    writeSheet(xs.at(0));   // adjustments
+    writeSheet(xs.at(1));   // circuits
+    writeSheet(xs.at(2));   // relays
+    if (!l.texts.isEmpty()) {
+        w.writeStartElement(QStringLiteral("texts"));
+        for (const Text &t : l.texts) {
+            w.writeEmptyElement(QStringLiteral("text"));
+            w.writeAttribute(QStringLiteral("text"), t.text);
+            w.writeAttribute(QStringLiteral("location"), QString::number(t.location));
+            w.writeAttribute(QStringLiteral("posy"), QString::number(t.posY));
+        }
+        w.writeEndElement();
+    }
+    writeSheet(xs.at(3));   // routes
+    // Any other sheet, cell by cell under its header.
+    for (const XlsxBook::Sheet &sh : l.otherSheets) {
+        bool named = false;
+        for (const XmlSheet &x : xs) named = named || sh.name.compare(QLatin1String(x.sheet), Qt::CaseInsensitive) == 0;
+        if (named) continue;
+        w.writeStartElement(QStringLiteral("sheet"));
+        w.writeAttribute(QStringLiteral("name"), sh.name);
+        for (const XlsxBook::Row &row : sh.rows) {
+            w.writeStartElement(QStringLiteral("row"));
+            for (const QVariant &v : row) {
+                w.writeStartElement(QStringLiteral("cell"));
+                if (v.isValid() && v.userType() != QMetaType::QString) w.writeAttribute(QStringLiteral("number"), QStringLiteral("1"));
+                w.writeCharacters(v.isValid() ? (v.userType() == QMetaType::QString ? v.toString() : text(v)) : QString());
+                w.writeEndElement();
+            }
+            w.writeEndElement();
+        }
+        w.writeEndElement();
+    }
+    if (!l.kavach.isEmpty()) {
+        w.writeStartElement(QStringLiteral("kavach"));
+        w.writeAttribute(QStringLiteral("format"), QStringLiteral("json"));
+        w.writeCharacters(QString::fromUtf8(QJsonDocument(l.kavach).toJson(QJsonDocument::Compact)));
+        w.writeEndElement();
+    }
+
+    // Which tags carry each TIN, in each direction: for people and tools reading the file.
+    QMap<int, QVector<QPair<QString, QString>>> tins;
+    for (const Tag &t : l.tags) {
+        const TagInfo i = info(t);
+        if (!i.ok) continue;
+        if (i.tinNom) tins[i.tinNom].append({ t.name, QStringLiteral("N") });
+        if (i.tinRev) tins[i.tinRev].append({ t.name, QStringLiteral("R") });
+    }
+    if (!tins.isEmpty()) {
+        w.writeStartElement(QStringLiteral("tins"));
+        for (auto it = tins.cbegin(); it != tins.cend(); ++it) {
+            w.writeStartElement(QStringLiteral("tin"));
+            w.writeAttribute(QStringLiteral("id"), QString::number(it.key()));
+            for (const auto &tag : it.value()) {
+                w.writeEmptyElement(QStringLiteral("tag"));
+                w.writeAttribute(QStringLiteral("id"), tag.first);
+                w.writeAttribute(QStringLiteral("direction"), tag.second);
+            }
+            w.writeEndElement();
+        }
+        w.writeEndElement();
+    }
+    w.writeEndElement();
+    w.writeEndDocument();
+    return out;
+}
+
+bool fromXml(const QByteArray &xml, Layout *out, QString *err, QStringList *notes)
+{
+    auto note = [notes](const QString &n) { if (notes) *notes << n; };
+    QXmlStreamReader r(xml);
+    if (!r.readNextStartElement() || r.name() != QLatin1String("kavsite")) {
+        if (err) *err = r.hasError() ? QStringLiteral("not XML: %1").arg(r.errorString())
+                                     : QStringLiteral("not a station XML file (no <kavsite> root)");
+        return false;
+    }
+    const QString format = r.attributes().value(QStringLiteral("format")).toString();
+    if (!format.isEmpty() && format != QLatin1String(kXmlFormat))
+        note(QStringLiteral("format \"%1\", read as \"%2\"").arg(format, QLatin1String(kXmlFormat)));
+    Layout l;
+    auto attr = [&r](const char *name) { return r.attributes().value(QLatin1String(name)).toString().trimmed(); };
+    auto number = [&](const char *name, const QString &where) -> qint64 {
+        const QString v = attr(name);
+        if (v.isEmpty()) return 0;
+        bool ok = false;
+        const qint64 n = v.toLongLong(&ok);
+        if (!ok) note(QStringLiteral("%1: %2 \"%3\" is not a number, read as 0").arg(where, QLatin1String(name), v));
+        return ok ? n : 0;
+    };
+    // The child elements of the current row: <tag id>, <adjusted id>, <conn x line tin>.
+    auto children = [&r](QHash<QString, QStringList> *lists, QVector<QStringList> *conns) {
+        while (r.readNextStartElement()) {
+            const QString child = r.name().toString();
+            if (child == QLatin1String("conn")) {
+                QStringList c;
+                for (const QString &a : connAttrs()) c << r.attributes().value(a).toString().trimmed();
+                if (conns) *conns << c;
+            } else if (lists) {
+                (*lists)[child] << r.attributes().value(QStringLiteral("id")).toString().trimmed();
+            }
+            r.skipCurrentElement();
+        }
+    };
+
+    while (r.readNextStartElement()) {
+        const QString group = r.name().toString();
+        const XmlSheet *named = nullptr;
+        for (const XmlSheet &x : xmlSheets()) if (group == QLatin1String(x.group)) named = &x;
+        if (group == QLatin1String("stations")) {
+            while (r.readNextStartElement()) {
+                Station s;
+                s.id = number("stationid", QStringLiteral("station"));
+                s.location = number("location", QStringLiteral("station %1").arg(s.id));
+                l.stations << s;
+                r.skipCurrentElement();
+            }
+        } else if (group == QLatin1String("tags")) {
+            while (r.readNextStartElement()) {
+                Tag t;
+                t.name = attr("tag");
+                const QString hex = attr("hex").toLower();
+                if (!hex.isEmpty()) {
+                    t.pageY = hex.left(16);
+                    t.pageX = hex.mid(16);
+                } else {   // a Config Maker file of page_x / page_y
+                    t.pageX = attr("page_x").toLower();
+                    t.pageY = attr("page_y").toLower();
+                }
+                if (t.pageX.isEmpty() && t.pageY.isEmpty()) {
+                    note(QStringLiteral("tag %1: no hex (or page_x / page_y), skipped: the tag is its bits").arg(t.name));
+                    r.skipCurrentElement();
+                    continue;
+                }
+                // The fields are what the bits say; one written otherwise is named, the bits kept.
+                QHash<QString, QString> given;
+                for (const QXmlStreamAttribute &a : r.attributes()) given.insert(a.name().toString(), a.value().toString().trimmed());
+                for (const auto &a : tagAttributes(t))
+                    if (a.first != QLatin1String("tag") && a.first != QLatin1String("hex") && !a.first.startsWith(QLatin1String("page_"))
+                        && given.contains(a.first)
+                        && given.value(a.first) != a.second)
+                        note(QStringLiteral("tag %1: %2 says %3, its bits %4 (the bits are kept)").arg(t.name, a.first, given.value(a.first), a.second));
+                l.tags << t;
+                r.skipCurrentElement();
+            }
+        } else if (group == QLatin1String("lines")) {
+            while (r.readNextStartElement()) {
+                Line ln;
+                ln.name = attr("name");
+                ln.line = attr("line");
+                QHash<QString, QStringList> lists;
+                children(&lists, nullptr);
+                ln.tags = lists.value(QStringLiteral("tag"));
+                l.lines << ln;
+            }
+        } else if (group == QLatin1String("points")) {
+            while (r.readNextStartElement()) {
+                Point p;
+                p.name = attr("point");
+                const QString where = QStringLiteral("point %1").arg(p.name);
+                p.loc1 = number("location1", where);
+                p.line1 = attr("line1");
+                p.loc2 = number("location2", where);
+                p.line2 = attr("line2");
+                p.stationId = number("StationId", where);
+                QHash<QString, QStringList> lists;
+                QVector<QStringList> conns;
+                children(&lists, &conns);
+                p.tags = lists.value(QStringLiteral("tag")).join(QLatin1Char(','));
+                QStringList cx, cl, ct;
+                for (const QStringList &c : conns) { cx << c.at(0); cl << c.at(1); ct << c.at(2); }
+                p.connX = cx.join(QLatin1Char(','));
+                p.connLine = cl.join(QLatin1Char(','));
+                p.connTin = ct.join(QLatin1Char(','));
+                l.points << p;
+            }
+        } else if (group == QLatin1String("signals")) {
+            while (r.readNextStartElement()) {
+                Signal s;
+                s.footTag = attr("sig_foot_tag");
+                s.name = attr("signal");
+                s.sigId = number("sig_id", QStringLiteral("signal %1").arg(s.name));
+                s.stationId = number("StationId", QStringLiteral("signal %1").arg(s.name));
+                s.route = attr("route");
+                readLook(&s, attr("aspects"), attr("calling_on"), attr("shunt"), note, attr("indicator"));
+                l.signalList << s;
+                r.skipCurrentElement();
+            }
+        } else if (group == QLatin1String("texts")) {
+            while (r.readNextStartElement()) {
+                Text t;
+                t.text = attr("text");
+                t.location = number("location", QStringLiteral("text \"%1\"").arg(t.text));
+                t.posY = number("posy", QStringLiteral("text \"%1\"").arg(t.text));
+                l.texts << t;
+                r.skipCurrentElement();
+            }
+        } else if (named) {
+            // Back into the sheet the Python tool has: its columns the file uses, in its order,
+            // then any the file adds; a cell under no header (c7="…") at its place.
+            static const QRegularExpression placed(QStringLiteral("^c([1-9][0-9]*)$"));
+            XlsxBook::Sheet sh;
+            sh.name = QLatin1String(named->sheet);
+            QStringList extra;
+            QSet<QString> used;
+            QVector<QHash<QString, QString>> rows;
+            QVector<QHash<int, QString>> atPlace;
+            while (r.readNextStartElement()) {
+                QHash<QString, QString> row;
+                QHash<int, QString> byPlace;
+                for (const QXmlStreamAttribute &a : r.attributes()) {
+                    const QString c = a.name().toString();
+                    const QRegularExpressionMatch m = placed.match(c);
+                    if (m.hasMatch() && !named->columns.contains(c)) { byPlace.insert(m.captured(1).toInt() - 1, a.value().toString()); continue; }
+                    if (!named->columns.contains(c) && !extra.contains(c)) extra << c;
+                    used.insert(c);
+                    row.insert(c, a.value().toString());
+                }
+                QHash<QString, QStringList> lists;
+                children(&lists, nullptr);
+                for (const QString &c : named->columns)
+                    if (!listChild(c).isEmpty() && lists.contains(listChild(c))) {
+                        row.insert(c, lists.value(listChild(c)).join(QLatin1Char(',')));
+                        used.insert(c);
+                    }
+                rows << row;
+                atPlace << byPlace;
+            }
+            QStringList header;
+            for (const QString &c : named->columns) if (used.contains(c)) header << c;
+            header << extra;
+            XlsxBook::Row head;
+            for (const QString &c : header) head << c;
+            sh.rows << head;
+            for (int i = 0; i < rows.size(); ++i) {
+                XlsxBook::Row cells;
+                for (const QString &c : header) cells << cellFor(rows.at(i).value(c), named->numbers.contains(c));
+                for (auto it = atPlace.at(i).cbegin(); it != atPlace.at(i).cend(); ++it) {
+                    while (cells.size() <= it.key()) cells << QVariant();
+                    cells[it.key()] = cellFor(it.value(), true);
+                }
+                while (!cells.isEmpty() && !cells.last().isValid()) cells.removeLast();
+                sh.rows << cells;
+            }
+            l.otherSheets << sh;
+        } else if (group == QLatin1String("sheet")) {
+            XlsxBook::Sheet sh;
+            sh.name = attr("name");
+            while (r.readNextStartElement()) {   // <row>
+                XlsxBook::Row row;
+                while (r.readNextStartElement()) {   // <cell>
+                    const bool isNumber = r.attributes().value(QStringLiteral("number")) == QLatin1String("1");
+                    const QString v = r.readElementText();
+                    if (v.isEmpty()) row << QVariant();
+                    else if (isNumber) {
+                        bool ok = false;
+                        const qlonglong n = v.toLongLong(&ok);
+                        row << (ok ? QVariant(n) : QVariant(v.toDouble()));
+                    } else row << v;
+                }
+                sh.rows << row;
+            }
+            l.otherSheets << sh;
+        } else if (group == QLatin1String("kavach")) {
+            const QJsonDocument doc = QJsonDocument::fromJson(r.readElementText().toUtf8());
+            if (doc.isObject()) l.kavach = doc.object();
+            else note(QStringLiteral("<kavach> is not JSON: not read"));
+        } else {
+            if (group != QLatin1String("tins")) note(QStringLiteral("<%1> is not read").arg(group));   // <tins> is derived
+            r.skipCurrentElement();
+        }
+    }
+    if (r.hasError()) {
+        if (err) *err = QStringLiteral("XML error at line %1: %2").arg(r.lineNumber()).arg(r.errorString());
+        return false;
+    }
+    *out = l;
+    return true;
+}
+
 // ---- by extension ------------------------------------------------------------------
 
 bool load(const QString &path, Layout *out, QString *err, QStringList *notes)
@@ -565,6 +1143,8 @@ bool load(const QString &path, Layout *out, QString *err, QStringList *notes)
         if (err) *err = QStringLiteral("cannot open %1: %2").arg(path, f.errorString());
         return false;
     }
+    if (QFileInfo(path).suffix().compare(QLatin1String("xml"), Qt::CaseInsensitive) == 0)   // session 431
+        return fromXml(f.readAll(), out, err, notes);
     return fromJson(f.readAll(), out, err, notes);
 }
 
@@ -592,7 +1172,8 @@ bool save(const QString &path, const Layout &l, QString *err)
         if (err) *err = QStringLiteral("cannot write %1: %2").arg(path, f.errorString());
         return false;
     }
-    f.write(toJson(l));
+    const bool xml = QFileInfo(path).suffix().compare(QLatin1String("xml"), Qt::CaseInsensitive) == 0;
+    f.write(xml ? toXml(l, QFileInfo(path).completeBaseName()) : toJson(l));   // session 431
     if (!f.commit()) {
         if (err) *err = QStringLiteral("cannot write %1: %2").arg(path, f.errorString());
         return false;

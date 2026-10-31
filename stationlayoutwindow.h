@@ -43,7 +43,7 @@ class QTableWidget;
 class StationKavachEditor;
 class StatusLine;
 class UndoLog;
-namespace StationKavach { struct Station; struct State; struct Loco; }
+#include "stationkavach.h"   // session 435: the live state is kept here
 
 #include <functional>
 
@@ -122,7 +122,14 @@ public:
     struct LiveView {
         QVector<KavachSignal> signalList;
         QVector<LiveLoco> locos;
-        bool isEmpty() const { return signalList.isEmpty() && locos.isEmpty(); }
+        // Session 435: the points as they lie (layout names of those Reverse;
+        // the rest Normal), and the routes set, drawn along their tags.
+        bool pointsShown = false;
+        QSet<QString> reversePoints;
+        QVector<KavachSection> routesSet;
+        bool whatIf = false;           // kept on the drawing, not a station's
+        QSet<QString> occupied;        // session 436: track circuits occupied
+        bool isEmpty() const { return signalList.isEmpty() && locos.isEmpty() && !pointsShown && routesSet.isEmpty(); }
     };
     void setLiveView(const LiveView &v);
     const LiveView &liveView() const { return m_liveView; }
@@ -150,7 +157,9 @@ public:
     // Session 222: the line whose lane is at canvas y (within half a lane), or "".
     QString lineAt(double y) const;
 
-    struct Hit { QRectF rect; QString tag; QString text; int signal = -1; int point = -1; };
+    struct Hit { QRectF rect; QString tag; QString text; int signal = -1; int point = -1;
+                 QRectF symbol;      // session 432: a signal's drawn symbol (rect: centred on its mast)
+                 QString circuit; }; // session 436: a track circuit's name
 
     // Session 233: selecting a signal or a point (an index into the layout's
     // lists; -1 for none), as a tag is selected.
@@ -189,7 +198,12 @@ signals:
     void contextRequested(const QPoint &globalPos, const QString &tag, const QString &line, qint64 locM, bool aboveLanes);
     void tagDragged(const QString &name, qint64 newLocM);
     void signalClicked(int index);            // session 233
+    void signalContextRequested(const QPoint &globalPos, int index);   // session 433: right-click on a signal
     void pointClicked(int index);
+    // Session 435: double-click a point (throw it), right-click it (its menu).
+    void pointThrowRequested(int index);
+    void pointContextRequested(const QPoint &globalPos, int index);
+    void circuitToggleRequested(const QString &name);   // session 436: double-click a track circuit
     void measured(const QString &text);       // the measurement, in words
     void measureCancelled();                  // Esc while measuring
     void tagPicked(const QString &name);      // session 425
@@ -240,6 +254,7 @@ private:
     // knots: the yard between the points is drawn wider than the block sections.
     QVector<QPair<qint64, double>> m_knots;
     QHash<QString, int> m_pointOfTag;  // tag -> index into m_l.points (a turnout tag)
+    QVector<StationLayout::Circuit> m_circuits;   // session 436
     double m_zoom = 1.0;
     QString m_selected;
     QSet<QString> m_marked;            // session 223
@@ -292,9 +307,44 @@ public:
 
     explicit StationLayoutWindow(QWidget *parent = nullptr);
 
-    bool openFile(const QString &path);       // .json, or an .xlsx (imported)
-    bool saveFile(const QString &path);       // .json
+    bool openFile(const QString &path);       // .xml / .json, or an .xlsx (imported)
+    bool saveFile(const QString &path);       // .xml (session 431) or .json
     bool exportXlsx(const QString &path);
+    // Session 431: Save as…'s name for a new file: station_<id>.xml.
+    QString suggestedXmlName() const;
+    // Session 433: signal `index`'s heads (aspects -1: from its name); one Undo step.
+    bool setSignalLook(int index, int aspects, bool callingOn, bool shunt);
+    // Session 435: the station's state edited on the drawing. Live (Packet
+    // Maker answering as the station, showLiveStation) each edit is sent back
+    // (liveStateEdited); otherwise kept here, a what-if from the layout's
+    // KAVACH data. Points by the layout's name ("P30"; the KAVACH data's
+    // "30" or "P30" is the one changed).
+    bool setLiveAspect(const QString &signal, int aspect);
+    bool setLivePoint(const QString &point, bool reverse);
+    bool setLiveRoute(int route);          // its points thrown, its entry signal cleared
+    bool setLiveOccupied(const QString &circuit, bool occupied);   // session 436
+    bool cancelLiveRoute(const QString &entrySignal);
+    bool liveEditing() const { return m_lvActive; }
+    bool liveIsLive() const { return m_lvLive; }
+    const StationKavach::State &liveStationState() const { return m_lvState; }
+    const StationKavach::Station &liveStation() const { return m_lvStation; }
+    QString kavachPointName(const QString &layoutPoint) const;
+    bool setSignalIndicator(int index, int position);   // 0 none, 1-6; one Undo step
+    // Session 435: right-click on point `index` (of the points sheet).
+    QMenu *pointMenuFor(int index);
+    // Session 437: the form beside the drawing, for what is selected (1 a
+    // tag, 2 a signal, 3 a point; 0 nothing). Apply makes the change, one Undo step.
+    void showForm(int kind, int index);
+    int formKind() const { return m_formKind; }
+    int formIndex() const { return m_formIndex; }
+    QWidget *formPanel() const { return m_form; }
+    bool applyForm();
+    void setFormShown(bool on);
+    // Session 438: a new signal at foot tag `tag`, its heads chosen in the dialog; false when cancelled or refused.
+    bool newSignalAt(const QString &tag);
+    // Session 433: the tables under the drawing shown or hidden (the drawing takes the window).
+    void setTablesShown(bool on);
+    bool tablesShown() const;
     // Session 212: the drawing as a printable sheet, .pdf (A3 landscape) or
     // .png, by extension.
     bool exportDrawing(const QString &path);
@@ -415,9 +465,12 @@ public:
     QLabel *liveState() const { return m_liveState; }
     // The menu a right-click on the drawing opens (built, not shown: tests).
     QMenu *contextMenuFor(const QString &tag, const QString &line, qint64 locM, bool aboveLanes);
+    // Session 433: right-click on signal `index` (of the signals sheet): how it is drawn.
+    QMenu *signalMenuFor(int index);
 
 signals:
     void jumpRequested(const QString &tabKey, qint64 ms);   // session 227: a read, in its log
+    void liveStateEdited(const StationKavach::State &st);   // session 435: an edit on the drawing, while live
     void stationChanged();             // session 411: the layout as it is now (an edit, Undo, a file)
     void tagSelected(const QString &name);   // session 417: the Tags table's current tag (drawing or table)
 
@@ -450,6 +503,26 @@ private:
     StationLayoutCanvas *m_canvas = nullptr;
     QScrollArea *m_scroll = nullptr;
     QTabWidget *m_tabs = nullptr;
+    QWidget *m_bottom = nullptr;                   // session 433: the tables and their buttons
+    QWidget *m_form = nullptr;                     // session 437: the form beside the drawing
+    class QFormLayout *m_formLayout = nullptr;
+    QLabel *m_formTitle = nullptr;
+    QPushButton *m_formApply = nullptr;
+    QAction *m_formBtn = nullptr;                  // View ▸ Form beside the drawing
+    int m_formKind = 0, m_formIndex = -1;
+    std::function<bool()> m_formApplyFn;
+    // Session 435: the station's state on the drawing.
+    StationKavach::Station m_lvStation;
+    StationKavach::State   m_lvState;
+    QList<StationKavach::Loco> m_lvLocos;
+    QString m_lvFrom;
+    bool m_lvLive = false, m_lvActive = false;
+    QHash<QString, int> m_lvRoutes;                // entry signal -> the route set from it
+    bool ensureLive();
+    void drawTitleBlock(QPainter &p, const QRectF &r, double mm) const;   // session 439
+    void liveEdited(const QString &what);
+    void refreshLive();
+    QAction *m_tablesBtn = nullptr;                // View ▸ Tables under it (session 433)
     QVector<QTableWidget *> m_tables;
     QListWidget *m_checks = nullptr;
     QListWidget *m_compare = nullptr;              // session 226

@@ -10,6 +10,409 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-439"></a>
+## Session 439 — the drawing exported as a sheet like the SIP: on paper, with a title block
+
+Abhinav's pick *"Export layout PDF like SIP"*.
+
+**What the operator sees.** Station Layout ▸ Export ▸ Drawing as PDF or
+PNG writes the sheet black on white whatever the theme (it was drawn in
+the theme: a dark sheet from a dark theme). The signals are the real
+signals of 432, with their route indicators (435). Under the drawing on
+the A3 PDF, a title block: *KAVACH — RFID TAG / TIN LAYOUT, STATION 527*;
+station ID and centre km; the file and the date drawn; **Checked:** and
+**Approved:** left blank for the signatories.
+
+**How.** The export applies the Light theme for its moment and the theme
+it found after (also when it fails). The drawing is scaled to the room
+above the block.
+
+**Files.** `stationlayoutwindow.{h,cpp}` (`exportDrawing`,
+`drawTitleBlock`), `tests/test_session439.cpp` (new), `tests/tests.pro`.
+
+**Tests.** `session439` (6 checks): from Gruvbox Dark, the PNG on white,
+the theme back; the PDF written, the theme back. Looked at: the PDF from
+Gruvbox Dark rendered (pdftoppm), drawing and title block on white.
+- **Not tested:** the title block's text in the PDF (the PDF's text is not
+  read back); printing on a printer.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 452 suites / 11,554 checks, menu audit, smoke.
+
+---
+
+<a id="session-438"></a>
+## Session 438 — a new signal on the drawing, its heads chosen at once
+
+Abhinav's pick *"Add a signal on the drawing"*.
+
+**What the operator sees.** Right-click a tag ▸ **New signal at tag …**
+opens one form: name, foot tag, sig_id, station (the layout's), route,
+main head (from its name / 2 / 3 / 4 aspects / none: a shunt signal),
+calling-on, a shunt signal on its mast, route indicator (none, positions
+1-6), and a line saying what the foot tag says about the way it will face
+(*Signal foot, nominal: it faces rising km*; or that it is not a signal
+foot tag). It was three bare fields (name, sig_id, station). One Undo
+step; no name or a foot tag not in the layout: refused, as before.
+
+**Files.** `stationlayoutwindow.{h,cpp}` (`newSignalAt`, the shared
+`SignalFields`), `tests/test_session438.cpp` (new), `tests/tests.pro`.
+
+**Tests.** `session438` (8 checks): the dialog filled as an operator
+would (S50X at tag 2: 4 aspects, calling-on, indicator 1, station 527),
+what it says about tag 2, Cancel, no name refused, Undo, the menu entry.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 452 suites / 11,554 checks, menu audit, smoke.
+
+---
+
+<a id="session-437"></a>
+## Session 437 — a form beside the drawing for the selected tag, signal or point
+
+Abhinav's pick *"Form panel beside drawing"*.
+
+**What the operator sees.** **View ▸ Form beside the drawing** opens a panel to the right
+of the drawing for what is selected, by a click on the drawing or a row of
+its table:
+- a **tag**: its location (Apply re-encodes it there, CRC-30 recomputed),
+  its type, kind (N S T X …), TIN nominal / reverse, CRC-30, line; *Edit in
+  Tag Builder…*;
+- a **signal**: name, foot tag, sig_id, station, route, main head,
+  calling-on, shunt, route indicator;
+- a **point**: name, from line / at, to line / at, its tags; with the
+  station's state on the drawing (435), *Normal: throw to Reverse*.
+
+**Apply** makes the change, one Undo step; Undo shows in the form. A
+foot tag not in the layout, no name: refused. The form starts hidden, so
+the drawing keeps its width (a narrower drawing overlapped tags in
+session233's clicks, and would for an operator).
+
+**Files.** `stationlayoutwindow.{h,cpp}` (`showForm`, `applyForm`,
+`setFormShown`, the View menu: Form, Tables), `tests/test_session437.cpp`
+(new), `tests/test_session433.cpp` (the View menu), `tests/tests.pro`.
+
+**Tests.** `session437` (17 checks): hidden at first; a signal clicked,
+its fields, Apply (3 aspects, indicator 2, calling-on), Undo shown in the
+form, a foot tag not in the layout refused; tag 981: location and CRC,
+Apply at 163970 m (re-encoded, CRC good); point P19: its form, Apply;
+thrown from the form; Form off gives the drawing its width back.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 452 suites / 11,554 checks, menu audit, smoke.
+
+---
+
+<a id="session-436"></a>
+## Session 436 — the track circuits on the drawing, occupied from there
+
+Abhinav's pick *"Track circuits drawn"*.
+
+**What the operator sees.** Every track circuit of the circuits sheet
+(the station XML's `<circuits>`; 31 in station_527.xml) drawn on its line:
+an insulated joint across the line at startx and at endx; the section red
+over the line when occupied. Hovering: *Track circuit UST (cid 1) on DL3:
+160.535 to 161.217 km*, Clear or Occupied. Double-click a circuit to
+occupy or clear it in the station's state: live, sent to Packet Maker's
+station (it answers with it); otherwise a what-if (435).
+
+**Found in the real file.** Three of station_527.xml's circuits (L_DM,
+50AT, L_UM) have a location and no startx / endx: drawn as a short mark at
+their location, said so in the tooltip.
+
+**Files.** `stationlayout.{h,cpp}` (`Circuit`, `circuits`),
+`stationlayoutwindow.{h,cpp}` (the circuits drawn, `setLiveOccupied`,
+`circuitToggleRequested`), `tests/test_session436.cpp` (new),
+`tests/tests.pro`.
+
+**Tests.** `session436` (11 checks): the 31 circuits (UST's line and ends,
+L_DM at its location); all 31 drawn, UST from 160.535 to 161.217 km;
+double-click: occupied and said, again: clear; live: DMT occupied, sent.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 452 suites / 11,554 checks, menu audit, smoke.
+
+---
+
+<a id="session-435"></a>
+## Session 435 — signals, route indicators and points changed on the drawing
+
+Abhinav: *"make the layout editable, the user can be able to change
+signal, route indicator, and points from normal to reverse on the layout
+ui"*; asked, *the live station* (what Packet Maker answers locos with) and
+for route indicators *both* (drawn, and a route set lights the right one).
+
+**What the operator sees.**
+- **Right-click a signal:** *Aspect* ▸ Red, Yellow, Double Yellow, Green,
+  Red with calling-on OFF, *With route indicator* ▸ Yellow + position 1-6,
+  Double Yellow + position 1 / 4; *Set route* ▸ each route of the KAVACH
+  data from that signal (saying which points it reverses); *Cancel route*;
+  *Route indicator* ▸ none, positions 1-6 (how the signal is drawn).
+- **Set route:** its points thrown (Normal / Reverse as the route says), a
+  route set from the same signal or through those points the other way
+  given way, the route drawn along its tags, and its entry signal off:
+  Yellow + its indicator's position on a diverging route (sigAspect 3-8),
+  else Yellow (a proceed aspect it already shows kept). Cancel: Red.
+- **Points:** with the state on the drawing, a Normal point's turnout drawn
+  faint and dashed, a Reverse one bold, *P19 N* / *P19 R*. Double-click a
+  point to throw it; right-click: Normal / Reverse.
+- **Route indicator** (a junction type): five small lamps on an arm under
+  the main head, positions 1-3 one side, 4-6 the other, steeper towards 3
+  and 4. Lit from the aspect itself (sigAspect 3-8: positions 1-6; 12:
+  DY + 1; 13: DY + 4), as the station sends it. Lit small lamps (and a lit
+  calling-on) are drawn solid: a white lamp would not show on a white sheet.
+- **Live** (Packet Maker answering as the station, its drawing open):
+  every change is sent back; Packet Maker's state is it, the Station panel
+  shows it, the next LSRP is answered with it. **Not live:** the same
+  edits are a what-if kept on the drawing from the layout's KAVACH data,
+  said so (*Signals and points from this drawing (what-if: not sent to a
+  station)*; tooltips say *KAVACH, what-if:*).
+
+**How.** Station Layout keeps the station, the state and the locos it is
+shown (`showLiveStation`) and edits that state; `liveStateEdited` carries
+it to Packet Maker, which takes it and refreshes the Station panel (its
+answers kept: new `StationKavachPanel::refresh`). Points are matched by
+name, the KAVACH data's "19" or "P19" for the layout's P19. The signal's
+`indicator` (0-6) is a new optional column / XML attribute / JSON key.
+
+**Files.** `stationlayout.{h,cpp}` (`Signal::indicator`),
+`tinlayout.{h,cpp}` (the indicator, `LampIndicator`),
+`stationlayoutwindow.{h,cpp}` (the state, `setLiveAspect`,
+`setLivePoint`, `setLiveRoute`, `cancelLiveRoute`, `setSignalIndicator`,
+`pointMenuFor`, the menus, points and routes drawn),
+`stationkavachpanel.h` (`refresh`), `packetmakerdialog.cpp`,
+`tests/test_session435.cpp` (new), `tests/tests.pro`.
+
+**Tests.** `session435` (28 checks) on station_527.xml with a KAVACH block
+of two routes from S48 (straight: 19 Normal; loop: 19 and P18 Reverse):
+the menu's routes; the loop set as a what-if (points by the data's names,
+drawn Reverse by the layout's, the route along its tags, S48 Yellow, the
+line saying so); S48's indicator at 4, the loop again: Yellow + position 4,
+drawn lit and said; the indicator in the XML; P19 thrown by double-click
+(the loop no longer set), P18 Normal by its menu; the main route; Cancel;
+Aspect ▸ Green; live: the state sent on a route set (points, S48 aspect 6)
+and on a point thrown; no longer live.
+- **Not tested:** Packet Maker taking a state the drawing sends (the
+  connection is two lines; its own answer is session 422's); a real
+  right-click and double-click (the tests emit the canvas's signals).
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 452 suites / 11,554 checks, menu audit, smoke.
+
+---
+
+<a id="session-434"></a>
+## Session 434 — three more dark themes: One Dark, Solarized Dark, Gruvbox Dark
+
+Abhinav: *"Add some good dark themes"*; asked, *One Dark / Solarized
+Dark* and *Gruvbox Dark*.
+
+**What the operator sees.** View ▸ Theme and Settings list **One Dark**,
+**Solarized Dark** and **Gruvbox Dark** after Mocha (14 themes, six of them dark).
+Each is its published scheme, lifted where it falls under 4.5 : 1 (One
+Dark's red, Solarized's body grey, blue, violet, red; Gruvbox's red),
+with its own ok / warning / error / muted / accent and banner colours.
+The gate moved three further: One Dark's and Solarized's text lifted
+(#B9C0CC, #B4C2C2) so a checked button, tinted towards the accent, still
+reads at 4.5 : 1 (session150); Gruvbox's accent a clear blue (#9AB8EA)
+and its text a less yellow warm white (#E4DFD3), as the colour-blind-safe
+mode's accent is the text and the cream was 7 apart from its yellow
+warning (colorblind, 12 required).
+
+**Files.** `theme.h` (the enum, list, keys, labels, `isDark`, palettes),
+`uicolors.cpp` (three sets), `tests/test_session434.cpp` (new),
+`tests/test_session89.cpp` (fourteen themes), `tests/test_session328.cpp`,
+`tests/test_session358.cpp`, `tests/test_session359.cpp`,
+`tests/test_session360.cpp` (their fixture counts follow the list),
+`tests/tests.pro`.
+
+**Tests.** `session434` (14 checks): each listed, dark, saved and read
+back, applied (its window colour), text and error on a button ≥ 4.5 : 1,
+each its own error colour. `contrastaudit` holds all three on every
+surface (515 checks), `session328` / `session358` in every theme, `session150`
+(a checked button), `colorblind` (the colour-blind-safe mode).
+Looked at: Station Layout in Gruvbox Dark and Solarized Dark.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 452 suites / 11,554 checks, menu audit, smoke.
+
+---
+
+<a id="session-433"></a>
+## Session 433 — Station Layout: a signal's heads from the drawing, the drawing given the room
+
+The third part of Abhinav's request to *"make the layout builder GUI more
+better and have much more better ux"* (431, 432 the first two). The
+smallest set that fixes what the shots showed; more is proposed below.
+
+**What the operator sees.**
+- **Right-click a signal** on the drawing: *Main head* ▸ 2 aspects (Red,
+  Yellow), 3 (Red, Yellow, Green), 4 (Red, Yellow, Green, Yellow), None (a
+  shunt signal), From its name; *Calling-on*; *A shunt signal on its mast*;
+  *Show its row*. Each is one Undo step; the signal stays marked.
+- **Signals tab:** the aspects, calling_on and shunt columns are picked
+  from a list (*(from its name)*, *3: Red, Yellow, Green*, …; *no* / *yes*),
+  not typed.
+- **View ▸ Tables under it** (Ctrl+T): hides the tables; the drawing takes
+  the whole window. *Show its row* brings them back. (A button of its own
+  at first; with 437's Form it went into one View menu so the bar still
+  fits Qt 5's wider fonts: session210 / 212 hold it to 1000 px.)
+- **The drawing opens bigger.** The tables' minimum height (the KAVACH
+  tab's) held the drawing to about a third of the window whatever the
+  split said; it now gets the 430 px it is given (of 720).
+
+**Found on the way.** Changing a signal's heads and then Undo restored
+the changed signal: the copy for Undo was taken after a reference into the
+signal list, and the shared list wrote through to the copy. Fixed (copy
+first); `session433` checks it.
+
+**Files.** `stationlayoutwindow.{h,cpp}` (`signalMenuFor`,
+`setSignalLook`, `setTablesShown`, `tablesShown`, `SignalLookDelegate`,
+the canvas's `signalContextRequested`), `tests/test_session433.cpp` (new),
+`tests/tests.pro`.
+
+**Tests.** `session433` (20 checks) on station_527.xml: S50's menu (from
+its name, then 4 aspects, then calling-on), Undo one step, refusals (no
+signal, 5 aspects), None: a shunt signal; the Signals tab's columns and
+their lists (shown value, picked value written to the signal; the name
+still typed); Tables off: hidden and the drawing taller; Show its row:
+the tables back on the signal's row. Looked at in the screenshot harness
+(dark and light).
+- **Not tested:** the menu opened by a real right-click (the test calls
+  `signalMenuFor`); Ctrl+T by key (the button is clicked).
+- **Proposed next, not built:** a form for the selected tag / signal /
+  point beside the drawing instead of the table rows; adding a signal by
+  clicking its foot tag with its heads chosen there; the tag-layout PDF
+  export with these signal symbols checked against the LPI sheet.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 446 suites / 11,224 checks, menu audit, smoke.
+
+---
+
+<a id="session-432"></a>
+## Session 432 — signals drawn as real signals, as on the SIP / tag-TIN layouts
+
+Abhinav: *"i want the signals to look like non just dots like real
+signals like in the layout in the pdf with 3 or 4 circles and calling on
+or shunt etc"* — the PDF being RDSO Annexure-H's page 9, HBL's tag-TIN
+layout of Lingampalli (LPI, station 527).
+
+**Before.** Every signal was a red stalk and a dot under its foot tag (a
+row of coloured dots when the KAVACH tab lit it).
+
+**What the operator sees.** Each signal as the LPI sheet draws it: a mast
+from the foot tag with an arrow at the track, an arm, and the heads
+outwards the way the signal faces; the lamps touch, from the mast: Red
+(three bars), Yellow (a slash), Green (a bar), a second Yellow on a
+4-aspect head; a shunt signal's disc (three small lamps) nearest the
+mast; a small calling-on lamp behind the mast. With the KAVACH tab (424)
+or the live station (428) the lamps of the aspect are filled in their
+colour (Double Yellow lights both Yellows; Red + calling-on the small
+lamp too); otherwise drawn as on the sheet. The legend has a signal, a
+shunt signal and calling-on. Hovering says the heads and where they come
+from.
+
+**Which way it faces.** The foot tag's placement (1 Signal foot nominal:
+heads towards rising km; 2 reverse: towards falling; 6 both: nominal);
+else the way its tag set's triangle points (H2.15); else nominal. On
+station_527.xml that puts S45, S46, S48 to the right and S5, S13, S1640
+to the left, as on the sheet.
+
+**How many lamps.** New optional columns of the signals sheet (and XML
+attributes, JSON keys): `aspects` (2, 3, 4; 0 = no main head, a shunt
+signal), `calling_on`, `shunt` (1 = yes). Not said: a name starting "SH"
+is a shunt signal, any other a 3-aspect main signal (Red, Yellow, Green).
+A value it cannot use (aspects 5) is named in the notes and left not said.
+Neither the Python tool's files nor station_527.xml say any of it, so
+they read and write as before (station_527.xml still byte for byte).
+
+**A route's signal drawn once.** station_527.xml lists 14 signals twice,
+for the station and for route DN_TLP_LNGP_CRC (S90 and S90, S88 and
+S88_TL), at the same foot tags: two labels stacked under one mast. A
+route's signal at a foot tag a station signal stands at is now that
+signal (named in its tooltip, *Also: S88_TL on route …*); the others are
+drawn.
+
+**Files.** `tinlayout.{h,cpp}` (`drawSignal`, `SignalHead`, `Lamp`),
+`stationlayout.{h,cpp}` (the `Signal` fields, `lookOf`, the columns),
+`stationlayoutwindow.cpp` (the signals and the legend),
+`tests/test_session432.cpp` (new), `tests/tests.pro`.
+
+**Tests.** `session432` (19 checks): `lookOf` (S48, SH40, S50 said); the
+heads through the XML (written only where said; aspects 5 named), the
+JSON and the sheets; the symbol pixel by pixel (the lit Green third from
+the mast, an unlit Yellow white inside, the arrow, nominal to the right,
+reverse to the left with Red nearest the mast); on station_527.xml: 35
+signals drawn (the 14 route copies not again), S48 to the right of tag 12,
+S1640 to the left of tag 981.
+- **Not tested:** the tag-layout PDF / PNG export (draws through the same
+  painter; looked at, not checked); a signal facing both ways (placement 6)
+  drawn on one side only.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 446 suites / 11,224 checks, menu audit, smoke.
+
+---
+
+<a id="session-431"></a>
+## Session 431 — Station Layout opens and saves the station XML (station_<id>.xml)
+
+Abhinav: *"station_527.xml — change the GUI of our station layout
+generator to generate this kind of files"*, in DLConsole's Station Layout
+(not kav_sim's Config Maker, which writes them today).
+
+**The file.** `<kavsite format="kavsite-xml 1" name="station_527"
+station="527">`: `<stations>`, `<tags>` (each `tag`, `type` normal / lc /
+adjacent / adjustment, `location`, `tin_nom`, `tin_rev`, `placement`;
+`location2`, `dir1`, `dir2` on an adjustment tag; `hex`, the 32 digits
+page_y then page_x), `<lines>` and `<routes>` with `<tag id>` children,
+`<points>` with `<tag id>` and `<conn x line tin>`, `<signals>` (a
+route's with `route=`), `<adjustments>`, `<circuits>`, `<relays>`,
+`<texts>`, and `<tins>`: which tags carry each TIN, nominal and reverse.
+
+**What the operator sees.** Station Layout ▸ Open ▸ Open file… takes
+`.xml` as well as `.json`; **Save as…** offers *Station XML* first,
+named `station_<id>.xml`; Save then keeps writing the XML. Compare with ▸
+A file takes `.xml` too. The status line's "save it as a .json" now says
+"Save as… a station XML".
+
+**Ground truth: the bits.** A tag's fields are written from what its bits
+hold (RfidTag), never typed. Read back, the tag is its hex; a field the
+file says otherwise (`location="163961"` on a tag whose bits say 163960)
+is named in the notes, the bits kept. A tag with no hex (or page_x /
+page_y) is not guessed: skipped and named. A malformed tag (page_y 17
+digits: four library files have one) is written as its page_x / page_y,
+not a hex that would shift its bits.
+
+**Kept whole.** Everything the layout holds comes back: the relay map,
+circuits, adjustment and routes as the Python tool's sheets, in their
+columns (a sheet lacking a column stays without it); cells under no
+header (relaymap's "Red", "NORMAL" notes) as `c7="…"` by their place;
+text cells untrimmed ("S50     "); any other sheet as `<sheet name>`; the
+KAVACH data (422) as JSON in `<kavach>`. Only the sheets' order is the
+XML's (the tool finds them by name). `<tins>` is derived and not read.
+kav_sim's reader ignores the attributes and elements it does not know.
+
+**Files.** `stationlayout.{h,cpp}` (`toXml`, `fromXml`, `load` / `save`
+by extension, `Signal::route` and the signals sheet's `route` column),
+`stationlayoutwindow.{h,cpp}` (Open, Save as…, Compare, the status texts,
+`suggestedXmlName`), `tests/fixtures/station_527.xml` (new: the real
+file), `tests/test_session431.cpp` (new), `tests/tests.pro`.
+
+**Tests.** `session431` (31 checks) on the real station_527.xml: it reads
+with no notes (203 tags, 6 lines, 16 points, 49 signals of which 14 the
+route's, 31 circuits, 222 relay rows, 1 route); hex = page_y + page_x; tag
+981's bits; a line's tags in order; P21's two connections; written back
+**byte for byte the same file**; a hand-edited location named and the bits
+kept; a tag without hex skipped and named; not kavsite, broken XML:
+refused; **all 47 built-in station files** through the XML and back with
+every sheet as it was; the KAVACH data and an unnamed sheet with odd cells;
+the window: open, Save as… offers station_527.xml, the route column, an
+edit keeping the route signals, saved = the file with the one edit, and it
+opens again.
+- **Seen in the real file:** 81 of its 203 tags have a CRC-30 their
+  contents do not give (many with the CRC bits 0: 603, 805, 803, …):
+  Checks lists them, Fix CRCs (228) would correct them. Not changed.
+- **Not tested:** kav_sim's Config Maker opening a file DLConsole wrote
+  (its reader was read, not run); hand-written XML without hex.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 446 suites / 11,224 checks, menu audit, smoke.
+
+---
+
 <a id="session-430"></a>
 ## Session 430 — a station layout checked against its tag-TIN layout drawing
 

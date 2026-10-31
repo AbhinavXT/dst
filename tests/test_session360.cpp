@@ -430,7 +430,7 @@ TEST_SUITE(session360)
         }
         UiColor::setColorBlindSafe(false);
         ThemeUtil::apply(Theme(savedTheme));
-        CHECK(themes == 22, "fixture: eleven themes, colour-blind-safe off and on");
+        CHECK(themes == 2 * ThemeUtil::all().size(), "fixture: every theme (14 since session 434), colour-blind-safe off and on");
         CHECK(shortIn.isEmpty(), qPrintable(QStringLiteral("chips hold the text floor in every theme; short in: %1").arg(shortIn.join(QStringLiteral(", ")))));
     }
     clearSaved();

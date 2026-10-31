@@ -44,7 +44,7 @@ TEST_SUITE(session359)
         }
         UiColor::setColorBlindSafe(false);
         ThemeUtil::apply(Theme(savedTheme));
-        CHECK(themes == 22, "fixture: eleven themes, colour-blind-safe off and on");
+        CHECK(themes == 2 * ThemeUtil::all().size(), "fixture: every theme (14 since session 434), colour-blind-safe off and on");
         CHECK(shortIn.isEmpty(), qPrintable(QStringLiteral("a lit rule card's accent edge reaches 3 : 1 (7 : 1 High Contrast) "
                                                            "on its tint; short in: %1").arg(shortIn.join(QStringLiteral(", ")))));
     }

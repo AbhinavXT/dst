@@ -112,6 +112,44 @@ const Set &mochaSet()
     };
     return s;
 }
+// Session 434: the three dark themes added then; each measured against its
+// own palette (worst of window / base / alternate row / button).
+const Set &oneDarkSet()
+{
+    static const Set s{
+        QColor(0x98, 0xC3, 0x79),   // ok        green
+        QColor(0xE5, 0xC0, 0x7B),   // warning   yellow
+        QColor(0xEF, 0x8A, 0x92),   // error     red, lifted       4.89 : 1
+        QColor(0xA3, 0xAA, 0xB6),   // muted
+        QColor(0x61, 0xAF, 0xEF),   // accent    blue
+        QColor(0x3D, 0x35, 0x26), QColor(0xE5, 0xC0, 0x7B), QColor(0x6E, 0x5E, 0x3C)
+    };
+    return s;
+}
+const Set &solarizedDarkSet()
+{
+    static const Set s{
+        QColor(0xA8, 0xBE, 0x3A),   // ok        green, lifted
+        QColor(0xE0, 0xAF, 0x2C),   // warning   yellow, lifted
+        QColor(0xF4, 0x85, 0x82),   // error     red, lifted
+        QColor(0x98, 0xAB, 0xAD),   // muted
+        QColor(0x5C, 0xB0, 0xEE),   // accent    blue, lifted     4.86 : 1
+        QColor(0x2E, 0x3A, 0x1E), QColor(0xE0, 0xAF, 0x2C), QColor(0x5E, 0x5A, 0x2E)
+    };
+    return s;
+}
+const Set &gruvboxDarkSet()
+{
+    static const Set s{
+        QColor(0xB8, 0xBB, 0x26),   // ok        green
+        QColor(0xFA, 0xBD, 0x2F),   // warning   yellow
+        QColor(0xFC, 0x86, 0x70),   // error     red, lifted
+        QColor(0xBD, 0xAE, 0x93),   // muted
+        QColor(0x9A, 0xB8, 0xEA),   // accent    a clear blue     5.75 : 1 (aqua was too near the colour-blind warning)
+        QColor(0x3D, 0x34, 0x20), QColor(0xFA, 0xBD, 0x2F), QColor(0x6E, 0x5A, 0x30)
+    };
+    return s;
+}
 const Set &highContrastSet()
 {
     // 7 : 1 (WCAG AAA) on every surface, not 4.5.
@@ -198,6 +236,9 @@ const Set &active()
     case 8:  return lavenderSet();
     case 9:  return roseSet();
     case 10: return amberSet();
+    case 11: return oneDarkSet();
+    case 12: return solarizedDarkSet();
+    case 13: return gruvboxDarkSet();
     default: break;
     }
     if (dark()) {
