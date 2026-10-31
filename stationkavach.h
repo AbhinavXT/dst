@@ -167,6 +167,13 @@ struct State {
     // Session 448: send the track-circuit times a loco measures its train
     // length by (TRN_LEN_INFO_*; station 527 never sent them). Off: never.
     bool                 trainLength = false;
+    // Session 449: as station 527 did. keepProfile: moving into the next
+    // section of its MA, the loco keeps the profile it holds (same
+    // REF_PROF_ID, the MA alone) while that still covers the new MA.
+    // extraFull: the full profile sent this many answers more once the loco
+    // has acknowledged it (527: 3 on 8 Oct, none in June). Off / 0: as before.
+    bool                 keepProfile = false;
+    int                  extraFull = 0;
     QHash<QString, int>  authority;    // route -> authType, overriding the file's
     QSet<QString>        tsrOff;       // "route/id": TSRs switched off
     static State initial(const Station &s);
@@ -200,6 +207,10 @@ struct Loco {
     qint64  tlmJoint = -1;             // the joint measured at (abs m); -1: none yet
     int     tlmStartFrame = -1, tlmStartOffset = 0, tlmEndFrame = -1, tlmEndOffset = 0;
     bool    tlmStartSent = false;
+    qint64  profEnd = 0;               // session 449: the profile's end, from its start signal
+    qint64  profBase = 0;              // ... where the route the loco is on starts in it (kept: > 0)
+    int     fullsAfterAck = 0;         // ... the full profile sent since the loco acknowledged it
+    bool    profSentFull = false;      // ... this profile was sent in full (before the acknowledgement)
 };
 
 // Session 441: where the loco is by an ARP or an LSRP (both carry

@@ -84,6 +84,33 @@ StationKavachPanel::StationKavachPanel(const QVector<QPair<qint64, QString>> &as
         emit stateChanged();
     });
     opts->addWidget(m_trainLength);
+    // Session 449: what station 527 did otherwise, to answer as it did.
+    auto *as527 = new QHBoxLayout;
+    m_keepProfile = new QCheckBox(tr("Keep the profile into the next section while it covers the MA"), this);
+    m_keepProfile->setObjectName(QStringLiteral("skKeepProfile"));
+    m_keepProfile->setToolTip(tr("As station 527: into the next section of its MA the loco keeps the profile it holds (same\n"
+                                 "REF_PROF_ID, the MA alone) while that still covers the new MA. Off: a new profile."));
+    connect(m_keepProfile, &QCheckBox::toggled, this, [this](bool on) {
+        if (!m_state || m_state->keepProfile == on) return;
+        m_state->keepProfile = on;
+        emit stateChanged();
+    });
+    m_extraFull = new QSpinBox(this);
+    m_extraFull->setObjectName(QStringLiteral("skExtraFull"));
+    m_extraFull->setRange(0, 9);
+    m_extraFull->setPrefix(tr("Full profile after the ack: "));
+    m_extraFull->setSuffix(tr(" more"));
+    m_extraFull->setToolTip(tr("As station 527: the full profile this many answers more once the loco acknowledged it\n"
+                               "(3 on 8 Oct 2026, none in June). 0: the MA alone at once."));
+    connect(m_extraFull, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int n) {
+        if (!m_state || m_state->extraFull == n) return;
+        m_state->extraFull = n;
+        emit stateChanged();
+    });
+    as527->addWidget(m_keepProfile);
+    as527->addWidget(m_extraFull);
+    as527->addStretch(1);
+    opts->addLayout(as527);
     // Session 445: SoS from the station.
     auto *sosRow = new QHBoxLayout;
     m_general = new QCheckBox(tr("Station General SoS"), this);
@@ -184,6 +211,10 @@ void StationKavachPanel::rebuild()
     {
         const QSignalBlocker block(m_interlocking);
         m_interlocking->setChecked(st->interlocking);
+        const QSignalBlocker blockKeep(m_keepProfile);
+        m_keepProfile->setChecked(st->keepProfile);
+        const QSignalBlocker blockExtra(m_extraFull);
+        m_extraFull->setValue(st->extraFull);
         const QSignalBlocker blockTlm(m_trainLength);
         m_trainLength->setChecked(st->trainLength);
         const QSignalBlocker blockAsk(m_askShorten);

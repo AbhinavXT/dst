@@ -805,9 +805,29 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
     // A new REF_PROF_ID when the profile changes; in full until the loco acknowledges it.
     const QByteArray key = keyOf(ri, prof);
     Loco l = *loco;
-    if (key != l.profKey || l.profId == 0) {
+    // Session 449 (State::keepProfile): into the next section of its MA, the profile it
+    // holds (acknowledged) still covering the new MA: kept, the MA alone.
+    bool kept = false;
+    qint64 base = 0;
+    if (st.keepProfile && l.profId > 0 && lsrp.value(QStringLiteral("LAST_REF_PROFILE_NUM")) == l.profId) {
+        if (loco->route >= 0 && ri != loco->route && loco->maRoutes.contains(ri)) {
+            qint64 at = 0;   // where this route starts in the MA it held
+            for (int i : loco->maRoutes) { if (i == ri) break; at += s.routes[i].length(); }
+            base = l.profBase + at;
+            kept = base + maEnd <= l.profEnd;
+        } else if (ri == loco->route && l.profBase > 0) {   // kept before, on this route still
+            base = l.profBase;
+            kept = base + maEnd <= l.profEnd;
+        }
+    }
+    if (kept) l.profBase = base;
+    if (!kept && (key != l.profKey || l.profId == 0)) {
         l.profId = l.profId % 15 + 1;
         l.profKey = key;
+        l.profEnd = maEnd;
+        l.profBase = 0;
+        l.fullsAfterAck = 0;
+        l.profSentFull = false;
     }
     l.route = ri;
     l.refTag = ref;
@@ -822,7 +842,13 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
     }
     l.sos = sos;
     a.header.insert(QStringLiteral("REF_PROF_ID"), l.profId);
-    a.fullProfile = lsrp.value(QStringLiteral("LAST_REF_PROFILE_NUM")) != l.profId;
+    a.fullProfile = !kept && lsrp.value(QStringLiteral("LAST_REF_PROFILE_NUM")) != l.profId;
+    // Session 449 (State::extraFull): a profile sent in full, a few answers more once acknowledged.
+    if (a.fullProfile) l.profSentFull = true;
+    else if (!kept && l.profSentFull && l.fullsAfterAck < st.extraFull) {
+        a.fullProfile = true;
+        ++l.fullsAfterAck;
+    }
     a.subs << ma;
     if (a.fullProfile) a.subs << prof;
     *loco = l;
@@ -831,7 +857,8 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
     a.note = QObject::tr("route %1, %2 %3 → %4 section%5, MA %6 m; ref tag %7, APPR_SIG_DIST %8 m; profile %9 %10")
                  .arg(r0.name, r0.exit, aspectName(curAspect)).arg(sent).arg(sent == 1 ? QString() : QStringLiteral("s"))
                  .arg(held).arg(ref).arg(appr).arg(l.profId)
-                 .arg(a.fullProfile ? QObject::tr("in full") : QObject::tr("acknowledged: MA only"));
+                 .arg(kept ? QObject::tr("kept (it still covers the MA): MA only")
+                           : a.fullProfile ? QObject::tr("in full") : QObject::tr("acknowledged: MA only"));
     if (!cutNote.isEmpty()) a.note += QStringLiteral("; ") + cutNote;
     a.note += shortNote;
     a.note += handNote;

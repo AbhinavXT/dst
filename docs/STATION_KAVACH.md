@@ -290,15 +290,20 @@ keeps where every loco is from each **ARP and LSRP** it hears.
   default). A loco's front and then its rear over a track-circuit joint of
   its line: the times (interpolated between its frames) go out as
   TRN_LEN_INFO Start, then End.
+- **As station 527** (session 449; Options). *Keep the profile into the next
+  section while it covers the MA* (same REF_PROF_ID, the MA alone: SLRP 38156);
+  *Full profile after the ack: N more* (527: 3 on 8 Oct, none in June).
 
 ## Not yet
 
 Not modelled: the TSR route table's OHE poles (TSR rows are placed by
-distance), Temporary Single Line working, train length, shortened MA,
-SoS other than SPAD and Rear-end (head-on, shunt, foreign RFID, station
-general), the next station's
-communication, the absolute-block last stop
-signal's MA in metres (give the block section as a route). Not tested
+distance), Temporary Single Line working, the absolute-block last stop
+signal's MA in metres (give the block section as a route), two stations
+answering side by side in one Packet Maker (447: one station; a hand-over is
+sent, an ARP to the next station left to it), when station 527 moved the ref
+tag (0 to 9 frames late, no rule seen: DLConsole moves it at once), track
+locking of a point and flank protection (the data names neither), a train
+across a point counted on both lines. Not tested
 against a live loco: the engine's answers are checked against real station
 frames only. No import from a firm's Table-of-Control sheet yet (waiting for
 a real sheet to read: for LPI, station 527, the ToC is TC.1005B, named on

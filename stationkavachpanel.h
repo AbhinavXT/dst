@@ -18,6 +18,8 @@
 //  circuits (StationInterlock); a point a set route holds is not thrown.
 //  Session 445: SoS: Station General SoS to every loco; an SoS to one loco
 //  (Foreign RFID, Head-on, Shunt violation, Station General) until cleared.
+//  Session 449: As station 527: keep the profile into the next section; the
+//  full profile a few answers more after the acknowledgement.
 //  Session 428: Show on the drawing (drawingRequested): the station live
 //  on the Station Layout drawing, the locos and their MAs on it.
 // =====================================================================
@@ -66,6 +68,8 @@ private:
     QCheckBox *m_general = nullptr;         // session 445: Station General SoS
     QCheckBox *m_askShorten = nullptr;      // session 446
     QCheckBox *m_trainLength = nullptr;     // session 448
+    QCheckBox *m_keepProfile = nullptr;     // session 449: as station 527
+    QSpinBox *m_extraFull = nullptr;
     QSpinBox *m_sosLoco = nullptr;
     QComboBox *m_sosKind = nullptr;
     QLabel *m_sosNow = nullptr;

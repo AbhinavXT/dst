@@ -126,6 +126,13 @@ The three features once queued here are all done:
   echoed (427); the station live on the drawing: aspects, locos, MAs (428);
   every tag of a repeated name drawn where it is (429); a layout checked
   against the station's tag-TIN layout drawing (430, LPI from Annexure-H).
+  The station's own signalling from the locos' ARPs / LSRPs
+  (`stationinterlock.{h,cpp}`): track circuits occupied by the locos (441);
+  routes locked, signals back to Red, routes released (442); automatic
+  signals (443); conflicting routes refused, signals held at Red (444); SoS
+  Head-on, Shunt violation, Foreign RFID, Station General (445); shortened
+  MA asked for (446); hand-over to the next station (447); train-length
+  times (448); answering as station 527 did (449).
   `docs/STATION_KAVACH.md`. Next steps proposed there under "Not yet".
 - **Station XML** (`station_<id>.xml`, kav_sim's "kavsite-xml 1") opened and
   saved by Station Layout (431); signals drawn as on the SIP / tag-TIN

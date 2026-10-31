@@ -10,6 +10,45 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-449"></a>
+## Session 449 — answering as station 527 did: the profile kept, sent in full after the ack
+
+Abhinav's list for a full station simulator, item 9: where station 527 did
+otherwise than DLConsole (session 422).
+
+**What the operator sees.** Station… ▸ Options:
+- **Keep the profile into the next section while it covers the MA** (off by
+  default). The loco moving into the next section of its MA keeps the profile
+  it holds (same REF_PROF_ID, the MA alone) while that profile still covers
+  the new MA: *profile 2 kept (it still covers the MA): MA only*. This is SLRP
+  38156 at tag 18 on 8 Oct: profile 2 (1650 m from S48) kept for S43-A900's
+  1116 m.
+- **Full profile after the ack: N more** (0 by default): a profile sent in
+  full goes in full N answers more once the loco has acknowledged it. Station
+  527 did 3 on 8 Oct (the SLRPs answering 38211, 38213, 38215), none in June.
+
+**Not done: when the ref tag moves.** Station 527 moved LAST_REF_RFID 0 to 9
+frames after the loco read a tag (2-8 on 8 Oct, 0-2 in June), with its SLRPs
+sparse in the captures: no rule shows. DLConsole moves it at once.
+
+**Files.** `stationkavach.{h,cpp}` (`State::keepProfile`, `extraFull`; the
+loco's profile end, base, re-sends), `stationkavachpanel.{h,cpp}`,
+`tests/test_session449.cpp` (new), `tests/tests.pro`.
+
+**Tests.** `session449` (11 checks) on station 527's data and the real LSRPs
+of `loco_1_1_08102026_103520.cap`, profile 1 before the capture: tag 12,
+profile 2 acknowledged, the MA alone; tag 18 into S43-A900, A900 Red: profile
+2 kept, MA 1116, DIST_PKT_START 0, as SLRP 38156 (off: a new profile 3 in
+full); A900 Yellow: 534 + 1956 m past profile 2's end: profile 3 in full, as
+38209; with 3 more: in full answering 38211, 38213, 38215, then the MA
+alone, as the real ones; with 0: the MA alone once acknowledged. Station…'s
+controls.
+- **Not tested:** against a live loco.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 461 suites / 11,697 checks, menu audit, smoke.
+
+---
+
 <a id="session-448"></a>
 ## Session 448 — the train-length times (TRN_LEN_INFO)
 
