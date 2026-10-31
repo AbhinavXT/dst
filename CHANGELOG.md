@@ -10,6 +10,35 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-440"></a>
+## Session 440 — CI green again: the Station Layout bar fits wider fonts; a click test off a tag
+
+CI on patch 439 failed on two jobs, neither seen on the Mac.
+
+- **Linux** (sessions 210, 212, 233): the Station Layout button bar's
+  minimum width was 1081 px on Ubuntu's fonts; the check leaves room up to
+  1000. Session 433 added **View** to the bar. **Import .xlsx…** is now an
+  entry of the **Open** menu (after *New, empty*; its tooltip kept) instead of
+  a button of its own.
+- **Windows** (session 233, *clicks select again once Measure is off*): the
+  test clicked the centre of signal 2, which on Windows' fonts lies under a
+  tag (a click there is the tag's, as it should be). It now clicks a signal
+  whose centre no tag covers, as it already did for a point. The likely
+  cause; Windows CI will say.
+
+**What the operator sees.** Open ▸ Import .xlsx… where the button was.
+
+**Files.** `stationlayoutwindow.cpp`, `tests/test_session233.cpp`.
+
+**Tests.** Reproduced in an Ubuntu 22.04 container (Qt 5.15.3, the CI
+`linux` job's): session212 and session233 green, session210's bar check
+green (its two replay checks need `replay/`, not copied in).
+- **Not tested:** Windows (no Windows here: CI runs it).
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 452 suites / 11,554 checks, menu audit, smoke.
+
+---
+
 <a id="session-439"></a>
 ## Session 439 — the drawing exported as a sheet like the SIP: on paper, with a title block
 

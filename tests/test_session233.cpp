@@ -42,6 +42,19 @@ QPoint centreOf(StationLayoutCanvas *c, int signal, int point)
 }
 
 // A point whose middle no tag covers (a tag on a point's diagonal takes the click).
+// Session 440: a signal no tag covers (a click there is the tag's): on
+// Windows' fonts signal 2's centre lay under one (CI, patch 439).
+int clearSignal(StationLayoutCanvas *c, int not_)
+{
+    for (const StationLayoutCanvas::Hit &h : c->hits()) {
+        if (h.signal < 0 || h.signal == not_) continue;
+        bool covered = false;
+        for (const StationLayoutCanvas::Hit &o : c->hits()) covered = covered || (!o.tag.isEmpty() && o.rect.contains(h.rect.center()));
+        if (!covered) return h.signal;
+    }
+    return -1;
+}
+
 int clearPoint(StationLayoutCanvas *c)
 {
     for (const StationLayoutCanvas::Hit &h : c->hits()) {
@@ -126,8 +139,10 @@ TEST_SUITE(session233)
     c->grab();      // the dimension line paints
     QTest::keyClick(c, Qt::Key_Escape);
     CHECK(!measure->isChecked() && !c->isMeasuring() && !c->measureStart().set, "Esc: Measure off, the measurement gone");
-    QTest::mouseClick(c, Qt::LeftButton, Qt::NoModifier, centreOf(c, 2, -1));
-    CHECK(w.table(1)->currentRow() == 2, "clicks select again once Measure is off");
+    c->grab();
+    const int sg = clearSignal(c, w.table(1)->currentRow());
+    QTest::mouseClick(c, Qt::LeftButton, Qt::NoModifier, centreOf(c, sg, -1));
+    CHECK(sg >= 0 && w.table(1)->currentRow() == sg, "clicks select again once Measure is off");
 
     CHECK(LayoutAudit::orphans(&w).isEmpty(), "no widget outside a layout");
     CHECK(w.minimumSizeHint().width() <= 1000, QByteArray("the bar still leaves room for wider fonts (")

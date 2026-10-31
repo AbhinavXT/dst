@@ -2011,6 +2011,7 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     // fits a laptop with wider (Linux) fonts.
     auto *openBtn = new QPushButton(tr("Open"), this);
     auto *openMenu = new QMenu(openBtn);
+    openMenu->setToolTipsVisible(true);
     QAction *openFileAct = openMenu->addAction(tr("Open file…"));
     openFileAct->setToolTip(tr("A station XML (station_<id>.xml) or a DLConsole station layout (.json)"));
     QAction *defaultAct = openMenu->addAction(tr("Default layout (station.xlsx)"));
@@ -2018,6 +2019,10 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
         if (confirmDiscard()) openFile(path);
     }));
     QAction *newAct = openMenu->addAction(tr("New, empty"));
+    // Session 440: in this menu (it was a button: the bar had no room for wider fonts once View came).
+    QAction *importAct = openMenu->addAction(tr("Import .xlsx…"));
+    importAct->setToolTip(tr("A station file of the old Python tool (config/station/*.xlsx): tags, signals, points, "
+                             "lines, station, texts; other sheets (relaymap, …) are kept for export"));
     // Session 226: compare the open layout with another station file.
     openMenu->addSeparator();
     QMenu *cmpMenu = openMenu->addMenu(tr("Compare with"));
@@ -2060,9 +2065,6 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     openBtn->setMenu(openMenu);
     auto *saveBtn = new QPushButton(tr("Save"), this);
     auto *saveAsBtn = new QPushButton(tr("Save as…"), this);
-    auto *importBtn = new QPushButton(tr("Import .xlsx…"), this);
-    importBtn->setToolTip(tr("A station file of the old Python tool (config/station/*.xlsx): tags, signals, points, "
-                             "lines, station, texts; other sheets (relaymap, …) are kept for export"));
     auto *exportBtn = new QPushButton(tr("Export"), this);
     auto *exportMenu = new QMenu(exportBtn);
     exportMenu->setToolTipsVisible(true);
@@ -2110,7 +2112,7 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     undoBtn->setToolButtonStyle(Qt::ToolButtonTextOnly);
 
     auto *bar = new QHBoxLayout;
-    for (QWidget *w : std::initializer_list<QWidget *>{ openBtn, saveBtn, saveAsBtn, importBtn, exportBtn })
+    for (QWidget *w : std::initializer_list<QWidget *>{ openBtn, saveBtn, saveAsBtn, exportBtn })
         bar->addWidget(w);
     bar->addStretch(1);
     // Session 233: Measure, from one place on the drawing to another.
@@ -2346,7 +2348,7 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
                                                           tr("Station layout (*.xml *.json)"));
         if (!path.isEmpty()) openFile(path);
     });
-    connect(importBtn, &QPushButton::clicked, this, [this]() {
+    connect(importAct, &QAction::triggered, this, [this]() {
         if (!confirmDiscard()) return;
         const QString path = QFileDialog::getOpenFileName(this, tr("Import station spreadsheet"), QString(),
                                                           tr("Station spreadsheet (*.xlsx)"));
