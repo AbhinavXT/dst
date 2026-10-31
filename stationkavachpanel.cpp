@@ -61,6 +61,18 @@ StationKavachPanel::StationKavachPanel(const QVector<QPair<qint64, QString>> &as
         emit stateChanged();
     });
     opts->addWidget(m_interlocking);
+    // Session 446: REQ_SHORTEN_MA before a shorter MA.
+    m_askShorten = new QCheckBox(tr("Ask the loco before shortening its MA (REQ_SHORTEN_MA)"), this);
+    m_askShorten->setObjectName(QStringLiteral("skAskShorten"));
+    m_askShorten->setToolTip(tr("A signal gone back: the shorter MA is asked for (NEW_MA) while the loco keeps the one it holds;\n"
+                                "sent when it grants it (NEW_MA_REPLY 1), not while it rejects it (2). \"New, Future Use\" in\n"
+                                "Annexure-C: station 527 never sent it. Off: the shorter MA at once."));
+    connect(m_askShorten, &QCheckBox::toggled, this, [this](bool on) {
+        if (!m_state || m_state->askShorten == on) return;
+        m_state->askShorten = on;
+        emit stateChanged();
+    });
+    opts->addWidget(m_askShorten);
     // Session 445: SoS from the station.
     auto *sosRow = new QHBoxLayout;
     m_general = new QCheckBox(tr("Station General SoS"), this);
@@ -161,6 +173,8 @@ void StationKavachPanel::rebuild()
     {
         const QSignalBlocker block(m_interlocking);
         m_interlocking->setChecked(st->interlocking);
+        const QSignalBlocker blockAsk(m_askShorten);
+        m_askShorten->setChecked(st->askShorten);
         const QSignalBlocker blockGeneral(m_general);
         m_general->setChecked(st->sos.value(0) == 8);
     }

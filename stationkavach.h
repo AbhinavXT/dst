@@ -159,6 +159,10 @@ struct State {
     // Session 445: SoS the operator sends: loco id -> sosType (1 Foreign
     // RFID, 6 Head-on, 7 Shunt violation, 8 Station General); 0: every loco.
     QHash<int, int>      sos;
+    // Session 446: ask the loco before shortening its MA (REQ_SHORTEN_MA:
+    // "New, Future Use" in Annexure-C; station 527 never sent it). Off: the
+    // shorter MA is sent at once, as before.
+    bool                 askShorten = false;
     QHash<QString, int>  authority;    // route -> authType, overriding the file's
     QSet<QString>        tsrOff;       // "route/id": TSRs switched off
     static State initial(const Station &s);
@@ -183,6 +187,7 @@ struct Loco {
     QVector<int> maRoutes;
     qint64  maSent = -1;
     int     sos = 0;
+    bool    shortRejected = false;     // session 446: it rejected a shortened MA (kept until it holds no longer)
 };
 
 // Session 441: where the loco is by an ARP or an LSRP (both carry
@@ -232,6 +237,11 @@ Sections sectionsFrom(const Station &s, const State &st, int route);
 // on no route, read by a loco the station has placed: 1 (Foreign RFID).
 // The operator's (State::sos) over all of these; the MA is kept (the SoS is
 // what brakes), but for SPAD / Shunt violation.
+// Session 446, with State::askShorten: an MA shorter than the one the loco holds on the same route
+// (a signal gone back; not a loco ahead, not an SoS) is first asked for:
+// REQ_SHORTEN_MA 1, NEW_MA the new one, MA_W_R_T_SIG the one it holds. The
+// loco's NEW_MA_REPLY 1 (granted): the new MA sent; 2 (rejected): the one it
+// holds kept, not asked again while the MA would be shorter.
 constexpr qint64 kRearMargin = 100;
 Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString, qint64> &lsrp,
               const Schema::Encoder &enc, const QList<Loco> &others = {});

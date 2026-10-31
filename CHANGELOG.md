@@ -10,6 +10,44 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-446"></a>
+## Session 446 — a shortened MA asked for first (REQ_SHORTEN_MA)
+
+Abhinav's list for a full station simulator, item 6.
+
+**What the operator sees.** Station… ▸ Options ▸ **Ask the loco before
+shortening its MA (REQ_SHORTEN_MA)**, off by default. Ticked, when the MA a
+loco would get on its route is shorter than the one it holds (a signal gone
+back, a route cancelled; not a loco ahead, not an SoS):
+- the SLRP asks: REQ_SHORTEN_MA 1, NEW_MA the shorter MA, MA_W_R_T_SIG still
+  the one it holds (*asks the loco to shorten its MA from 1956 to 1116 m*);
+  asked again until it replies;
+- the loco's NEW_MA_REPLY 1 (granted): the shorter MA sent (*MA shortened
+  from 1956 m: the loco granted it*);
+- NEW_MA_REPLY 2 (rejected): the MA it holds kept and said (*the loco
+  rejected the shortened MA (1116 m): it keeps 1956 m*), not asked again
+  while the MA would be shorter.
+Unticked, the shorter MA goes at once, as before.
+
+**Why off by default.** Annexure-C marks REQ_SHORTEN_MA / NEW_MA_REPLY "New,
+Future Use", and station 527 sent REQ_SHORTEN_MA 0 in all 3,514 SLRPs in
+`replay/`. The codes (1 granted, 2 rejected) are the field notes'.
+
+**Files.** `stationkavach.{h,cpp}` (`State::askShorten`,
+`Loco::shortRejected`), `stationkavachpanel.{h,cpp}`,
+`tests/test_session446.cpp` (new), `tests/tests.pro`.
+
+**Tests.** `session446` (14 checks) on station 527's data and the real LSRP
+40380 (tag 906, 8 Oct): A900 Yellow, MA 1956; A900 Red: REQ_SHORTEN_MA 1,
+NEW_MA 1116, MA 1956, it encodes; no reply: asked again; granted: 1116 sent;
+rejected: 1956 kept, said, not asked again; A900 Yellow again: nothing
+pending; unticked: 1116 at once (session 422). Station…'s box.
+- **Not tested:** with a loco that replies (none in the captures).
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 458 suites / 11,657 checks, menu audit, smoke.
+
+---
+
 <a id="session-445"></a>
 ## Session 445 — the other SoS kinds: Head-on, Shunt violation, Foreign RFID, Station General
 

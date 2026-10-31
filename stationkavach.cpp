@@ -678,6 +678,31 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
                   { "MA_W_R_T_SIG", maSent }, { "REQ_SHORTEN_MA", 0 }, { "TRN_LEN_INFO_STS", 0 }, { "NEXT_STN_COMM", 0 } };
     if (auth == 1) ma.values.insert(QStringLiteral("AUTHORIZED_SPEED"), r0.osSpeed);
 
+    // Session 446 (State::askShorten): an MA shorter than the one the loco holds on this route (a signal gone
+    // back, a route cancelled: not a loco ahead, not an SoS) is asked for first
+    // (REQ_SHORTEN_MA, NEW_MA), the MA it holds sent meanwhile; given once the loco grants
+    // it (NEW_MA_REPLY 1); while it rejects it (2) the MA it holds is kept, not asked again.
+    qint64 held = maSent;
+    bool rejected = false;
+    QString shortNote;
+    const int reply = int(lsrp.value(QStringLiteral("NEW_MA_REPLY")));
+    if (st.askShorten && loco->route == ri && loco->maSent > maSent && cutNote.isEmpty() && sos == 0 && loco->sos == 0) {
+        if (reply == 1) {
+            shortNote = QObject::tr("; MA shortened from %1 m: the loco granted it (NEW_MA_REPLY 1)").arg(loco->maSent);
+        } else if (reply == 2 || loco->shortRejected) {
+            held = loco->maSent;
+            rejected = true;
+            shortNote = QObject::tr("; the loco rejected the MA shortened to %1 m (NEW_MA_REPLY 2): it keeps %2 m").arg(maSent).arg(held);
+            a.checks << QObject::tr("the loco rejected the shortened MA (%1 m): it keeps %2 m").arg(maSent).arg(held);
+        } else {
+            held = loco->maSent;
+            ma.values.insert(QStringLiteral("REQ_SHORTEN_MA"), 1);
+            ma.values.insert(QStringLiteral("NEW_MA"), maSent);
+            shortNote = QObject::tr("; asks the loco to shorten its MA from %1 to %2 m (REQ_SHORTEN_MA)").arg(held).arg(maSent);
+        }
+        ma.values.insert(QStringLiteral("MA_W_R_T_SIG"), held);
+    }
+
     // The profile, cut at the MA end.
     QVector<Schema::SubEntry> prof;
     auto sub = [&prof](int type, const QString &rep, const QVector<Row> &rs, Row values = {}) {
@@ -753,7 +778,8 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
     l.route = ri;
     l.refTag = ref;
     l.maRoutes = sx.routes;
-    l.maSent = maSent;
+    l.maSent = held;
+    l.shortRejected = rejected;
     l.sos = sos;
     a.header.insert(QStringLiteral("REF_PROF_ID"), l.profId);
     a.fullProfile = lsrp.value(QStringLiteral("LAST_REF_PROFILE_NUM")) != l.profId;
@@ -764,9 +790,10 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
     const int sent = secs.size();
     a.note = QObject::tr("route %1, %2 %3 → %4 section%5, MA %6 m; ref tag %7, APPR_SIG_DIST %8 m; profile %9 %10")
                  .arg(r0.name, r0.exit, aspectName(curAspect)).arg(sent).arg(sent == 1 ? QString() : QStringLiteral("s"))
-                 .arg(maSent).arg(ref).arg(appr).arg(l.profId)
+                 .arg(held).arg(ref).arg(appr).arg(l.profId)
                  .arg(a.fullProfile ? QObject::tr("in full") : QObject::tr("acknowledged: MA only"));
     if (!cutNote.isEmpty()) a.note += QStringLiteral("; ") + cutNote;
+    a.note += shortNote;
     if (!sosNote.isEmpty()) a.note += sosNote;
     else if (foreign) a.note += QObject::tr("; SoS Foreign RFID: tag %1 is not in the layout").arg(tag);
     else if (headOn) a.note += headNote;

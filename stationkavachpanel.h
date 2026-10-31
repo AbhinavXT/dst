@@ -64,6 +64,7 @@ private:
     QPlainTextEdit *m_events = nullptr;     // session 442
     QCheckBox *m_interlocking = nullptr;
     QCheckBox *m_general = nullptr;         // session 445: Station General SoS
+    QCheckBox *m_askShorten = nullptr;      // session 446
     QSpinBox *m_sosLoco = nullptr;
     QComboBox *m_sosKind = nullptr;
     QLabel *m_sosNow = nullptr;
