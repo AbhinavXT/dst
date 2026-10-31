@@ -32,6 +32,7 @@ SOURCES += \
     $$PWD/stationinterlock.cpp \
     $$PWD/stationkavachpanel.cpp \
     $$PWD/stationkavacheditor.cpp \
+    $$PWD/stationstretch.cpp \
     $$PWD/sessionkeydialog.cpp \
     $$PWD/sessionkeystore.cpp \
     $$PWD/schema/schemadecoder.cpp \
@@ -264,6 +265,7 @@ HEADERS += \
     $$PWD/stationinterlock.h \
     $$PWD/stationkavachpanel.h \
     $$PWD/stationkavacheditor.h \
+    $$PWD/stationstretch.h \
     $$PWD/sessionkeydialog.h \
     $$PWD/sessionkeystore.h \
     $$PWD/schema/schemadecoder.h \

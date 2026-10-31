@@ -2,6 +2,8 @@
 #include "stationinterlock.h"
 #include "stationkavach.h"
 #include "stationkavacheditor.h"
+#include "stationstretch.h"
+#include "packetbuilder.h"
 
 #include "logmodel.h"
 #include "messagedispatcher.h"
@@ -2060,6 +2062,17 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     drawMenu->setToolTipsVisible(true);
     cmpMenu->addSeparator();
     cmpMenu->addAction(tr("Stop comparing"), this, [this]() { clearCompare(); });
+    // Session 458: a loco driven over a stretch (stretch.json): who answers it where, the hand-overs.
+    QAction *stretchAct = openMenu->addAction(tr("Run a loco over a stretch…"));
+    stretchAct->setObjectName(QStringLiteral("slStretchRun"));
+    stretchAct->setToolTip(tr("A stretch.json (scripts/kavach_sheets.py, sections read together): a loco along its "
+                              "Down or Up main line, every signal Green, an LSRP at each tag; which station answers, "
+                              "its MA, and where the loco is handed over or is not"));
+    connect(stretchAct, &QAction::triggered, this, [this]() {
+        const QString path = QFileDialog::getOpenFileName(this, tr("Run a loco over a stretch"), QFileInfo(m_path).path(),
+                                                          tr("Stretch (stretch*.json *.json)"));
+        if (!path.isEmpty()) showStretchRun(path);
+    });
     // Session 227: a loco's log over the layout.
     QMenu *runMenu = openMenu->addMenu(tr("Show a loco's run"));
     connect(runMenu, &QMenu::aboutToShow, this, [this, runMenu]() {
@@ -3449,6 +3462,81 @@ bool StationLayoutWindow::addLineFromRoute(const RfidTag::Route &r, const QStrin
     m_status->ok(tr("Line %1 made from route %2: %3 tags in it, %4 new to the layout")
                      .arg(lineId, r.name).arg(ln.tags.size()).arg(added.size()));
     return true;
+}
+
+QDialog *StationLayoutWindow::showStretchRun(const QString &path)
+{
+    StationStretch::Stretch s;
+    QString err;
+    QStringList notes;
+    if (!StationStretch::load(path, &s, &err, &notes)) {
+        m_status->fail(tr("Not run: %1").arg(err));
+        return nullptr;
+    }
+    auto *d = new QDialog(this);
+    d->setObjectName(QStringLiteral("slStretchRunDialog"));
+    d->setAttribute(Qt::WA_DeleteOnClose);
+    QStringList ids;
+    for (const StationStretch::Member &m : s.members) ids << QString::number(m.station.stationId);
+    d->setWindowTitle(tr("A loco over the stretch %1").arg(ids.join(QStringLiteral(" → "))));
+    auto *v = new QVBoxLayout(d);
+    auto *top = new QHBoxLayout;
+    auto *line = new QComboBox(d);
+    line->setObjectName(QStringLiteral("slStretchLine"));
+    line->addItems({ tr("Down Main"), tr("Up Main") });
+    top->addWidget(new QLabel(tr("Line"), d));
+    top->addWidget(line);
+    top->addStretch(1);
+    v->addLayout(top);
+    auto *sum = new QLabel(d);
+    sum->setObjectName(QStringLiteral("slStretchSummary"));
+    sum->setWordWrap(true);
+    v->addWidget(sum);
+    auto *t = new QTableWidget(0, 6, d);
+    t->setObjectName(QStringLiteral("slStretchTable"));
+    t->setHorizontalHeaderLabels({ tr("Tag"), tr("km"), tr("Station"), tr("MA (m)"), tr("Hand-over"), tr("Answer") });
+    t->horizontalHeader()->setStretchLastSection(true);
+    t->verticalHeader()->hide();
+    t->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    t->setWordWrap(false);
+    v->addWidget(t, 1);
+    auto fill = [s, t, sum, notes, line]() {
+        int dir = 1;
+        const QStringList tags = StationStretch::mainLine(s, line->currentIndex() == 0, &dir);
+        PacketBuilder pb;
+        const QVector<StationStretch::Step> steps = StationStretch::run(s, tags, dir, 11, pb.encoder());
+        t->setRowCount(steps.size());
+        QStringList handed, missed;
+        int refused = 0;
+        for (int i = 0; i < steps.size(); ++i) {
+            const StationStretch::Step &x = steps[i];
+            auto set = [&](int c, const QString &text) { t->setItem(i, c, new QTableWidgetItem(text)); };
+            set(0, QString::number(x.tag));
+            set(1, QString::number(x.absLoc / 1000.0, 'f', 3));
+            set(2, x.station ? QString::number(x.station) : QStringLiteral("—"));
+            set(3, x.ma >= 0 ? QString::number(x.ma) : QStringLiteral("—"));
+            set(4, x.event.isEmpty() ? (x.handTo ? tr("→ %1 (in the MA)").arg(x.handTo) : QString()) : x.event);
+            set(5, x.note);
+            if (x.event.startsWith(QLatin1String("handed"))) handed << x.event.section(QLatin1Char(' '), -1);
+            else if (!x.event.isEmpty()) missed << QString::number(x.tag);
+            refused += !x.ok;
+            if (!x.event.isEmpty())
+                for (int c = 0; c < 6; ++c) t->item(i, c)->setForeground(x.event.startsWith(QLatin1String("handed")) ? UiColor::ok() : UiColor::warning());
+        }
+        t->resizeColumnsToContents();
+        sum->setText(QObject::tr("%1 tags; handed over to %2; not handed over at %3; %4 LSRP(s) not answered.%5")
+                         .arg(steps.size())
+                         .arg(handed.isEmpty() ? QObject::tr("none") : handed.join(QStringLiteral(", ")))
+                         .arg(missed.isEmpty() ? QObject::tr("none") : QObject::tr("tag %1").arg(missed.join(QStringLiteral(", "))))
+                         .arg(refused)
+                         .arg(notes.isEmpty() ? QString() : QObject::tr(" Left out: %1").arg(notes.join(QStringLiteral("; ")))));
+    };
+    connect(line, QOverload<int>::of(&QComboBox::currentIndexChanged), d, fill);
+    fill();
+    d->resize(900, 600);
+    d->show();
+    m_status->ok(tr("A loco over the stretch %1").arg(ids.join(QStringLiteral(" → "))));
+    return d;
 }
 
 void StationLayoutWindow::showRun(const LogModel *model, const QString &key)

@@ -31,6 +31,9 @@ Read so far:
 
 Folders given together are read as one stretch: a route that runs into the
 next section ends on that section's tag and signal, which are copied in.
+They are also written as stretch.json (the station files in the order they
+lie: Packet Maker answers as all of them) and stretch_<first>-<last>.json
+(one drawing, the main lines running through, for the Loco Simulator). (458)
 
 A sheet is read through `pdftotext -bbox` (poppler): words and where they
 are on the page, so a table's columns line up by position. The .html that
@@ -1320,6 +1323,74 @@ def station_layout(folder):
     return import_pack([folder])[folder]
 
 
+# ---- a stretch: several sections read together ---------------------------------
+STRETCH_FORMAT = "dlconsole-stretch"
+
+
+def main_line(name):
+    """'Down Main', 'DN Main Line', 'UP Main' -> 'Down Main' / 'Up Main'; any other line: None."""
+    n = (name or "").lower()
+    if "main" not in n or "loop" in n:
+        return None
+    if re.match(r"\s*(down|dn)\b", n):
+        return "Down Main"
+    if re.match(r"\s*up\b", n):
+        return "Up Main"
+    return None
+
+
+def stretch_files(done, outdir):
+    """(stretch dict, merged layout dict) for sections read together, in the
+    order they lie (their tags' locations): the stretch names each section's
+    station file; the merged layout holds every tag once and the main lines run
+    through from end to end, for the Loco Simulator's run (session 458)."""
+    secs = []
+    for folder, (lay, notes) in done.items():
+        if lay is None:
+            continue
+        sid = lay["stations"][0]["station_id"]
+        secs.append((lay["stations"][0]["location"], sid, folder, lay))
+    secs.sort()
+    stretch = {"format": STRETCH_FORMAT, "version": 1,
+               "comment": "Sections read together by scripts/kavach_sheets.py (session 458), in the order they lie.",
+               "stations": [{"station_id": sid, "file": f"station_{sid}.json", "location": loc}
+                            for loc, sid, folder, lay in secs]}
+    tags, seen, locs = [], {}, {}
+    lines = {"Down Main": [], "Up Main": []}
+    stations = []
+    for loc, sid, folder, lay in secs:
+        stations += lay["stations"]
+        for t in lay["tags"]:
+            key = (t["name"], t["page_x"], t["page_y"])
+            if key in seen:
+                continue
+            seen[key] = True
+            tags.append(t)
+            d = decode(t["page_x"], t["page_y"])
+            if d["crcOk"] and not t["name"].endswith("D"):
+                locs.setdefault(t["name"], d["absLoc"])
+        for ln in lay["lines"]:
+            m = main_line(ln["name"])
+            if m:
+                for n in ln["tags"]:
+                    if n not in lines[m]:
+                        lines[m].append(n)
+    def loc_of(n):
+        return locs.get(n[:-1] if n.endswith("D") else n, 0) + (0.5 if n.endswith("D") else 0)
+    for k in lines:   # a tag whose pages give no location (SKP's 384, 400, ...) cannot be placed on the run
+        lines[k] = [n for n in lines[k] if (n[:-1] if n.endswith("D") else n) in locs]
+    merged = {
+        "format": FORMAT, "version": 1,
+        "comment": ("The stretch's sections on one drawing (scripts/kavach_sheets.py, session 458): every tag "
+                    "once, the Down and Up main lines run through, for the Loco Simulator. The stations answer "
+                    "from their own files (stretch.json)."),
+        "tags": tags, "signals": [], "points": [],
+        "lines": [{"name": k, "line": k, "tags": sorted(v, key=loc_of)} for k, v in lines.items() if v],
+        "stations": stations, "texts": [], "other_sheets": [],
+    }
+    return stretch, merged
+
+
 def layout_text(layout):
     """The file as written: what a golden is compared with."""
     return json.dumps(layout, indent=1, ensure_ascii=False) + "\n"
@@ -1352,6 +1423,16 @@ def main(argv):
         print(f"{out}: {len(layout['tags'])} tags, {routes} routes, {len(notes)} sheet notes")
         for n in notes:
             print("   ", n)
+    if len(args) > 1 and rc == 0:
+        stretch, merged = stretch_files(done, outdir)
+        base = outdir or os.path.dirname(os.path.abspath(args[0]))
+        ids = [x["station_id"] for x in stretch["stations"]]
+        with open(os.path.join(base, "stretch.json"), "w", encoding="utf-8") as fh:
+            fh.write(layout_text(stretch))
+        with open(os.path.join(base, f"stretch_{ids[0]}-{ids[-1]}.json"), "w", encoding="utf-8") as fh:
+            fh.write(layout_text(merged))
+        print(f"{os.path.join(base, 'stretch.json')}: {len(ids)} stations, {' → '.join(map(str, ids))}; "
+              f"stretch_{ids[0]}-{ids[-1]}.json: {len(merged['tags'])} tags, the main lines through")
     return rc
 
 

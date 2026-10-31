@@ -125,6 +125,20 @@ row goes onto each route the stretch between them covers, cut to it, to the
 metre, as one Undo step. Packet Maker's station sends it (TSR_STATUS 2), and
 the Station panel switches it on and off as before.
 
+**A stretch** (session 458). Folders read together also give
+`stretch.json`, the station files in the order they lie. Packet Maker,
+given it in its station-layout field, answers as all of them: an ARP goes
+to the station it names, and an LSRP to the station the loco is with. They
+also give `stretch_<first>-<last>.json`, one drawing with the main lines
+run through, for the Loco Simulator.
+
+Station Layout ▸ Open ▸ **Run a loco over a stretch…** drives a loco along
+the Down or Up main line with every signal Green: who answers at each tag,
+the MA, and each hand-over or missing one. On HBL's pack it runs GGD 521 →
+LPI 527. Every border is handed over except SKP's: its "Next Station Border
+RFID" is its own last stop signal's foot tag, so the loco reaches SKP-NPL IB
+(Down, R-306) and SKP-GGD IB (Up, R-459) without one.
+
 ## What the sheets do not agree on
 
 Nothing is corrected. Each disagreement is one line in the file's
@@ -196,6 +210,9 @@ signatories.
 - `session456` checks LPI's profiles against station 527's own SLRPs.
 - `session457` checks the TSR routes, a TSR given by poles, the editor and
   the answer that carries it.
+- `session458` checks a stretch (routing, the main line, the dry run,
+  Packet Maker answering as 527 within it), and the whole local pack when
+  the validator has written it to `tests/fixtures/kavach_sheets/_out/`.
 
 ## Not yet
 

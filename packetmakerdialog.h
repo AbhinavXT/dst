@@ -28,6 +28,7 @@
 #include "messageheader.h"
 #include "schema/schemaencoder.h"
 #include "stationkavach.h"
+#include "stationstretch.h"
 #include "stationinterlock.h"
 
 class SessionKeyStore;
@@ -110,6 +111,10 @@ public:
     StationKavach::State *stationState() { return &m_stnState; }
     // Session 441: the locos the station has heard (by their ARPs and LSRPs).
     const QHash<int, StationKavach::Loco> &stationLocos() const { return m_stnLocos; }
+    // Session 458: answering as a stretch's stations (its stretch.json in the layout field).
+    bool answeringAsStretch() const { return m_isStretch; }
+    const StationStretch::Stretch &stretch() const { return m_stretch; }
+    int stretchMember() const { return m_member; }
     // Session 428: Station… (null until opened) and its Show on the drawing:
     // the layout answered from, in Station Layout, the station live on it.
     StationKavachPanel *stationPanel() const { return m_stnPanel; }
@@ -409,6 +414,15 @@ private:
     // Session 441: the layout's track circuits; each ARP / LSRP heard moves
     // its loco, and the circuits its train covers are occupied by it.
     StationInterlock::Track m_stnTrack;
+    // Session 458: a stretch. Its stations take turns in m_station / m_stnState /
+    // m_stnLocos / m_stnTrack: the one an ARP or LSRP is for is put there to
+    // answer it (useMember) and kept back after (keepMember).
+    StationStretch::Stretch m_stretch;
+    QVector<StationInterlock::Track> m_stretchTracks;
+    bool m_isStretch = false;
+    int  m_member = -1;
+    void useMember(int i);
+    void keepMember();
     QStringList m_stnTrackNotes;                  // the last occupancy's notes
     void noteStationLoco(const QHash<QString, qint64> &pkt);
     void workStation();                           // session 442: StationInterlock::work, said

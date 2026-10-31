@@ -238,6 +238,23 @@ def main():
               "TSR route ids 22 and 12 each given twice: said")
         check(has(allnotes, "TSR_ROUTE", "no rows 11, 12"), "the table's rows 11 and 12 absent: said")
         check(has(allnotes, "TSR_ROUTE", "#13 S25(HFZ)", "not taken"), "#13 starts at Hafizpet's S25: not LPI's to take")
+        # session 458: the stretch, written where session458 runs a loco over it
+        out = os.path.join(LOCAL, "_out")
+        os.makedirs(out, exist_ok=True)
+        done = {}
+        for d in PACK:
+            lay, notes = got[os.path.join(LOCAL, d)][1]
+            done[os.path.join(LOCAL, d)] = (lay, notes)
+            with open(os.path.join(out, f"station_{lay['stations'][0]['station_id']}.json"), "w", encoding="utf-8") as fh:
+                fh.write(kavach_sheets.layout_text(lay))
+        stretch, merged = kavach_sheets.stretch_files(done, out)
+        with open(os.path.join(out, "stretch.json"), "w", encoding="utf-8") as fh:
+            fh.write(kavach_sheets.layout_text(stretch))
+        check([x["station_id"] for x in stretch["stations"]] == [521, 522, 523, 524, 525, 526, 501, 527],
+              "the stretch: 521 → 522 → 523 → 524 → 525 → 526 → 501 → 527, as they lie")
+        lines = {x["name"]: x["tags"] for x in merged["lines"]}
+        check(len(merged["tags"]) == 712 and lines.get("Down Main", [""])[0] == "666" and lines["Down Main"][-2] == "904",
+              "the merged drawing: 712 tags once each; Down Main from GGD's R-666 to LPI's R-904")
     print(f"kavach sheets: {ok}/{total} {'PASS' if ok == total else 'FAIL'}")
     return 0 if ok == total else 1
 

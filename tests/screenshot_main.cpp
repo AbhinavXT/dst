@@ -721,7 +721,14 @@ int main(int argc, char **argv)
                     // Session 424: SHOT_KAVACH_DRAWING=<png>: the drawing with that route on it.
                     if (!qEnvironmentVariableIsEmpty("SHOT_KAVACH_DRAWING")) w->exportDrawing(qEnvironmentVariable("SHOT_KAVACH_DRAWING"));
                 }
-                win = w;
+                // Session 458: SHOT_STRETCH=<stretch.json>: Open ▸ Run a loco over a stretch…, its window shot.
+                if (!qEnvironmentVariableIsEmpty("SHOT_STRETCH")) {
+                    if (QDialog *d = w->showStretchRun(qEnvironmentVariable("SHOT_STRETCH"))) {
+                        w = nullptr;
+                        win = d;
+                    }
+                }
+                if (w) win = w;
             }
             if (which == QLatin1String("testcatalog")) {
                 // Session 231. SHOT_SELECT: the clause shown (default 22.1, a matrix);

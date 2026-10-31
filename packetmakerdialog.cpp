@@ -2036,6 +2036,38 @@ bool PacketMakerDialog::startAnswering()
             m_status->fail(tr("Not answering — the AAP preset: %1").arg(err.isEmpty() ? tr("not an AAP") : err));
             return false;
         }
+        // Session 458: a stretch file: every station on it answers its locos.
+        m_isStretch = false;
+        if (StationStretch::isStretchFile(m_layoutEdit->text().trimmed())) {
+            QStringList notes;
+            StationStretch::Stretch st;
+            if (!StationStretch::load(m_layoutEdit->text().trimmed(), &st, &err, &notes)) {
+                m_status->fail(tr("Not answering — the stretch: %1").arg(err));
+                return false;
+            }
+            m_stretch = st;
+            m_stretchTracks.clear();
+            QStringList ids;
+            for (StationStretch::Member &m : m_stretch.members) {
+                const StationInterlock::Track track = StationInterlock::trackOf(m.layout);
+                m.station.tagLine = track.lineOfTag;
+                m.state.interlocking = !track.isEmpty();
+                m_stretchTracks << track;
+                ids << QString::number(m.station.stationId);
+            }
+            m_aapFields = aap.header;
+            m_isStretch = true;
+            m_member = -1;
+            m_stnTrackNotes.clear();
+            useMember(0);
+            m_stnLayoutPath = m_stretch.members.first().path;
+            showStationLive();
+            const QString said = tr("Answering as the stretch's %1 stations (%2) while armed%3.")
+                                     .arg(m_stretch.members.size()).arg(ids.join(QStringLiteral(", ")))
+                                     .arg(notes.isEmpty() ? QString() : tr("; left out: %1").arg(notes.join(QStringLiteral("; "))));
+            if (notes.isEmpty()) m_status->ok(said); else m_status->warn(said);
+            return true;
+        }
         StationLayout::Layout layout;
         StationKavach::Station station;
         if (!StationLayout::load(m_layoutEdit->text().trimmed(), &layout, &err)) {
@@ -2100,7 +2132,18 @@ void PacketMakerDialog::answerArp(const CaptureLine &c, const QHash<QString, qin
                                            : quint16(QRandomGenerator::global()->bounded(1, 0x10000));
     const QHash<QString, qint64> h = StationAnswer::aapFor(m_aapFields, arp, rnd);
     const int locoId = int(arp.value(QStringLiteral("SOURCE_LOCO_ID")));
-    const int stnId = int(h.value(QStringLiteral("SOURCE_STN_ID")));
+    if (answeringAsStation() && m_isStretch) {   // session 458: the stretch's station it is for
+        QString why;
+        const int i = StationStretch::which(m_stretch, arp, true, &why);
+        if (i < 0) {
+            m_status->warn(tr("ARP from loco %1 not answered — %2").arg(locoId).arg(why));
+            return;
+        }
+        useMember(i);
+    }
+    QHash<QString, qint64> hh = h;
+    if (m_isStretch && answeringAsStation()) hh.insert(QStringLiteral("SOURCE_STN_ID"), m_station.stationId);
+    const int stnId = int(hh.value(QStringLiteral("SOURCE_STN_ID")));
     if (answeringAsStation()) {   // session 441: where it is, before anything else
         noteStationLoco(arp);
         if (m_stnPanel) m_stnPanel->refresh();
@@ -2127,7 +2170,11 @@ void PacketMakerDialog::answerArp(const CaptureLine &c, const QHash<QString, qin
     // The SLRPs that follow are MACed with this key.
     m_keyEdit->setText(QString::fromLatin1(k.sessionKey.toHex()));
     m_locoKeys.insert(locoId, k.sessionKey);
-    const PacketBuilder::Result r = m_builder.build(QStringLiteral("aap"), h, {}, k.sessionKey);
+    const PacketBuilder::Result r = m_builder.build(QStringLiteral("aap"), hh, {}, k.sessionKey);
+    if (m_isStretch && answeringAsStation()) {   // session 458: the loco is with this station now
+        m_stretch.with.insert(locoId, m_member);
+        keepMember();
+    }
     sendAnswer(QStringLiteral("aap"), r,
                tr("answers ARP %1 from loco %2, station random %3")
                    .arg(arp.value(QStringLiteral("FRAME_NUM"))).arg(locoId)
@@ -2139,6 +2186,15 @@ void PacketMakerDialog::answerLsrp(const QHash<QString, qint64> &lsrp)
     const qint64 fn = lsrp.value(QStringLiteral("FRAME_NUM"));
     if (answeringAsStation()) {
         const int locoId = int(lsrp.value(QStringLiteral("SOURCE_LOCO_ID")));
+        if (m_isStretch) {   // session 458: the station the loco is with
+            QString why;
+            const int i = StationStretch::which(m_stretch, lsrp, false, &why);
+            if (i < 0) {
+                m_status->fail(tr("LSRP %1 from loco %2 not answered — %3").arg(fn).arg(locoId).arg(why));
+                return;
+            }
+            useMember(i);
+        }
         noteStationLoco(lsrp);   // session 441: the circuits it occupies, before it is answered
         if (m_stnPanel) m_stnPanel->refresh();
         showStationLive();   // session 451: where it is, answered or not
@@ -2149,8 +2205,10 @@ void PacketMakerDialog::answerLsrp(const QHash<QString, qint64> &lsrp)
         if (!a.ok) {
             m_status->fail(tr("LSRP %1 from loco %2 not answered — %3").arg(fn).arg(locoId).arg(a.why));
             if (m_stnPanel) m_stnPanel->showAnswer(locoId, tr("LSRP %1 NOT answered: %2").arg(fn).arg(a.why), {});
+            keepMember();
             return;
         }
+        keepMember();
         showStationLive();   // session 428: where it is, what it was given
         if (!a.checks.isEmpty()) m_status->warn(tr("Loco %1: %2").arg(locoId).arg(a.checks.join(QStringLiteral("; "))));
         if (m_stnPanel) m_stnPanel->showAnswer(locoId, tr("LSRP %1 answered: %2").arg(fn).arg(a.note), a.checks);
@@ -2170,6 +2228,29 @@ void PacketMakerDialog::answerLsrp(const QHash<QString, qint64> &lsrp)
     }
     sendAnswer(QStringLiteral("slrp"), m_builder.build(QStringLiteral("slrp"), h, subs, sessionKey()),
                tr("answers LSRP %1: %2").arg(lsrp.value(QStringLiteral("FRAME_NUM"))).arg(a.note));
+}
+
+void PacketMakerDialog::useMember(int i)
+{
+    if (!m_isStretch || i < 0 || i >= m_stretch.members.size()) return;
+    if (i != m_member) {
+        keepMember();
+        m_member = i;
+        const StationStretch::Member &m = m_stretch.members[i];
+        m_station = m.station;
+        m_stnState = m.state;
+        m_stnLocos = m.locos;
+        m_stnTrack = m_stretchTracks.value(i);
+        if (m_stnPanel) m_stnPanel->setStation(m_station, &m_stnState);
+    }
+}
+
+void PacketMakerDialog::keepMember()
+{
+    if (!m_isStretch || m_member < 0 || m_member >= m_stretch.members.size()) return;
+    StationStretch::Member &m = m_stretch.members[m_member];
+    m.state = m_stnState;
+    m.locos = m_stnLocos;
 }
 
 void PacketMakerDialog::noteStationLoco(const QHash<QString, qint64> &pkt)

@@ -10,6 +10,92 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-458"></a>
+## Session 458 — the whole stretch: stations answering one loco as it goes
+
+Abhinav's *"then 6"*: the stretch GGD 521 → LPI 527 as one run, eight
+sections chained by their border tags, a loco across the hand-overs.
+`docs/STATION_KAVACH.md` had *"two stations answering side by side in one
+Packet Maker"* under "Not yet".
+
+**What it does.**
+- **`scripts/kavach_sheets.py`**, given several sections, also writes:
+  - **stretch.json** (`dlconsole-stretch`): the station files in the order
+    they lie;
+  - **stretch_<first>-<last>.json**: one Station Layout file with every tag
+    once and the Down and Up main lines run through end to end, for the Loco
+    Simulator. A tag whose pages give no location (SKP's 384, 400, …) is
+    left off those lines.
+- **`StationStretch`** (`stationstretch.{h,cpp}`, new):
+  - loads a stretch;
+  - picks who answers: an ARP its APPROACHING_STN_ID's station, an LSRP the
+    station the loco is with (the last whose AAP it got), else the station
+    whose routes hold its tag;
+  - gives a stretch's Down or Up main line in the order a loco reads it;
+  - runs a loco along it dry: an LSRP at each main tag, every signal at one
+    aspect. Each step names who answered, the MA and NEXT_STN_COMM's
+    station, and whether the loco was handed over or reached a station
+    without one.
+- **Packet Maker**: a stretch.json in the station-layout field answers as
+  all its stations. Each ARP and LSRP puts its station (state, locos,
+  track) into the station path that answers a single station, and keeps it
+  back after; the AAP carries that station's id in place of the preset's.
+  The Station panel shows the station last answering. The drawing opens the
+  first station's layout.
+- **Station Layout ▸ Open ▸ Run a loco over a stretch…**: the dry run in a
+  window, Down or Up Main, every signal Green. One row per tag: km, the
+  station that answered, the MA, hand-overs in green and missing ones in
+  amber. A summary sits on top.
+
+**Seen on the whole pack** (local, Down Main, every signal Green):
+- **Down Main, 110 tags:** handed over into 522, 523, 525, 526, 501 and
+  527. Not handed over into 524: the loco reaches SKP-NPL IB's R-306 with
+  no hand-over, because SKP's border table gives its own S6's foot tag as
+  the next station's border RFID (455). Said in the run.
+- **Up Main, 113 tags:** handed over into 501, 526, 525, 524, 523 and 521.
+  Not into 522 (SKP-GGD IB, R-459), for the same reason (SKP's S35).
+- SKP's corrupted tags (384, 400, …) are left off the lines: their CRC-30
+  does not hold, and R-366's pages put it 3,154 km away.
+
+**Files.** `stationstretch.{h,cpp}` (new, `dlcore.pri`);
+`packetmakerdialog.{h,cpp}` (`useMember`, `keepMember`, a stretch in
+`startAnswering`, `answerArp`, `answerLsrp`);
+`stationlayoutwindow.{h,cpp}` (`showStretchRun`, the menu entry);
+`scripts/kavach_sheets.py` (`stretch_files`, `main_line`);
+`schema/validate_kavach_sheets.py` (the whole pack written as a stretch to
+the git-ignored `tests/fixtures/kavach_sheets/_out/`);
+`tests/test_session458.cpp` (new), `tests/tests.pro`;
+`docs/KAVACH_SHEETS.md`, `docs/STATION_KAVACH.md`, `CLAUDE.md`.
+
+**Tests.** `session458` (21 checks):
+- a stretch of the committed IB (526) and LPI (527) extracts: who answers
+  an ARP, an ARP for a station not on it, an LSRP by its tag, a loco with a
+  station;
+- Down Main from R-134 to LPI's tags;
+- the dry run: 526 at R-134 with MA 3053 m handing over to 501, which is not
+  on this stretch, so the loco reaches LPI's R-2 not handed over, said;
+- Packet Maker given the stretch: station 527's real ARP answered as 527
+  (the AAP says 527, not the preset's 999), the loco then with 527, its
+  LSRPs at R-14 / R-16 answered by 527.
+- Locally, the whole pack: 8 stations as they lie; Down Main run;
+  hand-overs into 522, 523, 525, 526, 501, 527; 524 at R-306 the only one
+  reached without; Up Main runs Reverse (its result printed).
+
+**Not tested:**
+- a real loco's VCC handed over between two DLConsole stations on the bench
+  (the hand-over is the VCC's; DLConsole answers the ARPs it sends);
+- the drawing following a stretch's other stations (it shows the first);
+- the Up Main run beyond the summary line.
+
+- `validate_kavach_sheets.py` (108 checks): the whole pack's stretch in
+  order, the merged drawing (712 tags, Down Main R-666 to R-904).
+- Screenshot harness: `SHOT_STRETCH=<stretch.json>` shoots the run window.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators (18), 469 suites / 11,859 checks, menu
+audit, smoke.
+
+---
+
 <a id="session-457"></a>
 ## Session 457 — a TSR given by OHE poles, from the TSR route table
 

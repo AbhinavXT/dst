@@ -148,7 +148,9 @@ The three features once queued here are all done:
   its bits (454); the Table of Control as Stationary KAVACH routes, folders
   read together as one stretch, hand-overs from the border table (455); the
   track profile onto those routes, as station 527 sends it (456); the TSR
-  route table's OHE poles, a TSR given from pole to pole (457). HBL's 2023 PDFs (GGD … LPI) stay local in
+  route table's OHE poles, a TSR given from pole to pole (457); the whole
+  stretch GGD 521 → LPI 527: stretch.json, Packet Maker answering as all its
+  stations, a dry run of a loco with its hand-overs (458). HBL's 2023 PDFs (GGD … LPI) stay local in
   `tests/fixtures/kavach_sheets/` (git-ignored).
 - **Themes:** 14, six of them dark: Dark, Nord, Mocha, and One Dark,
   Solarized Dark, Gruvbox Dark (434).

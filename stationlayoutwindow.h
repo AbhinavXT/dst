@@ -38,6 +38,7 @@ class LocoSimWindow;
 class MessageDispatcher;
 class LogModel;
 class QMenu;
+class QDialog;
 class QTabWidget;
 class QTableWidget;
 class StationKavachEditor;
@@ -432,6 +433,8 @@ public:
     // layout lacks are listed. The Run tab; the drawing rings them.
     void setDispatcher(MessageDispatcher *dispatcher) { m_dispatcher = dispatcher; }
     void showRun(const LogModel *model, const QString &key);
+    // Session 458: Open ▸ Run a loco over a stretch…: the dry run's window (StationStretch::run).
+    QDialog *showStretchRun(const QString &stretchPath);
     void clearRun();
     struct RunTag { QString name, line; PlanRun::State state = PlanRun::State::NotRead; qint64 firstMs = 0; QString detail; };
     const QVector<RunTag> &runTags() const { return m_runTags; }
