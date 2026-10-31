@@ -2141,6 +2141,7 @@ void PacketMakerDialog::answerLsrp(const QHash<QString, qint64> &lsrp)
         const int locoId = int(lsrp.value(QStringLiteral("SOURCE_LOCO_ID")));
         noteStationLoco(lsrp);   // session 441: the circuits it occupies, before it is answered
         if (m_stnPanel) m_stnPanel->refresh();
+        showStationLive();   // session 451: where it is, answered or not
         QList<StationKavach::Loco> others;   // session 427: a loco ahead cuts the MA
         for (auto it = m_stnLocos.cbegin(); it != m_stnLocos.cend(); ++it) if (it.key() != locoId) others << it.value();
         StationKavach::Loco &loco = m_stnLocos[locoId];

@@ -1752,7 +1752,11 @@ StationLayoutCanvas::LiveView liveViewOf(const StationLayout::Layout &l, const S
                                              ? &s.routes.at(o.maRoutes.first()) : nullptr;
         k.sign = (r0 ? r0->pktDir : o.dir) == 2 ? -1 : 1;
         qint64 refLoc = -1;
-        k.laneTag = nearestCopy(copies, o.refTag, o.absLoc, &refLoc);   // the tag it last read, where it is
+        const QString refKey = nearestCopy(copies, o.refTag, o.absLoc, &refLoc);   // where the MA starts from
+        // Session 451: the line of the tag it last read (LAST_RFID_TAG), not of the ref tag, which
+        // only an answer moves: an LSRP the station did not answer still moves the loco.
+        k.laneTag = nearestCopy(copies, o.lastTag, o.absLoc);
+        if (k.laneTag.isEmpty()) k.laneTag = refKey;
         if (k.laneTag.isEmpty()) {   // no tag on a route read yet: the layout's tag nearest it
             qint64 best = -1;
             for (const QVector<TagCopy> &cs : copies)

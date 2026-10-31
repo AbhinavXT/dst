@@ -10,6 +10,44 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-451"></a>
+## Session 451 — the live drawing follows every LSRP: no more Show on the drawing again
+
+Abhinav: *"The station layout is not constantly updating with the loco location
+and loco tag. I need to reload loco again and again."*
+
+Packet Maker answering as the station (Station… ▸ Show on the drawing, session
+428) redrew the drawing only after an LSRP it **answered**. An LSRP it did not
+answer (its tag on no route the loco's way, the sections broken, ...) was
+noted, so the station knew where the loco was, but the drawing was not told:
+the loco stayed where the last answer had put it until Show on the drawing was
+clicked again. And the loco was drawn on the line of the station's ref tag,
+which only an answer moves, not of the tag it had just read.
+
+**What the operator sees.** Each LSRP heard moves the loco on the drawing and
+in the line under the toolbar, answered or not, on the line of the
+LAST_RFID_TAG it reports (the ref tag's place when the layout lacks that tag).
+The MA band is unchanged: from the last answer.
+
+**Files.** `packetmakerdialog.cpp` (`answerLsrp`: the drawing told before the
+answer, as `answerArp` does since 441); `stationlayoutwindow.cpp`
+(`liveViewOf`: the lane from `lastTag`); `tests/test_session451.cpp` (new),
+`tests/tests.pro`.
+
+**Tests.** `session451` (16 checks). `liveViewOf`: a loco whose ref tag and
+last tag lie on different tags of Section_30 is drawn at the last one; a tag
+the layout lacks: at the ref tag. Through Packet Maker over loopback, the
+first 150 LSRPs of `replay/loco_1_1_27062026_140226.cap` against station 527
+with its routes made UP (the loco runs DN): none answered, the loco drawn at
+each one's ABS_LOCO_LOC on the line of its tag. Without the fix in
+`answerLsrp`, 41 of them left the loco where it was.
+- **Not tested:** with a live VCC and loco on the bench; the Loco Simulator's
+  own loco on the drawing (a separate path, redrawn on each move already).
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 462 suites / 11,713 checks, menu audit, smoke.
+
+---
+
 <a id="session-450"></a>
 ## Session 450 — Windows CI green again: the menu audit opens the built-in station layout
 
