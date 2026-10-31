@@ -129,6 +129,7 @@ TEST_SUITE(session442)
         StationKavach::note(&locos[in.loco], in.raw);
         st.occupiedBy = StationInterlock::occupancy(track, locos.values()).by;
         for (const QString &e : StationInterlock::work(s, &st)) {
+            if (e.contains(QStringLiteral("(automatic"))) continue;   // session 443: A900 works itself
             events << e;
             if (e.startsWith(QStringLiteral("route S50-S48 DN released"))) releasedAt = in.raw.value(QStringLiteral("ABS_LOCO_LOC"));
             if (e.startsWith(QStringLiteral("S43 back to Red"))) s43RedAt = in.raw.value(QStringLiteral("ABS_LOCO_LOC"));
@@ -177,14 +178,18 @@ TEST_SUITE(session442)
     CHECK(StationInterlock::setRoute(two, &lk, main).isEmpty() && StationInterlock::work(two, &lk).isEmpty(),
           "interlocking off: nothing worked");
 
-    // ---- a signal cleared by hand, no route set ----
-    StationKavach::State hand = StationKavach::State::initial(s);
+    // ---- a signal cleared by hand, no route set (S48: a station route, not automatic: session 443) ----
+    StationKavach::Station hs = s;
+    hs.routes[main].trackCircuits = QStringList{ QStringLiteral("DLT") };
+    StationKavach::State hand = StationKavach::State::initial(hs);
     hand.interlocking = true;
-    hand.aspect.insert(QStringLiteral("A900"), 11);
-    hand.occupied.insert(QStringLiteral("1629T"));
-    CHECK(StationInterlock::work(s, &hand) == QStringList{ QStringLiteral("A900 back to Red: a train in route A900-A904 DN Auto (1629T)") }
-              && hand.aspectOf(s, QStringLiteral("A900")) == 1,
-          "A900 Green by hand, 1629T occupied (by hand): back to Red");
+    hand.aspect.insert(QStringLiteral("S48"), 11);
+    hand.occupied.insert(QStringLiteral("DLT"));
+    QStringList handEv = StationInterlock::work(hs, &hand);
+    handEv.erase(std::remove_if(handEv.begin(), handEv.end(), [](const QString &e) { return e.contains(QStringLiteral("(automatic")); }), handEv.end());
+    CHECK(handEv == QStringList{ QStringLiteral("S48 back to Red: a train in route S48-S43 DN Main (DLT)") }
+              && hand.aspectOf(hs, QStringLiteral("S48")) == 1,
+          "S48 Green by hand, its route's first circuit occupied (by hand): back to Red");
 
     // ---- the drawing: a point a set route holds is not thrown ----
     {
@@ -245,8 +250,8 @@ TEST_SUITE(session442)
     QCoreApplication::processEvents();
     auto *log = panel ? panel->findChild<QPlainTextEdit *>(QStringLiteral("skEvents")) : nullptr;
     CHECK(dlg.stationState()->aspectOf(s, QStringLiteral("S43")) == 1 && log
-              && log->toPlainText().startsWith(QStringLiteral("S43 back to Red: a train in route S43-A900 DN Auto (43T by loco 1")),
-          "loco 1's ARP at tag 906: S43 back to Red, said in Station…");
+              && log->toPlainText().contains(QStringLiteral("S43 Red (automatic: 43T by loco 1")),
+          "loco 1's ARP at tag 906: S43 back to Red, said in Station… (session 443: S43 an automatic signal)");
     if (box) box->setChecked(false);
     CHECK(!dlg.stationState()->interlocking, "Interlocking unticked: off");
 }

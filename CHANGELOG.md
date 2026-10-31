@@ -10,6 +10,48 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-443"></a>
+## Session 443 — the automatic signals work themselves
+
+Abhinav's list for a full station simulator, item 3.
+
+**What the operator sees.** With Station… ▸ Options ▸ Interlocking on, a
+signal every route from which is an Autoblock section (TRAIN_SECTION_TYPE 2)
+with track circuits works itself, from the signal furthest ahead back:
+- **Red** while a circuit of the section ahead is occupied: *S43 Red
+  (automatic: 43T by loco 1)*;
+- else **one step up from the signal at its end**: Red (or calling-on, stop
+  board) → Yellow; Yellow → Double Yellow; Double Yellow or Green → Green:
+  *S43 Double Yellow (automatic: A900 Yellow ahead)*.
+Each change is said in Station… and on the status line; the answers carry the
+aspects. Set a route from such a signal and it is the operator's again.
+
+**How.** `StationInterlock::work()`, after the routes: passes until nothing
+changes. A signal cleared by hand that is automatic is left to this step
+(its Red now says *automatic*).
+
+**Choices.** "Automatic" is read from the data: every route from the signal
+an Autoblock section with track circuits (station 527's S43 and A900). There
+is no automatic-signal flag in the KAVACH data.
+
+**Files.** `stationinterlock.{h,cpp}`, `tests/test_session443.cpp` (new),
+`tests/test_session442.cpp` (the run leaves out A900's automatic steps; the
+hand-cleared check moved to S48, a station route; S43's Red in Packet Maker
+is now an automatic one), `tests/tests.pro`.
+
+**Tests.** `session443` (12 checks): A904 Red: A900 Yellow, S43 Double
+Yellow; worked again, nothing changes; A904 Green: both Green. The real run
+of loco 1 (`loco_1_1_27062026_170217.cap`): S43 Red as its front entered 43T
+(161900 m); at the end S43 Red (the train in 43BT / 43CT), A900 Green. 1629AT
+occupied: A900 Red; clear: Green again. A route set from S43: its aspect the
+operator's; interlocking off: nothing worked.
+- **Not tested:** with live locos; an automatic signal with two routes on
+  (a junction in an automatic section).
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 455 suites / 11,614 checks, menu audit, smoke.
+
+---
+
 <a id="session-442"></a>
 ## Session 442 — the station works its signals: routes locked, signals back to Red, routes released
 

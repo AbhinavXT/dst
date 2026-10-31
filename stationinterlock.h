@@ -29,6 +29,13 @@
 //  A route without track circuits is never seen entered: its signal stays
 //  the operator's.
 //
+//  AUTOMATIC SIGNALS (session 443), while State::interlocking: a signal
+//  every route from which is an Autoblock section (TRAIN_SECTION_TYPE 2,
+//  with track circuits) and has no route set from it works itself: Red
+//  while a circuit of the section ahead is occupied, else one step up from
+//  the signal at its end: Red (or calling-on, stop board) -> Yellow,
+//  Yellow -> Double Yellow, Double Yellow or Green -> Green.
+//
 //  Pure values; Packet Maker keeps the locos and the State.
 // =====================================================================
 #include <QHash>

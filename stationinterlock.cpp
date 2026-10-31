@@ -48,6 +48,29 @@ Occupancy occupancy(const Track &t, const QList<StationKavach::Loco> &locos)
 namespace {
 
 bool proceed(int aspect) { return !(aspect == 0 || aspect == 1 || aspect == 24); }
+bool redLike(int a) { return a == 0 || a == 1 || a == 24 || a == 15; }
+bool yellowAspect(int a) { return (a >= 2 && a <= 8) || a >= 32; }
+
+// One step up from the aspect of the signal ahead: Red -> Yellow, Yellow -> Double Yellow, else Green.
+int stepUp(int ahead)
+{
+    if (redLike(ahead)) return 2;
+    if (yellowAspect(ahead)) return 10;
+    return 11;
+}
+
+// Session 443: an automatic signal: every route from it an Autoblock section (secType 2), with track circuits.
+bool automatic(const StationKavach::Station &s, const QString &signal)
+{
+    bool any = false;
+    for (const StationKavach::Route &r : s.routes) {
+        if (r.entry != signal) continue;
+        if (r.sectionType != 2 || r.trackCircuits.isEmpty()) return false;
+        any = true;
+    }
+    return any;
+}
+
 
 // The circuits of route `r` occupied, and by whom ("43T by loco 1").
 QStringList occupiedIn(const StationKavach::Route &r, const StationKavach::State &st)
@@ -158,13 +181,33 @@ QStringList work(const StationKavach::Station &s, StationKavach::State *st)
             ev << QObject::tr("route %1 released: its track circuits clear").arg(r.name);
         }
     }
-    // A signal cleared by hand, no route set: back to Red as a train passes it.
+    // A signal cleared by hand, no route set: back to Red as a train passes it (an automatic one: below).
     for (const StationKavach::Signal &g : s.signalList) {
-        if (st->routes.contains(g.name) || !proceed(st->aspectOf(s, g.name))) continue;
+        if (st->routes.contains(g.name) || !proceed(st->aspectOf(s, g.name)) || automatic(s, g.name)) continue;
         const int ri = routeOf(s, *st, g.name);
         if (ri < 0 || s.routes[ri].trackCircuits.isEmpty() || !st->isOccupied(s.routes[ri].trackCircuits.first())) continue;
         st->aspect.insert(g.name, 1);
         ev << QObject::tr("%1 back to Red: a train in route %2 (%3)").arg(g.name, s.routes[ri].name, occupiedIn(s.routes[ri], *st).join(QStringLiteral(", ")));
+    }
+    // Session 443: the automatic signals, from the one furthest ahead back: Red while a
+    // circuit of the section ahead is occupied, else one step up from the signal ahead.
+    for (int pass = 0; pass <= s.signalList.size(); ++pass) {
+        bool changed = false;
+        for (const StationKavach::Signal &g : s.signalList) {
+            if (st->routes.contains(g.name) || !automatic(s, g.name)) continue;
+            const int ri = routeOf(s, *st, g.name);
+            if (ri < 0) continue;
+            const StationKavach::Route &r = s.routes[ri];
+            const QStringList occ = occupiedIn(r, *st);
+            const int ahead = st->aspectOf(s, r.exit);
+            const int want = occ.isEmpty() ? stepUp(ahead) : 1;
+            if (st->aspectOf(s, g.name) == want) continue;
+            st->aspect.insert(g.name, want);
+            changed = true;
+            ev << (occ.isEmpty() ? QObject::tr("%1 %2 (automatic: %3 %4 ahead)").arg(g.name, StationKavach::aspectName(want), r.exit, StationKavach::aspectName(ahead))
+                                 : QObject::tr("%1 Red (automatic: %2)").arg(g.name, occ.join(QStringLiteral(", "))));
+        }
+        if (!changed) break;
     }
     return ev;
 }

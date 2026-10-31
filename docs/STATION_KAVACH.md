@@ -264,6 +264,10 @@ keeps where every loco is from each **ARP and LSRP** it hears.
   Red; once every circuit of it is clear again it is released. A signal
   cleared by hand goes back to Red as a train passes it. Each step is said in
   Station…, under the answers.
+- **Automatic signals** (session 443). A signal every route from which is an
+  Autoblock section with track circuits works itself: Red while the section
+  ahead is occupied, else one step up from the signal at its end (Red →
+  Yellow → Double Yellow → Green).
 
 ## Not yet
 
