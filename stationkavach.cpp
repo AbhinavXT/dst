@@ -495,6 +495,16 @@ int State::aspectOf(const Station &s, const QString &signal) const
 
 void note(Loco *loco, const QHash<QString, qint64> &pkt)
 {
+    // Session 448: the frame before and where it was then (its first report), for when it crossed a joint.
+    const qint64 frame = pkt.value(QStringLiteral("FRAME_NUM"), -1);
+    if (frame != loco->frame) {
+        if (loco->frameAbs > 0) {
+            loco->prevAbs = loco->frameAbs;
+            loco->prevFrame = loco->frame;
+        }
+        loco->frame = frame;
+        loco->frameAbs = pkt.value(QStringLiteral("ABS_LOCO_LOC"), -1);
+    }
     loco->id = int(pkt.value(QStringLiteral("SOURCE_LOCO_ID")));
     loco->absLoc = pkt.value(QStringLiteral("ABS_LOCO_LOC"), -1);
     loco->trainLength = int(pkt.value(QStringLiteral("TRAIN_LENGTH")));
@@ -679,6 +689,21 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
                   { "NEXT_SIG_ASPECT", nextAspect }, { "APPR_SIG_DIST", appr }, { "AUTHORITY_TYPE", auth },
                   { "MA_W_R_T_SIG", maSent }, { "REQ_SHORTEN_MA", 0 }, { "TRN_LEN_INFO_STS", 0 }, { "NEXT_STN_COMM", 0 } };
     if (auth == 1) ma.values.insert(QStringLiteral("AUTHORIZED_SPEED"), r0.osSpeed);
+    // Session 448: the train-length times measured for it, Start then End, one SLRP each.
+    QString tlmNote;
+    bool tlmStartSent = loco->tlmStartSent, tlmDone = false;
+    if (st.trainLength && loco->tlmStartFrame >= 0 && (!loco->tlmStartSent || loco->tlmEndFrame >= 0)) {
+        const bool end = loco->tlmStartSent;
+        ma.values.insert(QStringLiteral("TRN_LEN_INFO_STS"), 1);
+        ma.values.insert(QStringLiteral("TRN_LEN_INFO_TYPE"), end ? 1 : 0);
+        ma.values.insert(QStringLiteral("REF_FRAME_NUM_TLM"), end ? loco->tlmEndFrame : loco->tlmStartFrame);
+        ma.values.insert(QStringLiteral("REF_OFFSET_INT_TLM"), end ? loco->tlmEndOffset : loco->tlmStartOffset);
+        tlmNote = QObject::tr("; train length %1 at the joint at %2 m: frame %3 + %4 ms (TRN_LEN_INFO)")
+                      .arg(end ? QObject::tr("End") : QObject::tr("Start")).arg(loco->tlmJoint)
+                      .arg(end ? loco->tlmEndFrame : loco->tlmStartFrame).arg(10 * (end ? loco->tlmEndOffset : loco->tlmStartOffset));
+        tlmStartSent = true;
+        tlmDone = end;
+    }
     // Session 447: the MA reaching a route handed over to the next station.
     QString handNote;
     if (secs.last()->nextStn > 0) {
@@ -789,6 +814,12 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
     l.maRoutes = sx.routes;
     l.maSent = held;
     l.shortRejected = rejected;
+    l.tlmStartSent = tlmStartSent;
+    if (tlmDone) {   // session 448: measured and sent: the next joint is measured afresh
+        l.tlmJoint = -1;
+        l.tlmStartFrame = l.tlmEndFrame = -1;
+        l.tlmStartSent = false;
+    }
     l.sos = sos;
     a.header.insert(QStringLiteral("REF_PROF_ID"), l.profId);
     a.fullProfile = lsrp.value(QStringLiteral("LAST_REF_PROFILE_NUM")) != l.profId;
@@ -804,6 +835,7 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
     if (!cutNote.isEmpty()) a.note += QStringLiteral("; ") + cutNote;
     a.note += shortNote;
     a.note += handNote;
+    a.note += tlmNote;
     if (!sosNote.isEmpty()) a.note += sosNote;
     else if (foreign) a.note += QObject::tr("; SoS Foreign RFID: tag %1 is not in the layout").arg(tag);
     else if (headOn) a.note += headNote;

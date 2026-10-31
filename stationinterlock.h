@@ -42,6 +42,13 @@
 //  the signal at its end: Red (or calling-on, stop board) -> Yellow,
 //  Yellow -> Double Yellow, Double Yellow or Green -> Green.
 //
+//  TRAIN LENGTH (session 448): the times a loco's front and then its rear
+//  cross a track-circuit joint of its line (measure()), each interpolated
+//  between the frames either side (FRAME_NUM, and ABS_LOCO_LOC of the
+//  frame's first report: ARPs repeat a frame number as it moves on): the
+//  distance the loco runs between them is its train length. Sent as
+//  TRN_LEN_INFO Start / End (StationKavach::answer, State::trainLength).
+//
 //  Pure values; Packet Maker keeps the locos and the State.
 // =====================================================================
 #include <QHash>
@@ -77,6 +84,13 @@ QString setRoute(const StationKavach::Station &s, StationKavach::State *st, int 
 QString cancelRoute(const StationKavach::Station &s, StationKavach::State *st, const QString &entry);
 // Why point `point` cannot be thrown now (a set route holds it); empty: free.
 QString pointLocked(const StationKavach::Station &s, const StationKavach::State &st, const QString &point);
+// Session 448: after StationKavach::note: the Start (its front over a joint
+// of its line) or the End (its rear over that joint) found since its report
+// before, kept in the loco to be sent. What was found, or empty.
+QString measure(const Track &t, StationKavach::Loco *loco);
+// A time in frames (FRAME_NUM, fractional) as a frame and a 10 ms offset.
+void frameAndOffset(double t, int *frame, int *offset);
+
 // The interlocking's step after the occupancy changed (or an aspect, a
 // route): what it did, one line each.
 QStringList work(const StationKavach::Station &s, StationKavach::State *st);

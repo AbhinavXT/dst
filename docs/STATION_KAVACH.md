@@ -286,6 +286,10 @@ keeps where every loco is from each **ARP and LSRP** it hears.
   `"next_stn"`): while the MA reaches it, NEXT_STN_COMM 1 and
   APPR_STN_ILC_IBS_ID. An ARP to another station (APPROACHING_STN_ID) is left
   unanswered, the loco still placed.
+- **Train length** (session 448; Options ▸ Send train-length times, off by
+  default). A loco's front and then its rear over a track-circuit joint of
+  its line: the times (interpolated between its frames) go out as
+  TRN_LEN_INFO Start, then End.
 
 ## Not yet
 

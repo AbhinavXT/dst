@@ -10,6 +10,48 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-448"></a>
+## Session 448 — the train-length times (TRN_LEN_INFO)
+
+Abhinav's list for a full station simulator, item 8.
+
+**What the operator sees.** Station… ▸ Options ▸ **Send train-length times
+(TRN_LEN_INFO: a joint's Start and End)**, off by default. Ticked, when a
+loco's front crosses a track-circuit joint of its line, and later its rear
+crosses the same joint, the times go out in its next SLRPs, one each:
+TRN_LEN_INFO_STS 1, TRN_LEN_INFO_TYPE 0 (Start) then 1 (End),
+REF_FRAME_NUM_TLM and REF_OFFSET_INT_TLM (10 ms). The distance the loco runs
+between them is its train length (the onboard's train-length measurement in
+the test catalogue: d = s × t). Each is said in Station… (*loco 1's front
+over the joint at 161330 m: frame 61356 + 570 ms (train length Start)*) and
+in the answer's note. Then the next joint is measured.
+
+**How.** `StationInterlock::measure()` after each ARP / LSRP heard: the time
+is interpolated between the frames either side. A frame's place is its first
+report: **found in the real data**, ARPs repeat a FRAME_NUM while the loco
+moves on (frame 61351: 161304 m and 161309 m in
+`loco_1_1_27062026_170217.cap`).
+
+**Why off by default.** Station 527 sent TRN_LEN_INFO_STS 0 in all 3,514
+SLRPs in `replay/`.
+
+**Files.** `stationinterlock.{h,cpp}` (`measure`, `frameAndOffset`),
+`stationkavach.{h,cpp}` (`State::trainLength`, the loco's frames and
+times), `stationkavachpanel.{h,cpp}`, `packetmakerdialog.cpp`,
+`tests/test_session448.cpp` (new), `tests/tests.pro`.
+
+**Tests.** `session448` (16 checks) on station_527.xml and loco 1's real
+reports: the first joint ahead of it, 161330 m (DMT's end); Start and End
+equal to the times worked out independently from its frames; the loco runs
+247-253 m between them (its train is 250 m); off: TRN_LEN_INFO_STS 0; on:
+Start sent with its frame and offset, it encodes; nothing until End; End
+sent; then measured afresh. Station…'s box.
+- **Not tested:** what a loco makes of them (no capture has them).
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 460 suites / 11,686 checks, menu audit, smoke.
+
+---
+
 <a id="session-447"></a>
 ## Session 447 — the hand-over to the next station (NEXT_STN_COMM)
 

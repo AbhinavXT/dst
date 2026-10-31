@@ -3,6 +3,7 @@
 #include <QObject>
 
 #include <algorithm>
+#include <cmath>
 
 namespace StationInterlock {
 
@@ -41,6 +42,49 @@ Occupancy occupancy(const Track &t, const QList<StationKavach::Loco> &locos)
             if (c.line == line && c.from <= hi && c.to >= lo && !out.by.contains(c.name)) out.by.insert(c.name, o.id);
     }
     return out;
+}
+
+// ---- session 448: train length -------------------------------------------------------
+
+void frameAndOffset(double t, int *frame, int *offset)
+{
+    *frame = int(std::floor(t));
+    *offset = int(std::lround((t - *frame) * 100.0));
+    if (*offset >= 100) { ++*frame; *offset -= 100; }
+}
+
+QString measure(const Track &t, StationKavach::Loco *o)
+{
+    if (o->prevAbs <= 0 || o->frameAbs <= 0 || o->prevFrame < 0 || o->frame <= o->prevFrame || (o->dir != 1 && o->dir != 2)) return QString();
+    if (o->tlmEndFrame >= 0) return QString();   // measured: waiting to be sent
+    const QString line = t.lineOfTag.value(o->lastTag);
+    if (line.isEmpty()) return QString();
+    const int sign = o->dir == 2 ? -1 : 1;
+    // When point x (along the loco's travel) was passed between the two reports, in frames.
+    auto when = [o, sign](qint64 x, qint64 from, qint64 to) -> double {
+        const double f = double((x - from) * sign) / double((to - from) * sign);
+        return double(o->prevFrame) + f * double(o->frame - o->prevFrame);   // ABS_LOCO_LOC at each frame's first report
+    };
+    auto crossed = [sign](qint64 x, qint64 from, qint64 to) { return (x - from) * sign > 0 && (to - x) * sign >= 0; };
+    if (o->tlmJoint < 0) {
+        qint64 best = -1;
+        for (const StationLayout::Circuit &c : t.circuits) {
+            if (c.line != line || c.from == c.to) continue;
+            for (qint64 x : { c.from, c.to })
+                if (crossed(x, o->prevAbs, o->frameAbs) && (best < 0 || (x - best) * sign < 0)) best = x;
+        }
+        if (best < 0) return QString();
+        o->tlmJoint = best;
+        frameAndOffset(when(best, o->prevAbs, o->frameAbs), &o->tlmStartFrame, &o->tlmStartOffset);
+        o->tlmStartSent = false;
+        return QObject::tr("loco %1's front over the joint at %2 m: frame %3 + %4 ms (train length Start)")
+            .arg(o->id).arg(best).arg(o->tlmStartFrame).arg(10 * o->tlmStartOffset);
+    }
+    const qint64 rearBefore = o->prevAbs - sign * o->trainLength, rear = o->frameAbs - sign * o->trainLength;
+    if (!crossed(o->tlmJoint, rearBefore, rear)) return QString();
+    frameAndOffset(when(o->tlmJoint, rearBefore, rear), &o->tlmEndFrame, &o->tlmEndOffset);
+    return QObject::tr("loco %1's rear over the joint at %2 m: frame %3 + %4 ms (train length End)")
+        .arg(o->id).arg(o->tlmJoint).arg(o->tlmEndFrame).arg(10 * o->tlmEndOffset);
 }
 
 // ---- session 442: locking and release ---------------------------------------------

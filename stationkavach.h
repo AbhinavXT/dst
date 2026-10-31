@@ -164,6 +164,9 @@ struct State {
     // "New, Future Use" in Annexure-C; station 527 never sent it). Off: the
     // shorter MA is sent at once, as before.
     bool                 askShorten = false;
+    // Session 448: send the track-circuit times a loco measures its train
+    // length by (TRN_LEN_INFO_*; station 527 never sent them). Off: never.
+    bool                 trainLength = false;
     QHash<QString, int>  authority;    // route -> authType, overriding the file's
     QSet<QString>        tsrOff;       // "route/id": TSRs switched off
     static State initial(const Station &s);
@@ -189,6 +192,14 @@ struct Loco {
     qint64  maSent = -1;
     int     sos = 0;
     bool    shortRejected = false;     // session 446: it rejected a shortened MA (kept until it holds no longer)
+    // Session 448: the report before (for when it crossed a joint), and the
+    // train length measured at a track-circuit joint: the front over it
+    // (Start) and the rear (End), as FRAME_NUM + 10 ms offset, to be sent.
+    // A frame's place is its first report: ARPs repeat a FRAME_NUM as the loco moves on.
+    qint64  frame = -1, frameAbs = -1, prevFrame = -1, prevAbs = -1;
+    qint64  tlmJoint = -1;             // the joint measured at (abs m); -1: none yet
+    int     tlmStartFrame = -1, tlmStartOffset = 0, tlmEndFrame = -1, tlmEndOffset = 0;
+    bool    tlmStartSent = false;
 };
 
 // Session 441: where the loco is by an ARP or an LSRP (both carry
@@ -230,6 +241,10 @@ Sections sectionsFrom(const Station &s, const State &st, int route);
 // reporting EMERGENCY_STATUS 5 is answered DEST_LOCO_SOS 5 (Rear-end).
 // Both as station 527 answered loco 1 behind loco 2 in
 // replay/loco_{1,2}_1_27062026_151052.cap.
+// Session 448, with State::trainLength: a Start (TRN_LEN_INFO_TYPE 0) and
+// then an End (1) measured for the loco (StationInterlock::measure) go out
+// in its next SLRPs, one each: TRN_LEN_INFO_STS 1, REF_FRAME_NUM_TLM,
+// REF_OFFSET_INT_TLM (10 ms).
 // Session 447: hand-over. When the last section of the MA is a route with a
 // next station (Route::nextStn, "next_stn"), the MA carries NEXT_STN_COMM 1
 // and APPR_STN_ILC_IBS_ID: the loco is to talk to that station next.

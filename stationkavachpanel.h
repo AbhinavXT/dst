@@ -65,6 +65,7 @@ private:
     QCheckBox *m_interlocking = nullptr;
     QCheckBox *m_general = nullptr;         // session 445: Station General SoS
     QCheckBox *m_askShorten = nullptr;      // session 446
+    QCheckBox *m_trainLength = nullptr;     // session 448
     QSpinBox *m_sosLoco = nullptr;
     QComboBox *m_sosKind = nullptr;
     QLabel *m_sosNow = nullptr;

@@ -73,6 +73,17 @@ StationKavachPanel::StationKavachPanel(const QVector<QPair<qint64, QString>> &as
         emit stateChanged();
     });
     opts->addWidget(m_askShorten);
+    // Session 448: the track-circuit times a loco measures its train length by.
+    m_trainLength = new QCheckBox(tr("Send train-length times (TRN_LEN_INFO: a joint's Start and End)"), this);
+    m_trainLength->setObjectName(QStringLiteral("skTrainLength"));
+    m_trainLength->setToolTip(tr("When a loco's front and then its rear cross a track-circuit joint of its line (from its ARPs and\n"
+                                 "LSRPs, interpolated), the times go out in its next SLRPs: Start, then End. Station 527 never sent them."));
+    connect(m_trainLength, &QCheckBox::toggled, this, [this](bool on) {
+        if (!m_state || m_state->trainLength == on) return;
+        m_state->trainLength = on;
+        emit stateChanged();
+    });
+    opts->addWidget(m_trainLength);
     // Session 445: SoS from the station.
     auto *sosRow = new QHBoxLayout;
     m_general = new QCheckBox(tr("Station General SoS"), this);
@@ -173,6 +184,8 @@ void StationKavachPanel::rebuild()
     {
         const QSignalBlocker block(m_interlocking);
         m_interlocking->setChecked(st->interlocking);
+        const QSignalBlocker blockTlm(m_trainLength);
+        m_trainLength->setChecked(st->trainLength);
         const QSignalBlocker blockAsk(m_askShorten);
         m_askShorten->setChecked(st->askShorten);
         const QSignalBlocker blockGeneral(m_general);

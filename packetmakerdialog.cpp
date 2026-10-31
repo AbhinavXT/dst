@@ -2173,7 +2173,12 @@ void PacketMakerDialog::answerLsrp(const QHash<QString, qint64> &lsrp)
 
 void PacketMakerDialog::noteStationLoco(const QHash<QString, qint64> &pkt)
 {
-    StationKavach::note(&m_stnLocos[int(pkt.value(QStringLiteral("SOURCE_LOCO_ID")))], pkt);
+    StationKavach::Loco &loco = m_stnLocos[int(pkt.value(QStringLiteral("SOURCE_LOCO_ID")))];
+    StationKavach::note(&loco, pkt);
+    if (m_stnState.trainLength) {   // session 448: a joint crossed: the train-length times
+        const QString found = StationInterlock::measure(m_stnTrack, &loco);
+        if (!found.isEmpty() && m_stnPanel) m_stnPanel->showInterlocking({ found });
+    }
     const StationInterlock::Occupancy occ = StationInterlock::occupancy(m_stnTrack, m_stnLocos.values());
     m_stnState.occupiedBy = occ.by;
     if (occ.notes != m_stnTrackNotes && !occ.notes.isEmpty() && !m_stnTrack.isEmpty())
