@@ -10,6 +10,102 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-460"></a>
+## Session 460 — a station's routes proposed from its layout
+
+The plan's first patch (docs/STATION_TEST_RIG_PLAN.md, 460): the Table of
+Control worked out from the layout's signals, lines and points, instead of
+every route picked tag by tag.
+
+**What it does.**
+- **`StationRoutes::propose`** (`stationroutes.{h,cpp}`, new). From each
+  signal, the way its foot tag faces (placement 1, 2, 6):
+  - along its line to the next signal facing the same way (the exit);
+  - over every facing point too (the point Reverse, its turnout tags in
+    order, on from its other end);
+  - trailing points and same-line points are passed Normal;
+  - a branch running off its line is dropped; a signal none of whose
+    branches finds an exit is named.
+- **Each route** gets:
+  - its tags, with the linking distance from the tag before (their abs_loc
+    apart);
+  - dup_dir 1 where the duplicate lies 4 m back (station 527's rule,
+    kavach_sheets.py);
+  - DIST_DUP_TAG from the entry pair;
+  - TIN (the entry foot tag's, the way it runs) and TINs ("N-50": each
+    tag's onward);
+  - the track circuits on the track it runs;
+  - points Normal / Reverse, named as the station's routes name them (30
+    for P30, when they do);
+  - Station section, FS.
+- **Against the station's own routes:** the same tags and distances are
+  *already there*; the same signals and Reverse points, otherwise *differs*.
+- **Each line runs the way most of its signals face.** A route running
+  more than 300 m against its lines (a crossover onto the other main) is
+  marked with its metres.
+- **Not proposed:**
+  - flank points (beside the route; the layout does not say which);
+  - calling-on track circuits, OS speed, the profile.
+- **KAVACH tab ▸ Propose…** (and *Propose routes from the layout…* on a
+  layout with none):
+  - every route with a tick box: new ones ticked, those against their
+    lines not, *already there* not tickable;
+  - the signals leading nowhere, under the table;
+  - *Add ticked routes*: one Undo step, starting the KAVACH data from the
+    layout when there is none, adding the signals the routes name.
+- The Routes step's help says so.
+
+**Seen on LPI** (station_527.xml against HBL's ToC, 455):
+- **7 of HBL's 8 routes** are proposed with HBL's tags, linking distances
+  and Reverse points. The eighth starts at S50A, a calling-on signal the
+  layout lacks.
+- **Normal points:** HBL's, less the flank ones: 31, 34 and 28 beside the
+  loop routes, 18 beside S47-S43.
+- **Duplicates.** The layout's duplicates of 28, 29, 37, 38 and 19 lie 4 m
+  back; HBL's 2023 tag sheets have them otherwise. The proposal follows the
+  layout.
+- **69 routes in all**, 39 ticked. S1 over P18 onto the DN main runs 1218 m
+  against DN's way.
+
+**Files.** `stationroutes.{h,cpp}` (new, `dlcore.pri`);
+`stationkavacheditor.{h,cpp}` (Propose…, `proposals`, `addProposedRoutes`,
+`proposeDialog`); `stationbuild.cpp` (the Routes step's help);
+`tests/test_session460.cpp` (new), `tests/tests.pro`;
+`tests/screenshot_main.cpp` (`SHOT_PROPOSE`); `docs/STATION_BUILDER.md`.
+
+**Tests.** `session460` (26 checks), real data: LPI's layout against HBL's
+ToC.
+- The 7 routes:
+  - their tags, linking distances and Reverse points;
+  - Normal points within HBL's;
+  - dup_dir as HBL's where the two sources agree, and as the layout's
+    everywhere;
+  - S50-S48's TIN 110, TINs N-50 N-52 N-54, DMT, length.
+- *Already there* against HBL's routes, points named bare; a distance 5 m
+  off *differs*.
+- None of HBL's runs against its lines; S1-S6 over P18 does (over 1 km on
+  DN).
+- A signal on a tag placed 0 is named.
+- The wizard's station: its 4 routes; the 4 starters leading nowhere,
+  named.
+- The KAVACH tab:
+  - Propose… on no data starts it with 4 routes and 6 signals;
+  - the KAVACH checks, tag checks and location checks are silent;
+  - a second Propose… shows them *already there*;
+  - adding again is refused.
+
+**Not tested:**
+- a route whose exit signal faces both ways (placement 6);
+- junction / adjustment tags on a proposed route (their second location
+  is not followed);
+- a station with no circuits sheet (no track circuits proposed, by
+  construction).
+
+**Gate.** Green on Qt 5.15 and Qt 6: validators (18), 471 suites / 11,937 checks, menu
+audit, smoke.
+
+---
+
 <a id="session-459"></a>
 ## Session 459 — building a station step by step in Station Layout
 

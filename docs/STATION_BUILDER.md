@@ -76,6 +76,47 @@ The tags are encoded as the shipped stations have them:
 Then move the tags to their surveyed locations: drag them, or use the
 form, the Tags table, or Shift on a selection.
 
+## Routes proposed from the layout (session 460)
+
+In the Routes step (the KAVACH tab), **Propose…** works out the Table of
+Control from the layout. On a layout with no KAVACH data yet, the button is
+**Propose routes from the layout…**.
+
+From each signal, it goes the way the signal's foot tag faces (placement 1
+Nominal, 2 Reverse, 6 both):
+- along its line to the next signal facing the same way, which is the exit;
+- at a facing point, it branches: on along the line (the point Normal), or
+  over the point onto the other line (the point Reverse, its turnout tags
+  taken in order).
+
+Each route gets from the layout:
+- its tags, with the linking distance from the tag before;
+- dup_dir 1 where the duplicate lies 4 m back;
+- the duplicate distance;
+- its TIN and the TINs it passes ("N-50");
+- the track circuits on the track it runs;
+- its points Normal and Reverse.
+
+It does not get:
+- **flank points** (beside the route, not on it): add them yourself;
+- **calling-on track circuits, OS speed, the profile.**
+
+The dialog lists every route with a tick box:
+- **new** routes are ticked;
+- **already there** (the same tags and distances) cannot be ticked;
+- **differs** means the station has a route with the same signals and
+  points but other tags or distances; it is not ticked.
+
+Each line runs the way most of its signals face. A route that runs more
+than 300 m against its lines (a crossover onto the other main) is offered
+but not ticked, with its metres shown. Signals that lead nowhere are listed
+under the table.
+
+On LPI (station_527.xml), checked against HBL's Table of Control, every
+route whose signals the layout has comes out with HBL's tags, linking
+distances and Reverse points. Its Normal points are HBL's less the flank
+points.
+
 ## The tag form
 
 Select a tag (on the drawing or in the Tags table) and turn on View ▸
@@ -89,10 +130,9 @@ refused. The other fields are in Tag Builder (Edit in Tag Builder…).
 
 The whole plan, patch by patch: docs/STATION_TEST_RIG_PLAN.md.
 
-- **Routes and track profile as steps of their own:** Table-of-Control
-  rows and SSP / gradient / LC rows filled in quickly, with lengths
-  checked against the route as they are typed. Today they live in the
-  KAVACH tab.
+- **Track profile as steps of their own** (461 on): SSP / gradient / LC
+  rows filled in quickly, with lengths checked against the route as they
+  are typed.
 - **A firm's PDF sheets opened in the app** (today it is the command line,
   `scripts/kavach_sheets.py`; docs/KAVACH_SHEETS.md).
 - **A Run step:** a simulated loco driven through the station, answered

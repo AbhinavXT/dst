@@ -76,8 +76,9 @@ QString stepHelp(int step)
         return tr("Free text on the drawing at a location (m); posy is its height.");
     case StepRoutes:
         return tr("The station's Table of Control: each route from its entry signal to its exit signal, its tags in the order "
-                  "the loco reads them, points and track circuits, and its track profile. Packet Maker answers a loco "
-                  "with them.");
+                  "the loco reads them, points and track circuits, and its track profile. Propose… works the routes out "
+                  "from the layout's signals and points; tick the ones to add, then add the flank points and the profile. "
+                  "Packet Maker answers a loco with them.");
     case StepCheck:
         return tr("Everything the steps above report, in one list. Click a problem to go to its row.");
     }

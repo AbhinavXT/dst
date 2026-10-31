@@ -68,6 +68,7 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "stationlayoutwindow.h"
 #include "stationinterlock.h"
 #include "stationkavacheditor.h"
+#include <QDialog>
 #include "stationkavach.h"
 #include "testcatalogwindow.h"
 #include "packetmatrixdialog.h"
@@ -622,6 +623,13 @@ int main(int argc, char **argv)
                     w->newStation(p);
                 }
                 if (!qEnvironmentVariableIsEmpty("SHOT_STEP")) w->showStep(qEnvironmentVariableIntValue("SHOT_STEP"));
+                // Session 460: SHOT_PROPOSE=<png>: the KAVACH tab's Propose routes dialog.
+                if (!qEnvironmentVariableIsEmpty("SHOT_PROPOSE"))
+                    if (QDialog *d = w->kavachEditor()->proposeDialog()) {
+                        d->resize(1200, 600);
+                        d->grab().save(qEnvironmentVariable("SHOT_PROPOSE"));
+                        delete d;
+                    }
                 if (qEnvironmentVariableIsSet("SHOT_NEWSTATION") || qEnvironmentVariableIsSet("SHOT_STEP")) w->resize(1500, 900);
                 // Session 411: SHOT_SIM=<line>[,2] runs that line in a Loco Simulator
                 // (dir 1, or 2) for SHOT_SIM_S seconds at 60 km/h (default 20).

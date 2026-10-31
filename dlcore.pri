@@ -34,6 +34,7 @@ SOURCES += \
     $$PWD/stationkavacheditor.cpp \
     $$PWD/stationstretch.cpp \
     $$PWD/stationbuild.cpp \
+    $$PWD/stationroutes.cpp \
     $$PWD/stationsteps.cpp \
     $$PWD/sessionkeydialog.cpp \
     $$PWD/sessionkeystore.cpp \
@@ -269,6 +270,7 @@ HEADERS += \
     $$PWD/stationkavacheditor.h \
     $$PWD/stationstretch.h \
     $$PWD/stationbuild.h \
+    $$PWD/stationroutes.h \
     $$PWD/stationsteps.h \
     $$PWD/sessionkeydialog.h \
     $$PWD/sessionkeystore.h \

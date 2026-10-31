@@ -29,6 +29,7 @@
 
 #include "packetbuilder.h"
 #include "stationkavach.h"
+#include "stationroutes.h"
 
 class QComboBox;
 class QLabel;
@@ -37,6 +38,7 @@ class QPushButton;
 class QSpinBox;
 class QStackedWidget;
 class QTabWidget;
+class QDialog;
 class QTableWidget;
 
 namespace StationLayout { struct Layout; }
@@ -91,6 +93,14 @@ public:
     // edit. False, and refused() says why, when it cannot be placed.
     bool addTsrByPoles(int tsrRoute, const QString &from, const QString &to, int speedKmh, int tsrId, int whistle);
     QPushButton *polesButton() const { return m_poles; }
+    // Session 460: the routes the layout gives (StationRoutes::propose), and the
+    // ones picked added in one edit (starting KAVACH data when there is none).
+    // False, refused() saying why, when nothing is added.
+    StationRoutes::Result proposals() const;
+    bool addProposedRoutes(const QVector<int> &picked);
+    // The dialog (built, not shown: Propose routes… execs it).
+    QDialog *proposeDialog();
+    QPushButton *proposeButton() const { return m_propose; }
 
 signals:
     // The new "kavach" block (empty: removed) and the Undo label.
@@ -125,6 +135,7 @@ private:
     std::function<QVector<qint64>(int)> m_tagLocs;   // session 425
     QPushButton *m_pick = nullptr;
     QPushButton *m_poles = nullptr;    // session 457
+    QPushButton *m_propose = nullptr;  // session 460
     QStackedWidget *m_stack = nullptr;
     QPushButton *m_start = nullptr;
     QSpinBox  *m_stationId = nullptr, *m_stnVersion = nullptr;

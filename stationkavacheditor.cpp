@@ -1,6 +1,7 @@
 #include "stationkavacheditor.h"
 
 #include "stationlayout.h"
+#include "uicolors.h"
 
 #include <QComboBox>
 #include <QDialog>
@@ -132,6 +133,12 @@ StationKavachEditor::StationKavachEditor(QWidget *parent) : QWidget(parent)
     ev->addWidget(el);
     auto *eh = new QHBoxLayout;
     eh->addWidget(m_start);
+    // Session 460: or straight to the routes the layout gives.
+    auto *proposeEmpty = button(tr("Propose routes from the layout…"), QStringLiteral("skeProposeEmpty"), empty);
+    proposeEmpty->setToolTip(tr("Each signal's routes to the next signal facing its way, through the points: its tags, "
+                                "linking distances, points, track circuits and TINs. Tick the ones to add"));
+    eh->addWidget(proposeEmpty);
+    connect(proposeEmpty, &QPushButton::clicked, this, [this]() { if (QDialog *d = proposeDialog()) { d->exec(); delete d; } });
     eh->addStretch(1);
     ev->addLayout(eh);
     ev->addStretch(1);
@@ -211,7 +218,12 @@ StationKavachEditor::StationKavachEditor(QWidget *parent) : QWidget(parent)
     auto *copyRoute = button(tr("Copy route"), QStringLiteral("skeCopyRoute"), upper);
     copyRoute->setToolTip(tr("A copy of the selected route, its tags and profile: a start for a loop or a parallel route"));
     auto *delRoute = button(tr("Delete"), QStringLiteral("skeDeleteRoutes"), upper);
-    upper->addWidget(withButtons(m_routes, { addRoute, copyRoute, delRoute }, upper));
+    // Session 460: the routes the layout gives, ticked and added.
+    m_propose = button(tr("Propose…"), QStringLiteral("skePropose"), upper);
+    m_propose->setToolTip(tr("Routes from the layout: from each signal along its line and over the points to the next "
+                             "signal facing its way; tags, linking distances, points, track circuits and TINs. Tick the ones to add"));
+    connect(m_propose, &QPushButton::clicked, this, [this]() { if (QDialog *d = proposeDialog()) { d->exec(); delete d; } });
+    upper->addWidget(withButtons(m_routes, { addRoute, copyRoute, m_propose, delRoute }, upper));
     upper->setStretchFactor(0, 3);
     upper->setStretchFactor(1, 5);
     split->addWidget(upper);
@@ -893,4 +905,115 @@ void StationKavachEditor::deleteListRows()
     QVector<Row> &list = *listOf(r, l);
     for (int i : rows) if (i < list.size()) list.remove(i);
     commit(next, tr("delete KAVACH route %1 %2 row(s)").arg(r.name, tr(kListTitle[l]).toLower()));
+}
+
+// ---- session 460: routes proposed from the layout ---------------------------------
+
+StationRoutes::Result StationKavachEditor::proposals() const
+{
+    static const StationLayout::Layout none;
+    return StationRoutes::propose(m_seedFrom ? *m_seedFrom : none, m_station);
+}
+
+bool StationKavachEditor::addProposedRoutes(const QVector<int> &picked)
+{
+    const StationRoutes::Result r = proposals();
+    Station next = m_station;
+    if (!m_has) {   // no KAVACH data yet: started from the layout, as Start would
+        static const StationLayout::Layout none;
+        StationKavach::fromJson(seedFrom(m_seedFrom ? *m_seedFrom : none), &next);
+    }
+    QVector<int> fresh;
+    for (int i : picked)
+        if (i >= 0 && i < r.routes.size() && r.routes.at(i).status != StationRoutes::Proposal::Same) fresh << i;
+    const int n = StationRoutes::addTo(&next, r, fresh);
+    if (!n) { refuse(tr("No route added: none of those picked is new")); return false; }
+    m_has = true;
+    commit(next, tr("add %n proposed route(s)", nullptr, n));
+    emit said(tr("%n route(s) added from the layout: check their points (flank points are not proposed), "
+                 "track circuits and profile", nullptr, n));
+    return true;
+}
+
+QDialog *StationKavachEditor::proposeDialog()
+{
+    const StationRoutes::Result r = proposals();
+    if (r.routes.isEmpty()) {
+        refuse(r.notes.isEmpty() ? tr("No routes in this layout: it needs signals on lines, their foot tags placed 1, 2 or 6")
+                                 : tr("No routes in this layout: %1").arg(r.notes.join(QStringLiteral("; "))));
+        return nullptr;
+    }
+    auto *d = new QDialog(this);
+    d->setObjectName(QStringLiteral("skeProposeDialog"));
+    d->setWindowTitle(tr("Propose routes"));
+    auto *v = new QVBoxLayout(d);
+    int fresh = 0, ticked = 0;
+    for (const auto &p : r.routes) {
+        fresh += p.status == StationRoutes::Proposal::New;
+        ticked += p.status == StationRoutes::Proposal::New && p.against <= StationRoutes::kAgainstMetres;
+    }
+    auto *head = new QLabel(tr("%1 routes from the layout's signals: %2 new, %3 ticked (the others cross onto a line that runs "
+                               "the other way). Ticked ones are added; the tags, linking "
+                               "distances, points Normal / Reverse, track circuits and TINs come from the layout. Points "
+                               "beside the route (flank) are not proposed: add them to the route.")
+                                .arg(r.routes.size()).arg(fresh).arg(ticked), d);
+    head->setWordWrap(true);
+    v->addWidget(head);
+    auto *t = new QTableWidget(r.routes.size(), 7, d);
+    t->setObjectName(QStringLiteral("skeProposals"));
+    t->setHorizontalHeaderLabels({ tr("Route"), tr("Status"), tr("Tags (m from the tag before)"), tr("Points reverse"),
+                                   tr("Points normal"), tr("Track circuits"), tr("TINs") });
+    t->verticalHeader()->hide();
+    t->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    t->setSelectionBehavior(QAbstractItemView::SelectRows);
+    for (int i = 0; i < r.routes.size(); ++i) {
+        const StationRoutes::Proposal &p = r.routes.at(i);
+        auto *name = new QTableWidgetItem(p.route.name);
+        name->setFlags(name->flags() | Qt::ItemIsUserCheckable);
+        const bool against = p.against > StationRoutes::kAgainstMetres;
+        name->setCheckState(p.status == StationRoutes::Proposal::New && !against ? Qt::Checked : Qt::Unchecked);
+        if (p.status == StationRoutes::Proposal::Same) name->setFlags(name->flags() & ~Qt::ItemIsEnabled);
+        t->setItem(i, 0, name);
+        auto *st = new QTableWidgetItem(against ? tr("%1 · %2 m against %3's way").arg(StationRoutes::statusName(p.status)).arg(p.against).arg(p.againstLine)
+                                                : StationRoutes::statusName(p.status));
+        if (against) {
+            st->setForeground(UiColor::muted());
+            st->setToolTip(tr("It crosses onto a line whose signals face the other way and runs %1 m on it: not ticked").arg(p.against));
+        }
+        if (p.status == StationRoutes::Proposal::Differs) {
+            st->setForeground(UiColor::warning());
+            st->setToolTip(tr("The station's route %1 has the same signals and points but other tags or distances")
+                               .arg(m_station.routes.value(p.existing).name));
+        }
+        t->setItem(i, 1, st);
+        QStringList seq;
+        for (const StationKavach::RouteTag &x : p.route.tags) seq << (x.dist ? QStringLiteral("%1 (%2)").arg(x.tag).arg(x.dist) : QString::number(x.tag));
+        t->setItem(i, 2, new QTableWidgetItem(seq.join(QStringLiteral(", "))));
+        t->setItem(i, 3, new QTableWidgetItem(p.route.pointsReverse.join(QStringLiteral(", "))));
+        t->setItem(i, 4, new QTableWidgetItem(p.route.pointsNormal.join(QStringLiteral(", "))));
+        t->setItem(i, 5, new QTableWidgetItem(p.route.trackCircuits.join(QStringLiteral(", "))));
+        t->setItem(i, 6, new QTableWidgetItem(p.route.tins.join(QStringLiteral(", "))));
+    }
+    t->resizeColumnsToContents();
+    for (int c = 2; c < 7; ++c) t->setColumnWidth(c, qMin(t->columnWidth(c), 320));
+    v->addWidget(t, 1);
+    if (!r.notes.isEmpty()) {
+        auto *notes = new QLabel(tr("Not proposed:\n%1").arg(r.notes.join(QLatin1Char('\n'))), d);
+        notes->setObjectName(QStringLiteral("skeProposeNotes"));
+        notes->setWordWrap(true);
+        v->addWidget(notes);
+    }
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Cancel, d);
+    QPushButton *add = buttons->addButton(tr("Add ticked routes"), QDialogButtonBox::AcceptRole);
+    add->setObjectName(QStringLiteral("skeProposeAdd"));
+    v->addWidget(buttons);
+    connect(buttons, &QDialogButtonBox::rejected, d, &QDialog::reject);
+    connect(add, &QPushButton::clicked, d, [this, d, t]() {
+        QVector<int> picked;
+        for (int i = 0; i < t->rowCount(); ++i)
+            if (t->item(i, 0)->checkState() == Qt::Checked && (t->item(i, 0)->flags() & Qt::ItemIsEnabled)) picked << i;
+        if (addProposedRoutes(picked)) d->accept();
+    });
+    d->resize(1100, 560);
+    return d;
 }
