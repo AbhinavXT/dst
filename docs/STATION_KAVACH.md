@@ -296,8 +296,7 @@ keeps where every loco is from each **ARP and LSRP** it hears.
 
 ## Not yet
 
-Not modelled: the TSR route table's OHE poles (TSR rows are placed by
-distance), Temporary Single Line working, the absolute-block last stop
+Not modelled: Temporary Single Line working, the absolute-block last stop
 signal's MA in metres (give the block section as a route), two stations
 answering side by side in one Packet Maker (447: one station; a hand-over is
 sent, an ARP to the next station left to it), when station 527 moved the ref
@@ -306,7 +305,9 @@ locking of a point and flank protection (the data names neither), a train
 across a point counted on both lines. Not tested
 against a live loco: the engine's answers are checked against real station
 frames only. A firm's Table of Control is read by
-`scripts/kavach_sheets.py` (session 455; docs/KAVACH_SHEETS.md). The layout itself can be
+`scripts/kavach_sheets.py` (session 455; docs/KAVACH_SHEETS.md). A TSR can
+be given by OHE poles from the station's TSR route table (session 457:
+KAVACH tab ▸ TSR ▸ TSR by OHE poles…). The layout itself can be
 checked against that drawing: Station Layout ▸ Open ▸ Compare with ▸ A
 tag-layout drawing (session 430). The drawing shows the aspects the file starts
 with on the KAVACH tab; Packet Maker's live ones under Station… ▸ Show on the

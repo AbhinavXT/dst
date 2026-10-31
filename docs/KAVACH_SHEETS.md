@@ -108,6 +108,23 @@ Station 527's own SLRPs of 26 Jun 2026 carry exactly these speed and
 gradient rows for S50-S48 and S48-S43. Its track conditions and turnouts
 were other than the sheets'.
 
+**TSR route table** (session 457). Read from its `.docx`, which holds real
+table cells: the PDF's six-line pole lists come apart line by line. Each
+row becomes a TSR route in the KAVACH data's `tsr_routes` with these parts:
+
+- its id;
+- the routes it runs over (the entry, then each exit the row lists, route
+  by route);
+- its OHE poles at their distances from the start tag. The first pole is at
+  the row's start distance; each later pole adds its span. LPI's 159/30 is
+  42 + 45 + 45 + 54 = 186 m from R-002.
+
+In Station Layout, KAVACH tab ▸ TSR ▸ **TSR by OHE poles…** picks a TSR
+route, two poles, the speed (5 km/h steps), the TSR id and whistle. A TSR
+row goes onto each route the stretch between them covers, cut to it, to the
+metre, as one Undo step. Packet Maker's station sends it (TSR_STATUS 2), and
+the Station panel switches it on and off as before.
+
 ## What the sheets do not agree on
 
 Nothing is corrected. Each disagreement is one line in the file's
@@ -147,6 +164,11 @@ From the Tables of Control (151 rows; 139 routes):
   - gives 590 m of its 790 m.
 - **MA sections:** TLPR #7 gives 3 MA sections at Green.
 
+From the TSR route table: rows 11 and 12 are not there; TSR route ids 22 and
+12 are each given to two routes; #10 lists S1637 → S1647, where the ToC has no
+route (its row ends nowhere), so TSR route 18 covers S43-S1629 and
+S1629-S1637 only; #13 starts at Hafizpet's S25.
+
 From the track profiles: TLPR S18's 3361 m against its 2600 m of links;
 S15/14D's 1024 m against the 1034 m the ToC's 654 makes; S1D → S1's 813 m
 of SSP for 1080 m. Fouling marks carry no length on any sheet.
@@ -160,7 +182,7 @@ signatories.
   extracts in `schema/fixtures/kavach_sheets/`:
   - all of NPL-TLPR IB's tag data, Table of Control and track profile;
   - LPI's tag data pages 1-3, ToC pages 1 and 3, track profile pages 1-2
-    (`LPI_routes`);
+    (`LPI_routes`), with the TSR route table's .docx cut to rows 1 and 9;
   - SKP pages 16-23;
   - LPI pages 1 and 12.
 
@@ -172,9 +194,11 @@ signatories.
 - `session455` checks the IB's routes, the checks they raise, the junction
   locations, and the station answering a loco and handing it over to TLPR.
 - `session456` checks LPI's profiles against station 527's own SLRPs.
+- `session457` checks the TSR routes, a TSR given by poles, the editor and
+  the answer that carries it.
 
 ## Not yet
 
-The TSR route table is not read yet. Signals' info
+A TSR route table given only as a PDF is not read (its .docx is). Signals' info
 (CUR_SIG_INFO) and the STN version are not on the sheets: 0. A signal
 starts at Red.

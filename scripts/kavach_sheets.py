@@ -24,6 +24,10 @@ Read so far:
                            average rows), LC gates, turnouts, track
                            conditions, each list checked against the route's
                            length.                               (456)
+  the TSR ROUTE TABLE      (its .docx: real table cells) each TSR route over
+                           the routes it runs, its OHE poles at distances
+                           from its start tag: a TSR is then given from pole
+                           to pole (Station Layout, KAVACH tab, TSR). (457)
 
 Folders given together are read as one stretch: a route that runs into the
 next section ends on that section's tag and signal, which are copied in.
@@ -873,6 +877,92 @@ def apply_profile(sec, kav, notes):
         notes.append(f"{src}: no track profile row for {len(missing)} route(s): {', '.join(missing)}")
 
 
+# ---- the TSR ROUTE TABLE ------------------------------------------------------
+W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+
+
+def docx_rows(path):
+    """Every table row of a .docx, as its cells' text (a .docx is a zip of XML)."""
+    import xml.etree.ElementTree as ET
+    import zipfile
+    root = ET.fromstring(zipfile.ZipFile(path).read("word/document.xml"))
+    out = []
+    for tbl in root.iter(W_NS + "tbl"):
+        for tr in tbl.findall(W_NS + "tr"):
+            out.append([re.sub(r"\s+", " ", " ".join("".join(t.text or "" for t in p.iter(W_NS + "t"))
+                                                     for p in tc.findall(W_NS + "p"))).strip()
+                        for tc in tr.findall(W_NS + "tc")])
+    return out
+
+
+def read_tsr_table(path):
+    """The TSR route table's rows: S.No, entry, exits, the first OHE pole, the
+    start tag, the TSR route id, the first pole's distance from the start tag,
+    and the poles after it as (span from the pole before, pole)."""
+    rows = []
+    for cells in docx_rows(path):
+        if len(cells) < 8 or not cells[0].isdigit():
+            continue
+        m = re.search(r"R-?\s*0*(\d+)", cells[4])
+        try:
+            start = float(cells[6])
+        except ValueError:
+            start = None
+        rows.append({"sno": int(cells[0]), "entry": cells[1], "exits": [x.strip() for x in cells[2].split(",") if x.strip()],
+                     "first_pole": cells[3].strip(), "start_tag": int(m.group(1)) if m else None,
+                     "id": int(cells[5]) if cells[5].isdigit() else None, "first_dist": start,
+                     "spans": [(float(d), p) for d, p in re.findall(r"\(\s*([\d.]+)\s*-\s*(\d+/\d+)\s*\)", cells[7])]})
+    return rows
+
+
+def tsr_routes_of(sec, kav, notes):
+    """The "tsr_routes" of the kavach block: each TSR route over the routes it
+    runs (entry, then each exit the table lists, route by route), its poles at
+    their distances from the start tag (the spans added up, 0.01 m)."""
+    if not kav or not sec.tsr:
+        return
+    src = sec.tsr_src
+    out, ids = [], Counter(r["id"] for r in sec.tsr)
+    snos = [r["sno"] for r in sec.tsr]
+    gaps = [n for n in range(min(snos), max(snos) + 1) if n not in snos] if snos else []
+    if gaps:
+        notes.append(f"{src}: no rows {', '.join(map(str, gaps))} (S.No goes from {gaps[0] - 1} to {gaps[-1] + 1})")
+    for r in sec.tsr:
+        where = f"{src} #{r['sno']} {r['entry']} → {', '.join(r['exits'])}"
+        if r["id"] is None or r["first_dist"] is None or not r["first_pole"]:
+            notes.append(f"{where}: its TSR route id, first pole or start distance not read: not taken")
+            continue
+        if ids[r["id"]] > 1:
+            notes.append(f"{where}: TSR route id {r['id']} is given to {ids[r['id']]} rows")
+        chain, at = [], r["entry"]
+        for ex in r["exits"]:
+            nxt = [x for x in kav["routes"] if signal_key(x["entry"]) == signal_key(at)
+                   and signal_key(x["exit"]) == signal_key(ex)]
+            if not nxt:   # into the next station, its exit known by the border tag
+                into = [x for x in kav["routes"] if signal_key(x["entry"]) == signal_key(at)
+                        and x.get("next_stn") is not None and "(" in x["exit"]]
+                nxt = into if len(into) == 1 and ex == r["exits"][-1] else []
+            if not nxt:
+                break
+            chain.append(nxt[0]["name"])
+            at = ex
+        if len(chain) < len(r["exits"]):
+            notes.append(f"{where}: no route from {at} to {r['exits'][len(chain)]}"
+                         + (f": the TSR route covers {', '.join(chain)} only" if chain else ": not taken"))
+            if not chain:
+                continue
+        first = next(x for x in kav["routes"] if x["name"] == chain[0])
+        if r["start_tag"] is not None and first["tags"][0]["tag"] != r["start_tag"]:
+            notes.append(f"{where}: its start tag R-{r['start_tag']} is not {chain[0]}'s first tag R-{first['tags'][0]['tag']}")
+        poles, d = [{"pole": r["first_pole"], "dist": r["first_dist"]}], r["first_dist"]
+        for span, pole in r["spans"]:
+            d = round(d + span, 2)
+            poles.append({"pole": pole, "dist": d})
+        out.append({"id": r["id"], "entry": r["entry"], "routes": chain, "poles": poles})
+    if out:
+        kav["tsr_routes"] = out
+
+
 # ---- a station folder, and several together ----------------------------------
 def sheets_in(folder):
     out = {}
@@ -898,6 +988,12 @@ class Section:
             t = read_tag_sheet(read_pages(path), first_page(path))
             self.notes += check_tags(t, src)
             self.tags += t
+        self.tsr, self.tsr_src = [], ""
+        for path in sorted(os.path.join(folder, n) for n in os.listdir(folder)
+                           if kind_of(n) == "tsr" and n.lower().endswith(".docx")):
+            self.tsr_src = os.path.basename(path)
+            self.sources.append(self.tsr_src)
+            self.tsr += read_tsr_table(path)
         self.profile, self.profile_src = [], ""
         for path in sheets.get("profile", []):
             self.profile_src = os.path.basename(path)
@@ -1138,6 +1234,7 @@ def build_layout(sec, pack):
         return None, [f"{sec.folder}: no RFID tag data sheet"]
     kav, knotes, needed = kavach_of(sec, pack)
     apply_profile(sec, kav, knotes)
+    tsr_routes_of(sec, kav, knotes)
     notes += knotes
     tags = list(sec.tags)
     names = Counter(t.name for t in tags)

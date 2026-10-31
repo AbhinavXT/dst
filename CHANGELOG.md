@@ -10,6 +10,86 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-457"></a>
+## Session 457 — a TSR given by OHE poles, from the TSR route table
+
+Abhinav's *"also then do 5"*: TSR by OHE pole. `docs/STATION_KAVACH.md`
+listed *"Not modelled: the TSR route table's OHE poles (TSR rows are placed
+by distance)"*. HBL's Lingampalli TSR route table (29.11.2023) gives each
+TSR route its start tag, its first OHE pole's distance from that tag, and
+every pole after it as (span from the pole before - pole).
+
+**What it does.**
+- **The importer** reads the table from its `.docx` (a zip of XML, so real
+  cells; the PDF's six-line pole lists come apart line by line). Each row
+  becomes a TSR route in the KAVACH data's new `tsr_routes`:
+  - its id and entry;
+  - the ToC routes it runs over (entry, then each exit the row lists, route
+    by route; into the next station by its border tag);
+  - its poles at their distances from the start tag, the spans added up to
+    0.01 m.
+
+  Noted: rows the table skips, an id given to more than one row, a chain
+  that stops where the ToC has no route, a start tag that is not the
+  route's first.
+- **`StationKavach::tsrByPoles`**: a TSR from one pole to another (either
+  order) at a speed becomes each covered route's TSR row (id, dist and len
+  from that route's start, cut to it, to the metre; class 0, u = speed / 5,
+  whistle). It is refused by name for: a pole the TSR route lacks, a speed
+  off the 5 km/h steps or over 250, an id or whistle wider than its field,
+  a route the station lacks, or nothing covered.
+- **Station Layout, KAVACH tab ▸ TSR ▸ TSR by OHE poles…** (shown when the
+  station has TSR routes): TSR route, from pole, to pole (each with its
+  distance), speed, id, whistle. The rows go on as one Undo step, and the
+  status line says where. Packet Maker's station sends them as any TSR
+  (TSR_STATUS 2, cut at the MA end), switched on and off from the Station
+  panel as before.
+
+**Seen on the real table.**
+- **TSR routes:** 19 of its 20 rows.
+- **Ids:** 22 and 12 are each given to two routes (S50 → S45 and
+  S47 → S43; S48 → S43 and S1 → S5).
+- **Rows 11 and 12** are not there.
+- **#10** S43 → S1629, S1637, S1647, S1(HFZ) covers S43-S1629 and
+  S1629-S1637 only: the ToC's S1637 row ends nowhere (455).
+- **#13** starts at Hafizpet's S25, so it is not taken.
+- **#22** runs into TLPR by the border tag.
+
+**Files.** `stationkavach.{h,cpp}` (`OhePole`, `TsrRoute`,
+`Station::tsrRoutes`, `tsr_routes` in the JSON, `tsrByPoles`);
+`stationkavacheditor.{h,cpp}` (the button, its dialog, `addTsrByPoles`);
+`scripts/kavach_sheets.py` (`docx_rows`, `read_tsr_table`,
+`tsr_routes_of`); `schema/validate_kavach_sheets.py` (106 checks);
+`schema/fixtures/kavach_sheets/LPI_routes/` (+ the table's .docx cut to
+rows 1 and 9, the golden again); `tests/test_session457.cpp` (new),
+`tests/tests.pro`; `docs/KAVACH_SHEETS.md`, `docs/STATION_KAVACH.md`,
+`CLAUDE.md`.
+
+**Tests.**
+- `validate_kavach_sheets.py`:
+  - TSR routes 24 and 12 from the extract (159/30 at 186 m, 161/14 at
+    1726.74 m);
+  - the whole local table: 19 routes, 18's two routes, 17 into TLPR, the
+    repeated ids, the missing rows, #13.
+- `session457` (18 checks):
+  - the TSR routes read and written back;
+  - 159/30 to 160/10 at 30 km/h: one row on S50-S48 from 186 m, either way
+    round;
+  - the refusals;
+  - a TSR route over two routes split at 1670 m (170 m and 130 m);
+  - the editor: enabled, one edit, said where, a 33 km/h refused;
+  - the station's answer carrying it, TSR_STATUS 2 at 186 m.
+- **Not tested:**
+  - the dialog itself (its inputs feed `addTsrByPoles`, which is tested);
+  - a TSR route table given only as a PDF (not read);
+  - TSRMS sending a TSR by route id and poles (DLConsole has no TSRMS link):
+    the operator gives it.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators (18), 468 suites /
+11,838 checks, menu audit, smoke.
+
+---
+
 <a id="session-456"></a>
 ## Session 456 — a firm's track profile read onto the Stationary KAVACH routes
 

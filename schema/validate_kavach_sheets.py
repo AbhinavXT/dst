@@ -40,7 +40,7 @@ PACK = {
     "NPL": (525, 160, 164, 30, 9),
     "NPL-TLPR IB": (526, 22, 26, 5, 1),
     "TLPR": (501, 74, 78, 17, 11),
-    "LPI": (527, 144, 146, 30, 7),
+    "LPI": (527, 144, 146, 30, 14),
 }
 
 total = ok = 0
@@ -142,6 +142,15 @@ def main():
         check(d.get("ssp") == a.get("ssp") and d.get("gradient") == a.get("gradient"),
               "LPI S50A-S48 (calling-on over the same tags) takes S50-S48's profile")
         check(has(notes, "Fouling Mark given without a length: sent as 0 m"), "LPI: lengthless fouling marks said once")
+        # session 457: the TSR route table (its .docx, rows 1 and 9)
+        trs = {t["id"]: t for t in lay["kavach"].get("tsr_routes", [])}
+        t = trs.get(24, {})
+        check(sorted(trs) == [12, 24] and t.get("routes") == ["S50-S48 Down Main"] and len(t.get("poles", [])) == 36
+              and t["poles"][0] == {"pole": "159/24", "dist": 42.0} and t["poles"][3] == {"pole": "159/30", "dist": 186.0}
+              and t["poles"][-1] == {"pole": "161/14", "dist": 1726.74},
+              "TSR route 24: S50-S48, 159/24 at 42 m, 159/30 at 186 m, 161/14 at 1726.74 m")
+        check(trs.get(12, {}).get("routes") == ["S48-S43 Down Main"] and trs[12]["poles"][0] == {"pole": "161/12", "dist": 33.0},
+              "TSR route 12: S48-S43 from 161/12 at 33 m")
     lay, notes = got.get("SKP_extract", (None, []))
     if lay:
         check(len(lay["tags"]) == 42, "SKP pages 16-23: 42 tags")
@@ -218,6 +227,17 @@ def main():
         check(has(allnotes, "TLPR", "S18", "speed profile covers 3361 m of the route's 2600 m"),
               "TLPR S18: 3361 m of profile for 2600 m of links, not taken")
         check(has(allnotes, "TLPR", "S1D → S1", "813 m of the route's 1080 m"), "TLPR S1D-S1: 813 m of SSP for 1080 m")
+        # session 457
+        lpi = got[os.path.join(LOCAL, "LPI")][1][0]
+        trs = {t["id"]: t for t in lpi["kavach"].get("tsr_routes", [])}
+        check(len(lpi["kavach"].get("tsr_routes", [])) == 19, "LPI: 19 TSR routes of the table's 20 rows")
+        check(trs.get(18, {}).get("routes") == ["S43-S1629 Down Main", "S1629-S1637 Down Main"],
+              "TSR route 18 runs over S43-S1629 and S1629-S1637 (its row goes on, where no route does)")
+        check(trs.get(17, {}).get("routes") == ["S6 LPI/20D TLPR-S20 (501) Up Main"], "TSR route 17 into TLPR")
+        check(has(allnotes, "TSR_ROUTE", "TSR route id 22 is given to 2 rows") and has(allnotes, "TSR_ROUTE", "TSR route id 12 is given to 2 rows"),
+              "TSR route ids 22 and 12 each given twice: said")
+        check(has(allnotes, "TSR_ROUTE", "no rows 11, 12"), "the table's rows 11 and 12 absent: said")
+        check(has(allnotes, "TSR_ROUTE", "#13 S25(HFZ)", "not taken"), "#13 starts at Hafizpet's S25: not LPI's to take")
     print(f"kavach sheets: {ok}/{total} {'PASS' if ok == total else 'FAIL'}")
     return 0 if ok == total else 1
 

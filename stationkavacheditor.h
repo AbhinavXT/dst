@@ -86,6 +86,11 @@ public:
     void deleteRoutes();
     void addListRow();
     void deleteListRows();
+    // Session 457: a TSR from one OHE pole to another of TSR route `tsrRoute`
+    // (the station's tsrRoutes), onto every route it covers (tsrByPoles): one
+    // edit. False, and refused() says why, when it cannot be placed.
+    bool addTsrByPoles(int tsrRoute, const QString &from, const QString &to, int speedKmh, int tsrId, int whistle);
+    QPushButton *polesButton() const { return m_poles; }
 
 signals:
     // The new "kavach" block (empty: removed) and the Undo label.
@@ -119,6 +124,7 @@ private:
     const StationLayout::Layout *m_seedFrom = nullptr;
     std::function<QVector<qint64>(int)> m_tagLocs;   // session 425
     QPushButton *m_pick = nullptr;
+    QPushButton *m_poles = nullptr;    // session 457
     QStackedWidget *m_stack = nullptr;
     QPushButton *m_start = nullptr;
     QSpinBox  *m_stationId = nullptr, *m_stnVersion = nullptr;

@@ -3,6 +3,8 @@
 #include "stationlayout.h"
 
 #include <QComboBox>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QFormLayout>
 #include <QHBoxLayout>
 #include <QHeaderView>
@@ -277,7 +279,52 @@ StationKavachEditor::StationKavachEditor(QWidget *parent) : QWidget(parent)
     m_pick->setToolTip(tr("Click the route's tags on the drawing above, in the order the loco reads them: each is added "
                           "after the last, its distance from the layout's tags. Click the last one again to take it off; "
                           "the exit signal's foot tag, or Esc, ends it"));
-    dv->addWidget(withButtons(m_listTabs, { addRow, delRow, m_pick }, detail), 1);
+    // Session 457: a TSR given from one OHE pole to another (the TSR route table's).
+    m_poles = button(tr("TSR by OHE poles…"), QStringLiteral("skeTsrPoles"), detail);
+    m_poles->setToolTip(tr("A TSR from one OHE pole to another of a TSR route (the station's TSR route table): "
+                           "a TSR row on each route it covers, from where the poles lie"));
+    dv->addWidget(withButtons(m_listTabs, { addRow, delRow, m_pick, m_poles }, detail), 1);
+    connect(m_poles, &QPushButton::clicked, this, [this]() {
+        if (m_station.tsrRoutes.isEmpty()) return;
+        QDialog d(this);
+        d.setWindowTitle(tr("TSR by OHE poles"));
+        auto *f = new QFormLayout(&d);
+        auto *route = new QComboBox(&d), *from = new QComboBox(&d), *to = new QComboBox(&d);
+        for (const StationKavach::TsrRoute &t : m_station.tsrRoutes)
+            route->addItem(tr("%1: %2 (%3)").arg(t.id).arg(t.entry, t.routes.join(QStringLiteral(", "))));
+        auto fillPoles = [&]() {
+            from->clear();
+            to->clear();
+            for (const StationKavach::OhePole &p : m_station.tsrRoutes.value(route->currentIndex()).poles) {
+                const QString label = tr("%1 (%2 m)").arg(p.name).arg(p.dist, 0, 'f', 2);
+                from->addItem(label, p.name);
+                to->addItem(label, p.name);
+            }
+            to->setCurrentIndex(to->count() - 1);
+        };
+        fillPoles();
+        connect(route, QOverload<int>::of(&QComboBox::currentIndexChanged), &d, fillPoles);
+        auto *speed = new QSpinBox(&d), *id = new QSpinBox(&d), *whistle = new QSpinBox(&d);
+        speed->setRange(5, 250);
+        speed->setSingleStep(5);
+        speed->setValue(30);
+        speed->setSuffix(tr(" km/h"));
+        id->setRange(0, 255);
+        whistle->setRange(0, 3);
+        f->addRow(tr("TSR route"), route);
+        f->addRow(tr("From pole"), from);
+        f->addRow(tr("To pole"), to);
+        f->addRow(tr("Speed"), speed);
+        f->addRow(tr("TSR id"), id);
+        f->addRow(tr("Whistle"), whistle);
+        auto *bb = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &d);
+        f->addRow(bb);
+        connect(bb, &QDialogButtonBox::accepted, &d, &QDialog::accept);
+        connect(bb, &QDialogButtonBox::rejected, &d, &QDialog::reject);
+        if (d.exec() == QDialog::Accepted)
+            addTsrByPoles(route->currentIndex(), from->currentData().toString(), to->currentData().toString(),
+                          speed->value(), id->value(), whistle->value());
+    });
     connect(m_pick, &QPushButton::toggled, this, [this](bool on) {
         if (on) m_listTabs->setCurrentIndex(Tags);
         emit pickingChanged(on);
@@ -500,6 +547,8 @@ void StationKavachEditor::fillRoute()
     const bool any = m_route >= 0 && m_route < m_station.routes.size();
     m_listTabs->setEnabled(any);
     m_pick->setEnabled(any);
+    m_poles->setEnabled(m_has && !m_station.tsrRoutes.isEmpty());
+    m_poles->setVisible(!m_station.tsrRoutes.isEmpty());
     if (!any) setPicking(false);
     if (!any) {
         m_routeLabel->setText(tr("Select a route to edit its tags and track profile."));
@@ -773,6 +822,34 @@ void StationKavachEditor::deleteRoutes()
     for (int r : rows) if (r < next.routes.size()) next.routes.remove(r);
     m_route = qMin(m_route, next.routes.size() - 1);
     commit(next, tr("delete KAVACH route(s)"));
+}
+
+bool StationKavachEditor::addTsrByPoles(int tsrRoute, const QString &from, const QString &to, int speedKmh, int tsrId,
+                                       int whistle)
+{
+    if (tsrRoute < 0 || tsrRoute >= m_station.tsrRoutes.size()) {
+        emit refused(tr("No TSR route %1 in this station").arg(tsrRoute));
+        return false;
+    }
+    QString why;
+    const QVector<StationKavach::TsrPlacement> put =
+        StationKavach::tsrByPoles(m_station, m_station.tsrRoutes[tsrRoute], from, to, speedKmh, tsrId, whistle, &why);
+    if (put.isEmpty()) {
+        emit refused(tr("TSR not added: %1").arg(why));
+        return false;
+    }
+    Station next = m_station;
+    QStringList where;
+    for (const StationKavach::TsrPlacement &p : put) {
+        next.routes[p.route].tsr << p.row;
+        where << tr("%1 (%2 m from %3 m)").arg(next.routes[p.route].name).arg(p.row.value(QStringLiteral("len")))
+                     .arg(p.row.value(QStringLiteral("dist")));
+    }
+    m_route = put.first().route;
+    commit(next, tr("TSR %1 at %2 km/h, %3 to %4").arg(tsrId).arg(speedKmh).arg(from, to));
+    emit said(tr("TSR %1 at %2 km/h from pole %3 to %4: %5").arg(tsrId).arg(speedKmh).arg(from, to)
+                  .arg(where.join(QStringLiteral("; "))));
+    return true;
 }
 
 void StationKavachEditor::addListRow()

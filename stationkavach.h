@@ -95,6 +95,18 @@ struct Route {
     int     length() const;            // entry foot to exit foot, m
 };
 
+// Session 457: a TSR route of the station's TSR route table (for TSRMS):
+// its id, the routes it runs over end to end, and its OHE poles at distances
+// from the first route's entry foot tag (the table's spans added up, 0.01 m).
+struct OhePole { QString name; double dist = 0; };
+struct TsrRoute {
+    int id = 0;                        // the table's TSR Route ID
+    QString entry;                     // its entry signal, as the table names it
+    QStringList routes;                // route names, in order
+    QVector<OhePole> poles;
+    int poleIndex(const QString &name) const;
+};
+
 struct Station {
     int stationId = 0, stnVersion = 0;
     QVector<Signal> signalList;
@@ -108,6 +120,7 @@ struct Station {
     // Session 445: tag number -> its line (the lines sheet): a loco coming
     // the other way on the same line is seen (Head-on). Empty: it is not.
     QHash<int, QString> tagLine;
+    QVector<TsrRoute> tsrRoutes;       // session 457 ("tsr_routes")
     int signalIndex(const QString &name) const;
     QStringList pointNames() const;    // every point, track circuit and TIN a route names
     QStringList trackCircuitNames() const;
@@ -142,6 +155,16 @@ QStringList tagChecks(const Station &s, const QSet<int> &tagIds);
 // (a section drawn block after block) agrees when any of its tags does.
 // Tags the layout lacks are tagChecks()'s.
 QStringList locationChecks(const Station &s, const QHash<int, QVector<qint64>> &tagLocs);
+
+// Session 457: a TSR from OHE pole `from` to pole `to` of TSR route `tr` (in
+// either order) at `speedKmh`, onto the routes it covers: each one's TSR row
+// (id, dist and len from that route's start, cut to it; class 0, u, whistle),
+// distances to the metre. Refused by name: a pole the TSR route does not
+// have, a speed not in 5 km/h steps or over 250 km/h, an id or whistle wider
+// than its field, a route it names that the station lacks, nothing covered.
+struct TsrPlacement { int route = -1; Row row; };
+QVector<TsrPlacement> tsrByPoles(const Station &s, const TsrRoute &tr, const QString &from, const QString &to,
+                                 int speedKmh, int tsrId, int whistle, QString *err = nullptr);
 
 struct State {
     QHash<QString, int>  aspect;       // signal -> sigAspect

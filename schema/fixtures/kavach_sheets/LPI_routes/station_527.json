@@ -1,7 +1,7 @@
 {
  "format": "dlconsole-station-layout",
  "version": 2,
- "comment": "Read from the KAVACH sheets by scripts/kavach_sheets.py (sessions 454-455): KAVCH_RFID_TAG_DATA_LPI_V2.0.7_pages1-3.html, KAVACH_TRACK_PROFILE_TABLE_LPI_2.0.3_pages1-2.html, KAVACH_TABLE_OF_CONTROL_LPI_V2.0.4_pages1-1.html, KAVACH_TABLE_OF_CONTROL_LPI_V2.0.4_pages3-3.html. Station 527: the station ID most of its normal tags carry. Its location 160764 is not on the sheets: the middle of its tags, for the drawing.",
+ "comment": "Read from the KAVACH sheets by scripts/kavach_sheets.py (sessions 454-455): KAVCH_RFID_TAG_DATA_LPI_V2.0.7_pages1-3.html, KAVACH_TSR_ROUTE_TABLE_LPI_29112023_rows1-9.docx, KAVACH_TRACK_PROFILE_TABLE_LPI_2.0.3_pages1-2.html, KAVACH_TABLE_OF_CONTROL_LPI_V2.0.4_pages1-1.html, KAVACH_TABLE_OF_CONTROL_LPI_V2.0.4_pages3-3.html. Station 527: the station ID most of its normal tags carry. Its location 160764 is not on the sheets: the middle of its tags, for the drawing.",
  "tags": [
   {
    "name": "2",
@@ -918,6 +918,222 @@
     "track_conditions": [],
     "tsr": []
    }
+  ],
+  "tsr_routes": [
+   {
+    "id": 24,
+    "entry": "S50",
+    "routes": [
+     "S50-S48 Down Main"
+    ],
+    "poles": [
+     {
+      "pole": "159/24",
+      "dist": 42.0
+     },
+     {
+      "pole": "159/26",
+      "dist": 87.0
+     },
+     {
+      "pole": "159/28",
+      "dist": 132.0
+     },
+     {
+      "pole": "159/30",
+      "dist": 186.0
+     },
+     {
+      "pole": "159/32",
+      "dist": 253.5
+     },
+     {
+      "pole": "159/34",
+      "dist": 321.0
+     },
+     {
+      "pole": "159/36",
+      "dist": 388.5
+     },
+     {
+      "pole": "160/2",
+      "dist": 447.0
+     },
+     {
+      "pole": "160/4",
+      "dist": 509.39
+     },
+     {
+      "pole": "160/6",
+      "dist": 572.52
+     },
+     {
+      "pole": "160/8",
+      "dist": 626.79
+     },
+     {
+      "pole": "160/10",
+      "dist": 684.94
+     },
+     {
+      "pole": "160/12",
+      "dist": 739.56
+     },
+     {
+      "pole": "160/14",
+      "dist": 770.45
+     },
+     {
+      "pole": "160/16",
+      "dist": 790.11
+     },
+     {
+      "pole": "160/18",
+      "dist": 821.08
+     },
+     {
+      "pole": "160/20",
+      "dist": 851.61
+     },
+     {
+      "pole": "160/22",
+      "dist": 887.29
+     },
+     {
+      "pole": "160/24",
+      "dist": 911.46
+     },
+     {
+      "pole": "160/26",
+      "dist": 957.47
+     },
+     {
+      "pole": "160/28",
+      "dist": 1011.97
+     },
+     {
+      "pole": "160/30",
+      "dist": 1056.75
+     },
+     {
+      "pole": "160/32",
+      "dist": 1089.3
+     },
+     {
+      "pole": "160/34",
+      "dist": 1106.2
+     },
+     {
+      "pole": "160/36",
+      "dist": 1135.74
+     },
+     {
+      "pole": "160/38",
+      "dist": 1140.44
+     },
+     {
+      "pole": "160/40",
+      "dist": 1190.42
+     },
+     {
+      "pole": "160/42",
+      "dist": 1249.15
+     },
+     {
+      "pole": "160/44",
+      "dist": 1313.17
+     },
+     {
+      "pole": "161/2",
+      "dist": 1372.17
+     },
+     {
+      "pole": "161/4",
+      "dist": 1431.24
+     },
+     {
+      "pole": "161/6",
+      "dist": 1490.26
+     },
+     {
+      "pole": "161/8",
+      "dist": 1554.13
+     },
+     {
+      "pole": "161/10",
+      "dist": 1612.84
+     },
+     {
+      "pole": "161/12",
+      "dist": 1676.18
+     },
+     {
+      "pole": "161/14",
+      "dist": 1726.74
+     }
+    ]
+   },
+   {
+    "id": 12,
+    "entry": "S48",
+    "routes": [
+     "S48-S43 Down Main"
+    ],
+    "poles": [
+     {
+      "pole": "161/12",
+      "dist": 33.0
+     },
+     {
+      "pole": "161/14",
+      "dist": 83.56
+     },
+     {
+      "pole": "161/16",
+      "dist": 101.37
+     },
+     {
+      "pole": "161/18",
+      "dist": 159.77
+     },
+     {
+      "pole": "161/20",
+      "dist": 209.17
+     },
+     {
+      "pole": "161/22",
+      "dist": 249.94
+     },
+     {
+      "pole": "161/24",
+      "dist": 303.88
+     },
+     {
+      "pole": "161/26",
+      "dist": 357.53
+     },
+     {
+      "pole": "161/28",
+      "dist": 415.32
+     },
+     {
+      "pole": "161/30",
+      "dist": 464.7
+     },
+     {
+      "pole": "161/32",
+      "dist": 527.37
+     },
+     {
+      "pole": "161/34",
+      "dist": 589.74
+     },
+     {
+      "pole": "161/36",
+      "dist": 634.68
+     }
+    ]
+   }
   ]
  },
  "sheet_notes": [
@@ -928,6 +1144,7 @@
   "KAVACH_TRACK_PROFILE_TABLE_LPI_2.0.3_pages1-2.html p2 #10 S1 → S3: no route of the Table of Control goes from S1 to S3: not used",
   "KAVACH_TRACK_PROFILE_TABLE_LPI_2.0.3_pages1-2.html p2 #11 S1 → S4: no route of the Table of Control goes from S1 to S4: not used",
   "KAVACH_TRACK_PROFILE_TABLE_LPI_2.0.3_pages1-2.html p2 #12 S1 → S5: no route of the Table of Control goes from S1 to S5: not used",
-  "KAVACH_TRACK_PROFILE_TABLE_LPI_2.0.3_pages1-2.html: Fouling Mark given without a length: sent as 0 m"
+  "KAVACH_TRACK_PROFILE_TABLE_LPI_2.0.3_pages1-2.html: Fouling Mark given without a length: sent as 0 m",
+  "KAVACH_TSR_ROUTE_TABLE_LPI_29112023_rows1-9.docx: no rows 2, 3, 4, 5, 6, 7, 8 (S.No goes from 1 to 9)"
  ]
 }

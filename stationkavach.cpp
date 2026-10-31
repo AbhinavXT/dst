@@ -354,6 +354,20 @@ bool fromJson(const QJsonObject &o, Station *out, QString *err, QStringList *not
         }
         s.routes << r;
     }
+    for (const QJsonValue &v : o.value(QStringLiteral("tsr_routes")).toArray()) {   // session 457
+        const QJsonObject x = v.toObject();
+        TsrRoute t;
+        t.id = int(num(x, "id"));
+        t.entry = x.value(QStringLiteral("entry")).toString();
+        t.routes = strings(x.value(QStringLiteral("routes")));
+        for (const QJsonValue &p : x.value(QStringLiteral("poles")).toArray())
+            t.poles << OhePole{ p.toObject().value(QStringLiteral("pole")).toString(), p.toObject().value(QStringLiteral("dist")).toDouble() };
+        if (t.routes.isEmpty() || t.poles.isEmpty()) {
+            if (notes) *notes << QObject::tr("TSR route %1 without routes or OHE poles: skipped").arg(t.id);
+            continue;
+        }
+        s.tsrRoutes << t;
+    }
     *out = s;
     return true;
 }
@@ -403,6 +417,15 @@ QJsonObject toJson(const Station &s)
         routes.append(x);
     }
     o.insert(QStringLiteral("routes"), routes);
+    if (!s.tsrRoutes.isEmpty()) {   // session 457
+        QJsonArray trs;
+        for (const TsrRoute &t : s.tsrRoutes) {
+            QJsonArray poles;
+            for (const OhePole &p : t.poles) poles.append(QJsonObject{ { "pole", p.name }, { "dist", p.dist } });
+            trs.append(QJsonObject{ { "id", t.id }, { "entry", t.entry }, { "routes", stringArray(t.routes) }, { "poles", poles } });
+        }
+        o.insert(QStringLiteral("tsr_routes"), trs);
+    }
     return o;
 }
 
@@ -474,6 +497,43 @@ QStringList locationChecks(const Station &s, const QHash<int, QVector<qint64>> &
             }
         }
     }
+    return out;
+}
+
+int TsrRoute::poleIndex(const QString &name) const
+{
+    for (int i = 0; i < poles.size(); ++i) if (poles[i].name == name) return i;
+    return -1;
+}
+
+QVector<TsrPlacement> tsrByPoles(const Station &s, const TsrRoute &tr, const QString &from, const QString &to,
+                                 int speedKmh, int tsrId, int whistle, QString *err)
+{
+    auto fail = [&](const QString &why) { if (err) *err = why; return QVector<TsrPlacement>(); };
+    const int a = tr.poleIndex(from), b = tr.poleIndex(to);
+    if (a < 0) return fail(QObject::tr("TSR route %1 has no OHE pole %2").arg(tr.id).arg(from));
+    if (b < 0) return fail(QObject::tr("TSR route %1 has no OHE pole %2").arg(tr.id).arg(to));
+    if (speedKmh <= 0 || speedKmh % 5 || speedKmh > 250)
+        return fail(QObject::tr("%1 km/h is not a TSR speed (5 km/h steps, up to 250)").arg(speedKmh));
+    if (tsrId < 0 || tsrId > 255) return fail(QObject::tr("TSR id %1 is wider than its 8 bits").arg(tsrId));
+    if (whistle < 0 || whistle > 3) return fail(QObject::tr("whistle %1 is wider than its 2 bits").arg(whistle));
+    const qint64 start = qRound64(std::min(tr.poles[a].dist, tr.poles[b].dist));
+    const qint64 end = qRound64(std::max(tr.poles[a].dist, tr.poles[b].dist));
+    if (end <= start) return fail(QObject::tr("from %1 to %2 has no length").arg(from, to));
+    QVector<TsrPlacement> out;
+    qint64 off = 0;
+    for (const QString &name : tr.routes) {
+        int ri = -1;
+        for (int i = 0; i < s.routes.size(); ++i) if (s.routes[i].name == name) ri = i;
+        if (ri < 0) return fail(QObject::tr("TSR route %1 runs over route %2, which the station does not have").arg(tr.id).arg(name));
+        const qint64 len = s.routes[ri].length();
+        const qint64 lo = std::max(start, off), hi = std::min(end, off + len);
+        if (hi > lo)
+            out << TsrPlacement{ ri, Row{ { "id", tsrId }, { "dist", lo - off }, { "len", hi - lo }, { "class", 0 },
+                                          { "u", speedKmh / 5 }, { "whistle", whistle } } };
+        off += len;
+    }
+    if (out.isEmpty()) return fail(QObject::tr("from %1 to %2 lies beyond TSR route %3's routes").arg(from, to).arg(tr.id));
     return out;
 }
 
