@@ -20,6 +20,7 @@
 #include "layoutdrawing.h"
 #include "planrun.h"
 #include "rfidtag.h"
+#include "stationbuild.h"
 #include "stationlayout.h"
 
 #include <QHash>
@@ -42,6 +43,7 @@ class QDialog;
 class QTabWidget;
 class QTableWidget;
 class StationKavachEditor;
+class StationStepsPanel;
 class StatusLine;
 class UndoLog;
 #include "stationkavach.h"   // session 435: the live state is kept here
@@ -155,6 +157,7 @@ public:
     double xOf(qint64 locM) const;
     qint64 locAt(double x) const;
     QRectF tagRect(const QString &name) const;   // where a tag is drawn (tests)
+    QString tagAt(const QPointF &pos) const;     // session 459: the tag under pos, the nearest of several
 
     // Session 222: the line whose lane is at canvas y (within half a lane), or "".
     QString lineAt(double y) const;
@@ -332,6 +335,23 @@ public:
     const StationKavach::Station &liveStation() const { return m_lvStation; }
     QString kavachPointName(const QString &layoutPoint) const;
     bool setSignalIndicator(int index, int position);   // 0 none, 1-6; one Undo step
+    // Session 459: the guided steps beside the drawing (View ▸ Steps beside the
+    // drawing): a step chosen shows its table, a problem chosen selects its row.
+    StationStepsPanel *stepsPanel() const { return m_stepsPanel; }
+    void setStepsShown(bool on);
+    bool stepsShown() const;
+    void showStep(int step);
+    void showProblem(int sheet, int row);
+    // Session 459: New station… (the panel's button, Open ▸ New station…): the plan
+    // asked for, then newStation(). newStation() replaces the layout (not saved yet);
+    // false (status says why) when the plan is refused.
+    bool newStationDialog();
+    bool newStation(const StationBuild::Plan &plan);
+    // Session 459: the Track circuits tab, the circuits sheet edited in place.
+    QTableWidget *circuitsTable() const { return m_circuitsTable; }
+    // Session 459: fields of the tag at `key` set at once (RfidTag field names), CRC-30
+    // recomputed; one Undo step. Refused (false) when the tag would change its name.
+    bool setTagFields(const QString &key, const QHash<QString, qint64> &values);
     // Session 435: right-click on point `index` (of the points sheet).
     QMenu *pointMenuFor(int index);
     // Session 437: the form beside the drawing, for what is selected (1 a
@@ -528,6 +548,12 @@ private:
     QAction *m_tablesBtn = nullptr;                // View ▸ Tables under it (session 433)
     QVector<QTableWidget *> m_tables;
     QListWidget *m_checks = nullptr;
+    StationStepsPanel *m_stepsPanel = nullptr;     // session 459
+    QAction *m_stepsBtn = nullptr;                 // View ▸ Steps beside the drawing
+    QTableWidget *m_circuitsTable = nullptr;       // session 459: the Track circuits tab
+    bool m_followingTab = false;
+    void fillCircuits();
+    void onCircuitCell();
     QListWidget *m_compare = nullptr;              // session 226
     QTableWidget *m_run = nullptr;                 // session 227
     MessageDispatcher *m_dispatcher = nullptr;

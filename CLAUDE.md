@@ -143,6 +143,11 @@ The three features once queued here are all done:
   drawing, sent to Packet Maker's live station or kept as a what-if (435,
   436); a form beside the drawing (437); a new signal with its heads (438);
   the drawing exported on paper with a title block (439).
+- **A station built step by step** in Station Layout (459): the steps
+  beside the drawing (Station … Check), each with its rows and problems,
+  a problem going to its row; New station… (TINs and foot placements as
+  LPI has them); the tag form's TINs, placement, station; Track circuits
+  tab. `docs/STATION_BUILDER.md`; next steps there under "Not yet".
 - **A firm's KAVACH sheets read into a station** (`scripts/kavach_sheets.py`,
   `docs/KAVACH_SHEETS.md`): the RFID tag data, every field checked against
   its bits (454); the Table of Control as Stationary KAVACH routes, folders
@@ -156,6 +161,8 @@ The three features once queued here are all done:
   Solarized Dark, Gruvbox Dark (434).
 
 Before proposing a feature, search `CHANGELOG.md` for it. **Queued:** the
+station-and-loco test rig, patch by patch (`docs/STATION_TEST_RIG_PLAN.md`,
+460 on: station data, then the Run step, then real hardware); and the
 Brake Test Bench follow-ups for the hardware session (real BIU frames,
 scenarios from test cases, recording the bench's traffic, verdicts; replies to
 all 4 VCCs and saved presets are done, 361-363) and the open BIU-firmware

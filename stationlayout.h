@@ -165,6 +165,11 @@ bool moveTag(Tag *t, qint64 absLoc, QString *err = nullptr);
 // CRC-30 does not match, listed twice; a signal or line naming a tag that
 // is not in the tags. Reported, never corrected.
 QStringList checks(const Layout &l);
+// Session 459: the same, each with the row it is about, for the guided steps
+// (a click on a problem selects its row). checks() is these texts, in order.
+enum Sheet { SheetTags = 0, SheetSignals, SheetPoints, SheetLines, SheetStation, SheetTexts, SheetCircuits, SheetNone = -1 };
+struct Problem { int sheet = SheetNone; int row = -1; QString text; };
+QVector<Problem> problems(const Layout &l);
 
 // --- drawing helpers -----------------------------------------------------------
 // Tag name -> abs_loc, for every tag that decodes.

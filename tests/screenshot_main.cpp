@@ -612,6 +612,17 @@ int main(int argc, char **argv)
                                 : qEnvironmentVariable("SHOT_FILE"));
                 if (!qEnvironmentVariableIsEmpty("SHOT_EXPORT")) w->exportXlsx(qEnvironmentVariable("SHOT_EXPORT"));
                 if (!qEnvironmentVariableIsEmpty("SHOT_DRAWING")) w->exportDrawing(qEnvironmentVariable("SHOT_DRAWING"));   // session 212
+                // Session 459: SHOT_NEWSTATION=<down>,<up> loops: New station… (id 900 at 100 km); SHOT_STEP=<0-8>: that step shown.
+                if (!qEnvironmentVariableIsEmpty("SHOT_NEWSTATION")) {
+                    const QStringList a = qEnvironmentVariable("SHOT_NEWSTATION").split(QLatin1Char(','));
+                    StationBuild::Plan p;
+                    p.stationId = 900;
+                    p.downLoops = a.value(0, QStringLiteral("1")).toInt();
+                    p.upLoops = a.value(1, QStringLiteral("1")).toInt();
+                    w->newStation(p);
+                }
+                if (!qEnvironmentVariableIsEmpty("SHOT_STEP")) w->showStep(qEnvironmentVariableIntValue("SHOT_STEP"));
+                if (qEnvironmentVariableIsSet("SHOT_NEWSTATION") || qEnvironmentVariableIsSet("SHOT_STEP")) w->resize(1500, 900);
                 // Session 411: SHOT_SIM=<line>[,2] runs that line in a Loco Simulator
                 // (dir 1, or 2) for SHOT_SIM_S seconds at 60 km/h (default 20).
                 if (!qEnvironmentVariableIsEmpty("SHOT_SIM")) {

@@ -10,6 +10,116 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-459"></a>
+## Session 459 — building a station step by step in Station Layout
+
+Abhinav's *"add functionality of creating different stations from files,
+config maker or an editable UI … so that users can set up a full station
+and then run and fully test a loco"*. Scope agreed: a guided mode inside
+Station Layout (not a new window). The first patch covers the layout
+steps, a New Station wizard, one problems list and the Track circuits
+table. Next: ToC and profile steps, HBL PDFs read in the app, then a
+simulated loco and a real VCC.
+Prompted too by a review of kav_sim's kav_qt Config Maker, whose station
+wizard writes the TINs and signal-foot placements the wrong way round
+(reported to Abhinav; kav_qt is not changed here).
+
+**What it does.**
+- **The steps beside the drawing** (View ▸ Steps beside the drawing,
+  shown at first; `stationsteps.{h,cpp}`):
+  - Station, Lines, Tags, Points, Signals, Track circuits, Labels, Routes
+    (the KAVACH tab), Check, each with its rows and ⚠ its problems;
+  - under the list, what goes in the chosen step and its problems;
+  - choosing a step shows its table, clicking a problem selects its row,
+    and the panel follows the tab shown; Back / Next walk the steps.
+- **`StationLayout::problems()`**: what Checks lists, each with its sheet
+  and row. `checks()` is now their text, unchanged.
+- **`StationBuild::steps()`** (`stationbuild.{h,cpp}`, new) adds what a
+  station being built needs said:
+  - no station row, no lines;
+  - a main tag on no line or point;
+  - a signal whose foot tag is not placed at a signal foot (1, 2, 6);
+  - a track circuit on a line the lines sheet lacks;
+  - the KAVACH tab's checks, under Routes.
+- **New station…** (the panel, Open ▸ New station…;
+  `StationBuild::newStation`):
+  - from the station ID, centre, DN / UP loops, loop length, first tag ID
+    and first TIN;
+  - DN and UP main with approach, home, centre, starter, exit and outer
+    tag pairs, a home and a starter signal each;
+  - each loop with a point at either end, a tag pair at its entry and a
+    starter;
+  - every tag a main and a duplicate, CRC-30 computed.
+
+  As the shipped stations have them:
+  - `tin_nom` the track on a tag's rising side, `tin_rev` its falling
+    side (LPI's DN main: all 9 TIN changes);
+  - foot tags placed 1 on DM and its loops, 2 on UM and its loops (LPI:
+    DM 1, UM 2);
+  - the D tag 4 m on the way the line is run;
+  - version 1, the station's ID both ways.
+
+  The dialog says which tags, TINs and metres the plan takes, or why it
+  is not possible: an ID past 1023, a TIN past 255, a location outside
+  0-8 388 606 m.
+- **The tag form** sets TIN nominal / reverse, station nominal / reverse
+  and placement as well as the location (`setTagFields`). Each Apply
+  re-encodes the tag with a fresh CRC-30, one Undo step. A value too wide
+  for its field, or a change that would rename the tag, is refused.
+- **A click on the drawing goes to the tag drawn nearest it**
+  (`StationLayoutCanvas::tagAt`) when several tags' hit areas hold it. With
+  the steps beside it the drawing is about 250 px narrower, and LPI's tags
+  16 and 18 overlap at Fit: the gate's session425 caught a click on 18
+  picking 16.
+- **The panel is at least 190 px wide**, so the window's minimum width
+  stays within session 210's 1000 px on Qt 5. The Qt 5 gate caught 1017 at
+  220 px.
+- **Track circuits tab**: the circuits sheet edited in place (cid, name,
+  line, location, startx, endx, station). Its other columns are kept;
+  Add row / Delete rows work there. Saved in the station XML as before.
+
+**Files.** `stationbuild.{h,cpp}`, `stationsteps.{h,cpp}` (new,
+`dlcore.pri`); `stationlayout.{h,cpp}` (`Problem`, `problems()`);
+`stationlayoutwindow.{h,cpp}` (the panel, `showStep`, `showProblem`,
+`newStationDialog`, `newStation`, `setTagFields`, the Track circuits tab);
+`tests/test_session459.cpp` (new), `tests/tests.pro`;
+`tests/screenshot_main.cpp` (`SHOT_NEWSTATION`, `SHOT_STEP`);
+`docs/STATION_BUILDER.md` (new), `docs/STATION_TEST_RIG_PLAN.md` (new: the
+plan from here to a whole loco tested against DLConsole, 460 on), `CLAUDE.md`.
+
+**Tests.** `session459` (52 checks), on station_527.xml (real: LPI):
+- LPI's DN main TIN direction at each of its 9 changes;
+- problems with their sheet and row, and `checks()` their text;
+- the steps' counts (31 track circuits) and the Check step holding them
+  all;
+- New station:
+  - lines, tags, points and signals;
+  - Checks and steps silent;
+  - every tag's CRC, version, station and duplication;
+  - TIN direction as LPI;
+  - S1 and S4's locations, TINs and placements;
+  - every foot tag facing its line's way;
+  - refusals by name;
+- the window:
+  - steps to tabs and back;
+  - a problem to its row;
+  - New station from the window, and a refused plan leaving the station
+    as it was;
+  - the form's TIN and placement with Undo, and two refusals;
+  - a circuit typed in, flagged on a line the lines lack, saved and read
+    back.
+
+**Not tested:** how the panel looks on Windows' native style, and on
+Linux with wider fonts (looked at on the Mac, light and dark); the wizard
+dialog itself, driven by hand (its plan goes through `newStation`, which
+is tested); a station built here answering a real loco (that is the Run
+step, a later patch).
+
+**Gate.** Green on Qt 5.15 and Qt 6: validators (18), 470 suites / 11,911 checks, menu
+audit, smoke.
+
+---
+
 <a id="session-458"></a>
 ## Session 458 — the whole stretch: stations answering one loco as it goes
 

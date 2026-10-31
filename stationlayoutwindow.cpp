@@ -2,6 +2,7 @@
 #include "stationinterlock.h"
 #include "stationkavach.h"
 #include "stationkavacheditor.h"
+#include "stationsteps.h"
 #include "stationstretch.h"
 #include "packetbuilder.h"
 
@@ -616,6 +617,21 @@ qint64 StationLayoutCanvas::locAt(double x) const
     return a.first + qint64(std::llround((f - a.second) / span * double(b.first - a.first)));
 }
 
+// Session 459: of the tags whose hit area holds `pos`, the one drawn nearest
+// it: close tags' areas overlap when the drawing is narrow (the steps beside it).
+QString StationLayoutCanvas::tagAt(const QPointF &pos) const
+{
+    QString best;
+    double bestD = 0;
+    for (const Hit &h : m_hits) {
+        if (h.tag.isEmpty() || !h.rect.contains(pos)) continue;
+        const QPointF c = m_loc.contains(h.tag) ? tagRect(h.tag).center() : h.rect.center();
+        const double d = QLineF(c, pos).length();
+        if (best.isEmpty() || d < bestD) { best = h.tag; bestD = d; }
+    }
+    return best;
+}
+
 QRectF StationLayoutCanvas::tagRect(const QString &name) const
 {
     if (!m_loc.contains(name)) return QRectF();
@@ -644,21 +660,21 @@ void StationLayoutCanvas::mousePressEvent(QMouseEvent *e)
         return;
     }
     // Session 425: picking a KAVACH route's tags: a tag is picked, not selected or dragged.
-    if (m_picking)
-        for (const Hit &h : m_hits)
-            if (!h.tag.isEmpty() && h.rect.contains(e->pos())) { emit tagPicked(h.tag); return; }
+    if (m_picking) {
+        const QString t = tagAt(e->pos());
+        if (!t.isEmpty()) { emit tagPicked(t); return; }
+    }
     // Session 223: Shift + drag boxes tags; Ctrl + click adds or removes one.
     if (e->modifiers() & Qt::ShiftModifier) {
         m_bandFrom = e->pos();
         m_band = QRect(m_bandFrom, QSize(1, 1));
         return;
     }
-    for (const Hit &h : m_hits) {
-        if (h.tag.isEmpty() || !h.rect.contains(e->pos())) continue;
-        if (e->modifiers() & Qt::ControlModifier) { emit tagToggled(h.tag); return; }
-        m_dragTag = h.tag;
+    if (const QString t = tagAt(e->pos()); !t.isEmpty()) {
+        if (e->modifiers() & Qt::ControlModifier) { emit tagToggled(t); return; }
+        m_dragTag = t;
         m_dragX = -1;
-        emit tagClicked(h.tag);
+        emit tagClicked(t);
         return;
     }
     // Session 233: a signal or a point selects its row, as a tag does.
@@ -724,8 +740,7 @@ void StationLayoutCanvas::mouseReleaseEvent(QMouseEvent *)
 
 void StationLayoutCanvas::mouseDoubleClickEvent(QMouseEvent *e)
 {
-    for (const Hit &h : m_hits)
-        if (!h.tag.isEmpty() && h.rect.contains(e->pos())) { emit tagDoubleClicked(h.tag); return; }
+    if (const QString t = tagAt(e->pos()); !t.isEmpty()) { emit tagDoubleClicked(t); return; }
     for (const Hit &h : m_hits)   // session 435
         if (h.point >= 0 && h.rect.contains(e->pos())) { emit pointThrowRequested(h.point); return; }
     for (const Hit &h : m_hits)   // session 436
@@ -741,9 +756,7 @@ QString StationLayoutCanvas::lineAt(double y) const
 
 void StationLayoutCanvas::contextMenuEvent(QContextMenuEvent *e)
 {
-    QString tag;
-    for (const Hit &h : m_hits)
-        if (!h.tag.isEmpty() && h.rect.contains(e->pos())) { tag = h.tag; break; }
+    QString tag = tagAt(e->pos());
     // Session 435: a point: its own menu.
     if (tag.isEmpty())
         for (const Hit &h : m_hits)
@@ -2031,6 +2044,11 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
         if (confirmDiscard()) openFile(path);
     }));
     QAction *newAct = openMenu->addAction(tr("New, empty"));
+    // Session 459: a station built from its ID, centre and loops.
+    QAction *newStationAct = openMenu->addAction(tr("New station…"));
+    newStationAct->setObjectName(QStringLiteral("slNewStation"));
+    newStationAct->setToolTip(tr("DN and UP main, loops, points, tag pairs and signals from the station's ID, centre and "
+                                 "loops, ready to move to the surveyed locations"));
     // Session 440: in this menu (it was a button: the bar had no room for wider fonts once View came).
     QAction *importAct = openMenu->addAction(tr("Import .xlsx…"));
     importAct->setToolTip(tr("A station file of the old Python tool (config/station/*.xlsx): tags, signals, points, "
@@ -2152,6 +2170,11 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     m_formBtn->setObjectName(QStringLiteral("stationLayoutFormButton"));
     m_tablesBtn = viewMenu->addAction(tr("Tables under it"));
     m_tablesBtn->setObjectName(QStringLiteral("stationLayoutTables"));
+    // Session 459.
+    m_stepsBtn = viewMenu->addAction(tr("Steps beside the drawing"));
+    m_stepsBtn->setObjectName(QStringLiteral("stationLayoutSteps"));
+    m_stepsBtn->setToolTip(tr("The steps of building a station, each with its rows and problems: a step shows its table, "
+                              "a problem its row"));
     viewBtn->setMenu(viewMenu);
     for (QWidget *w : std::initializer_list<QWidget *>{ m_measureBtn, zoomOut, zoomIn, fit, viewBtn, undoBtn }) bar->addWidget(w);
 
@@ -2217,6 +2240,17 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
         changed(label, before);
     });
     connect(m_kavach, &StationKavachEditor::refused, this, [this](const QString &why) { m_status->fail(why); });
+    // Session 459: the circuits sheet as a table of its own.
+    m_circuitsTable = makeTable(this);
+    m_circuitsTable->setObjectName(QStringLiteral("slCircuits"));
+    m_circuitsTable->setColumnCount(7);
+    m_circuitsTable->setHorizontalHeaderLabels({ QStringLiteral("cid"), QStringLiteral("name"), QStringLiteral("line"),
+                                                 QStringLiteral("location"), QStringLiteral("startx"), QStringLiteral("endx"),
+                                                 QStringLiteral("station") });
+    m_circuitsTable->setToolTip(tr("The station's track circuits: cid, name, line, from startx to endx (m) or a location "
+                                   "only, and its station ID"));
+    m_tabs->addTab(m_circuitsTable, tr("Track circuits"));
+    connect(m_circuitsTable, &QTableWidget::cellChanged, this, [this](int, int) { onCircuitCell(); });
     // Session 424: the route selected, and the MA's sections on from it, drawn while the tab is shown.
     connect(m_kavach, &StationKavachEditor::routeSelected, this, [this]() { updateKavachView(); });
     // Session 425: the selected route's tags picked on the drawing.
@@ -2350,11 +2384,36 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     m_liveState->setObjectName(QStringLiteral("slLiveState"));
     m_liveState->setWordWrap(true);
     m_liveState->hide();
+    // Session 459: the guided steps, left of the drawing and its tables.
+    m_stepsPanel = new StationStepsPanel(this);
+    auto *guided = new QSplitter(Qt::Horizontal, this);
+    guided->addWidget(m_stepsPanel);
+    guided->addWidget(split);
+    guided->setStretchFactor(0, 0);
+    guided->setStretchFactor(1, 1);
+    guided->setCollapsible(1, false);
+    m_stepsBtn->setCheckable(true);
+    m_stepsBtn->setChecked(true);
+    connect(m_stepsBtn, &QAction::toggled, this, [this](bool on) { setStepsShown(on); });
+    connect(m_stepsPanel, &StationStepsPanel::stepChosen, this, [this](int step) { showStep(step); });
+    connect(m_stepsPanel, &StationStepsPanel::problemChosen, this, [this](int sheet, int row) { showProblem(sheet, row); });
+    connect(m_stepsPanel, &StationStepsPanel::newStationRequested, this, [this]() { newStationDialog(); });
+    connect(newStationAct, &QAction::triggered, this, [this]() { newStationDialog(); });
+    connect(m_tabs, &QTabWidget::currentChanged, this, [this]() {   // the panel follows the tab shown
+        if (m_followingTab) return;
+        QWidget *w = m_tabs->currentWidget();
+        int step = -1;
+        if (w == m_kavach) step = StationBuild::StepRoutes;
+        else if (w == m_checks) step = StationBuild::StepCheck;
+        else if (w == m_circuitsTable) step = StationBuild::StepCircuits;
+        else step = StationBuild::stepOfSheet(int(m_tables.indexOf(qobject_cast<QTableWidget *>(w))));
+        if (step >= 0) m_stepsPanel->setCurrentStep(step);
+    });
     auto *root = new QVBoxLayout(this);
     root->addLayout(bar);
     root->addWidget(m_simState);
     root->addWidget(m_liveState);
-    root->addWidget(split, 1);
+    root->addWidget(guided, 1);
     root->addWidget(m_status);
 
     connect(newAct, &QAction::triggered, this, [this]() {
@@ -2560,11 +2619,14 @@ void StationLayoutWindow::refreshAll()
     for (const QString &n : m_layout.sheetNotes) found << tr("Sheet: %1").arg(n);
     // Session 423: what the KAVACH data would not do, and the tags it names the layout lacks.
     m_kavach->setKavach(m_layout.kavach);
+    QStringList kavachNotes;   // session 459: the Routes step's
+    int routeCount = 0;
     if (!m_layout.kavach.isEmpty()) {
         StationKavach::Station ks;
         QString err;
         QStringList notes;
-        if (!StationKavach::fromJson(m_layout.kavach, &ks, &err, &notes)) found << tr("KAVACH: %1").arg(err);
+        if (!StationKavach::fromJson(m_layout.kavach, &ks, &err, &notes)) { found << tr("KAVACH: %1").arg(err); kavachNotes << err; }
+        routeCount = ks.routes.size();
         QSet<int> ids;
         for (const StationLayout::Tag &t : m_layout.tags)
             ids.insert((t.name.endsWith(QLatin1Char('D')) ? t.name.chopped(1) : t.name).toInt());
@@ -2572,8 +2634,10 @@ void StationLayoutWindow::refreshAll()
         // (session 455: a junction tag at either of its two locations).
         const QHash<int, QVector<qint64>> locs = StationLayout::tagLocationsByNumber(m_layout, true);
         for (const QString &c : notes + StationKavach::checks(ks) + StationKavach::tagChecks(ks, ids)
-                                    + StationKavach::locationChecks(ks, locs))
+                                    + StationKavach::locationChecks(ks, locs)) {
             found << tr("KAVACH: %1").arg(c);
+            kavachNotes << c;
+        }
         m_tabs->setTabText(m_tabs->indexOf(m_kavach), ks.routes.size() == 1 ? tr("KAVACH (1 route)")
                                                                      : tr("KAVACH (%1 routes)").arg(ks.routes.size()));
     } else {
@@ -2593,6 +2657,8 @@ void StationLayoutWindow::refreshAll()
     m_status->state(tr("%1 tags · %2 signals · %3 lines · %4 points").arg(m_layout.tags.size())
                         .arg(m_layout.signalList.size()).arg(m_layout.lines.size()).arg(m_layout.points.size()));
     showForm(m_formKind, m_formIndex);   // session 437: the form follows edits and Undo
+    fillCircuits();                      // session 459
+    if (m_stepsPanel) m_stepsPanel->setSteps(StationBuild::steps(m_layout, routeCount, kavachNotes));
     emit stationChanged();
 }
 
@@ -2982,10 +3048,38 @@ void StationLayoutWindow::showForm(int kind, int index)
         loc->setValidator(new QRegularExpressionValidator(QRegularExpression(QStringLiteral("\\d{1,8}")), loc));
         loc->setToolTip(tr("Apply re-encodes the tag at this location (CRC-30 recomputed)"));
         m_formLayout->addRow(tr("Location (m)"), loc);
+        // Session 459: its TINs, placement and station set here too, each re-encoding it.
+        const QHash<QString, qint64> was = RfidTag::values(RfidTag::fromPages(t.pageX, t.pageY));
+        QHash<QString, QSpinBox *> spins;
+        QComboBox *placement = nullptr;
         if (in.ok) {
             readOnlyRow(tr("Type"), RfidTag::typeName(in.type));
             readOnlyRow(tr("Kind"), TinLayout::notationName(TinLayout::notation(in.type, in.placement)));
-            readOnlyRow(tr("TIN nom / rev"), tr("%1 / %2").arg(in.tinNom).arg(in.tinRev));
+            const struct { const char *field, *label, *tip; int max; } edits[] = {
+                { "tin_nom", "TIN nominal", "The track it leads onto going Nominal (locations rising), 0-255", 255 },
+                { "tin_rev", "TIN reverse", "The track it leads onto going Reverse (locations falling), 0-255", 255 },
+                { "stn_nom", "Station, nominal", "The station a loco going Nominal is with at this tag", 65535 },
+                { "stn_rev", "Station, reverse", "The station a loco going Reverse is with at this tag", 65535 },
+            };
+            for (const auto &e : edits) {
+                const QString f = QLatin1String(e.field);
+                if (!was.contains(f)) continue;
+                auto *b = new QSpinBox(m_form);
+                b->setObjectName(QStringLiteral("formTag_") + f);
+                b->setRange(0, e.max);
+                b->setValue(int(was.value(f)));
+                b->setToolTip(tr(e.tip));
+                m_formLayout->addRow(tr(e.label), b);
+                spins.insert(f, b);
+            }
+            if (was.contains(QStringLiteral("placement"))) {
+                placement = new QComboBox(m_form);
+                placement->setObjectName(QStringLiteral("formTag_placement"));
+                for (int v = 0; v < 16; ++v) placement->addItem(RfidTag::enumLabel(QStringLiteral("rfidPlace"), v), v);
+                placement->setCurrentIndex(int(was.value(QStringLiteral("placement"))));
+                placement->setToolTip(tr("Where the tag lies: a signal's foot tag 1 (Nominal), 2 (Reverse) or 6 (both)"));
+                m_formLayout->addRow(tr("Placement"), placement);
+            }
             readOnlyRow(tr("CRC-30"), in.crcOk ? tr("good") : tr("does not match"));
         } else {
             readOnlyRow(tr("Bits"), tr("page_x / page_y do not make a tag"));
@@ -2994,11 +3088,18 @@ void StationLayoutWindow::showForm(int kind, int index)
         auto *builder = new QPushButton(tr("Edit in Tag Builder…"), m_form);
         connect(builder, &QPushButton::clicked, this, [this, key]() { openInTagBuilder(key); });
         m_formLayout->addRow(builder);
-        m_formApplyFn = [this, loc, key, was = in.absLoc]() {
+        m_formApplyFn = [this, loc, key, wasLoc = in.absLoc, type = in.type, was, spins, placement]() {
             bool ok = false;
             const qint64 v = loc->text().toLongLong(&ok);
             if (!ok) { m_status->fail(tr("\"%1\" is not a location in metres").arg(loc->text())); return false; }
-            return v == was || moveTag(key, v);
+            QHash<QString, qint64> set;
+            for (auto it = spins.cbegin(); it != spins.cend(); ++it)
+                if (it.value()->value() != was.value(it.key())) set.insert(it.key(), it.value()->value());
+            if (placement && placement->currentData().toLongLong() != was.value(QStringLiteral("placement")))
+                set.insert(QStringLiteral("placement"), placement->currentData().toLongLong());
+            if (set.isEmpty()) return v == wasLoc || moveTag(key, v);
+            if (v != wasLoc) set.insert(type == 12 ? QStringLiteral("abs_loc_1") : QStringLiteral("abs_loc"), v);
+            return setTagFields(key, set);
         };
         return;
     }
@@ -3225,9 +3326,9 @@ QStringList StationLayoutWindow::selectedTags() const
 
 void StationLayoutWindow::selectSheetRow(int sheet, int row)
 {
-    QTableWidget *t = m_tables.value(sheet);
+    QTableWidget *t = sheet == StationLayout::SheetCircuits ? m_circuitsTable : m_tables.value(sheet);   // session 459
     if (!t || row < 0 || row >= t->rowCount()) return;
-    m_tabs->setCurrentIndex(sheet);
+    m_tabs->setCurrentWidget(t);
     t->selectRow(row);
     t->scrollToItem(t->item(row, 0));
 }
@@ -3810,6 +3911,15 @@ void StationLayoutWindow::onSheetCell(int sheet)
 
 void StationLayoutWindow::addRow()
 {
+    if (m_tabs->currentWidget() == m_circuitsTable) {   // session 459: an empty row, a record once typed into
+        const int r = qBound(0, m_circuitsTable->currentRow() + 1, m_circuitsTable->rowCount());
+        m_updating = true;
+        m_circuitsTable->insertRow(r);
+        m_updating = false;
+        m_circuitsTable->setCurrentCell(r, 0);
+        m_circuitsTable->edit(m_circuitsTable->model()->index(r, 0));
+        return;
+    }
     const int sheet = m_tabs->currentIndex();
     if (sheet < 0 || sheet > 5) return;
     const StationLayout::Layout before = m_layout;
@@ -3836,8 +3946,9 @@ void StationLayoutWindow::addRow()
 void StationLayoutWindow::deleteRows()
 {
     const int sheet = m_tabs->currentIndex();
-    if (sheet < 0 || sheet > 5) return;
-    QTableWidget *t = m_tables.at(sheet);
+    const bool circuits = m_tabs->currentWidget() == m_circuitsTable;   // session 459
+    if (!circuits && (sheet < 0 || sheet > 5)) return;
+    QTableWidget *t = circuits ? m_circuitsTable : m_tables.at(sheet);
     QList<int> rows;
     for (const QModelIndex &i : t->selectionModel()->selectedRows()) rows << i.row();
     if (rows.isEmpty()) return;
@@ -3851,7 +3962,7 @@ void StationLayoutWindow::deleteRows()
     m_updating = true;
     for (int r : rows) t->removeRow(r);
     m_updating = false;
-    onSheetCell(sheet);
+    if (circuits) onCircuitCell(); else onSheetCell(sheet);
 }
 
 bool StationLayoutWindow::openFile(const QString &path)
@@ -4005,6 +4116,232 @@ void StationLayoutWindow::setTablesShown(bool on)
 }
 
 bool StationLayoutWindow::tablesShown() const { return m_bottom && !m_bottom->isHidden(); }
+
+// ---- session 459: the guided steps ---------------------------------------------
+
+void StationLayoutWindow::setStepsShown(bool on)
+{
+    if (m_stepsPanel) m_stepsPanel->setVisible(on);
+    if (m_stepsBtn && m_stepsBtn->isChecked() != on) m_stepsBtn->setChecked(on);
+}
+
+bool StationLayoutWindow::stepsShown() const { return m_stepsPanel && !m_stepsPanel->isHidden(); }
+
+void StationLayoutWindow::showStep(int step)
+{
+    QWidget *w = nullptr;
+    if (step == StationBuild::StepRoutes) w = m_kavach;
+    else if (step == StationBuild::StepCheck) w = m_checks;
+    else if (step == StationBuild::StepCircuits) w = m_circuitsTable;
+    else w = m_tables.value(StationBuild::sheetOfStep(step));
+    if (!w) return;
+    if (!tablesShown()) setTablesShown(true);
+    m_followingTab = true;
+    m_tabs->setCurrentWidget(w);
+    m_followingTab = false;
+    if (m_stepsPanel) m_stepsPanel->setCurrentStep(step);
+}
+
+void StationLayoutWindow::showProblem(int sheet, int row)
+{
+    const int step = StationBuild::stepOfSheet(sheet);
+    if (step >= 0) showStep(step);
+    if (row < 0) return;
+    if (sheet == StationLayout::SheetTags) {
+        selectTags({ StationLayout::tagKeys(m_layout).value(row) });
+        m_canvas->setSelectedTag(StationLayout::tagKeys(m_layout).value(row));
+    } else {
+        selectSheetRow(sheet, row);
+    }
+    if (m_stepsPanel) m_stepsPanel->setCurrentStep(step);
+}
+
+bool StationLayoutWindow::newStationDialog()
+{
+    QDialog d(this);
+    d.setWindowTitle(tr("New station"));
+    auto spin = [&d](int lo, int hi, int v, const QString &suffix = QString()) {
+        auto *b = new QSpinBox(&d);
+        b->setRange(lo, hi);
+        b->setValue(v);
+        b->setSuffix(suffix);
+        return b;
+    };
+    StationBuild::Plan p;
+    QSpinBox *id = spin(1, 65535, p.stationId), *centre = spin(0, 8388606, int(p.centre), tr(" m"));
+    QSpinBox *down = spin(0, 9, p.downLoops), *up = spin(0, 9, p.upLoops), *len = spin(200, 5000, p.loopLength, tr(" m"));
+    QSpinBox *tag = spin(1, 1023, p.firstTag), *tin = spin(1, 255, p.firstTin);
+    id->setObjectName(QStringLiteral("nsStationId"));
+    centre->setObjectName(QStringLiteral("nsCentre"));
+    centre->setSingleStep(1000);
+    len->setSingleStep(50);
+    auto *what = new QLabel(&d);
+    what->setWordWrap(true);
+    auto *form = new QFormLayout(&d);
+    auto *intro = new QLabel(tr("DN MAIN (run Nominal, locations rising) and UP MAIN (run Reverse) with an approach, home, "
+                                "starter and exit tag pair each, a home and a starter signal; each loop with a point at "
+                                "either end, a tag pair at its entry and a starter. A tag's TIN in a direction is the "
+                                "track it leads onto that way. Then move the tags to their surveyed locations."), &d);
+    intro->setWordWrap(true);
+    form->addRow(intro);
+    form->addRow(tr("KAVACH station ID"), id);
+    form->addRow(tr("Station centre"), centre);
+    form->addRow(tr("DN loops"), down);
+    form->addRow(tr("UP loops"), up);
+    form->addRow(tr("Loop length"), len);
+    form->addRow(tr("First tag ID"), tag);
+    form->addRow(tr("First TIN"), tin);
+    form->addRow(what);
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &d);
+    form->addRow(buttons);
+    auto read = [=]() {
+        StationBuild::Plan q;
+        q.stationId = id->value();
+        q.centre = centre->value();
+        q.downLoops = down->value();
+        q.upLoops = up->value();
+        q.loopLength = len->value();
+        q.firstTag = tag->value();
+        q.firstTin = tin->value();
+        return q;
+    };
+    auto update = [=]() {
+        const StationBuild::Plan q = read();
+        QString err;
+        const bool ok = !StationBuild::newStation(q, &err).isEmpty();
+        what->setText(ok ? tr("Tags %1 to %2 (with their duplicates), TINs %3 to %4, from %5 m to %6 m.")
+                               .arg(q.firstTag).arg(q.firstTag + StationBuild::tagsNeeded(q) - 1)
+                               .arg(q.firstTin).arg(q.firstTin + StationBuild::tinsNeeded(q) - 1)
+                               .arg(StationBuild::firstLocation(q)).arg(StationBuild::lastLocation(q))
+                         : tr("Not possible: %1").arg(err));
+        QPalette pal = what->palette();
+        pal.setColor(QPalette::WindowText, ok ? palette().color(QPalette::WindowText) : UiColor::error());
+        what->setPalette(pal);
+        buttons->button(QDialogButtonBox::Ok)->setEnabled(ok);
+    };
+    for (QSpinBox *b : { id, centre, down, up, len, tag, tin })
+        connect(b, QOverload<int>::of(&QSpinBox::valueChanged), &d, [update](int) { update(); });
+    connect(buttons, &QDialogButtonBox::accepted, &d, &QDialog::accept);
+    connect(buttons, &QDialogButtonBox::rejected, &d, &QDialog::reject);
+    update();
+    if (d.exec() != QDialog::Accepted || !confirmDiscard()) return false;
+    return newStation(read());
+}
+
+bool StationLayoutWindow::newStation(const StationBuild::Plan &plan)
+{
+    QString err;
+    const StationLayout::Layout l = StationBuild::newStation(plan, &err);
+    if (l.isEmpty()) { m_status->fail(tr("No station made: %1").arg(err)); return false; }
+    m_path.clear();
+    setStation(l);
+    setModified(true);
+    showStep(StationBuild::StepTags);
+    m_status->ok(tr("Station %1 made: %2 tags, %3 lines, %4 points, %5 signals. Move the tags to their surveyed "
+                    "locations, then Save as…").arg(plan.stationId).arg(l.tags.size()).arg(l.lines.size())
+                     .arg(l.points.size()).arg(l.signalList.size()));
+    return true;
+}
+
+namespace {
+const char *kCircuitColumns[] = { "cid", "name", "line", "location", "startx", "endx", "station" };
+int circuitsSheet(const StationLayout::Layout &l)
+{
+    for (int i = 0; i < l.otherSheets.size(); ++i)
+        if (l.otherSheets.at(i).name.compare(QLatin1String("circuits"), Qt::CaseInsensitive) == 0) return i;
+    return -1;
+}
+}
+
+void StationLayoutWindow::fillCircuits()
+{
+    if (!m_circuitsTable) return;
+    m_updating = true;
+    const int at = circuitsSheet(m_layout);
+    const XlsxBook::Sheet sh = at < 0 ? XlsxBook::Sheet() : m_layout.otherSheets.at(at);
+    QHash<QString, int> col;   // the sheet's own column of each of ours
+    if (!sh.rows.isEmpty())
+        for (int c = 0; c < sh.rows.first().size(); ++c) col.insert(sh.rows.first().at(c).toString().trimmed().toLower(), c);
+    m_circuitsTable->setRowCount(qMax(0, int(sh.rows.size()) - 1));
+    for (int r = 1; r < sh.rows.size(); ++r)
+        for (int c = 0; c < 7; ++c) {
+            const int from = col.value(QLatin1String(kCircuitColumns[c]), -1);
+            QString v = from < 0 ? QString() : sh.rows.at(r).value(from).toString();
+            if (v.endsWith(QLatin1String(".0"))) v.chop(2);
+            m_circuitsTable->setItem(r - 1, c, new QTableWidgetItem(v));
+        }
+    m_circuitsTable->resizeColumnsToContents();
+    m_tabs->setTabText(m_tabs->indexOf(m_circuitsTable), tr("Track circuits (%1)").arg(m_circuitsTable->rowCount()));
+    m_updating = false;
+}
+
+void StationLayoutWindow::onCircuitCell()
+{
+    if (m_updating) return;
+    XlsxBook::Sheet sh;
+    sh.name = QStringLiteral("circuits");
+    XlsxBook::Row head;
+    for (const char *c : kCircuitColumns) head << QString::fromLatin1(c);
+    const int at = circuitsSheet(m_layout);
+    if (at >= 0) {   // the sheet's other columns are kept, after ours
+        sh.name = m_layout.otherSheets.at(at).name;
+        for (const QVariant &h : m_layout.otherSheets.at(at).rows.value(0))
+            if (!head.contains(h.toString().trimmed().toLower())) head << h;
+    }
+    sh.rows << head;
+    for (int r = 0; r < m_circuitsTable->rowCount(); ++r) {
+        XlsxBook::Row row(head.size());
+        bool any = false;
+        for (int c = 0; c < 7; ++c) {
+            const QString v = m_circuitsTable->item(r, c) ? m_circuitsTable->item(r, c)->text().trimmed() : QString();
+            bool num = false;
+            const qint64 n = v.toLongLong(&num);
+            row[c] = num ? QVariant(n) : QVariant(v);
+            any = any || !v.isEmpty();
+        }
+        if (at >= 0 && r + 1 < m_layout.otherSheets.at(at).rows.size()) {   // the row's other cells, as they were
+            const XlsxBook::Sheet &old = m_layout.otherSheets.at(at);
+            for (int c = 7; c < head.size(); ++c) {
+                const int from = int(old.rows.first().indexOf(head.at(c)));
+                if (from >= 0) row[c] = old.rows.at(r + 1).value(from);
+            }
+        }
+        if (any) sh.rows << row;
+    }
+    const StationLayout::Layout before = m_layout;
+    if (at >= 0) m_layout.otherSheets[at] = sh;
+    else m_layout.otherSheets << sh;
+    changed(tr("edit track circuits"), before);
+}
+
+bool StationLayoutWindow::setTagFields(const QString &key, const QHash<QString, qint64> &set)
+{
+    const int i = tagIndexOf(key);
+    if (i < 0) { m_status->fail(tr("Tag %1 is not in the layout").arg(key)); return false; }
+    const StationLayout::Tag &t = m_layout.tags.at(i);
+    QHash<QString, qint64> v = RfidTag::values(RfidTag::fromPages(t.pageX, t.pageY));
+    if (v.isEmpty()) { m_status->fail(tr("Tag %1: page_x / page_y do not make a tag").arg(t.name)); return false; }
+    QStringList what;
+    for (auto it = set.cbegin(); it != set.cend(); ++it) {
+        if (!v.contains(it.key())) { m_status->fail(tr("Tag %1 has no field %2").arg(t.name, it.key())); return false; }
+        v.insert(it.key(), it.value());
+        what << QStringLiteral("%1 %2").arg(it.key()).arg(it.value());
+    }
+    QString err;
+    const QByteArray b = RfidTag::build(v, &err);
+    if (b.isEmpty()) { m_status->fail(tr("Nothing set: tag %1 %2").arg(t.name, err)); return false; }
+    if (RfidTag::nameOf(b) != t.name) {
+        m_status->fail(tr("Nothing set: tag %1 would become tag %2").arg(t.name, RfidTag::nameOf(b)));
+        return false;
+    }
+    const StationLayout::Layout before = m_layout;
+    m_layout.tags[i].pageX = RfidTag::pageX(b);
+    m_layout.tags[i].pageY = RfidTag::pageY(b);
+    what.sort();
+    changed(tr("edit tag %1").arg(t.name), before);
+    m_status->ok(tr("Tag %1: %2, CRC-30 recomputed").arg(t.name, what.join(QStringLiteral(", "))));
+    return true;
+}
 
 QString StationLayoutWindow::suggestedXmlName() const
 {

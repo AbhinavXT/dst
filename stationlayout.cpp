@@ -322,37 +322,50 @@ QHash<QString, QString> lineOfTag(const Layout &l)
     return out;
 }
 
-QStringList checks(const Layout &l)
+QVector<Problem> problems(const Layout &l)
 {
-    QStringList out;
+    QVector<Problem> out;
     QHash<QString, int> seen;
-    for (const Tag &t : l.tags) {
-        if (++seen[t.name] == 2) out << QStringLiteral("tag %1 is listed more than once").arg(t.name);
+    for (int i = 0; i < l.tags.size(); ++i) {
+        const Tag &t = l.tags.at(i);
+        if (++seen[t.name] == 2) out.append({ SheetTags, i, QStringLiteral("tag %1 is listed more than once").arg(t.name) });
         QString err;
         const QByteArray bytes = RfidTag::fromPages(t.pageX, t.pageY, &err);
         if (bytes.size() != RfidTag::TagBytes) {
-            out << QStringLiteral("tag %1: page_x / page_y do not make a tag (%2)").arg(t.name, err);
+            out.append({ SheetTags, i, QStringLiteral("tag %1: page_x / page_y do not make a tag (%2)").arg(t.name, err) });
             continue;
         }
         const RfidTag::Summary s = RfidTag::summary(bytes);
         const QString bitsName = RfidTag::nameOf(bytes);
-        if (bitsName != t.name) out << QStringLiteral("tag %1: its bits say %2").arg(t.name, bitsName);
-        if (!s.crcOk) out << QStringLiteral("tag %1: CRC-30 does not match its contents").arg(t.name);
+        if (bitsName != t.name) out.append({ SheetTags, i, QStringLiteral("tag %1: its bits say %2").arg(t.name, bitsName) });
+        if (!s.crcOk) out.append({ SheetTags, i, QStringLiteral("tag %1: CRC-30 does not match its contents").arg(t.name) });
     }
-    for (const Signal &sg : l.signalList)
-        if (!seen.contains(sg.footTag)) out << QStringLiteral("signal %1: foot tag %2 is not in the tags").arg(sg.name, sg.footTag);
-    for (const Line &ln : l.lines)
-        for (const QString &t : ln.tags)
-            if (!seen.contains(t)) out << QStringLiteral("line %1: tag %2 is not in the tags").arg(ln.line, t);
+    for (int i = 0; i < l.signalList.size(); ++i) {
+        const Signal &sg = l.signalList.at(i);
+        if (!seen.contains(sg.footTag))
+            out.append({ SheetSignals, i, QStringLiteral("signal %1: foot tag %2 is not in the tags").arg(sg.name, sg.footTag) });
+    }
+    for (int i = 0; i < l.lines.size(); ++i)
+        for (const QString &t : l.lines.at(i).tags)
+            if (!seen.contains(t)) out.append({ SheetLines, i, QStringLiteral("line %1: tag %2 is not in the tags").arg(l.lines.at(i).line, t) });
     // Session 233: drawn on a lane of its own, but the lines sheet should list it.
     QSet<QString> lines;
     for (const Line &ln : l.lines) lines.insert(ln.line);
-    for (const Point &p : l.points)
+    for (int i = 0; i < l.points.size(); ++i) {
+        const Point &p = l.points.at(i);
         for (const QString &id : { p.line1, p.line2 })
             if (!id.isEmpty() && !lines.contains(id)) {
-                out << QStringLiteral("point %1: line %2 is not in the lines sheet").arg(p.name, id);
+                out.append({ SheetPoints, i, QStringLiteral("point %1: line %2 is not in the lines sheet").arg(p.name, id) });
                 break;
             }
+    }
+    return out;
+}
+
+QStringList checks(const Layout &l)
+{
+    QStringList out;
+    for (const Problem &p : problems(l)) out << p.text;
     return out;
 }
 
