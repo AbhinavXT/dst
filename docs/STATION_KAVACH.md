@@ -268,6 +268,10 @@ keeps where every loco is from each **ARP and LSRP** it hears.
   Autoblock section with track circuits works itself: Red while the section
   ahead is occupied, else one step up from the signal at its end (Red →
   Yellow → Double Yellow → Green).
+- **Conflicts** (session 444). A route is not set while a circuit of it is
+  occupied or a route set from another signal runs over one of its circuits;
+  a signal off whose route is not free (a point the wrong way, a circuit
+  occupied) is held at Red, said why.
 
 ## Not yet
 

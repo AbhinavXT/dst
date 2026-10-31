@@ -29,6 +29,12 @@
 //  A route without track circuits is never seen entered: its signal stays
 //  the operator's.
 //
+//  CONFLICTS (session 444), while State::interlocking: a route is not set
+//  while a circuit of it is occupied or a route set from another signal runs
+//  over one of its circuits (said why). A signal off whose route is not
+//  free (a point lying the wrong way, a circuit occupied: by hand, or a
+//  route set and no train in it yet) is held at Red.
+//
 //  AUTOMATIC SIGNALS (session 443), while State::interlocking: a signal
 //  every route from which is an Autoblock section (TRAIN_SECTION_TYPE 2,
 //  with track circuits) and has no route set from it works itself: Red

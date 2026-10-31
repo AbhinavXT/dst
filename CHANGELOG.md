@@ -10,6 +10,44 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-444"></a>
+## Session 444 — a route that is not free is not set; a signal whose route is not free is held at Red
+
+Abhinav's list for a full station simulator, item 4.
+
+**What the operator sees.** With Interlocking on (Station… ▸ Options):
+- **Set route** (on the drawing) is refused, said why, when a track circuit
+  of the route is occupied (*route S43-A900 DN Auto not set: occupied: 43AT by
+  loco 2*) or a route set from another signal runs over one of its circuits
+  (*… it conflicts with route A900-S43 UP (set), both over 43BT*), as well as
+  through a locked point (442);
+- **a signal off whose route is not free is held at Red**: set by hand or by
+  a route not yet entered, with a point lying the wrong way or a circuit
+  occupied: *S48 held at Red: route S48-S43 DN Main: point 19 lies Reverse,
+  the route needs it Normal*; *S50 held at Red: route S50-S48 DN: occupied:
+  DMT by loco 2*. Before, the station said it and answered with the aspect
+  all the same; with Interlocking off it still does.
+
+**How.** `StationInterlock::setRoute` checks the route's circuits; `work()`
+holds a signal at Red (not an automatic one, 443; not one whose route a train
+has entered, 442).
+
+**Files.** `stationinterlock.{h,cpp}`, `tests/test_session444.cpp` (new),
+`tests/tests.pro`.
+
+**Tests.** `session444` (10 checks) on station 527's data with
+station_527.xml's circuits: S43-A900 with 43AT occupied by loco 2: not set;
+A900-S43 UP (43CT, 43BT) set: S43-A900 against it not set, then set once it
+is cancelled; S50-S48 (50AT, DMT) set, loco 2 in DMT: S50 held at Red, the
+route not entered; S48 Green by hand with 19 Reverse: held at Red; 19 Normal:
+Green stays; off: the operator's Green kept.
+- **Not tested:** with live locos; flank protection (not modelled: the data
+  names no flank points).
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 456 suites / 11,624 checks, menu audit, smoke.
+
+---
+
 <a id="session-443"></a>
 ## Session 443 — the automatic signals work themselves
 

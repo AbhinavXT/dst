@@ -116,6 +116,19 @@ QString setRoute(const StationKavach::Station &s, StationKavach::State *st, int 
             const QString why = pointLocked(s, *st, p);
             if (!why.isEmpty()) return QObject::tr("route %1 not set: %2").arg(r.name, why);
         }
+    // Session 444: refused when the route is not free: a circuit of it occupied, or a route
+    // set from another signal through one of its circuits (one the other way, or over it).
+    if (st->interlocking) {
+        const QStringList occ = occupiedIn(r, *st);
+        if (!occ.isEmpty()) return QObject::tr("route %1 not set: occupied: %2").arg(r.name, occ.join(QStringLiteral(", ")));
+        for (auto it = st->routes.cbegin(); it != st->routes.cend(); ++it) {
+            if (it.key() == r.entry) continue;
+            const StationKavach::Route &o = s.routes.at(it.value());
+            for (const QString &c : r.trackCircuits)
+                if (o.trackCircuits.contains(c))
+                    return QObject::tr("route %1 not set: it conflicts with route %2 (set), both over %3").arg(r.name, o.name, c);
+        }
+    }
     for (const QString &p : r.pointsNormal) st->reverse.remove(p);
     for (const QString &p : r.pointsReverse) st->reverse.insert(p);
     for (auto it = st->routes.begin(); it != st->routes.end();) {
@@ -188,6 +201,24 @@ QStringList work(const StationKavach::Station &s, StationKavach::State *st)
         if (ri < 0 || s.routes[ri].trackCircuits.isEmpty() || !st->isOccupied(s.routes[ri].trackCircuits.first())) continue;
         st->aspect.insert(g.name, 1);
         ev << QObject::tr("%1 back to Red: a train in route %2 (%3)").arg(g.name, s.routes[ri].name, occupiedIn(s.routes[ri], *st).join(QStringLiteral(", ")));
+    }
+    // Session 444: a signal off (set by hand, or its route set and no train in it yet) whose
+    // route is not free: held at Red, as the interlocking would not clear it.
+    for (const StationKavach::Signal &g : s.signalList) {
+        if (!proceed(st->aspectOf(s, g.name)) || automatic(s, g.name) || st->entered.contains(g.name)) continue;
+        const int ri = routeOf(s, *st, g.name);
+        if (ri < 0) continue;
+        const StationKavach::Route &r = s.routes[ri];
+        QStringList why;
+        for (const QString &p : r.pointsNormal)
+            if (st->reverse.contains(p)) why << QObject::tr("point %1 lies Reverse, the route needs it Normal").arg(p);
+        for (const QString &p : r.pointsReverse)
+            if (!st->reverse.contains(p)) why << QObject::tr("point %1 lies Normal, the route needs it Reverse").arg(p);
+        const QStringList occ = occupiedIn(r, *st);
+        if (!occ.isEmpty()) why << QObject::tr("occupied: %1").arg(occ.join(QStringLiteral(", ")));
+        if (why.isEmpty()) continue;
+        st->aspect.insert(g.name, 1);
+        ev << QObject::tr("%1 held at Red: route %2: %3").arg(g.name, r.name, why.join(QStringLiteral("; ")));
     }
     // Session 443: the automatic signals, from the one furthest ahead back: Red while a
     // circuit of the section ahead is occupied, else one step up from the signal ahead.
