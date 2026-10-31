@@ -46,6 +46,8 @@
 #include "stationlayoutwindow.h"
 #include "uicolors.h"
 #include "brakebenchwindow.h"
+#include "biusim.h"
+#include <QHostAddress>
 #ifdef DL_HAVE_SERIAL
 #include "cabiosimwindow.h"
 #include "locosimwindow.h"
@@ -754,6 +756,24 @@ int main(int argc, char **argv) {
                 benchWindow->plant().setTarget(BrakePlant::Bc, 2.4);
                 benchWindow->advance(0.05);
                 CHECK(opened->motion().braking(), "the Loco Simulator's loco brakes on the Brake Test Bench's BC");
+                // Session 452: on the log port the BIU runs from a tab's @biu_cmd line.
+                if (auto *disp = w.findChild<MessageDispatcher *>()) {
+                    QStringList answered;
+                    benchWindow->biu()->setSendToSink([&answered](const QByteArray &, const QString &to) { answered << to; });
+                    benchWindow->setListenPort(quint16(Settings::udpPort()));
+                    CHECK(benchWindow->startBiu(), "the bench starts on the log port");
+                    disp->ingestLocal(81, 1, QByteArrayLiteral("@biu_cmd_81_1 2026-10-30T10:00:01 4204 E8 03 12 0C 64 00 00 00"),
+                                      QDateTime::currentMSecsSinceEpoch(), QString(), QHostAddress(QStringLiteral("192.168.25.81")).toIPv4Address());
+                    disp->drainNow();
+                    QCoreApplication::processEvents();
+                    benchWindow->advance(0.3);
+                    CHECK(benchWindow->biu()->commandCount() == 1 && answered.contains(QStringLiteral("192.168.25.81:50001")),
+                          "a @biu_cmd in tab 81_1 reaches the bench's BIU, which answers the VCC that sent it");
+                    benchWindow->stopBiu();
+                    benchWindow->setListenPort(51235);
+                } else {
+                    CHECK(false, "the dispatcher for the bench's @biu_* lines");
+                }
                 benchWindow->close();
                 QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
                 CHECK(!opened->motion().braking(), "and stops braking when the bench closes");

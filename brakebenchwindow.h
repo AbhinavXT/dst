@@ -83,6 +83,14 @@ public:
     bool biuRunning() const;
     void setListenPort(quint16 port);
     quint16 listenPort() const;
+    // Session 452: listening on the log port (Settings, 51234) the BIU binds
+    // no port of its own: it takes the VCC's @biu_cmd / @biu_beat copies as
+    // the capture decodes them, from any tab, and answers the address they
+    // came from (`senderIp`) on the reply port. False: not taken (stopped,
+    // on another port, or not a VCC -> BIU line).
+    bool onLogPort() const;
+    bool observeBiuLine(const QString &line, const QString &senderIp);
+    int  logLinesTaken() const { return m_logLinesTaken; }
     // Session 361: `hosts` a list ("a, b, c, d", a.b.c.d:port for one VCC's
     // own port), every frame to each; empty: the sender.
     void setReplyTo(const QString &hosts, quint16 port);
@@ -192,6 +200,7 @@ private:
     int           m_relayCab = 0;        // CabIo::Cab
     quint16       m_relayWord = 0;
     bool          m_relayKnown = false;
+    int           m_logLinesTaken = 0;   // session 452
 
     // top bar
     QPushButton *m_startBtn = nullptr;

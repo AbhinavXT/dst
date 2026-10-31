@@ -10,6 +10,55 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-452"></a>
+## Session 452 — the Brake Test Bench runs on the log port, from the VCC's @biu_* lines
+
+Abhinav: *"The brake test bench does not listen to packets arriving on 81_1, it
+only opens when i make it listen at 51235. Not 51234. I want to make the full
+biu and vcc test run on 51234 using the messages on 81_1"*, then *"not only
+81_1 i mean @biu_ message ones"*.
+
+**Why.** Since session 390 the bench refused the log port (two sockets on
+51234 split the traffic) and listened for the UDP link's raw frames on 51235.
+The VCC's `@biu_cmd` / `@biu_beat` copies (session 419, `biu_dlconsole_mirror`)
+already arrive on 51234 and are decoded in the loco's tab, but the bench never
+read them.
+
+**What the operator sees.** Brake Test Bench ▸ Network ▸ Listen on UDP port
+**51234** (the log port, Settings): Start BIU binds no port of its own and
+says *"BIU running on the log port (UDP 51234): it takes the VCC's @biu_cmd
+and @biu_beat lines from every tab and answers on UDP."* Every `@biu_cmd`
+(0x190) and `@biu_beat` (0x720) line, in whichever tab it lands, goes to the
+BIU as if it had come over the UDP link: same checks, same Frames row, same
+recording. "Answer the sender" answers the address that tab's datagrams came
+from, on the reply port (50001); "these VCCs" works as before. The lines of
+frames the VCC received (`@biu_nmt`, `@biu_beatrx`, `@biu_press`, `@biu_codes`,
+`@biu_disc`) are not taken. The top bar reads *"@biu_* lines on UDP 51234 (N
+taken)"*. 51235 is unchanged and stays the default.
+
+**Files.** `brakebenchwindow.{h,cpp}` (`onLogPort`, `observeBiuLine`, Start on
+the log port), `mainwindow_tools.cpp` (the dispatcher's lines to the bench,
+with the tab's sender address), `tests/test_session452.cpp` (new),
+`tests/test_session390.cpp` (Start on the log port now runs, without binding
+it), `tests/menuaudit_main.cpp`, `tests/tests.pro`,
+`docs/biu-firmware/HOW_IT_WORKS.md` (8a).
+
+**Tests.** `session452` (19 checks) on the synthetic fixture's lines: not
+taken on 51235 or stopped; on 51234 started, the heartbeat line sets KAVACH
+pre-operational, the command line's bytes taken (10.00 m/s); `@biu_nmt` /
+`@biu_press` not taken; the three status frames and NMT start reach the
+sender's address on 50001; a line from 81_1 taken and answered at its own
+address. Menu audit: a `@biu_cmd_81_1` line ingested into the real MainWindow's
+dispatcher reaches the bench, which answers 192.168.25.81:50001.
+- **Not tested:** a live VCC: no real `@biu_*` line has been captured yet. The
+  VCC must be on the UDP link (`biu_link_select(BIU_LINK_UDP)`) to take the
+  bench's answers; on the CAN link it ignores them. The capture batches lines
+  (about 30 ms), so the bench hears commands that much later than on 51235.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 463 suites / 11,732 checks, menu audit, smoke.
+
+---
+
 <a id="session-451"></a>
 ## Session 451 — the live drawing follows every LSRP: no more Show on the drawing again
 

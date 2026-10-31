@@ -423,6 +423,11 @@ VCC ◄─CAN 0x000 / 0x710 / 0x220 / 0x320 / 0x420── real BIU
 Each holds the frame's data bytes as on CAN: no COB-ID, no length (the token says which frame). A frame received
 is copied whether or not it was taken, so the log shows what arrived. Only the selected link is copied.
 
+**The bench from the copies (DLConsole patch 452).** Set the Brake Test Bench to listen on the log port (51234):
+it then takes every `@biu_cmd` and `@biu_beat` line, in whichever tab, as the frames the VCC sent, and answers
+the VCC they came from on 50001. With the UDP link selected the VCC takes those answers; the raw frames it also
+sends to `BIU_SIM_PORT` (51235) then go unheard, which is harmless.
+
 **What the VCC adds:** the seven `LOG_PKT_BIU_*` values to `LOG_PKT_TYPE` in `utility.h` (before
 `LOG_PKT_TYPE_COUNT`) and their tokens `biu_cmd`, `biu_beat`, `biu_nmt`, `biu_beatrx`, `biu_press`,
 `biu_codes`, `biu_disc` to `log_pkt_token[]` in `utility.c`, at the same places. Then call

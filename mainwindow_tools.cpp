@@ -835,6 +835,15 @@ void MainWindow::openBrakeBench()
     if (!m_brakeBench) {
         m_brakeBench = new BrakeBenchWindow(this);
         static_cast<BrakeBenchWindow *>(m_brakeBench.data())->setRecorder(benchRecorder());
+        // Session 452: on the log port the BIU runs from the VCC's @biu_cmd /
+        // @biu_beat copies, from every tab, and answers where they came from.
+        connect(m_dispatcher, &MessageDispatcher::entryAppended, m_brakeBench.data(),
+                [bench = static_cast<BrakeBenchWindow *>(m_brakeBench.data()), d = m_dispatcher](const QString &tab, const LogEntryPtr &e) {
+                    if (e.isNull() || !bench->biuRunning() || !bench->onLogPort()) return;
+                    const QStringView text = QStringView(e->text).trimmed();
+                    if (!text.startsWith(QLatin1String("@biu_cmd_")) && !text.startsWith(QLatin1String("@biu_beat_"))) return;
+                    bench->observeBiuLine(text.toString(), d->senderIp(tab));
+                });
         linkCabIoToBench();
         linkLocoSimToBench();
     }

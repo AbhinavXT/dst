@@ -3,6 +3,7 @@
 #include <QDir>
 
 #include "biusim.h"
+#include "capturedecoder.h"
 #include "brakebenchpreset.h"
 #include "pressuregauge.h"
 #include "settings.h"
@@ -709,7 +710,9 @@ QWidget *BrakeBenchWindow::buildNetworkTab()
     lg->addWidget(new QLabel(tr("Listen on UDP port"), link), 0, 0);
     m_listenPort = new QSpinBox(link);
     m_listenPort->setRange(1, 65535);
-    m_listenPort->setToolTip(tr("Where the VCC sends its CAN frames (the firmware's BIU_SIM_PORT, 51235), on every address of this PC. Not the log port: they cannot share it"));
+    m_listenPort->setToolTip(tr("Where the VCC sends its CAN frames (the firmware's BIU_SIM_PORT, 51235), on every address of this PC.\n"
+                                "The log port (%1): the VCC's @biu_cmd and @biu_beat copies (biu_dlconsole_mirror), "
+                                "from every tab, drive the BIU instead").arg(Settings::udpPort()));
     connect(m_listenPort, QOverload<int>::of(&QSpinBox::valueChanged), this, [this]() { saveSettings(); refreshTop(); });
     lg->addWidget(m_listenPort, 0, 1);
     lg->addWidget(new QLabel(tr("Answer"), link), 1, 0);
@@ -1254,15 +1257,24 @@ void BrakeBenchWindow::saveSettings() const
 
 bool BrakeBenchWindow::startBiu()
 {
-    // Sharing the log port splits the traffic: the OS gives each datagram to
-    // one of the two sockets, and the log capture counts BIU frames as malformed.
-    if (m_listenPort->value() == Settings::udpPort()) {
-        m_status->fail(tr("UDP %1 is DLConsole's log port (Settings): the VCC logs and the BIU cannot share it. "
-                          "Listen on %2, the firmware's BIU_SIM_PORT.").arg(m_listenPort->value()).arg(kDefaultBiuPort));
-        refreshTop();
-        return false;
-    }
     QString why;
+    // Session 452: binding the log port too would split the traffic (session
+    // 390). On it the BIU reads the capture's @biu_* lines instead, and its
+    // socket, on a port of the OS's choosing, only sends.
+    if (onLogPort()) {
+        if (!m_biu->listen(0, &why)) {
+            m_status->fail(tr("Cannot open a UDP socket to answer from: %1").arg(why));
+            refreshTop();
+            return false;
+        }
+        m_biu->setRunning(true, now());
+        m_listenPort->setEnabled(false);
+        m_status->ok(tr("BIU running on the log port (UDP %1): it takes the VCC's @biu_cmd and @biu_beat lines "
+                        "from every tab and answers on UDP.").arg(m_listenPort->value()));
+        refreshTop();
+        return true;
+    }
+
     if (!m_biu->listen(quint16(m_listenPort->value()), &why)) {
         m_status->fail(tr("Cannot listen on UDP %1: %2").arg(m_listenPort->value()).arg(why));
         refreshTop();
@@ -1285,6 +1297,26 @@ void BrakeBenchWindow::stopBiu()
 }
 
 bool BrakeBenchWindow::biuRunning() const { return m_biu->running(); }
+
+bool BrakeBenchWindow::onLogPort() const { return m_listenPort->value() == Settings::udpPort(); }
+
+bool BrakeBenchWindow::observeBiuLine(const QString &line, const QString &senderIp)
+{
+    if (!biuRunning() || !onLogPort()) return false;
+    const CaptureLine cap = CaptureDecoder::parseLine(line);
+    if (!cap.valid) return false;
+    Biu::Frame f;
+    switch (cap.type) {
+    case CapType::BiuCmd:  f.cob = Biu::kCobCommand; break;
+    case CapType::BiuBeat: f.cob = Biu::kCobHeartbeatKavach; break;
+    default: return false;   // what the VCC received: the BIU's own frames
+    }
+    f.data = cap.bytes;
+    ++m_logLinesTaken;
+    // As if the frame came over the UDP link: the same checks, the same log row.
+    m_biu->receive(Biu::toDatagram(f), senderIp, quint16(Settings::udpPort()), now());
+    return true;
+}
 
 // ---- the test recording (session 404) ------------------------------------------------------
 
@@ -1911,7 +1943,8 @@ void BrakeBenchWindow::refreshTop()
         const QStringList targets = m_biu->replyTargets();
         const QString to = targets.size() > 1 ? tr("%1 VCCs").arg(targets.size()) : targets.join(QString());
         m_runState->setText(QStringLiteral("\u25CF ") + tr("Running \u00B7 %1 \u00B7 answers %2")
-                                .arg(m_biu->isListening() ? tr("UDP %1").arg(m_biu->listenPort()) : tr("not listening"))
+                                .arg(onLogPort() ? tr("@biu_* lines on UDP %1 (%2 taken)").arg(m_listenPort->value()).arg(m_logLinesTaken)
+                                     : m_biu->isListening() ? tr("UDP %1").arg(m_biu->listenPort()) : tr("not listening"))
                                 .arg(to.isEmpty() ? tr("the VCC, once it sends") : to));
         m_runState->setStyleSheet(m_biu->silent() ? UiColor::warningStyle() : UiColor::okStyle());
     } else {

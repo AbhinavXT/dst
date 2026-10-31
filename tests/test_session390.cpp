@@ -1,5 +1,6 @@
 #include "testutil.h"
 
+#include "biusim.h"
 #include "brakebenchwindow.h"
 #include "settings.h"
 #include "statusline.h"
@@ -27,12 +28,14 @@ TEST_SUITE(session390)
     CHECK(window.listenPort() == 51235, "the bench opens on UDP 51235, the firmware's BIU_SIM_PORT");
     CHECK(window.listenPort() != Settings::udpPort(), "not the log port");
 
+    // Session 452: on the log port the BIU binds nothing: it takes the
+    // capture's @biu_* lines (test_session452), so the split cannot happen.
     window.setListenPort(Settings::udpPort());
-    CHECK(!window.startBiu() && !window.biuRunning(), "Start BIU on the log port is refused");
+    CHECK(window.startBiu() && window.biuRunning() && window.biu()->listenPort() != Settings::udpPort(),
+          "Start BIU on the log port: running, without binding the log port");
     StatusLine *status = window.findChild<StatusLine *>();
-    CHECK(status && status->message().contains(QStringLiteral("log port"))
-              && status->message().contains(QStringLiteral("51235")),
-          "the status line says it is the log port and names 51235");
+    CHECK(status && status->message().contains(QStringLiteral("log port")), "the status line says it is on the log port");
+    window.stopBiu();
 
     window.setListenPort(51235);
     {
