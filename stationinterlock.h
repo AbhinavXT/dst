@@ -17,6 +17,18 @@
 //  and that is said. A train across a point onto another line is counted
 //  on its tag's line only.
 //
+//  LOCKING AND RELEASE (session 442), while State::interlocking:
+//   - a route set (setRoute) locks its points: a locked point is not thrown
+//     (pointLocked says why), the route not cancelled once a train is in it;
+//   - a train in it (its first track circuit occupied) puts its entry
+//     signal back to Red; a signal cleared by
+//     hand, with no route set, goes back to Red so too (the route from it
+//     whose points are set);
+//   - when a train has been in it and its circuits are all clear again, the
+//     route is released: its points free, nothing set from that signal.
+//  A route without track circuits is never seen entered: its signal stays
+//  the operator's.
+//
 //  Pure values; Packet Maker keeps the locos and the State.
 // =====================================================================
 #include <QHash>
@@ -43,6 +55,18 @@ struct Occupancy {
 };
 // Where each loco is by its last ARP / LSRP (StationKavach::note).
 Occupancy occupancy(const Track &t, const QList<StationKavach::Loco> &locos);
+
+// Its points thrown, its entry signal off (indicator: the entry signal's
+// route indicator position, 0 none); a route set from the same signal, or
+// through its points the other way, gives way. Empty, or why not.
+QString setRoute(const StationKavach::Station &s, StationKavach::State *st, int route, int indicator = 0);
+// Its entry signal to Red, nothing set from it. Refused while a train is in it.
+QString cancelRoute(const StationKavach::Station &s, StationKavach::State *st, const QString &entry);
+// Why point `point` cannot be thrown now (a set route holds it); empty: free.
+QString pointLocked(const StationKavach::Station &s, const StationKavach::State &st, const QString &point);
+// The interlocking's step after the occupancy changed (or an aspect, a
+// route): what it did, one line each.
+QStringList work(const StationKavach::Station &s, StationKavach::State *st);
 
 }  // namespace StationInterlock
 

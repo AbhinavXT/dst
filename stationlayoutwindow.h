@@ -518,7 +518,6 @@ private:
     QList<StationKavach::Loco> m_lvLocos;
     QString m_lvFrom;
     bool m_lvLive = false, m_lvActive = false;
-    QHash<QString, int> m_lvRoutes;                // entry signal -> the route set from it
     bool ensureLive();
     void drawTitleBlock(QPainter &p, const QRectF &r, double mm) const;   // session 439
     void liveEdited(const QString &what);

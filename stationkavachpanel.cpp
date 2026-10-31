@@ -1,4 +1,5 @@
 #include "stationkavachpanel.h"
+#include "stationinterlock.h"
 
 #include <QCheckBox>
 #include <QComboBox>
@@ -6,6 +7,7 @@
 #include <QLabel>
 #include <QPlainTextEdit>
 #include <QPushButton>
+#include <QSignalBlocker>
 #include <QSplitter>
 #include <QTabWidget>
 #include <QTableWidget>
@@ -38,28 +40,51 @@ StationKavachPanel::StationKavachPanel(const QVector<QPair<qint64, QString>> &as
     setWindowTitle(tr("Station"));
     setObjectName(QStringLiteral("stationKavachPanel"));
     auto *lay = new QVBoxLayout(this);
-    lay->addWidget(new QLabel(tr("The station's live state: the next LSRP is answered with it. The aspects are "
-                                 "set here as the interlocking would show them; what does not agree with a "
-                                 "route is said under Answers, not corrected. A track circuit a loco's "
-                                 "train covers (by its last ARP or LSRP) is occupied by it."), this));
+    auto *intro = new QLabel(tr("The station's live state: the next LSRP is answered with it. The aspects are "
+                                "set here as the interlocking would show them; what does not agree with a "
+                                "route is said under Answers, not corrected. A track circuit a loco's "
+                                "train covers (by its last ARP or LSRP) is occupied by it."), this);
+    intro->setWordWrap(true);   // session 442: the panel keeps a sensible width
+    lay->addWidget(intro);
+    // Session 442: the station's ways of working, a tab of their own (Options).
+    auto *optsPage = new QWidget(this);
+    auto *opts = new QVBoxLayout(optsPage);
+    m_interlocking = new QCheckBox(tr("Interlocking: the station works its signals from the track circuits"), this);
+    m_interlocking->setObjectName(QStringLiteral("skInterlocking"));
+    m_interlocking->setToolTip(tr("A route set locks its points; a train in it puts its signal back to Red; the route is\n"
+                                  "released when its track circuits clear. Off: the aspects are the operator's alone."));
+    connect(m_interlocking, &QCheckBox::toggled, this, [this](bool on) {
+        if (!m_state || m_state->interlocking == on) return;
+        m_state->interlocking = on;
+        emit stateChanged();
+    });
+    opts->addWidget(m_interlocking);
     auto *split = new QSplitter(Qt::Vertical, this);
     auto *tabs = new QTabWidget(split);
     m_signals = table({ tr("Signal"), tr("Foot tag"), tr("Aspect") }, QStringLiteral("skSignals"), tabs);
     m_points = table({ tr("Point"), tr("Lies") }, QStringLiteral("skPoints"), tabs);
     m_occupied = table({ tr("Track circuit / TIN"), tr("Occupied"), tr("By a loco") }, QStringLiteral("skOccupied"), tabs);
-    m_routes = table({ tr("Route"), tr("Section"), tr("Length"), tr("Authority") }, QStringLiteral("skRoutes"), tabs);
+    m_routes = table({ tr("Route"), tr("Section"), tr("Length"), tr("Authority"), tr("Set") }, QStringLiteral("skRoutes"), tabs);
     m_tsr = table({ tr("Route"), tr("TSR id"), tr("On") }, QStringLiteral("skTsr"), tabs);
     tabs->addTab(m_signals, tr("Signals"));
     tabs->addTab(m_points, tr("Points"));
     tabs->addTab(m_occupied, tr("Occupied"));
     tabs->addTab(m_routes, tr("Routes"));
     tabs->addTab(m_tsr, tr("TSR"));
+    opts->addStretch(1);
+    tabs->addTab(optsPage, tr("Options"));
     m_answers = new QPlainTextEdit(split);
     m_answers->setObjectName(QStringLiteral("skAnswers"));
     m_answers->setReadOnly(true);
     m_answers->setPlaceholderText(tr("Answers: the last SLRP sent to each loco, and why."));
+    m_events = new QPlainTextEdit(split);
+    m_events->setObjectName(QStringLiteral("skEvents"));
+    m_events->setReadOnly(true);
+    m_events->setMaximumBlockCount(200);
+    m_events->setPlaceholderText(tr("Interlocking: signals put back, routes released, as the locos move."));
     split->addWidget(tabs);
     split->addWidget(m_answers);
+    split->addWidget(m_events);
     lay->addWidget(split, 1);
     m_drawing = new QPushButton(tr("Show on the drawing"), this);
     m_drawing->setObjectName(QStringLiteral("skDrawing"));
@@ -83,6 +108,10 @@ void StationKavachPanel::rebuild()
 {
     if (!m_state) return;
     StationKavach::State *st = m_state;
+    {
+        const QSignalBlocker block(m_interlocking);
+        m_interlocking->setChecked(st->interlocking);
+    }
 
     m_signals->setRowCount(m_station.signalList.size());
     for (int i = 0; i < m_station.signalList.size(); ++i) {
@@ -108,7 +137,15 @@ void StationKavachPanel::rebuild()
         auto *c = new QComboBox(m_points);
         c->addItems({ tr("Normal"), tr("Reverse") });
         c->setCurrentIndex(st->reverse.contains(points[i]) ? 1 : 0);
-        connect(c, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, st, name = points[i]](int ix) {
+        connect(c, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, st, c, name = points[i]](int ix) {
+            // Session 442: a point a set route holds is not thrown.
+            const QString why = st->interlocking ? StationInterlock::pointLocked(m_station, *st, name) : QString();
+            if (!why.isEmpty()) {
+                const QSignalBlocker block(c);
+                c->setCurrentIndex(st->reverse.contains(name) ? 1 : 0);
+                emit refused(tr("Not thrown: %1").arg(why));
+                return;
+            }
             if (ix == 1) st->reverse.insert(name); else st->reverse.remove(name);
             emit stateChanged();
         });
@@ -154,6 +191,9 @@ void StationKavachPanel::rebuild()
             emit stateChanged();
         });
         m_routes->setCellWidget(i, 3, c);
+        QString set;   // session 442
+        if (st->routes.value(r.entry, -1) == i) set = st->entered.contains(r.entry) ? tr("set, a train in it") : tr("set");
+        text(m_routes, i, 4, set);
         for (const StationKavach::Row &x : r.tsr) {
             const QString key = QStringLiteral("%1/%2").arg(r.name).arg(x.value(QStringLiteral("id")));
             text(m_tsr, t, 0, r.name);
@@ -167,6 +207,11 @@ void StationKavachPanel::rebuild()
             m_tsr->setCellWidget(t++, 2, b);
         }
     }
+}
+
+void StationKavachPanel::showInterlocking(const QStringList &events)
+{
+    for (const QString &e : events) m_events->appendPlainText(e);
 }
 
 void StationKavachPanel::showAnswer(int locoId, const QString &answerText, const QStringList &checks)

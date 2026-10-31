@@ -828,7 +828,8 @@ PacketMakerDialog::PacketMakerDialog(QWidget *parent, FrameNumberWatch *frameWat
         if (!m_stnPanel) {
             m_stnPanel = new StationKavachPanel(m_builder.encoder().enumChoices(QStringLiteral("sigAspect")), this);
             m_stnPanel->setStation(m_station, &m_stnState);
-            connect(m_stnPanel, &StationKavachPanel::stateChanged, this, [this]() { showStationLive(); });
+            connect(m_stnPanel, &StationKavachPanel::stateChanged, this, [this]() { workStation(); showStationLive(); });
+            connect(m_stnPanel, &StationKavachPanel::refused, this, [this](const QString &why) { m_status->fail(why); });
             connect(m_stnPanel, &StationKavachPanel::drawingRequested, this, [this]() { showStationDrawing(); });
         }
         m_stnPanel->show();
@@ -2004,6 +2005,7 @@ StationLayoutWindow *PacketMakerDialog::showStationDrawing()
         // Session 435: signals, points and routes changed on the drawing are the station's.
         connect(w, &StationLayoutWindow::liveStateEdited, this, [this](const StationKavach::State &st) {
             m_stnState = st;
+            workStation();   // session 442
             if (m_stnPanel) m_stnPanel->refresh();
             showStationLive();
         });
@@ -2051,6 +2053,7 @@ bool PacketMakerDialog::startAnswering()
         m_stnState = StationKavach::State::initial(station);
         m_stnLocos.clear();
         m_stnTrack = StationInterlock::trackOf(layout);   // session 441
+        m_stnState.interlocking = !m_stnTrack.isEmpty();  // session 442: with track circuits, on
         m_stnTrackNotes.clear();
         m_stnLayoutPath = m_layoutEdit->text().trimmed();
         if (m_stnPanel) m_stnPanel->setStation(m_station, &m_stnState);
@@ -2169,6 +2172,20 @@ void PacketMakerDialog::noteStationLoco(const QHash<QString, qint64> &pkt)
     if (occ.notes != m_stnTrackNotes && !occ.notes.isEmpty() && !m_stnTrack.isEmpty())
         m_status->warn(tr("Track circuits: %1").arg(occ.notes.join(QStringLiteral("; "))));
     m_stnTrackNotes = occ.notes;
+    workStation();   // session 442
+}
+
+void PacketMakerDialog::workStation()
+{
+    const QStringList ev = StationInterlock::work(m_station, &m_stnState);
+    if (ev.isEmpty()) return;
+    m_status->ok(tr("Interlocking: %1").arg(ev.join(QStringLiteral("; "))));
+    if (m_stnPanel) {
+        m_stnPanel->showInterlocking(ev);
+        // Queued: this may run inside one of the panel's own combo boxes, which a rebuild deletes.
+        QPointer<StationKavachPanel> p = m_stnPanel;
+        QMetaObject::invokeMethod(this, [p]() { if (p) p->refresh(); }, Qt::QueuedConnection);
+    }
 }
 
 void PacketMakerDialog::sendAnswer(const QString &captype, const PacketBuilder::Result &r, const QString &note)

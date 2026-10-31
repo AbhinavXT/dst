@@ -411,6 +411,7 @@ private:
     StationInterlock::Track m_stnTrack;
     QStringList m_stnTrackNotes;                  // the last occupancy's notes
     void noteStationLoco(const QHash<QString, qint64> &pkt);
+    void workStation();                           // session 442: StationInterlock::work, said
     QHash<int, QByteArray> m_locoKeys;     // session key by loco id, from its ARP
     QPushButton *m_stnPanelBtn = nullptr;
     StationKavachPanel *m_stnPanel = nullptr;   // Station…: the live state

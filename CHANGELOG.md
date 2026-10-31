@@ -10,6 +10,73 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-442"></a>
+## Session 442 — the station works its signals: routes locked, signals back to Red, routes released
+
+Abhinav's list for a full station simulator, item 2.
+
+**What the operator sees.** Station… has a new tab, **Options**, with
+**Interlocking: the station works its signals from the track circuits**:
+ticked when answering starts from a layout that has track circuits (none:
+unticked, nothing changes). While it is on:
+- **a route set locks its points.** A point a set route holds is not thrown:
+  on the drawing (*Not thrown: point 19 is locked by route S48-S43 DN Main*)
+  nor in Station… ▸ Points (put back, said on Packet Maker's status line). A
+  route through a locked point the other way is not set, said why;
+- **a train in it puts its signal back to Red.** When the route's first track
+  circuit is occupied (by a loco, from its ARP / LSRP, session 441, or by
+  hand), its entry signal goes to Red: *S43 back to Red: a train in route
+  S43-A900 DN Auto (43T by loco 1)*. A signal cleared by hand with no route
+  set goes back so too (the route from it whose points are set);
+- **the route is released** once a train has been in it and all its circuits
+  are clear again: *route S50-S48 DN released: its track circuits clear*. A
+  route a train is in is not cancelled (*Not cancelled: … released when its
+  track circuits clear*);
+- what it did is listed under the answers (a new pane in Station…) and on
+  the status line; Station… ▸ Routes has a **Set** column (*set*, *set, a
+  train in it*); the drawing's line names a route a train is in.
+
+Unticked, the aspects are the operator's alone, as before.
+
+**How.** `StationInterlock::setRoute`, `cancelRoute`, `pointLocked` and
+`work()`. The routes set moved from the drawing into the State
+(`State::routes`, `entered`, `interlocking`), so Packet Maker and the drawing
+share them. Packet Maker runs `work()` after every ARP / LSRP heard and every
+edit in Station… or on the drawing. Station…'s refresh after it is queued
+(it can run inside one of the panel's own combo boxes).
+
+**Also.** Station…'s explanatory line wraps: the panel was 1604 px wide at
+its smallest.
+
+**Choices.** A route is entered when its *first* track circuit is occupied. A
+route without track circuits is never seen entered: its signal stays the
+operator's. Point locking is route locking only (no track locking: the data
+does not say which circuit holds a point).
+
+**Files.** `stationinterlock.{h,cpp}`, `stationkavach.h` (`State::routes`,
+`entered`, `interlocking`), `stationkavachpanel.{h,cpp}` (Options, the Set
+column, the interlocking pane, `refused`), `stationlayoutwindow.{h,cpp}`
+(routes in the State; refusals), `packetmakerdialog.{h,cpp}` (`workStation`),
+`tests/test_session442.cpp` (new), `tests/tests.pro`.
+
+**Tests.** `session442` (25 checks): station 527's data given station_527.xml's
+circuits on its routes (S43-A900: 43T … 43CT; A900-A904: 1629T … 1629BT) and
+the June route S50-S48 over DMT, run with the real ARPs and LSRPs of
+`loco_{1,2}_1_27062026_170217.cap`: S50 back to Red at loco 1's first frame
+(in DMT); S50-S48 released once its rear left DMT; S43 back to Red as its
+front entered 43T (161900 m); S43-A900 not cancelled with the train in it;
+nothing for loco 2 on UP. Locking: 19 locked by the main route, the loop
+through it refused, cancelled, then set; off, nothing worked. S48 cleared by
+hand, its first circuit occupied: back to Red. The drawing: P19 not thrown,
+said; P18 thrown. Packet Maker: Interlocking on with the circuits; loco 1's
+ARP at tag 906 puts S43 back, said in Station…; unticked: off. Looked at:
+Station… (shot), its width.
+- **Not tested:** with live locos; a train backing out of a route.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 454 suites / 11,602 checks, menu audit, smoke.
+
+---
+
 <a id="session-441"></a>
 ## Session 441 — the track circuits occupied by the locos, from their ARPs and LSRPs
 

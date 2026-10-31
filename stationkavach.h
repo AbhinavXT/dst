@@ -147,6 +147,12 @@ struct State {
     // locos' ARPs and LSRPs put them (StationInterlock::occupancy).
     QHash<QString, int>  occupiedBy;
     bool isOccupied(const QString &name) const { return occupied.contains(name) || occupiedBy.contains(name); }
+    // Session 442: the routes set (entry signal -> route index), those a
+    // train has entered, and whether the station works its signals from
+    // the track circuits (StationInterlock::work; off: the operator's alone).
+    QHash<QString, int>  routes;
+    QSet<QString>        entered;
+    bool                 interlocking = false;
     QHash<QString, int>  authority;    // route -> authType, overriding the file's
     QSet<QString>        tsrOff;       // "route/id": TSRs switched off
     static State initial(const Station &s);

@@ -258,6 +258,12 @@ keeps where every loco is from each **ARP and LSRP** it hears.
   gives each circuit's line and ends. Station… ▸ Occupied says *by loco 1*;
   the drawing shows it red. A loco whose tag is on no line occupies nothing,
   said. A circuit occupied by hand (436) stays so too.
+- **Routes locked and released** (session 442; Station… ▸ Options ▸
+  Interlocking, on when the layout has track circuits). A route set locks its
+  points; a train in it (its first circuit occupied) puts its signal back to
+  Red; once every circuit of it is clear again it is released. A signal
+  cleared by hand goes back to Red as a train passes it. Each step is said in
+  Station…, under the answers.
 
 ## Not yet
 

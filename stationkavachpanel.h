@@ -14,6 +14,8 @@
 //              state does not agree with
 //
 //  It edits the State it is given; the next LSRP is answered with it.
+//  Session 442: Interlocking: the station works its signals from the track
+//  circuits (StationInterlock); a point a set route holds is not thrown.
 //  Session 428: Show on the drawing (drawingRequested): the station live
 //  on the Station Layout drawing, the locos and their MAs on it.
 // =====================================================================
@@ -23,6 +25,7 @@
 
 #include "stationkavach.h"
 
+class QCheckBox;
 class QPlainTextEdit;
 class QPushButton;
 class QTableWidget;
@@ -34,6 +37,8 @@ public:
     // Shows `s`, editing `st` (kept by the caller, outliving the panel's use of it).
     void setStation(const StationKavach::Station &s, StationKavach::State *st);
     void showAnswer(int locoId, const QString &text, const QStringList &checks);
+    // Session 442: what the interlocking did (StationInterlock::work), newest last.
+    void showInterlocking(const QStringList &events);
     // Session 435: the state changed elsewhere (the Station Layout drawing): shown again, answers kept.
     void refresh() { rebuild(); }
 
@@ -42,6 +47,7 @@ public:
 signals:
     void stateChanged();
     void drawingRequested();           // session 428
+    void refused(const QString &why);  // session 442: an edit the interlocking does not allow
 
 private:
     void rebuild();
@@ -50,6 +56,8 @@ private:
     StationKavach::State  *m_state = nullptr;
     QTableWidget *m_signals = nullptr, *m_points = nullptr, *m_occupied = nullptr, *m_routes = nullptr, *m_tsr = nullptr;
     QPlainTextEdit *m_answers = nullptr;
+    QPlainTextEdit *m_events = nullptr;     // session 442
+    QCheckBox *m_interlocking = nullptr;
     QPushButton *m_drawing = nullptr;
     QHash<int, QString> m_lastAnswer;   // by loco
 };

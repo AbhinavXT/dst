@@ -1,4 +1,5 @@
 #include "stationlayoutwindow.h"
+#include "stationinterlock.h"
 #include "stationkavach.h"
 #include "stationkavacheditor.h"
 
@@ -1806,7 +1807,6 @@ void StationLayoutWindow::showLiveStation(const StationKavach::Station &s, const
 void StationLayoutWindow::clearLiveStation()
 {
     m_lvLive = m_lvActive = false;
-    m_lvRoutes.clear();
     m_lvLocos.clear();
     m_canvas->setLiveView(StationLayoutCanvas::LiveView());
     m_liveState->clear();
@@ -1824,7 +1824,6 @@ bool StationLayoutWindow::ensureLive()
     m_lvStation = s;
     m_lvState = StationKavach::State::initial(s);
     m_lvLocos.clear();
-    m_lvRoutes.clear();
     m_lvFrom = tr("this drawing (what-if: not sent to a station)");
     m_lvActive = true;
     return true;
@@ -1861,10 +1860,11 @@ void StationLayoutWindow::refreshLive()
     v.occupied = m_lvState.occupied;   // session 436
     v.occupiedBy = m_lvState.occupiedBy;   // session 441
     QStringList set;
-    for (auto it = m_lvRoutes.cbegin(); it != m_lvRoutes.cend(); ++it) {
+    for (auto it = m_lvState.routes.cbegin(); it != m_lvState.routes.cend(); ++it) {
         const StationLayoutCanvas::KavachView kv = kavachViewOf(m_layout, m_lvStation, it.value());
         if (!kv.sections.isEmpty()) v.routesSet << kv.sections.first();
-        set << m_lvStation.routes.value(it.value()).name;
+        // Session 442: a route a train is in, said so.
+        set << m_lvStation.routes.value(it.value()).name + (m_lvState.entered.contains(it.key()) ? tr(" (a train in it)") : QString());
     }
     m_canvas->setLiveView(v);
     QStringList parts;
@@ -1904,11 +1904,21 @@ bool StationLayoutWindow::setLivePoint(const QString &point, bool reverse)
     if (point.isEmpty()) return false;
     ensureLive();
     const QString name = kavachPointName(point);
+    // Session 442: the station working its signals: a point a set route holds is not thrown.
+    if (m_lvState.interlocking && reverse != m_lvState.reverse.contains(name)) {
+        const QString why = StationInterlock::pointLocked(m_lvStation, m_lvState, name);
+        if (!why.isEmpty()) { m_status->fail(tr("Not thrown: %1").arg(why)); return false; }
+    }
     if (reverse) m_lvState.reverse.insert(name); else m_lvState.reverse.remove(name);
     // A route set through it the other way is no longer set.
-    for (auto it = m_lvRoutes.begin(); it != m_lvRoutes.end();) {
+    for (auto it = m_lvState.routes.begin(); it != m_lvState.routes.end();) {
         const StationKavach::Route &r = m_lvStation.routes.at(it.value());
-        if ((reverse ? r.pointsNormal : r.pointsReverse).contains(name)) it = m_lvRoutes.erase(it); else ++it;
+        if ((reverse ? r.pointsNormal : r.pointsReverse).contains(name)) {
+            m_lvState.entered.remove(it.key());
+            it = m_lvState.routes.erase(it);
+        } else {
+            ++it;
+        }
     }
     liveEdited(tr("point %1 %2").arg(point, reverse ? tr("Reverse") : tr("Normal")));
     return true;
@@ -1919,25 +1929,13 @@ bool StationLayoutWindow::setLiveRoute(int route)
     ensureLive();
     if (route < 0 || route >= m_lvStation.routes.size()) return false;
     const StationKavach::Route &r = m_lvStation.routes.at(route);
-    for (const QString &p : r.pointsNormal) m_lvState.reverse.remove(p);
-    for (const QString &p : r.pointsReverse) m_lvState.reverse.insert(p);
-    // Another route set from the same signal, or through these points the other way, gives way.
-    for (auto it = m_lvRoutes.begin(); it != m_lvRoutes.end();) {
-        const StationKavach::Route &o = m_lvStation.routes.at(it.value());
-        bool clash = it.key() == r.entry;
-        for (const QString &p : o.pointsNormal) clash = clash || r.pointsReverse.contains(p);
-        for (const QString &p : o.pointsReverse) clash = clash || r.pointsNormal.contains(p);
-        if (clash) it = m_lvRoutes.erase(it); else ++it;
-    }
-    m_lvRoutes.insert(r.entry, route);
     // The entry signal off: a diverging route with its route indicator, else Yellow (a
-    // proceed aspect it already shows is kept).
+    // proceed aspect it already shows is kept). Session 442: StationInterlock sets it.
     int indicator = 0;
     for (const StationLayout::Signal &sg : m_layout.signalList) if (sg.name == r.entry && sg.indicator > 0) indicator = sg.indicator;
-    const int now = m_lvState.aspectOf(m_lvStation, r.entry);
-    int aspect = now <= 1 || now == 15 ? 2 : now;
-    if (!r.pointsReverse.isEmpty() && indicator > 0) aspect = 2 + indicator;
-    m_lvState.aspect.insert(r.entry, aspect);
+    const QString why = StationInterlock::setRoute(m_lvStation, &m_lvState, route, indicator);
+    if (!why.isEmpty()) { m_status->fail(tr("Not set: %1").arg(why)); return false; }
+    const int aspect = m_lvState.aspectOf(m_lvStation, r.entry);
     liveEdited(tr("route %1 set, %2 %3").arg(r.name, r.entry, StationKavach::aspectName(aspect)));
     return true;
 }
@@ -1953,10 +1951,10 @@ bool StationLayoutWindow::setLiveOccupied(const QString &circuit, bool occupied)
 
 bool StationLayoutWindow::cancelLiveRoute(const QString &entrySignal)
 {
-    if (!m_lvRoutes.contains(entrySignal)) return false;
-    const QString name = m_lvStation.routes.value(m_lvRoutes.value(entrySignal)).name;
-    m_lvRoutes.remove(entrySignal);
-    m_lvState.aspect.insert(entrySignal, 1);
+    if (!m_lvState.routes.contains(entrySignal)) return false;
+    const QString name = m_lvStation.routes.value(m_lvState.routes.value(entrySignal)).name;
+    const QString why = StationInterlock::cancelRoute(m_lvStation, &m_lvState, entrySignal);
+    if (!why.isEmpty()) { m_status->fail(tr("Not cancelled: %1").arg(why)); return false; }
     liveEdited(tr("route %1 cancelled, %2 Red").arg(name, entrySignal));
     return true;
 }
@@ -3867,11 +3865,11 @@ QMenu *StationLayoutWindow::signalMenuFor(int index)
         if (!r.pointsReverse.isEmpty()) label += tr("  (points %1 Reverse)").arg(r.pointsReverse.join(QStringLiteral(", ")));
         QAction *x = routes->addAction(label);
         x->setCheckable(true);
-        x->setChecked(m_lvRoutes.value(sg.name, -1) == i);
+        x->setChecked(m_lvState.routes.value(sg.name, -1) == i);
         connect(x, &QAction::triggered, this, [this, i]() { setLiveRoute(i); });
     }
     if (routes->isEmpty()) routes->addAction(tr("(no route from %1 in the KAVACH data)").arg(sg.name))->setEnabled(false);
-    if (m_lvRoutes.contains(sg.name))
+    if (m_lvState.routes.contains(sg.name))
         menu->addAction(tr("Cancel route (%1 to Red)").arg(sg.name), this, [this, name = sg.name]() { cancelLiveRoute(name); });
     menu->addSeparator();
     menu->addAction(tr("Show its row"), this, [this, index]() {
