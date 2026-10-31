@@ -719,6 +719,9 @@ int main(int argc, char **argv) {
         }
         // Session 411: a line of a Station Layout opened from the menu, in this Loco Simulator.
         if (QAction *layoutAct = tools ? findAction(tools, "Station Layout") : nullptr) {
+            // Session 450: the built-in layout, not the last file a test left behind (Windows CI,
+            // patches 447-449: session447's section30_527.json, which has no lines).
+            Settings::setStationLayoutLastFile(QString());
             layoutAct->trigger();
             StationLayoutWindow *layout = nullptr;
             for (QWidget *top : QApplication::topLevelWidgets())

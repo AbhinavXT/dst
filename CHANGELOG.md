@@ -10,6 +10,32 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-450"></a>
+## Session 450 — Windows CI green again: the menu audit opens the built-in station layout
+
+CI on patches 447-449 failed on Windows only, in the menu audit: *a line of
+it runs in the Loco Simulator, which follows the layout*. The audit opens
+Tools ▸ Station Layout, which reopens the last layout file. On Windows the
+unit suite and the audit share their settings, and session447 last opened
+`tests/fixtures/station_kavach/section30_527.json`, a KAVACH-data fixture with
+no lines: no line to run in the simulator. On the Mac and Linux each build
+keeps its own settings file, so it never showed there.
+
+The audit now clears the last layout file first, as session210 does, so
+the built-in layout (station.xlsx, six lines) opens.
+
+**What the operator sees.** Nothing: a test-side fix.
+
+**Files.** `tests/menuaudit_main.cpp`.
+
+**Tests.** The menu audit (both Qt). The cause is read from the log and the
+fixture (0 lines); not reproduced here (no Windows).
+- **Not tested:** Windows itself: CI runs it.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 461 suites / 11,697 checks, menu audit, smoke.
+
+---
+
 <a id="session-449"></a>
 ## Session 449 — answering as station 527 did: the profile kept, sent in full after the ack
 
