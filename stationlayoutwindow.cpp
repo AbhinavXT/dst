@@ -1035,7 +1035,7 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         const double y = laneY(m_laneOfLine.value(tc.line));
         // A circuit at a location only: a short mark there.
         const double x1 = xOf(tc.from) - (tc.from == tc.to ? 4 : 0), x2 = xOf(tc.to) + (tc.from == tc.to ? 4 : 0);
-        const bool occ = m_liveView.occupied.contains(tc.name);
+        const bool occ = m_liveView.occupied.contains(tc.name) || m_liveView.occupiedBy.contains(tc.name);
         if (occ) {
             QColor c = UiColor::error();
             c.setAlpha(200);
@@ -1046,7 +1046,10 @@ void StationLayoutCanvas::paintEvent(QPaintEvent *)
         for (const double x : { x1, x2 }) p.drawLine(QPointF(x, y - 6), QPointF(x, y + 6));
         QString tip = tc.from == tc.to ? tr("Track circuit %1 (cid %2) on %3 at %4 (no ends in the file)").arg(tc.name).arg(tc.cid).arg(tc.line, km(tc.from))
                                        : tr("Track circuit %1 (cid %2) on %3: %4 to %5").arg(tc.name).arg(tc.cid).arg(tc.line, km(tc.from), km(tc.to));
-        if (m_liveView.pointsShown) tip += QLatin1Char('\n') + (occ ? tr("Occupied") : tr("Clear")) + tr(": double-click to change");
+        if (m_liveView.occupiedBy.contains(tc.name))
+            tip += QLatin1Char('\n') + tr("Occupied by loco %1 (where its last ARP / LSRP puts its train)").arg(m_liveView.occupiedBy.value(tc.name));
+        if (m_liveView.pointsShown) tip += QLatin1Char('\n') + (m_liveView.occupied.contains(tc.name) ? tr("Occupied") : tr("Clear"))
+                                           + tr(" by hand: double-click to change");
         Hit h{ QRectF(qMin(x1, x2), y - 4, std::fabs(x2 - x1), 8), QString(), tip };
         h.circuit = tc.name;
         m_hits << h;
@@ -1856,6 +1859,7 @@ void StationLayoutWindow::refreshLive()
     for (const StationLayout::Point &pt : m_layout.points)
         if (m_lvState.reverse.contains(kavachPointName(pt.name))) v.reversePoints.insert(pt.name);
     v.occupied = m_lvState.occupied;   // session 436
+    v.occupiedBy = m_lvState.occupiedBy;   // session 441
     QStringList set;
     for (auto it = m_lvRoutes.cbegin(); it != m_lvRoutes.cend(); ++it) {
         const StationLayoutCanvas::KavachView kv = kavachViewOf(m_layout, m_lvStation, it.value());

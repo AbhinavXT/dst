@@ -246,6 +246,19 @@ Every distance in a route counts from its entry signal's foot. `ssp` and
 `lc`, `turnouts`, `track_conditions` and `tsr` rows are placed by their
 start (`d`, `start`, `sd`, `dist`).
 
+## The station's own signalling (sessions 441 on)
+
+`stationinterlock.{h,cpp}`. Packet Maker, answering as the station's routes,
+keeps where every loco is from each **ARP and LSRP** it hears.
+
+- **Track circuits occupied by the locos** (session 441). A loco occupies
+  each track circuit of its line (the line of the tag it last read, from the
+  lines sheet) that its train covers: ABS_LOCO_LOC back TRAIN_LENGTH against
+  MOVEMENT_DIR. The layout's circuits sheet (the station XML's `<circuits>`)
+  gives each circuit's line and ends. Station… ▸ Occupied says *by loco 1*;
+  the drawing shows it red. A loco whose tag is on no line occupies nothing,
+  said. A circuit occupied by hand (436) stays so too.
+
 ## Not yet
 
 Not modelled: the TSR route table's OHE poles (TSR rows are placed by

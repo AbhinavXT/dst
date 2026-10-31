@@ -75,14 +75,18 @@ int bySetPoints(const Station &s, const State &st, const QVector<int> &cands)
 }
 
 // What the live state says against route `r`, one line each.
-void routeChecks(const Route &r, const State &st, QStringList *out)
+// Session 441: a track circuit the loco answered occupies itself is not said.
+void routeChecks(const Route &r, const State &st, QStringList *out, int self = -1)
 {
     for (const QString &p : r.pointsNormal)
         if (st.reverse.contains(p)) *out << QObject::tr("%1: point %2 lies Reverse, the route needs it Normal").arg(r.name, p);
     for (const QString &p : r.pointsReverse)
         if (!st.reverse.contains(p)) *out << QObject::tr("%1: point %2 lies Normal, the route needs it Reverse").arg(r.name, p);
-    for (const QString &t : r.trackCircuits)
+    for (const QString &t : r.trackCircuits) {
         if (st.occupied.contains(t)) *out << QObject::tr("%1: track circuit %2 is occupied").arg(r.name, t);
+        else if (st.occupiedBy.contains(t) && st.occupiedBy.value(t) != self)
+            *out << QObject::tr("%1: track circuit %2 is occupied by loco %3").arg(r.name, t).arg(st.occupiedBy.value(t));
+    }
     for (const QString &t : r.tins)
         if (st.occupied.contains(t)) *out << QObject::tr("%1: TIN %2 is occupied").arg(r.name, t);
 }
@@ -487,14 +491,20 @@ int State::aspectOf(const Station &s, const QString &signal) const
 
 // ---- the answer -------------------------------------------------------------------
 
+void note(Loco *loco, const QHash<QString, qint64> &pkt)
+{
+    loco->id = int(pkt.value(QStringLiteral("SOURCE_LOCO_ID")));
+    loco->absLoc = pkt.value(QStringLiteral("ABS_LOCO_LOC"), -1);
+    loco->trainLength = int(pkt.value(QStringLiteral("TRAIN_LENGTH")));
+    loco->dir = int(pkt.value(QStringLiteral("MOVEMENT_DIR")));
+    loco->lastTag = int(pkt.value(QStringLiteral("LAST_RFID_TAG"), -1));
+}
+
 Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString, qint64> &lsrp,
               const Schema::Encoder &enc, const QList<Loco> &others)
 {
     Answer a;
-    loco->id = int(lsrp.value(QStringLiteral("SOURCE_LOCO_ID")));
-    loco->absLoc = lsrp.value(QStringLiteral("ABS_LOCO_LOC"), -1);
-    loco->trainLength = int(lsrp.value(QStringLiteral("TRAIN_LENGTH")));
-    loco->dir = int(lsrp.value(QStringLiteral("MOVEMENT_DIR")));
+    note(loco, lsrp);
     const int tag = int(lsrp.value(QStringLiteral("LAST_RFID_TAG")));
     const int dir = int(lsrp.value(QStringLiteral("MOVEMENT_DIR")));
     const auto dirOk = [dir](const Route &r) { return dir != 1 && dir != 2 ? true : r.pktDir == dir; };
@@ -600,7 +610,7 @@ Answer answer(const Station &s, const State &st, Loco *loco, const QHash<QString
         if (!pointsSet(r0, st)) notes << QObject::tr("no route from tag %1 has its points set; %2 taken").arg(tag).arg(r0.name);
 
     // What the live state does not agree with.
-    for (const Route *r : secs) routeChecks(*r, st, &a.checks);
+    for (const Route *r : secs) routeChecks(*r, st, &a.checks, loco->id);
     const int nextAspect = (redLike(curAspect) || secs.size() < 2) ? 0 : st.aspectOf(s, secs[1]->exit);
     if (secs.size() >= 2) {
         const int after = st.aspectOf(s, secs[1]->exit);

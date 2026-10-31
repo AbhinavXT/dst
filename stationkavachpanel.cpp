@@ -40,12 +40,13 @@ StationKavachPanel::StationKavachPanel(const QVector<QPair<qint64, QString>> &as
     auto *lay = new QVBoxLayout(this);
     lay->addWidget(new QLabel(tr("The station's live state: the next LSRP is answered with it. The aspects are "
                                  "set here as the interlocking would show them; what does not agree with a "
-                                 "route is said under Answers, not corrected."), this));
+                                 "route is said under Answers, not corrected. A track circuit a loco's "
+                                 "train covers (by its last ARP or LSRP) is occupied by it."), this));
     auto *split = new QSplitter(Qt::Vertical, this);
     auto *tabs = new QTabWidget(split);
     m_signals = table({ tr("Signal"), tr("Foot tag"), tr("Aspect") }, QStringLiteral("skSignals"), tabs);
     m_points = table({ tr("Point"), tr("Lies") }, QStringLiteral("skPoints"), tabs);
-    m_occupied = table({ tr("Track circuit / TIN"), tr("Occupied") }, QStringLiteral("skOccupied"), tabs);
+    m_occupied = table({ tr("Track circuit / TIN"), tr("Occupied"), tr("By a loco") }, QStringLiteral("skOccupied"), tabs);
     m_routes = table({ tr("Route"), tr("Section"), tr("Length"), tr("Authority") }, QStringLiteral("skRoutes"), tabs);
     m_tsr = table({ tr("Route"), tr("TSR id"), tr("On") }, QStringLiteral("skTsr"), tabs);
     tabs->addTab(m_signals, tr("Signals"));
@@ -114,7 +115,11 @@ void StationKavachPanel::rebuild()
         m_points->setCellWidget(i, 1, c);
     }
 
-    const QStringList occ = m_station.trackCircuitNames() + m_station.tinNames();
+    // Session 441: and every circuit a loco occupies (where its ARP / LSRP puts it).
+    QStringList occ = m_station.trackCircuitNames() + m_station.tinNames();
+    QStringList byLoco = st->occupiedBy.keys();
+    std::sort(byLoco.begin(), byLoco.end());
+    for (const QString &c : byLoco) if (!occ.contains(c)) occ << c;
     m_occupied->setRowCount(occ.size());
     for (int i = 0; i < occ.size(); ++i) {
         text(m_occupied, i, 0, occ[i]);
@@ -125,6 +130,7 @@ void StationKavachPanel::rebuild()
             emit stateChanged();
         });
         m_occupied->setCellWidget(i, 1, b);
+        text(m_occupied, i, 2, st->occupiedBy.contains(occ[i]) ? tr("loco %1").arg(st->occupiedBy.value(occ[i])) : QString());
     }
 
     m_routes->setRowCount(m_station.routes.size());

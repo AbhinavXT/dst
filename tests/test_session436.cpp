@@ -49,7 +49,7 @@ TEST_SUITE(session436)
     c->grab();
     bool said = false;
     for (const StationLayoutCanvas::Hit &h : c->hits())
-        said = said || (h.circuit == QStringLiteral("UST") && h.text.contains(QStringLiteral("Occupied: double-click to change")));
+        said = said || (h.circuit == QStringLiteral("UST") && h.text.contains(QStringLiteral("Occupied by hand: double-click to change")));
     CHECK(said, "and said so");
     emit c->circuitToggleRequested(QStringLiteral("UST"));
     CHECK(!w.liveStationState().occupied.contains(QStringLiteral("UST")), "again: clear");

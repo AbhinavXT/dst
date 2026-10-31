@@ -10,6 +10,71 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-441"></a>
+## Session 441 — the track circuits occupied by the locos, from their ARPs and LSRPs
+
+Abhinav's list for a full station simulator, item 1; positions *"from ARP
+and LSRP"*.
+
+**What the operator sees.** While Packet Maker answers as the station's
+routes, every ARP and LSRP it hears moves its loco, and the track circuits
+the loco's train covers are occupied by it:
+- Station… ▸ **Occupied**: a third column, *By a loco* (*loco 1*); a circuit
+  a loco occupies that no route names is listed too;
+- on the drawing (Show on the drawing) the circuit red, as one occupied by
+  hand (436); its tooltip *Occupied by loco 1 (where its last ARP / LSRP
+  puts its train)*; double-click still occupies or clears it by hand;
+- an answer says a circuit of the loco's routes another loco occupies
+  (*S43-A900 DN Auto: track circuit 43T is occupied by loco 1*); the
+  circuits the loco answered occupies itself are not said;
+- a loco that occupies nothing, and why, on the status line once (*loco 2:
+  tag 59 is on no line of the layout: it occupies nothing*).
+
+**How.** A new pure module, `stationinterlock.{h,cpp}`: the track (the
+layout's circuits, the line of each tag number from the lines sheet) and
+`occupancy()`. A loco occupies each circuit of its line (the line of
+LAST_RFID_TAG) that overlaps its train: ABS_LOCO_LOC back TRAIN_LENGTH
+against MOVEMENT_DIR (Nominal: rising km; Reverse: the train lies on the
+rising side). `StationKavach::note()` takes where a loco is from an ARP or
+an LSRP (answer() uses it for every LSRP, as before); the State keeps the
+circuits occupied by locos apart from those occupied by hand
+(`occupiedBy`, `isOccupied()`). An ARP is noted even when it cannot be
+answered (no keys in the log).
+
+**Choices.** A train across a point onto another line counts on its tag's
+line only. TINs are not occupied from the locos (the routes name TINs as
+words, *N-84*; the packets carry numbers). A loco stays where it was last
+heard: it is not forgotten when it goes quiet.
+
+**Found in the real data.** Tag 59 (where loco 2 reads it at 161566 m in
+`loco_2_1_27062026_170217.cap`) is on no line of station_527.xml: loco 2
+occupies nothing there.
+
+**Files.** `stationinterlock.{h,cpp}` (new), `dlcore.pri`,
+`stationkavach.{h,cpp}` (`note`, `Loco::lastTag`, `State::occupiedBy`,
+`isOccupied`), `packetmakerdialog.{h,cpp}` (`noteStationLoco`, the ARP
+noted), `stationkavachpanel.cpp`, `stationlayoutwindow.{h,cpp}` (drawn,
+tooltip), `tests/screenshot_main.cpp` (SHOT_LIVE's tag and direction,
+SHOT_NO_TABLES, SHOT_LIVE_CROP), `tests/test_session441.cpp` (new),
+`tests/test_session436.cpp` (the tooltip now says *by hand*),
+`tests/tests.pro`.
+
+**Tests.** `session441` (23 checks) on station_527.xml (real) and the real
+ARPs and LSRPs of `loco_{1,2}_1_27062026_170217.cap` in frame order: the
+line of tags 906, 985, 20, 59; loco 1 at 162066 m past tag 906, 250 m long:
+43T and 43AT, not 43BT or DMT; loco 1 occupies DMT, 43T … 43CT as it runs,
+DM circuits only; loco 2 (Reverse) 1640CT … 1T then CL1T on loop 1; tag 59
+said; a loco not yet placed: nothing; the answer: the loco's own circuit
+not said, another loco's said; Packet Maker: loco 1's ARP (not answered: no
+keys) occupies 43T, Station… shows *loco 1*; its LSRP at tag 898: 43T clear,
+43CT occupied. Looked at: the drawing with loco 1 at 162.066 km, 43T and
+43AT red (shot).
+- **Not tested:** with live locos.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 453 suites / 11,577 checks, menu audit, smoke.
+
+---
+
 <a id="session-440"></a>
 ## Session 440 — CI green again: the Station Layout bar fits wider fonts; a click test off a tag
 

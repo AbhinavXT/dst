@@ -2050,6 +2050,8 @@ bool PacketMakerDialog::startAnswering()
         m_station = station;
         m_stnState = StationKavach::State::initial(station);
         m_stnLocos.clear();
+        m_stnTrack = StationInterlock::trackOf(layout);   // session 441
+        m_stnTrackNotes.clear();
         m_stnLayoutPath = m_layoutEdit->text().trimmed();
         if (m_stnPanel) m_stnPanel->setStation(m_station, &m_stnState);
         showStationLive();
@@ -2095,6 +2097,11 @@ void PacketMakerDialog::answerArp(const CaptureLine &c, const QHash<QString, qin
     const QHash<QString, qint64> h = StationAnswer::aapFor(m_aapFields, arp, rnd);
     const int locoId = int(arp.value(QStringLiteral("SOURCE_LOCO_ID")));
     const int stnId = int(h.value(QStringLiteral("SOURCE_STN_ID")));
+    if (answeringAsStation()) {   // session 441: where it is, before anything else
+        noteStationLoco(arp);
+        if (m_stnPanel) m_stnPanel->refresh();
+        showStationLive();
+    }
     if (!m_keys->haveSet(0, c.locoId) || !m_keys->haveSet(1, c.locoId)) {
         m_status->fail(tr("ARP from loco %1 not answered — no auth keys for it in the log.").arg(locoId));
         return;
@@ -2122,6 +2129,8 @@ void PacketMakerDialog::answerLsrp(const QHash<QString, qint64> &lsrp)
     const qint64 fn = lsrp.value(QStringLiteral("FRAME_NUM"));
     if (answeringAsStation()) {
         const int locoId = int(lsrp.value(QStringLiteral("SOURCE_LOCO_ID")));
+        noteStationLoco(lsrp);   // session 441: the circuits it occupies, before it is answered
+        if (m_stnPanel) m_stnPanel->refresh();
         QList<StationKavach::Loco> others;   // session 427: a loco ahead cuts the MA
         for (auto it = m_stnLocos.cbegin(); it != m_stnLocos.cend(); ++it) if (it.key() != locoId) others << it.value();
         StationKavach::Loco &loco = m_stnLocos[locoId];
@@ -2150,6 +2159,16 @@ void PacketMakerDialog::answerLsrp(const QHash<QString, qint64> &lsrp)
     }
     sendAnswer(QStringLiteral("slrp"), m_builder.build(QStringLiteral("slrp"), h, subs, sessionKey()),
                tr("answers LSRP %1: %2").arg(lsrp.value(QStringLiteral("FRAME_NUM"))).arg(a.note));
+}
+
+void PacketMakerDialog::noteStationLoco(const QHash<QString, qint64> &pkt)
+{
+    StationKavach::note(&m_stnLocos[int(pkt.value(QStringLiteral("SOURCE_LOCO_ID")))], pkt);
+    const StationInterlock::Occupancy occ = StationInterlock::occupancy(m_stnTrack, m_stnLocos.values());
+    m_stnState.occupiedBy = occ.by;
+    if (occ.notes != m_stnTrackNotes && !occ.notes.isEmpty() && !m_stnTrack.isEmpty())
+        m_status->warn(tr("Track circuits: %1").arg(occ.notes.join(QStringLiteral("; "))));
+    m_stnTrackNotes = occ.notes;
 }
 
 void PacketMakerDialog::sendAnswer(const QString &captype, const PacketBuilder::Result &r, const QString &note)

@@ -28,6 +28,7 @@
 #include "messageheader.h"
 #include "schema/schemaencoder.h"
 #include "stationkavach.h"
+#include "stationinterlock.h"
 
 class SessionKeyStore;
 struct CaptureLine;
@@ -107,6 +108,8 @@ public:
     // Session 422: answering as the station's routes, its live state (the
     // signals' aspects, the points, ...) as the station would see it.
     StationKavach::State *stationState() { return &m_stnState; }
+    // Session 441: the locos the station has heard (by their ARPs and LSRPs).
+    const QHash<int, StationKavach::Loco> &stationLocos() const { return m_stnLocos; }
     // Session 428: Station… (null until opened) and its Show on the drawing:
     // the layout answered from, in Station Layout, the station live on it.
     StationKavachPanel *stationPanel() const { return m_stnPanel; }
@@ -403,6 +406,11 @@ private:
     StationKavach::Station m_station;
     StationKavach::State   m_stnState;
     QHash<int, StationKavach::Loco> m_stnLocos;   // by loco id
+    // Session 441: the layout's track circuits; each ARP / LSRP heard moves
+    // its loco, and the circuits its train covers are occupied by it.
+    StationInterlock::Track m_stnTrack;
+    QStringList m_stnTrackNotes;                  // the last occupancy's notes
+    void noteStationLoco(const QHash<QString, qint64> &pkt);
     QHash<int, QByteArray> m_locoKeys;     // session key by loco id, from its ARP
     QPushButton *m_stnPanelBtn = nullptr;
     StationKavachPanel *m_stnPanel = nullptr;   // Station…: the live state

@@ -129,6 +129,7 @@ public:
         QVector<KavachSection> routesSet;
         bool whatIf = false;           // kept on the drawing, not a station's
         QSet<QString> occupied;        // session 436: track circuits occupied
+        QHash<QString, int> occupiedBy;   // session 441: ... by a loco (by its ARP / LSRP)
         bool isEmpty() const { return signalList.isEmpty() && locos.isEmpty() && !pointsShown && routesSet.isEmpty(); }
     };
     void setLiveView(const LiveView &v);

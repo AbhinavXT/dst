@@ -66,6 +66,7 @@ static void clipAudit(QWidget *root, const QString &where)
 #include "mergedwindow.h"
 #include "trackdiagramwindow.h"
 #include "stationlayoutwindow.h"
+#include "stationinterlock.h"
 #include "stationkavacheditor.h"
 #include "stationkavach.h"
 #include "testcatalogwindow.h"
@@ -660,7 +661,7 @@ int main(int argc, char **argv)
                         w->setStation(l);
                     }
                 }
-                // Session 428: SHOT_LIVE=id:absLoc:trainLength:route:refTag:maSent:sos;...: the station
+                // Session 428: SHOT_LIVE=id:absLoc:trainLength:route:refTag:maSent:sos[:lastTag[:dir]];...: the station
                 // live, those locos heard (the route a row of the KAVACH data), as Packet Maker shows it.
                 if (!qEnvironmentVariableIsEmpty("SHOT_LIVE")) {
                     StationKavach::Station ks;
@@ -678,11 +679,16 @@ int main(int argc, char **argv)
                         o.refTag = f[4].toInt();
                         o.maSent = f[5].toLongLong();
                         o.sos = f[6].toInt();
-                        o.dir = 1;
+                        o.dir = f.value(8).isEmpty() ? 1 : f[8].toInt();
+                        o.lastTag = f.value(7).isEmpty() ? o.refTag : f[7].toInt();   // session 441: its line
                         locos << o;
                     }
                     w->resize(1280, 900);
-                    w->showLiveStation(ks, StationKavach::State::initial(ks), locos, QStringLiteral("Packet Maker"));
+                    if (qEnvironmentVariableIsSet("SHOT_NO_TABLES")) w->setTablesShown(false);   // session 441: the drawing alone
+                    // Session 441: the circuits their trains cover, occupied by them.
+                    StationKavach::State lst = StationKavach::State::initial(ks);
+                    lst.occupiedBy = StationInterlock::occupancy(StationInterlock::trackOf(w->station()), locos).by;
+                    w->showLiveStation(ks, lst, locos, QStringLiteral("Packet Maker"));
                     // SHOT_ZOOM=<z>: zoomed in on the first loco.
                     if (!qEnvironmentVariableIsEmpty("SHOT_ZOOM") && !locos.isEmpty()) {
                         w->show();
@@ -691,6 +697,11 @@ int main(int argc, char **argv)
                         w->canvas()->grab();
                         if (auto *sa = w->findChild<QScrollArea *>())
                             sa->ensureVisible(int(w->canvas()->liveLocoRect(0).center().x()), int(w->canvas()->liveLocoRect(0).center().y()), 450, 120);
+                        // Session 441: SHOT_LIVE_CROP=<png>: the drawing around the first loco, 1200 x 560.
+                        if (!qEnvironmentVariableIsEmpty("SHOT_LIVE_CROP")) {
+                            const QPointF c = w->canvas()->liveLocoRect(0).center();
+                            w->canvas()->grab(QRect(int(c.x()) - 600, int(c.y()) - 380, 1200, 560)).save(qEnvironmentVariable("SHOT_LIVE_CROP"));
+                        }
                     }
                 }
                 if (!qEnvironmentVariableIsEmpty("SHOT_KAVACH")) {

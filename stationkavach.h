@@ -142,7 +142,11 @@ QStringList locationChecks(const Station &s, const QHash<int, QVector<qint64>> &
 struct State {
     QHash<QString, int>  aspect;       // signal -> sigAspect
     QSet<QString>        reverse;      // points lying Reverse (the rest Normal)
-    QSet<QString>        occupied;     // track circuits and TINs occupied
+    QSet<QString>        occupied;     // track circuits and TINs occupied (by hand)
+    // Session 441: track circuit -> the loco occupying it, from where the
+    // locos' ARPs and LSRPs put them (StationInterlock::occupancy).
+    QHash<QString, int>  occupiedBy;
+    bool isOccupied(const QString &name) const { return occupied.contains(name) || occupiedBy.contains(name); }
     QHash<QString, int>  authority;    // route -> authType, overriding the file's
     QSet<QString>        tsrOff;       // "route/id": TSRs switched off
     static State initial(const Station &s);
@@ -156,6 +160,7 @@ struct Loco {
     int     id = 0;
     qint64  absLoc = -1;               // ABS_LOCO_LOC; -1: not yet heard
     int     trainLength = 0, dir = 0;  // TRAIN_LENGTH, MOVEMENT_DIR
+    int     lastTag = -1;              // session 441: LAST_RFID_TAG (its line is the loco's)
     int     route = -1;
     int     refTag = -1;
     int     profId = 0;                // last REF_PROF_ID issued (0: none yet)
@@ -167,6 +172,11 @@ struct Loco {
     qint64  maSent = -1;
     int     sos = 0;
 };
+
+// Session 441: where the loco is by an ARP or an LSRP (both carry
+// ABS_LOCO_LOC, TRAIN_LENGTH, MOVEMENT_DIR, LAST_RFID_TAG): id, absLoc,
+// trainLength, dir, lastTag. answer() notes every LSRP so.
+void note(Loco *loco, const QHash<QString, qint64> &pkt);
 
 struct Answer {
     bool    ok = false;
