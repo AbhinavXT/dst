@@ -1,7 +1,7 @@
 {
  "format": "dlconsole-station-layout",
  "version": 2,
- "comment": "Read from the KAVACH sheets by scripts/kavach_sheets.py (sessions 454-455): KAVACH_RFID_TAG_DATA_NPL-TLPR-IB_2.0.2.html, KAVACH_TABLE_OF_CONTROL_NPL-TLPR-IB_2.0.1.html. Station 526: the station ID most of its normal tags carry. Its location 154515 is not on the sheets: the middle of its tags, for the drawing.",
+ "comment": "Read from the KAVACH sheets by scripts/kavach_sheets.py (sessions 454-455): KAVACH_RFID_TAG_DATA_NPL-TLPR-IB_2.0.2.html, KAVACH_TRACK_PROFILE_TABLE_NPL-TLPR-IB_2.0.1.html, KAVACH_TABLE_OF_CONTROL_NPL-TLPR-IB_2.0.1.html. Station 526: the station ID most of its normal tags carry. Its location 154515 is not on the sheets: the middle of its tags, for the drawing.",
  "tags": [
   {
    "name": "134",
@@ -268,8 +268,25 @@
      }
     ],
     "adj_tins": [],
-    "ssp": [],
-    "gradient": [],
+    "ssp": [
+     {
+      "d": 996,
+      "class": 0,
+      "u": 22
+     }
+    ],
+    "gradient": [
+     {
+      "d": 913,
+      "dir": 1,
+      "value": 6
+     },
+     {
+      "d": 83,
+      "dir": 0,
+      "value": 10
+     }
+    ],
     "lc": [],
     "turnouts": [],
     "track_conditions": [],
@@ -304,8 +321,20 @@
      }
     ],
     "adj_tins": [],
-    "ssp": [],
-    "gradient": [],
+    "ssp": [
+     {
+      "d": 1042,
+      "class": 0,
+      "u": 22
+     }
+    ],
+    "gradient": [
+     {
+      "d": 1042,
+      "dir": 0,
+      "value": 7
+     }
+    ],
     "lc": [],
     "turnouts": [],
     "track_conditions": [],
@@ -318,7 +347,7 @@
     "pkt_dir": 1,
     "section_type": 1,
     "authority": 2,
-    "os_speed": 15,
+    "os_speed": 3,
     "points_normal": [],
     "points_reverse": [],
     "track_circuits": [],
@@ -344,8 +373,25 @@
      }
     ],
     "adj_tins": [],
-    "ssp": [],
-    "gradient": [],
+    "ssp": [
+     {
+      "d": 1015,
+      "class": 0,
+      "u": 22
+     }
+    ],
+    "gradient": [
+     {
+      "d": 668,
+      "dir": 0,
+      "value": 6
+     },
+     {
+      "d": 347,
+      "dir": 0,
+      "value": 0
+     }
+    ],
     "lc": [],
     "turnouts": [],
     "track_conditions": [],
@@ -384,8 +430,45 @@
      }
     ],
     "adj_tins": [],
-    "ssp": [],
-    "gradient": [],
+    "ssp": [
+     {
+      "d": 126,
+      "class": 0,
+      "u": 20
+     },
+     {
+      "d": 894,
+      "class": 0,
+      "u": 22
+     }
+    ],
+    "gradient": [
+     {
+      "d": 236,
+      "dir": 0,
+      "value": 7
+     },
+     {
+      "d": 200,
+      "dir": 0,
+      "value": 0
+     },
+     {
+      "d": 101,
+      "dir": 0,
+      "value": 6
+     },
+     {
+      "d": 301,
+      "dir": 0,
+      "value": 0
+     },
+     {
+      "d": 182,
+      "dir": 1,
+      "value": 5
+     }
+    ],
     "lc": [],
     "turnouts": [],
     "track_conditions": [],
@@ -398,7 +481,7 @@
     "pkt_dir": 2,
     "section_type": 1,
     "authority": 2,
-    "os_speed": 15,
+    "os_speed": 3,
     "points_normal": [],
     "points_reverse": [],
     "track_circuits": [],
@@ -422,8 +505,20 @@
      }
     ],
     "adj_tins": [],
-    "ssp": [],
-    "gradient": [],
+    "ssp": [
+     {
+      "d": 941,
+      "class": 0,
+      "u": 22
+     }
+    ],
+    "gradient": [
+     {
+      "d": 941,
+      "dir": 1,
+      "value": 6
+     }
+    ],
     "lc": [],
     "turnouts": [],
     "track_conditions": [],

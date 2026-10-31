@@ -20,6 +20,10 @@ Read so far:
                            speed; the next station and location reset from
                            the "Last Stop Signal" table; the layout's lines
                            and signals from the routes.          (455)
+  the TRACK PROFILE TABLE  each row onto its route: SSP, gradient (the
+                           average rows), LC gates, turnouts, track
+                           conditions, each list checked against the route's
+                           length.                               (456)
 
 Folders given together are read as one stretch: a route that runs into the
 next section ends on that section's tag and signal, which are copied in.
@@ -467,10 +471,37 @@ def toc_columns(ws):
     return cols, s, max(w.y1 for w in hdr)
 
 
-def read_toc(pages):
+def row_bounds(body, anchors, foot_y):
+    """[(top, bottom)] of each table row, from its S.No word.
+
+    Every cell is centred on its row, as the S.No is, so the rows tile: each
+    boundary is the one before reflected in the next S.No's centre (cells can
+    touch, so the gaps alone do not split rows). Each boundary then moves to
+    the nearest height no word straddles, within 8 pt, so a wrapped line stays
+    in its cell's row."""
+    c = [a.yc for a in anchors]
+    prev = min([w.y0 for w in body if w.yc < c[0]] + [anchors[0].y0]) - 1.5
+    cuts = []
+    for i in range(len(c)):
+        nxt = 2 * c[i] - prev
+        if i + 1 < len(c) and not (c[i] < nxt < c[i + 1]):
+            nxt = (c[i] + c[i + 1]) / 2
+        if i + 1 == len(c):
+            nxt = foot_y
+        else:
+            clear = [y / 2 for y in range(int(2 * (nxt - 8)), int(2 * (nxt + 8)) + 1)
+                     if c[i] < y / 2 < c[i + 1] and not any(w.y0 < y / 2 < w.y1 for w in body)]
+            if clear:
+                nxt = min(clear, key=lambda y: abs(y - nxt))
+        cuts.append((prev, nxt))
+        prev = nxt
+    return cuts
+
+
+def read_toc(pages, page1=1):
     """Every route row: its cells by column, the page, and its aspect sub-rows."""
     rows = []
-    for pi, ws in enumerate(pages):
+    for pi, ws in enumerate(pages, start=page1 - 1):
         cols, s, hdr_bottom = toc_columns(ws)
         if not cols:
             continue
@@ -489,21 +520,7 @@ def read_toc(pages):
         anchors = sorted([w for w in body if incol(w, "sno") and re.fullmatch(r"\d{1,3}", w.t)], key=lambda w: w.yc)
         if not anchors:
             continue
-        # Every cell is centred on its row, as the S.No is, so the rows tile:
-        # each boundary is the one before reflected in the next S.No's centre.
-        # Cells can touch (no gap to split on), so this, not the gaps.
-        c = [a.yc for a in anchors]
-        prev = min([w.y0 for w in body if w.yc < c[0]] + [anchors[0].y0]) - 1.5
-        bounds = []
-        for i in range(len(c)):
-            nxt = 2 * c[i] - prev
-            if i + 1 < len(c) and not (c[i] < nxt < c[i + 1]):
-                nxt = (c[i] + c[i + 1]) / 2
-            if i + 1 == len(c):
-                nxt = foot_y
-            bounds.append((prev, nxt))
-            prev = nxt
-        for a, (top, bot) in zip(anchors, bounds):
+        for a, (top, bot) in zip(anchors, row_bounds(body, anchors, foot_y)):
             rw = [w for w in body if top <= w.yc < bot]
             r = {"sno": int(a.t), "page": pi + 1}
             for key, lo, hi in cols:
@@ -530,13 +547,13 @@ def read_station_id(pages):
     return None
 
 
-def read_borders(pages):
+def read_borders(pages, page1=1):
     """The "Last Stop Signal for entering into Auto/Block Section" table: per
     row the signal, the next station, its border tag and that tag's location,
     and the location reset when one is given (distance from start, correction,
     loco direction after it)."""
     out = []
-    for pi, ws in enumerate(pages):
+    for pi, ws in enumerate(pages, start=page1 - 1):
         last = next((w for w in ws if w.t == "Last"), None)
         if not last:
             continue
@@ -607,6 +624,255 @@ def names_list(text):
     return [x for x in re.split(r"[,\s]+", text) if x.strip("-")]
 
 
+# ---- the TRACK PROFILE TABLE -------------------------------------------------
+def profile_columns(ws):
+    """[(column, x from, x to)] of a track profile page, or None."""
+    s = next((w for w in ws if w.t in ("S.", "S.No", "S.No.")), None)
+    if not s:
+        return None, None, None
+    hdr = [w for w in ws if s.y0 - 60 < w.yc < s.y1 + 40]
+    spans = []
+    for w in sorted(hdr, key=lambda w: w.x0):
+        if spans and w.x0 <= spans[-1][1] + 1:
+            spans[-1][1] = max(spans[-1][1], w.x1)
+            spans[-1][2].append(w)
+        else:
+            spans.append([w.x0, w.x1, [w]])
+    named = []
+    for x0, x1, words in spans:
+        t = " ".join(w.t for w in sorted(words, key=lambda w: (round(w.y0), w.x0)))
+        last = named[-1][0] if named else None
+        if t.startswith("S."):
+            named.append(("sno", x0, x1))
+        elif t.startswith("No") and last == "sno":
+            named[-1] = ("sno", named[-1][1], x1)
+        elif t.startswith("Entry"):
+            named.append(("entry", x0, x1))
+        elif t.startswith("Exit"):
+            named.append(("exit", x0, x1))
+        elif t == "Line":
+            named.append(("line", x0, x1))
+        elif t.startswith("Speed Value"):
+            named.append(("to_speed", x0, x1))
+        elif "Turnout" in t:
+            named.append(("to_start", x0, x1))
+        elif t.startswith("Length") and last == "to_start":
+            named.append(("to_len", x0, x1))
+        elif t.startswith("Permanent"):
+            named.append(("psr", x0, x1))
+        elif t.startswith("Engineering"):
+            named.append(("eng", x0, x1))
+        elif "Average" in t:
+            named.append(("avg", x0, x1))
+        elif t.startswith("Length") and last == "avg":
+            named.append(("grad_len", x0, x1))
+        elif t.startswith("LC Distance"):
+            named.append(("lc_d", x0, x1))
+        elif t.startswith("LC ID"):
+            named.append(("lc_id", x0, x1))
+        elif "Manning" in t:
+            named.append(("lc_man", x0, x1))
+        elif t == "LC":
+            named.append(("lc_class", x0, x1))
+        elif t == "Class" and last == "lc_class":
+            named[-1] = ("lc_class", named[-1][1], x1)
+        elif "Whistling" in t:
+            named.append(("lc_aw", x0, x1))
+        elif t.startswith("Track Condition"):
+            ty = next((w for w in words if w.t == "Type"), None)
+            st = next((w for w in words if w.t == "Start"), None)
+            if ty and st:
+                mid = ((ty.x1 + st.x0) if st.x0 > ty.x1 else (st.x1 + ty.x0)) / 2
+                named += [("tc_type", x0, mid), ("tc_start", mid, x1)] if st.x0 > ty.x1 \
+                    else [("tc_start", x0, mid), ("tc_type", mid, x1)]
+            else:
+                named.append(("tc_type", x0, x1))
+        elif t.startswith("Length") and last in ("tc_type", "tc_start"):
+            named.append(("tc_len", x0, x1))
+        else:
+            named.append(("?", x0, x1))
+    cols = []
+    for i, (key, x0, x1) in enumerate(named):
+        lo = (named[i - 1][2] + x0) / 2 if i else 0
+        hi = (x1 + named[i + 1][1]) / 2 if i + 1 < len(named) else 1e9
+        cols.append((key, lo, hi))
+    return cols, s, max(w.y1 for w in hdr)
+
+
+def read_profile(pages, page1=1):
+    """Every row of the track profile table: its cells by column, and its
+    average-gradient sub-rows (value text, length)."""
+    rows = []
+    for pi, ws in enumerate(pages, start=page1 - 1):
+        cols, s, hdr_bottom = profile_columns(ws)
+        if not cols:
+            continue
+        colx = {c: (a, b) for c, a, b in cols}
+        if not {"sno", "entry", "exit", "psr", "avg"} <= set(colx):
+            continue
+
+        def incol(w, key):
+            a, b = colx.get(key, (0, -1))
+            return a <= (w.x0 + w.x1) / 2 < b
+
+        foot_y = min([w.y0 for w in ws if w.t in ("PSR", "Rev", "REF:", "PREPARED", "SIGNAL", "TELECOMMUNICATIONS")
+                      and w.y0 > s.y1 + 40] + [1e9])
+        body = [w for w in ws if hdr_bottom < w.yc and w.y0 < foot_y]
+        anchors = sorted([w for w in body if incol(w, "sno") and re.fullmatch(r"\d{1,3}", w.t)], key=lambda w: w.yc)
+        if not anchors:
+            continue
+        for a, (top, bot) in zip(anchors, row_bounds(body, anchors, foot_y)):
+            rw = [w for w in body if top <= w.yc < bot]
+            r = {"sno": int(a.t), "page": pi + 1}
+            for key, lo, hi in cols:
+                if key not in ("sno", "?"):
+                    r[key] = cell([w for w in rw if lo <= (w.x0 + w.x1) / 2 < hi])
+            for key in ("entry", "exit"):
+                r[key] = re.sub(r"([/-])\s+", r"\1", r.get(key, "")).strip()
+            r["avg_rows"] = []
+            for y, ln in lines_of([w for w in rw if incol(w, "avg")]):
+                length = cell([w for w in rw if incol(w, "grad_len") and abs(w.yc - y) < 6])
+                r["avg_rows"].append((" ".join(w.t for w in sorted(ln, key=lambda w: w.x0)).strip(" )("), length))
+            rows.append(r)
+    return rows
+
+
+# The track condition types Annexure-C numbers (tcType).
+TRACK_CONDITIONS = {"dead stop": 1, "radio hole": 2, "non-stopping": 3, "non stopping": 3, "tunnel stopping": 4,
+                    "powerless": 5, "neutral": 5, "neutral section": 5, "sound horn": 6, "reversing": 7,
+                    "fouling mark": 8, "kavach exit": 9}
+LC_CLASSES = {"SPL": 0, "SPECIAL": 0, "A": 1, "B1": 2, "B2": 3, "B": 4, "C": 5, "D": 6}
+
+
+def profile_rows(r, length, where, notes):
+    """The SLRP profile rows of one track profile row (StationKavach's field
+    names), each list checked against the route's `length`: one that does not
+    cover it is left out and said (the station would refuse the whole answer)."""
+    out = {"ssp": [], "gradient": [], "lc": [], "turnouts": [], "track_conditions": []}
+    # SSP: (U, speed, length), speeds in steps of 5 km/h.
+    ssp, ok = [], True
+    for kind, v, d in re.findall(r"\(\s*([A-Z])\s*,\s*(\d+)\s*,\s*(\d+)\s*\)", r.get("psr", "")):
+        if kind != "U" or int(v) % 5:
+            notes.append(f"{where}: speed ({kind},{v},{d}) is not a universal speed in 5 km/h steps: SSP not taken")
+            ok = False
+            break
+        ssp.append({"d": int(d), "class": 0, "u": int(v) // 5})
+    if ok and ssp:
+        if sum(x["d"] for x in ssp) == length:
+            out["ssp"] = ssp
+        else:
+            notes.append(f"{where}: its speed profile covers {sum(x['d'] for x in ssp)} m of the route's {length} m: "
+                         f"SSP not taken")
+    # Gradient: the average rows. Rise (R) uphill, fall (F) and level downhill; value
+    # 1000/N truncated (station 527 sent F 1 in 209 as 4, R 1 in 260 as 3, Level as 0).
+    grad = []
+    for text, d in r.get("avg_rows", []):
+        m = re.match(r"(?i)\s*([RF])\s*(?:1\s*)?in\s*(\d+)", text)
+        if not d.isdigit():
+            continue
+        if m:
+            grad.append({"d": int(d), "dir": 1 if m.group(1).upper() == "R" else 0, "value": 1000 // int(m.group(2))})
+        elif text.strip().upper().startswith("LEVEL"):
+            grad.append({"d": int(d), "dir": 0, "value": 0})
+        else:
+            notes.append(f"{where}: average gradient {text!r} not read: gradient not taken")
+            grad = []
+            break
+    if grad:
+        if sum(x["d"] for x in grad) == length:
+            out["gradient"] = grad
+        else:
+            notes.append(f"{where}: its average gradients cover {sum(x['d'] for x in grad)} m of the route's {length} m: "
+                         f"gradient not taken")
+    # Turnout speed: speed, where it starts ("-": at the entry signal), its length.
+    sp, st, ln = r.get("to_speed", ""), r.get("to_start", ""), r.get("to_len", "")
+    if sp.isdigit() and ln.isdigit():
+        if int(sp) % 5:
+            notes.append(f"{where}: turnout speed {sp} km/h is not in 5 km/h steps: not taken")
+        else:
+            out["turnouts"].append({"speed": int(sp) // 5, "start": int(st) if st.isdigit() else 0, "release": int(ln)})
+    # LC gate.
+    if r.get("lc_d", "").isdigit():
+        idm = re.match(r"(\d+)\s*/?\s*([A-Ea-e])?", r.get("lc_id", ""))
+        cls = LC_CLASSES.get(r.get("lc_class", "").replace(" ", "").upper())
+        if not idm or cls is None:
+            notes.append(f"{where}: LC gate {r.get('lc_id')!r} class {r.get('lc_class')!r} not read: not taken")
+        else:
+            aw = r.get("lc_aw", "").lower()
+            out["lc"].append({"d": int(r["lc_d"]), "id": int(idm.group(1)),
+                              "suffix": "abcde".index(idm.group(2).lower()) + 1 if idm.group(2) else 0,
+                              "manned": 1 if "unmanned" in r.get("lc_man", "").lower() else 0, "class": cls,
+                              "awEn": 1 if "yes" in aw else 0, "awType": 1 if "time" in aw else 0})
+    # Track conditions: a type and each "<distance> From <signal>" it gives.
+    tc = r.get("tc_type", "").strip().lower()
+    if tc and tc != "-":
+        code = TRACK_CONDITIONS.get(tc)
+        starts = [int(x) for x in re.findall(r"(\d+)\s*From", r.get("tc_start", ""))]
+        lens = [int(x) for x in re.findall(r"\d+", r.get("tc_len", ""))]
+        if code is None or not starts:
+            notes.append(f"{where}: track condition {r.get('tc_type')!r} at {r.get('tc_start')!r} not read: not taken")
+        else:
+            for i, sd in enumerate(starts):
+                out["track_conditions"].append({"type": code, "sd": sd, "ln": lens[i] if i < len(lens) else 0})
+    return out
+
+
+def signal_key(name):
+    """A signal as both tables can be matched on: its numbers and ID / D, without
+    the stations it is written with or its LC:
+    'S6 TLPR/50D LPI' and 'S6/50D' -> 'S6/50D'; 'S30 D' -> 'S30D';
+    'S7/104D OF LC.22' -> 'S7/104D'; 'S2 ID (501)' and 'S2 ID TLPR' -> 'S2ID'."""
+    name = re.sub(r"\([^)]*\)", " ", (name or "").upper())
+    name = re.sub(r"\bOF\s+LC\.?\s*\w+", " ", name)
+    parts = []
+    for part in name.split("/"):
+        toks = [t for t in re.split(r"[\s.\-]+", part) if t and (re.search(r"\d", t) or t in ("ID", "D"))]
+        parts.append("".join(toks))
+    return "/".join(p for p in parts if p)
+
+
+def apply_profile(sec, kav, notes):
+    """Each track profile row onto its route (same entry, same exit signal);
+    a route with the same tags (a calling-on route over the main one) takes it too."""
+    if not kav or not sec.profile:
+        return
+    src = sec.profile_src
+    done = set()
+    for r in sec.profile:
+        where = f"{r.get('src', src)} p{r['page']} #{r['sno']} {r['entry']} → {r['exit']}"
+        cands = [x for x in kav["routes"] if signal_key(x["entry"]) == signal_key(r["entry"])
+                 and (signal_key(x["exit"]) == signal_key(r["exit"])
+                      or (r["exit"].strip() in ("-", "") and "(" in x["exit"]))]
+        if not cands:
+            # Into the next station: the ToC names its exit by the border tag
+            # ("R-673 (520)"), the profile by the signal ("S30 D (CTF)").
+            into = [x for x in kav["routes"] if signal_key(x["entry"]) == signal_key(r["entry"])
+                    and x.get("next_stn") is not None and "(" in x["exit"]]
+            cands = into if len(into) == 1 else []
+        if len(cands) > 1:
+            line = re.sub(r"\s+", " ", r.get("line", "")).strip().lower()
+            cands = [x for x in cands if x["name"].lower().endswith(line)] or cands
+        if not cands:
+            notes.append(f"{where}: no route of the Table of Control goes from {r['entry']} to {r['exit']}: not used")
+            continue
+        for route in cands:
+            length = sum(t["dist"] for t in route["tags"])
+            rows = profile_rows(r, length, where, notes)
+            route.update(rows)
+            done.add(route["name"])
+            for other in kav["routes"]:
+                if other["name"] not in done and [t["tag"] for t in other["tags"]] == [t["tag"] for t in route["tags"]]:
+                    other.update({k: [dict(x) for x in v] for k, v in rows.items()})
+                    done.add(other["name"])
+    nolen = sorted({r["tc_type"] for r in sec.profile if r.get("tc_type", "-").strip() not in ("", "-")
+                    and not re.search(r"\d", r.get("tc_len", ""))})
+    if nolen:
+        notes.append(f"{src}: {', '.join(nolen)} given without a length: sent as 0 m")
+    missing = [x["name"] for x in kav["routes"] if x["name"] not in done]
+    if missing:
+        notes.append(f"{src}: no track profile row for {len(missing)} route(s): {', '.join(missing)}")
+
+
 # ---- a station folder, and several together ----------------------------------
 def sheets_in(folder):
     out = {}
@@ -632,12 +898,23 @@ class Section:
             t = read_tag_sheet(read_pages(path), first_page(path))
             self.notes += check_tags(t, src)
             self.tags += t
+        self.profile, self.profile_src = [], ""
+        for path in sheets.get("profile", []):
+            self.profile_src = os.path.basename(path)
+            self.sources.append(self.profile_src)
+            for r in read_profile(read_pages(path), first_page(path)):
+                r["src"] = self.profile_src
+                self.profile.append(r)
         for path in sheets.get("toc", []):
             self.toc_src = os.path.basename(path)
             self.sources.append(self.toc_src)
             pages = read_pages(path)
-            self.rows += read_toc(pages)
-            self.borders += read_borders(pages)
+            for r in read_toc(pages, first_page(path)):
+                r["src"] = self.toc_src
+                self.rows.append(r)
+            for b in read_borders(pages, first_page(path)):
+                b["src"] = self.toc_src
+                self.borders.append(b)
             self.toc_station = self.toc_station or read_station_id(pages)
         ids = Counter()
         self.locs = []
@@ -713,17 +990,17 @@ def kavach_of(sec, pack):
         if r["entry"] and m:
             f = int(m.group(1))
             if foot.setdefault(r["entry"], f) != f:
-                notes.append(f"{src} p{r['page']} #{r['sno']}: {r['entry']}'s foot tag is R-{f} here, "
+                notes.append(f"{r.get('src', src)} p{r['page']} #{r['sno']}: {r['entry']}'s foot tag is R-{f} here, "
                              f"R-{foot[r['entry']]} in an earlier row")
     borders = {b["border_tag"]: b for b in sec.borders}
     for b in sec.borders:
         own = [n for n, f in foot.items() if f == b["border_tag"]]
         if own:
-            notes.append(f"{src} p{b['page']}: the Next Station Border RFID given for {b['lss'] or 'its last stop signal'} "
+            notes.append(f"{b.get('src', src)} p{b['page']}: the Next Station Border RFID given for {b['lss'] or 'its last stop signal'} "
                          f"(station {b['next_stn']}) is R-{b['border_tag']}, the foot tag of this station's {own[0]}")
     signals, routes, needed, names = {}, [], set(), Counter()
     for r in sec.rows:
-        where = f"{src} p{r['page']} #{r['sno']} {r['entry']} → {r['exit']}"
+        where = f"{r.get('src', src)} p{r['page']} #{r['sno']} {r['entry']} → {r['exit']}"
         fmt, ls = links(r.get("seq", ""))
         if not ls:
             notes.append(f"{where}: no RFID sequence: not a route")
@@ -805,13 +1082,15 @@ def kavach_of(sec, pack):
         if sect is None:
             notes.append(f"{where}: section type {r.get('section')!r} is not one Annexure-I names: Station Section (0) taken")
             sect = 0
-        speeds = re.findall(r"\d+", r.get("os_speed", ""))
+        # OS speed: speed6, 5 km/h steps (session 456: 455 wrote km/h). "MPS 15": 15;
+        # "10 in Day/ 08 in Night": the day's 10 (the night's 8 is no 5 km/h step).
+        speeds = [int(v) for v in re.findall(r"\d+", r.get("os_speed", "")) if int(v) % 5 == 0 and 0 < int(v) <= 250]
         calling_on = "calling" in r.get("sigtype", "").lower()
         tcs = [x for x in names_list(r.get("tcs", "")) if x.lower() != "occupied"]
         if "occupied" in r.get("tcs", "").lower():
             tcs = []            # a calling-on route wants its track circuit occupied: not a "must be clear"
         route = {"name": "", "entry": r["entry"], "exit": exit_name, "pkt_dir": pkt_dir, "section_type": sect,
-                 "authority": 1 if calling_on else 2, "os_speed": int(speeds[-1]) if speeds else 0,
+                 "authority": 1 if calling_on else 2, "os_speed": speeds[-1] // 5 if speeds else 0,
                  "points_normal": names_list(r.get("points_n", "")),
                  "points_reverse": names_list(r.get("points_r", "")),
                  "track_circuits": tcs,
@@ -858,6 +1137,7 @@ def build_layout(sec, pack):
     if not sec.tags:
         return None, [f"{sec.folder}: no RFID tag data sheet"]
     kav, knotes, needed = kavach_of(sec, pack)
+    apply_profile(sec, kav, knotes)
     notes += knotes
     tags = list(sec.tags)
     names = Counter(t.name for t in tags)

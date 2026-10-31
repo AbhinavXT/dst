@@ -1,0 +1,933 @@
+{
+ "format": "dlconsole-station-layout",
+ "version": 2,
+ "comment": "Read from the KAVACH sheets by scripts/kavach_sheets.py (sessions 454-455): KAVCH_RFID_TAG_DATA_LPI_V2.0.7_pages1-3.html, KAVACH_TRACK_PROFILE_TABLE_LPI_2.0.3_pages1-2.html, KAVACH_TABLE_OF_CONTROL_LPI_V2.0.4_pages1-1.html, KAVACH_TABLE_OF_CONTROL_LPI_V2.0.4_pages3-3.html. Station 527: the station ID most of its normal tags carry. Its location 160764 is not on the sheets: the middle of its tags, for the drawing.",
+ "tags": [
+  {
+   "name": "2",
+   "page_x": "07b737026fac0099",
+   "page_y": "379015c80a00fa81"
+  },
+  {
+   "name": "2D",
+   "page_x": "07b737026fb00099",
+   "page_y": "e5c6b4b48a00fa81"
+  },
+  {
+   "name": "4",
+   "page_x": "07b71902719b0119",
+   "page_y": "b20205e410010781"
+  },
+  {
+   "name": "4D",
+   "page_x": "07b7190271970119",
+   "page_y": "7b94c01090010781"
+  },
+  {
+   "name": "6",
+   "page_x": "07991a0273390199",
+   "page_y": "83603ce010010781"
+  },
+  {
+   "name": "6D",
+   "page_x": "07991a0273350199",
+   "page_y": "4811640810010781"
+  },
+  {
+   "name": "8",
+   "page_x": "079a1a0274330219",
+   "page_y": "9454c47400010781"
+  },
+  {
+   "name": "8D",
+   "page_x": "079a1a0274370219",
+   "page_y": "502233c480010781"
+  },
+  {
+   "name": "10",
+   "page_x": "079a1a0275240299",
+   "page_y": "78251a8000010781"
+  },
+  {
+   "name": "10D",
+   "page_x": "079a1a0275280299",
+   "page_y": "b1b3df7480010781"
+  },
+  {
+   "name": "12",
+   "page_x": "079a1b0276320319",
+   "page_y": "e8062a7008010781"
+  },
+  {
+   "name": "12D",
+   "page_x": "079a1b0276360319",
+   "page_y": "2c70ddc088010781"
+  },
+  {
+   "name": "14",
+   "page_x": "079b1c0277450399",
+   "page_y": "df8b689400010781"
+  },
+  {
+   "name": "14D",
+   "page_x": "079b1c0277490399",
+   "page_y": "161dad6080010781"
+  },
+  {
+   "name": "16",
+   "page_x": "079c1c0277ce0419",
+   "page_y": "094bbe4010010781"
+  },
+  {
+   "name": "16D",
+   "page_x": "079c1c0277ca0419",
+   "page_y": "cd3d49f090010781"
+  },
+  {
+   "name": "18",
+   "page_x": "079c2a0278480499",
+   "page_y": "dba4df0c09010781"
+  },
+  {
+   "name": "18D",
+   "page_x": "079c2a02784c0499",
+   "page_y": "1fd228bc89010781"
+  }
+ ],
+ "signals": [
+  {
+   "foot_tag": "2",
+   "signal": "S50",
+   "sig_id": 0,
+   "station_id": 527
+  },
+  {
+   "foot_tag": "12",
+   "signal": "S48",
+   "sig_id": 0,
+   "station_id": 527
+  },
+  {
+   "foot_tag": "2",
+   "signal": "S50A",
+   "sig_id": 0,
+   "station_id": 527
+  },
+  {
+   "foot_tag": "18",
+   "signal": "S43",
+   "sig_id": 0,
+   "station_id": 527
+  }
+ ],
+ "points": [],
+ "lines": [
+  {
+   "name": "Down Main",
+   "line": "Down Main",
+   "tags": [
+    "2",
+    "2D",
+    "4",
+    "4D",
+    "6",
+    "6D",
+    "8",
+    "8D",
+    "10",
+    "10D",
+    "12",
+    "12D",
+    "14",
+    "14D",
+    "16",
+    "16D",
+    "18",
+    "18D"
+   ]
+  },
+  {
+   "name": "Down Common Loop 2",
+   "line": "Down Common Loop 2",
+   "tags": []
+  },
+  {
+   "name": "Down Common Loop 3",
+   "line": "Down Common Loop 3",
+   "tags": []
+  },
+  {
+   "name": "Down Common Loop 1",
+   "line": "Down Common Loop 1",
+   "tags": []
+  }
+ ],
+ "stations": [
+  {
+   "station_id": 527,
+   "location": 160764
+  }
+ ],
+ "texts": [],
+ "other_sheets": [],
+ "kavach": {
+  "station_id": 527,
+  "stn_version": 0,
+  "signals": [
+   {
+    "name": "S50",
+    "foot_tag": 2,
+    "sig_info": 0,
+    "aspect": 1
+   },
+   {
+    "name": "S48",
+    "foot_tag": 12,
+    "sig_info": 0,
+    "aspect": 1
+   },
+   {
+    "name": "S46",
+    "foot_tag": 31,
+    "sig_info": 0,
+    "aspect": 1
+   },
+   {
+    "name": "S45",
+    "foot_tag": 40,
+    "sig_info": 0,
+    "aspect": 1
+   },
+   {
+    "name": "S47",
+    "foot_tag": 22,
+    "sig_info": 0,
+    "aspect": 1
+   },
+   {
+    "name": "S50A",
+    "foot_tag": 2,
+    "sig_info": 0,
+    "aspect": 1
+   },
+   {
+    "name": "S43",
+    "foot_tag": 18,
+    "sig_info": 0,
+    "aspect": 1
+   }
+  ],
+  "routes": [
+   {
+    "name": "S50-S48 Down Main",
+    "entry": "S50",
+    "exit": "S48",
+    "pkt_dir": 1,
+    "section_type": 0,
+    "authority": 2,
+    "os_speed": 0,
+    "points_normal": [
+     "30",
+     "32",
+     "28"
+    ],
+    "points_reverse": [],
+    "track_circuits": [
+     "DMT"
+    ],
+    "tins": [
+     "N-50",
+     "N-52",
+     "N-54"
+    ],
+    "dist_dup_tag": 4,
+    "tin": 110,
+    "tags": [
+     {
+      "dist": 0,
+      "tag": 2
+     },
+     {
+      "dist": 495,
+      "tag": 4,
+      "dup_dir": 1
+     },
+     {
+      "dist": 414,
+      "tag": 6,
+      "dup_dir": 1
+     },
+     {
+      "dist": 250,
+      "tag": 8
+     },
+     {
+      "dist": 241,
+      "tag": 10
+     },
+     {
+      "dist": 270,
+      "tag": 12
+     }
+    ],
+    "adj_tins": [],
+    "ssp": [
+     {
+      "d": 1670,
+      "class": 0,
+      "u": 22
+     }
+    ],
+    "gradient": [
+     {
+      "d": 1245,
+      "dir": 0,
+      "value": 4
+     },
+     {
+      "d": 320,
+      "dir": 0,
+      "value": 0
+     },
+     {
+      "d": 105,
+      "dir": 1,
+      "value": 3
+     }
+    ],
+    "lc": [],
+    "turnouts": [],
+    "track_conditions": [
+     {
+      "type": 8,
+      "sd": 780,
+      "ln": 0
+     },
+     {
+      "type": 8,
+      "sd": 905,
+      "ln": 0
+     }
+    ],
+    "tsr": []
+   },
+   {
+    "name": "S50-S46 Down Common Loop 2",
+    "entry": "S50",
+    "exit": "S46",
+    "pkt_dir": 1,
+    "section_type": 0,
+    "authority": 2,
+    "os_speed": 6,
+    "points_normal": [
+     "31",
+     "32",
+     "29",
+     "28"
+    ],
+    "points_reverse": [
+     "30"
+    ],
+    "track_circuits": [
+     "CL2T"
+    ],
+    "tins": [
+     "N-50",
+     "N-60",
+     "N-61",
+     "N-62",
+     "N-54"
+    ],
+    "dist_dup_tag": 4,
+    "tin": 110,
+    "tags": [
+     {
+      "dist": 0,
+      "tag": 2
+     },
+     {
+      "dist": 495,
+      "tag": 4,
+      "dup_dir": 1
+     },
+     {
+      "dist": 229,
+      "tag": 60
+     },
+     {
+      "dist": 151,
+      "tag": 28
+     },
+     {
+      "dist": 250,
+      "tag": 29
+     },
+     {
+      "dist": 275,
+      "tag": 30
+     },
+     {
+      "dist": 173,
+      "tag": 31
+     }
+    ],
+    "adj_tins": [],
+    "ssp": [
+     {
+      "d": 1573,
+      "class": 0,
+      "u": 22
+     }
+    ],
+    "gradient": [
+     {
+      "d": 1245,
+      "dir": 0,
+      "value": 4
+     },
+     {
+      "d": 320,
+      "dir": 0,
+      "value": 0
+     },
+     {
+      "d": 8,
+      "dir": 1,
+      "value": 3
+     }
+    ],
+    "lc": [],
+    "turnouts": [
+     {
+      "speed": 6,
+      "start": 662,
+      "release": 941
+     }
+    ],
+    "track_conditions": [
+     {
+      "type": 8,
+      "sd": 863,
+      "ln": 0
+     }
+    ],
+    "tsr": []
+   },
+   {
+    "name": "S50-S45 Down Common Loop 3",
+    "entry": "S50",
+    "exit": "S45",
+    "pkt_dir": 1,
+    "section_type": 0,
+    "authority": 2,
+    "os_speed": 3,
+    "points_normal": [
+     "31",
+     "32",
+     "34",
+     "28"
+    ],
+    "points_reverse": [
+     "30",
+     "29"
+    ],
+    "track_circuits": [
+     "CL3T"
+    ],
+    "tins": [
+     "N-50",
+     "N-60",
+     "N-63",
+     "N-64",
+     "N-62"
+    ],
+    "dist_dup_tag": 4,
+    "tin": 110,
+    "tags": [
+     {
+      "dist": 0,
+      "tag": 2
+     },
+     {
+      "dist": 495,
+      "tag": 4,
+      "dup_dir": 1
+     },
+     {
+      "dist": 229,
+      "tag": 60
+     },
+     {
+      "dist": 100,
+      "tag": 62
+     },
+     {
+      "dist": 51,
+      "tag": 37
+     },
+     {
+      "dist": 250,
+      "tag": 38
+     },
+     {
+      "dist": 275,
+      "tag": 39
+     },
+     {
+      "dist": 157,
+      "tag": 40
+     }
+    ],
+    "adj_tins": [],
+    "ssp": [
+     {
+      "d": 1557,
+      "class": 0,
+      "u": 22
+     }
+    ],
+    "gradient": [
+     {
+      "d": 1245,
+      "dir": 0,
+      "value": 4
+     },
+     {
+      "d": 312,
+      "dir": 0,
+      "value": 0
+     }
+    ],
+    "lc": [],
+    "turnouts": [
+     {
+      "speed": 3,
+      "start": 662,
+      "release": 925
+     }
+    ],
+    "track_conditions": [],
+    "tsr": []
+   },
+   {
+    "name": "S50-S47 Down Common Loop 1",
+    "entry": "S50",
+    "exit": "S47",
+    "pkt_dir": 1,
+    "section_type": 0,
+    "authority": 2,
+    "os_speed": 3,
+    "points_normal": [
+     "32",
+     "30"
+    ],
+    "points_reverse": [
+     "28",
+     "27"
+    ],
+    "track_circuits": [
+     "CL1T"
+    ],
+    "tins": [
+     "N-50",
+     "N-53",
+     "N-57",
+     "N-58",
+     "N-59",
+     "N-49"
+    ],
+    "dist_dup_tag": 4,
+    "tin": 110,
+    "tags": [
+     {
+      "dist": 0,
+      "tag": 2
+     },
+     {
+      "dist": 495,
+      "tag": 4,
+      "dup_dir": 1
+     },
+     {
+      "dist": 358,
+      "tag": 55
+     },
+     {
+      "dist": 197,
+      "tag": 58
+     },
+     {
+      "dist": 63,
+      "tag": 19
+     },
+     {
+      "dist": 287,
+      "tag": 20
+     },
+     {
+      "dist": 193,
+      "tag": 21
+     },
+     {
+      "dist": 250,
+      "tag": 22
+     }
+    ],
+    "adj_tins": [],
+    "ssp": [
+     {
+      "d": 1843,
+      "class": 0,
+      "u": 22
+     }
+    ],
+    "gradient": [
+     {
+      "d": 1245,
+      "dir": 0,
+      "value": 4
+     },
+     {
+      "d": 320,
+      "dir": 0,
+      "value": 0
+     },
+     {
+      "d": 278,
+      "dir": 1,
+      "value": 3
+     }
+    ],
+    "lc": [],
+    "turnouts": [
+     {
+      "speed": 3,
+      "start": 808,
+      "release": 1065
+     }
+    ],
+    "track_conditions": [
+     {
+      "type": 8,
+      "sd": 810,
+      "ln": 0
+     },
+     {
+      "type": 8,
+      "sd": 1109,
+      "ln": 0
+     }
+    ],
+    "tsr": []
+   },
+   {
+    "name": "S50A-S48 Down Main",
+    "entry": "S50A",
+    "exit": "S48",
+    "pkt_dir": 1,
+    "section_type": 0,
+    "authority": 1,
+    "os_speed": 3,
+    "points_normal": [
+     "30",
+     "32",
+     "28"
+    ],
+    "points_reverse": [],
+    "track_circuits": [],
+    "tins": [],
+    "dist_dup_tag": 4,
+    "tin": 110,
+    "tags": [
+     {
+      "dist": 0,
+      "tag": 2
+     },
+     {
+      "dist": 495,
+      "tag": 4,
+      "dup_dir": 1
+     },
+     {
+      "dist": 414,
+      "tag": 6,
+      "dup_dir": 1
+     },
+     {
+      "dist": 250,
+      "tag": 8
+     },
+     {
+      "dist": 241,
+      "tag": 10
+     },
+     {
+      "dist": 270,
+      "tag": 12
+     }
+    ],
+    "adj_tins": [],
+    "ssp": [
+     {
+      "d": 1670,
+      "class": 0,
+      "u": 22
+     }
+    ],
+    "gradient": [
+     {
+      "d": 1245,
+      "dir": 0,
+      "value": 4
+     },
+     {
+      "d": 320,
+      "dir": 0,
+      "value": 0
+     },
+     {
+      "d": 105,
+      "dir": 1,
+      "value": 3
+     }
+    ],
+    "lc": [],
+    "turnouts": [],
+    "track_conditions": [
+     {
+      "type": 8,
+      "sd": 780,
+      "ln": 0
+     },
+     {
+      "type": 8,
+      "sd": 905,
+      "ln": 0
+     }
+    ],
+    "tsr": []
+   },
+   {
+    "name": "S46-S43 Down Main",
+    "entry": "S46",
+    "exit": "S43",
+    "pkt_dir": 1,
+    "section_type": 0,
+    "authority": 2,
+    "os_speed": 6,
+    "points_normal": [
+     "18",
+     "16",
+     "20"
+    ],
+    "points_reverse": [
+     "19"
+    ],
+    "track_circuits": [],
+    "tins": [
+     "N-62",
+     "N-54",
+     "N-56"
+    ],
+    "dist_dup_tag": 4,
+    "tin": 0,
+    "tags": [
+     {
+      "dist": 0,
+      "tag": 31
+     },
+     {
+      "dist": 127,
+      "tag": 61
+     },
+     {
+      "dist": 245,
+      "tag": 14
+     },
+     {
+      "dist": 137,
+      "tag": 16,
+      "dup_dir": 1
+     },
+     {
+      "dist": 122,
+      "tag": 18
+     }
+    ],
+    "adj_tins": [],
+    "ssp": [
+     {
+      "d": 87,
+      "class": 0,
+      "u": 22
+     },
+     {
+      "d": 544,
+      "class": 0,
+      "u": 16
+     }
+    ],
+    "gradient": [
+     {
+      "d": 631,
+      "dir": 1,
+      "value": 4
+     }
+    ],
+    "lc": [],
+    "turnouts": [
+     {
+      "speed": 6,
+      "start": 0,
+      "release": 186
+     }
+    ],
+    "track_conditions": [],
+    "tsr": []
+   },
+   {
+    "name": "S47-S43 Down Main",
+    "entry": "S47",
+    "exit": "S43",
+    "pkt_dir": 1,
+    "section_type": 0,
+    "authority": 2,
+    "os_speed": 3,
+    "points_normal": [
+     "18"
+    ],
+    "points_reverse": [
+     "17",
+     "16"
+    ],
+    "track_circuits": [],
+    "tins": [
+     "N-59",
+     "N-49",
+     "N-",
+     "56"
+    ],
+    "dist_dup_tag": 4,
+    "tin": 0,
+    "tags": [
+     {
+      "dist": 0,
+      "tag": 22
+     },
+     {
+      "dist": 67,
+      "tag": 59
+     },
+     {
+      "dist": 104,
+      "tag": 57
+     },
+     {
+      "dist": 68,
+      "tag": 16,
+      "dup_dir": 1
+     },
+     {
+      "dist": 122,
+      "tag": 18
+     }
+    ],
+    "adj_tins": [],
+    "ssp": [
+     {
+      "d": 361,
+      "class": 0,
+      "u": 16
+     }
+    ],
+    "gradient": [
+     {
+      "d": 361,
+      "dir": 1,
+      "value": 5
+     }
+    ],
+    "lc": [],
+    "turnouts": [
+     {
+      "speed": 3,
+      "start": 0,
+      "release": 227
+     }
+    ],
+    "track_conditions": [],
+    "tsr": []
+   },
+   {
+    "name": "S48-S43 Down Main",
+    "entry": "S48",
+    "exit": "S43",
+    "pkt_dir": 1,
+    "section_type": 0,
+    "authority": 2,
+    "os_speed": 3,
+    "points_normal": [
+     "19",
+     "18",
+     "16"
+    ],
+    "points_reverse": [],
+    "track_circuits": [],
+    "tins": [
+     "N-54",
+     "N-56"
+    ],
+    "dist_dup_tag": 4,
+    "tin": 54,
+    "tags": [
+     {
+      "dist": 0,
+      "tag": 12
+     },
+     {
+      "dist": 275,
+      "tag": 14
+     },
+     {
+      "dist": 137,
+      "tag": 16,
+      "dup_dir": 1
+     },
+     {
+      "dist": 122,
+      "tag": 18
+     }
+    ],
+    "adj_tins": [],
+    "ssp": [
+     {
+      "d": 534,
+      "class": 0,
+      "u": 16
+     }
+    ],
+    "gradient": [
+     {
+      "d": 534,
+      "dir": 1,
+      "value": 4
+     }
+    ],
+    "lc": [],
+    "turnouts": [],
+    "track_conditions": [],
+    "tsr": []
+   }
+  ]
+ },
+ "sheet_notes": [
+  "KAVCH_RFID_TAG_DATA_LPI_V2.0.7_pages1-3.html p1, tag 6D: duplication (Y31) printed 1, the pages hold 0. The printed fields make PAGE-X 07991a0273350199 PAGE-Y 4af6f91490010781, CRC-30 12bdbe45, not the 12045902 printed",
+  "KAVACH_TABLE_OF_CONTROL_LPI_V2.0.4_pages1-1.html p1 #5 S50 → - (Red / Nil, 15 km/h): no exit signal and its RFID sequence stops at R-4, 495 m of the 1557 m given: not a route",
+  "KAVACH_TRACK_PROFILE_TABLE_LPI_2.0.3_pages1-2.html p1 #5 S44 → S43: no route of the Table of Control goes from S44 to S43: not used",
+  "KAVACH_TRACK_PROFILE_TABLE_LPI_2.0.3_pages1-2.html p2 #6 S45 → S43: no route of the Table of Control goes from S45 to S43: not used",
+  "KAVACH_TRACK_PROFILE_TABLE_LPI_2.0.3_pages1-2.html p2 #10 S1 → S3: no route of the Table of Control goes from S1 to S3: not used",
+  "KAVACH_TRACK_PROFILE_TABLE_LPI_2.0.3_pages1-2.html p2 #11 S1 → S4: no route of the Table of Control goes from S1 to S4: not used",
+  "KAVACH_TRACK_PROFILE_TABLE_LPI_2.0.3_pages1-2.html p2 #12 S1 → S5: no route of the Table of Control goes from S1 to S5: not used",
+  "KAVACH_TRACK_PROFILE_TABLE_LPI_2.0.3_pages1-2.html: Fouling Mark given without a length: sent as 0 m"
+ ]
+}

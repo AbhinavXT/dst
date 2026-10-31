@@ -10,6 +10,105 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-456"></a>
+## Session 456 — a firm's track profile read onto the Stationary KAVACH routes
+
+The third of Abhinav's *"do 1, 2, 3"* for HBL's 2023 KAVACH sheets: the
+track profile table. Each route the Table of Control made (455) now carries
+its profile, and the station sends it.
+
+**What it does.** `scripts/kavach_sheets.py` reads the track profile table
+the same way as the ToC: columns from the header words, rows tiled from the
+S.No. The row boundaries now snap to the nearest height no word straddles
+(within 8 pt), so a cell's wrapped line stays in its own row; the ToC reader
+uses this too. Each row goes onto the route with the same entry and exit
+signal, matched on a signal key that drops the stations the names are
+written with (`S6 TLPR/50D LPI` = `S6/50D`, `S30 D` = `S30D`,
+`S7/104D OF LC.22` = `S7/104D`). A route into the next station matches the
+profile's row by its entry when the ToC names the exit only by the border
+tag. A calling-on route over the same tags takes the main route's rows.
+
+- **SSP:** each `(U, speed, length)` as `u` = speed / 5. A speed not in
+  5 km/h steps, or not universal, is said and the SSP left out.
+- **Gradient:** the **average** rows, as station 527 sends them. Rise is
+  uphill, fall and Level are downhill; the value is 1000/N truncated:
+  - F 1 in 209 → 4, R 1 in 260 → 3, R 1 in 221 → 4;
+  - Level → 0.
+- **Turnout:** speed / 5, start ("-": at the entry signal), length as the
+  release.
+- **LC gate:** distance, id and suffix, manned, class (Spl, A, B1, B2, B,
+  C, D), auto whistling and its type.
+- **Track conditions:** the type by Annexure-C's numbers, one row per
+  "<distance> From <signal>". A type given without a length is sent as 0 m,
+  and said once per sheet.
+- An SSP or gradient that does not cover its route exactly is left out and
+  said: the station would refuse the whole answer.
+
+**Fixed from 455.** The OS speed went in as km/h, but the field is
+`speed6`, in 5 km/h steps: a calling-on route's 15 km/h was sent as 75. It
+now goes as 15 / 5 = 3. "10 in Day / 08 in Night" (LPI's auto signals) takes
+the day's 10; the night's 8 is no 5 km/h step.
+
+**What the operator sees.** The KAVACH tab's SSP, Gradient, LC gates,
+Turnouts and Track conditions tabs hold the sheet's rows. Packet Maker's
+station sends them, cut at the MA end as before.
+
+**Seen on the real sheets.**
+- **Coverage:** 136 of the 139 routes get their SSP and 137 their
+  gradient; also 23 LC rows, 59 turnouts and 42 track conditions.
+- **Left out, and said:**
+  - TLPR S18: 3361 m of profile for a route of 2600 m of links;
+  - TLPR S15/14D: 1024 m against the 1034 m the ToC's 654 makes;
+  - TLPR S1D → S1: 813 m of SSP for 1080 m.
+- **Rows with no route:** LPI's S1637 → S1647 (its ToC row ends nowhere)
+  and SKP-NPL IB's `201ID OF LC.20A` exit (the ToC says S201 ID).
+- **Fouling marks** carry no length on any sheet: sent as 0 m.
+
+**Station 527 itself** (replay/loco_1_1_26062026_162418.cap) sent exactly
+these speed and gradient sub-packets:
+- SLRP 59357, S50-S48: 1670 m at 110; 1245 m downhill 4, 320 m 0, 105 m
+  uphill 3;
+- SLRP 59544, S50-S48 then S48-S43 at 80, uphill 4.
+
+Its **track conditions** were not the sheet's: "Reversing" over the whole
+route where the sheet gives fouling marks at 780 and 905 m. Its turnouts in
+other runs differ from the sheet as well. Said here; the sheets are what is
+read.
+
+**Files.** `scripts/kavach_sheets.py` (`row_bounds`, `read_profile`,
+`profile_rows`, `signal_key`, `apply_profile`; page numbers of ToC and
+profile extracts; each row's own sheet in its note);
+`schema/validate_kavach_sheets.py` (98 checks);
+`schema/fixtures/kavach_sheets/LPI_routes/` (new: LPI tag data pages 1-3,
+ToC pages 1 and 3, track profile pages 1-2, and the goldens),
+`schema/fixtures/kavach_sheets/NPL-TLPR_IB/` (+ its track profile);
+`tests/test_session456.cpp` (new), `tests/tests.pro`;
+`docs/KAVACH_SHEETS.md`, `CLAUDE.md`.
+
+**Tests.**
+- `validate_kavach_sheets.py`:
+  - LPI's S50-S48 and S48-S43 profiles;
+  - the whole local pack's SSP / gradient counts and the three profiles
+    left out.
+- `session456` (13 checks):
+  - the two routes' rows;
+  - DLConsole's answer at R-2, with S48 Red and then Yellow, against
+    station 527's SLRPs 59357 and 59544: speed and gradient sub-packets
+    row for row;
+  - the track conditions said to differ;
+  - the calling-on S50A-S48 at OS 15 km/h (speed6 3).
+- `session455` and the validator now expect the OS speed as speed6.
+- **Not tested:**
+  - LC gate rows against a real station (no captured SLRP carries one from
+    the sheets' stations but 527, which sent LC 191 a on a route the sheets
+    give none);
+  - non-universal speed classes (none on the sheets).
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators (18), 467 suites /
+11,820 checks, menu audit, smoke.
+
+---
+
 <a id="session-455"></a>
 ## Session 455 — a firm's Table of Control read into Stationary KAVACH routes
 

@@ -33,14 +33,14 @@ LOCAL = os.path.join(HERE, "..", "tests", "fixtures", "kavach_sheets")
 # copied from the next sections for the routes ending on them), routes, sheet
 # notes) for the whole local pack, read together.
 PACK = {
-    "GGD-21-07-2023": (521, 108, 110, 21, 5),
+    "GGD-21-07-2023": (521, 108, 110, 21, 6),
     "SKP-GGD IB": (522, 40, 44, 6, 1),
-    "SKP-21-07-2023": (523, 136, 140, 24, 20),
+    "SKP-21-07-2023": (523, 136, 140, 24, 21),
     "SKP-NPL IB-21-07-2023": (524, 28, 32, 6, 2),
-    "NPL": (525, 160, 164, 30, 8),
+    "NPL": (525, 160, 164, 30, 9),
     "NPL-TLPR IB": (526, 22, 26, 5, 1),
-    "TLPR": (501, 74, 78, 17, 6),
-    "LPI": (527, 144, 146, 30, 5),
+    "TLPR": (501, 74, 78, 17, 11),
+    "LPI": (527, 144, 146, 30, 7),
 }
 
 total = ok = 0
@@ -100,8 +100,8 @@ def main():
               and a.get("pkt_dir") == 2,
               "S14 ID-S14: 780 m and 240 m as printed (the tags lie 770 and 250), Reverse, each duplicate 4 m back")
         a = r.get("NPL S9/S2D TLPR-R-148 (501) Down Main", {})
-        check(a.get("next_stn") == 501 and a.get("tags", [{}])[-1] == {"dist": 230, "tag": 148} and a.get("os_speed") == 15,
-              "S9/S2D into the block: the last 230 m to TLPR's border tag R-148, handed over to 501, OS 15 km/h")
+        check(a.get("next_stn") == 501 and a.get("tags", [{}])[-1] == {"dist": 230, "tag": 148} and a.get("os_speed") == 3,
+              "S9/S2D into the block: the last 230 m to TLPR's border tag R-148, handed over to 501, OS 15 km/h (speed6 3)")
         sig = {g["name"]: g["foot_tag"] for g in k.get("signals", [])}
         check(sig.get("S9D") == 134 and sig.get("S14") == 179 and sig.get("R-183 (525)") == 183,
               "the signals at their foot tags, NPL's border signal by its tag")
@@ -111,6 +111,37 @@ def main():
         check(sorted(kavach_sheets.read_station_id(kavach_sheets.read_pages(os.path.join(FIXTURES, "NPL-TLPR_IB", f)))
                      for f in os.listdir(os.path.join(FIXTURES, "NPL-TLPR_IB")) if "CONTROL" in f) == [526],
               "the ToC's own Station ID: 526")
+    # session 456: the track profile
+    lay, notes = got.get("NPL-TLPR_IB", (None, []))
+    if lay:
+        r = {x["name"]: x for x in lay["kavach"]["routes"]}
+        a = r.get("S14 ID-S14 UP Main", {})
+        check([(x["d"], x["u"]) for x in a.get("ssp", [])] == [(126, 20), (894, 22)],
+              "IB S14 ID-S14: (U,100,126), (U,110,894) -> u 20, 22")
+        check([(x["d"], x["dir"], x["value"]) for x in a.get("gradient", [])]
+              == [(236, 0, 7), (200, 0, 0), (101, 0, 6), (301, 0, 0), (182, 1, 5)],
+              "IB S14 ID-S14's average gradients, 'F in 130' read as 1 in 130")
+        check(all(sum(x["d"] for x in rt["ssp"]) == sum(t["dist"] for t in rt["tags"]) for rt in r.values()),
+              "IB: every SSP covers its route")
+    lay, notes = got.get("LPI_routes", (None, []))
+    if lay:
+        r = {x["name"]: x for x in lay["kavach"]["routes"]}
+        a = r.get("S50-S48 Down Main", {})
+        check([(x["d"], x["u"]) for x in a.get("ssp", [])] == [(1670, 22)]
+              and [(x["d"], x["dir"], x["value"]) for x in a.get("gradient", [])] == [(1245, 0, 4), (320, 0, 0), (105, 1, 3)],
+              "LPI S50-S48: 1670 m at 110; F 1 in 209 -> 4, Level -> 0, R 1 in 260 -> 3 (as station 527 sent)")
+        check([(x["type"], x["sd"], x["ln"]) for x in a.get("track_conditions", [])] == [(8, 780, 0), (8, 905, 0)],
+              "LPI S50-S48: fouling marks 780 and 905 m from S50, no length on the sheet")
+        b = r.get("S48-S43 Down Main", {})
+        check([(x["d"], x["u"]) for x in b.get("ssp", [])] == [(534, 16)]
+              and [(x["d"], x["dir"], x["value"]) for x in b.get("gradient", [])] == [(534, 1, 4)],
+              "LPI S48-S43: 534 m at 80; R 1 in 221 -> 4")
+        c = r.get("S50-S47 Down Common Loop 1", {})
+        check(c.get("turnouts") == [{"speed": 3, "start": 808, "release": 1065}], "LPI S50-S47: turnout 15 km/h from 808 m for 1065 m")
+        d = r.get("S50A-S48 Down Main", {})
+        check(d.get("ssp") == a.get("ssp") and d.get("gradient") == a.get("gradient"),
+              "LPI S50A-S48 (calling-on over the same tags) takes S50-S48's profile")
+        check(has(notes, "Fouling Mark given without a length: sent as 0 m"), "LPI: lengthless fouling marks said once")
     lay, notes = got.get("SKP_extract", (None, []))
     if lay:
         check(len(lay["tags"]) == 42, "SKP pages 16-23: 42 tags")
@@ -177,6 +208,16 @@ def main():
         check(has(allnotes, "TLPR", "#7", "3 MA sections", "at Green"), "TLPR #7: 3 MA sections at Green")
         r = routes.get(("TLPR", "S15 TLPR/14D NPL-TLPR IB-S14 ID (526) Up Main Line"), {})
         check([x["dist"] for x in r.get("tags", [])] == [0, 40, 110, 654, 230], "TLPR #13's 654 m kept as printed")
+        # session 456
+        n = len(routes)
+        check(sum(1 for x in routes.values() if x["ssp"]) == n - 3 and sum(1 for x in routes.values() if x["gradient"]) == n - 2,
+              f"the profiles: all but 3 of the {n} routes have their SSP, all but 2 their gradient")
+        check(sum(len(x["lc"]) for x in routes.values()) == 23 and sum(len(x["turnouts"]) for x in routes.values()) == 59
+              and sum(len(x["track_conditions"]) for x in routes.values()) == 42,
+              "23 LC gate rows, 59 turnouts, 42 track conditions")
+        check(has(allnotes, "TLPR", "S18", "speed profile covers 3361 m of the route's 2600 m"),
+              "TLPR S18: 3361 m of profile for 2600 m of links, not taken")
+        check(has(allnotes, "TLPR", "S1D → S1", "813 m of the route's 1080 m"), "TLPR S1D-S1: 813 m of SSP for 1080 m")
     print(f"kavach sheets: {ok}/{total} {'PASS' if ok == total else 'FAIL'}")
     return 0 if ok == total else 1
 

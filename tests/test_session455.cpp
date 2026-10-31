@@ -96,8 +96,9 @@ TEST_SUITE(session455)
     CHECK(s.routes[r1].sectionType == 1 && s.routes[r1].authority == 2 && s.routes[r1].tin == 86 && s.routes[r4].tin == 85,
           "absolute block, FS; the TIN of the entry foot tag the way it runs (86 Down, 85 Up)");
     CHECK(numbers(s.routes[r3]) == (QVector<int>{ 142, 144, 146, 148 }) && dists(s.routes[r3]) == (QVector<int>{ 0, 48, 737, 230 })
-              && s.routes[r3].nextStn == 501 && s.routes[r3].osSpeed == 15,
-          "S9/S2D into the block: the last 230 m to TLPR's border tag R-148; hands over to 501; OS 15 km/h");
+              && s.routes[r3].nextStn == 501 && s.routes[r3].osSpeed == 3,
+          "S9/S2D into the block: the last 230 m to TLPR's border tag R-148; hands over to 501; OS 15 km/h "
+          "(speed6 3: session 456)");
     CHECK(s.routes[r6].nextStn == 525 && s.routes[r6].tags.last().tag == 183, "S14 into the block: to NPL's border tag R-183, station 525");
     CHECK(dists(s.routes[r4]) == (QVector<int>{ 0, 780, 240 }) && s.routes[r4].tags[1].dupDir == 1,
           "S14 ID-S14 as printed, 780 m and 240 m; each duplicate 4 m back (dup_dir Reverse)");

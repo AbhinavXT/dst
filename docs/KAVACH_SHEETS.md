@@ -86,6 +86,28 @@ Station Layout's own KAVACH checks then compare the linking distances with
 the tags' locations; a junction tag counts at either of its two locations
 (session 455).
 
+**Track profile** (session 456). Each row goes onto the route with the same
+entry and exit signal. They are matched on a signal key that drops the
+stations a name is written with: `S6 TLPR/50D LPI` matches `S6/50D`,
+`S30 D` matches `S30D`, `S7/104D OF LC.22` matches `S7/104D`. A calling-on
+route over the same tags takes the main route's rows.
+
+- **SSP:** each `(U, speed, length)`, the speed / 5.
+- **Gradient:** the **average** rows, as station 527 sends them. Rise is
+  uphill, fall and Level are downhill, and the value is 1000/N truncated
+  (F 1 in 209 → 4, Level → 0).
+- **Turnout:** speed / 5, start ("-": at the entry signal), and its length
+  as the release.
+- **LC gate:** distance, id and suffix, manned, class, auto whistling.
+- **Track conditions:** Annexure-C's types, one row per "<distance> From
+  <signal>". A type given without a length goes as 0 m, and that is said.
+- **Coverage:** an SSP or gradient that does not cover its route exactly is
+  left out and said, since the station would refuse the whole answer.
+
+Station 527's own SLRPs of 26 Jun 2026 carry exactly these speed and
+gradient rows for S50-S48 and S48-S43. Its track conditions and turnouts
+were other than the sheets'.
+
 ## What the sheets do not agree on
 
 Nothing is corrected. Each disagreement is one line in the file's
@@ -125,6 +147,10 @@ From the Tables of Control (151 rows; 139 routes):
   - gives 590 m of its 790 m.
 - **MA sections:** TLPR #7 gives 3 MA sections at Green.
 
+From the track profiles: TLPR S18's 3361 m against its 2600 m of links;
+S15/14D's 1024 m against the 1034 m the ToC's 654 makes; S1D → S1's 813 m
+of SSP for 1080 m. Fouling marks carry no length on any sheet.
+
 They are said as what each sheet shows; which one is right is for the
 signatories.
 
@@ -132,7 +158,9 @@ signatories.
 
 - `schema/validate_kavach_sheets.py` (a gate validator) reads the committed
   extracts in `schema/fixtures/kavach_sheets/`:
-  - all of NPL-TLPR IB's tag data and Table of Control;
+  - all of NPL-TLPR IB's tag data, Table of Control and track profile;
+  - LPI's tag data pages 1-3, ToC pages 1 and 3, track profile pages 1-2
+    (`LPI_routes`);
   - SKP pages 16-23;
   - LPI pages 1 and 12.
 
@@ -143,9 +171,10 @@ signatories.
 - `session454` checks what DLConsole does with the files' tag notes.
 - `session455` checks the IB's routes, the checks they raise, the junction
   locations, and the station answering a loco and handing it over to TLPR.
+- `session456` checks LPI's profiles against station 527's own SLRPs.
 
 ## Not yet
 
-The track profile and the TSR route table are not read yet. Signals' info
+The TSR route table is not read yet. Signals' info
 (CUR_SIG_INFO) and the STN version are not on the sheets: 0. A signal
 starts at Red.
