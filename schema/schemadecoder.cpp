@@ -111,7 +111,7 @@ static QString hexRange(const uchar *b, int from, int len)
 }
 
 // ---- composite formatters (the one escape hatch; mirrors engine.FORMATTERS)
-static QString sigDir(qint64 v)
+QString sigDirName(qint64 v)
 {
     switch (v) {
         case 0:  return "UP";       case 1:  return "DN";       case 2:  return "UP FAST";
@@ -121,7 +121,7 @@ static QString sigDir(qint64 v)
         default: return "undefined";
     }
 }
-static QString sigKind(qint64 v)
+QString sigKindName(qint64 v)
 {
     switch (v) {
         case 0x10: return "Dist";            case 0x11: return "Inr-Dist";
@@ -196,7 +196,7 @@ QString Decoder::composite(const QString &name, qint64 v)
         const qint64 line = v & 0x1F, dr = (v >> 5) & 0xF, kind = (v >> 9) & 0x3F,
                      ovr = (v >> 15) & 1, stop = (v >> 16) & 1;
         return QStringLiteral("0x%1  [type=%2  dir=%3  line=%4  override=%5  stop_sig=%6]")
-            .arg(v, 0, 16).arg(sigKind(kind)).arg(sigDir(dr))
+            .arg(v, 0, 16).arg(sigKindName(kind)).arg(sigDirName(dr))
             .arg(line == 0 ? QStringLiteral("n/a") : QString::number(line))
             .arg(ovr ? QStringLiteral("running") : QStringLiteral("standstill"))
             .arg(stop ? QStringLiteral("Y") : QStringLiteral("N"));

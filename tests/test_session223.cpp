@@ -30,6 +30,7 @@ TEST_SUITE(session223)
     StationLayoutWindow w;
     CHECK(w.reopenLast(), "the built-in layout opens");
     w.resize(1400, 800);
+    w.setStepsShown(false);   // session 459: the drawing at the width these numbers were set for
     w.show();
     QApplication::processEvents();
     StationLayoutCanvas *c = w.canvas();

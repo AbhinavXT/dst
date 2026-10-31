@@ -53,8 +53,9 @@ StationStepsPanel::StationStepsPanel(QWidget *parent)
     v->addWidget(m_problemsTitle);
     v->addWidget(m_problems, 1);
     v->addStretch(0);
-    // Narrow enough that Station Layout's bar still leaves room for wider fonts (session 210: <= 1000 px).
-    setMinimumWidth(190);
+    // No floor of its own: Station Layout's minimum width stays what it was without the steps (session 210:
+    // <= 1000 px, with Linux's wider fonts too); the window gives it its width (StationLayoutWindow).
+    setMinimumWidth(1);
     setMaximumWidth(340);
 
     connect(m_new, &QPushButton::clicked, this, &StationStepsPanel::newStationRequested);

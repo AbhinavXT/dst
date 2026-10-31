@@ -1,8 +1,10 @@
 #include "stationkavacheditor.h"
 
 #include "stationlayout.h"
+#include "stationsignals.h"
 #include "uicolors.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDialog>
 #include <QDialogButtonBox>
@@ -190,7 +192,13 @@ StationKavachEditor::StationKavachEditor(QWidget *parent) : QWidget(parent)
                                                       "changes it while answering"));
     auto *addSig = button(tr("Add signal"), QStringLiteral("skeAddSignal"), upper);
     auto *delSig = button(tr("Delete"), QStringLiteral("skeDeleteSignals"), upper);
-    upper->addWidget(withButtons(m_signals, { addSig, delSig }, upper));
+    // Session 461: CUR_SIG_INFO field by field.
+    auto *sigInfo = button(tr("Info…"), QStringLiteral("skeSignalInfo"), upper);   // short: the window keeps <= 1000 px (session 210)
+    sigInfo->setToolTip(tr("The selected signal's CUR_SIG_INFO by its fields: type, direction, line, override, stop signal"));
+    connect(sigInfo, &QPushButton::clicked, this, [this]() {
+        if (QDialog *d = signalInfoDialog(m_signals->currentRow())) { d->exec(); delete d; }
+    });
+    upper->addWidget(withButtons(m_signals, { addSig, sigInfo, delSig }, upper));
     connect(addSig, &QPushButton::clicked, this, &StationKavachEditor::addSignal);
     connect(delSig, &QPushButton::clicked, this, &StationKavachEditor::deleteSignals);
     connect(m_signals, &QTableWidget::cellChanged, this, [this]() { if (!m_filling) onSignalsEdited(); });
@@ -254,6 +262,13 @@ StationKavachEditor::StationKavachEditor(QWidget *parent) : QWidget(parent)
         m_listTabs->addTab(m_lists[l], tr(kListTitle[l]));
         connect(m_lists[l], &QTableWidget::cellChanged, this, [this, l]() { if (!m_filling) onListEdited(List(l)); });
     }
+    // Session 461: what the station would give a loco on the route at each aspect of its exit signal.
+    m_maTable = makeTable({ tr("Exit signal at"), tr("Sections"), tr("MA (m)"), tr("The MA's routes"), tr("Note") },
+                          QStringLiteral("skeMaByAspect"), m_listTabs);
+    m_maTable->setEditTriggers(QAbstractItemView::NoEditTriggers);
+    m_maTable->setToolTip(tr("The MA the station would answer a loco on this route with, its exit signal at each aspect, "
+                             "the signals beyond at Green and the points as the route sets them (MA sections by aspect, above)"));
+    m_listTabs->addTab(m_maTable, tr("MA by aspect"));
     m_lists[Tags]->horizontalHeaderItem(0)->setToolTip(tr("The linking distance from the tag before; the first tag "
                                                           "(the entry signal's foot tag) is at 0"));
     m_lists[Tags]->horizontalHeaderItem(2)->setToolTip(tr("TagLinking dup_dir of this tag"));
@@ -296,6 +311,10 @@ StationKavachEditor::StationKavachEditor(QWidget *parent) : QWidget(parent)
     m_poles->setToolTip(tr("A TSR from one OHE pole to another of a TSR route (the station's TSR route table): "
                            "a TSR row on each route it covers, from where the poles lie"));
     dv->addWidget(withButtons(m_listTabs, { addRow, delRow, m_pick, m_poles }, detail), 1);
+    connect(m_listTabs, &QTabWidget::currentChanged, this, [this, addRow, delRow](int i) {   // session 461: the MA tab is read-only
+        addRow->setEnabled(i < ListCount);
+        delRow->setEnabled(i < ListCount);
+    });
     connect(m_poles, &QPushButton::clicked, this, [this]() {
         if (m_station.tsrRoutes.isEmpty()) return;
         QDialog d(this);
@@ -515,6 +534,7 @@ void StationKavachEditor::fill()
         m_signals->setItem(i, 0, item(g.name));
         m_signals->setItem(i, 1, item(QString::number(g.footTag)));
         m_signals->setItem(i, 2, item(QString::number(g.sigInfo)));
+        m_signals->item(i, 2)->setToolTip(StationSignals::describe(g.sigInfo) + tr("\nInfo… sets it field by field"));
         enumCell(m_signals, i, 3, QStringLiteral("sigAspect"), g.aspect, [this]() { onSignalsEdited(); });
     }
     m_signals->resizeColumnsToContents();
@@ -565,6 +585,7 @@ void StationKavachEditor::fillRoute()
     if (!any) {
         m_routeLabel->setText(tr("Select a route to edit its tags and track profile."));
         for (QTableWidget *t : m_lists) t->setRowCount(0);
+        m_maTable->setRowCount(0);
         for (int l = 0; l < ListCount; ++l) m_listTabs->setTabText(l, tr(kListTitle[l]));
         m_filling = false;
         emit routeSelected(-1);
@@ -582,6 +603,7 @@ void StationKavachEditor::fillRoute()
     m_routeLabel->setToolTip(tr("The MA from this route as the station would answer with the aspects at start "
                                 "(Signals); on the drawing, this route and the sections beyond it"));
 
+    fillMaTable();
     QTableWidget *tags = m_lists[Tags];
     tags->setRowCount(r.tags.size());
     int at = 0;
@@ -866,7 +888,7 @@ bool StationKavachEditor::addTsrByPoles(int tsrRoute, const QString &from, const
 
 void StationKavachEditor::addListRow()
 {
-    if (m_route < 0 || m_route >= m_station.routes.size()) return;
+    if (m_route < 0 || m_route >= m_station.routes.size() || m_listTabs->currentIndex() >= ListCount) return;
     const List l = List(m_listTabs->currentIndex());
     Station next = m_station;
     Route &r = next.routes[m_route];
@@ -891,7 +913,7 @@ void StationKavachEditor::addListRow()
 
 void StationKavachEditor::deleteListRows()
 {
-    if (m_route < 0 || m_route >= m_station.routes.size()) return;
+    if (m_route < 0 || m_route >= m_station.routes.size() || m_listTabs->currentIndex() >= ListCount) return;
     const List l = List(m_listTabs->currentIndex());
     Station next = m_station;
     Route &r = next.routes[m_route];
@@ -1015,5 +1037,97 @@ QDialog *StationKavachEditor::proposeDialog()
         if (addProposedRoutes(picked)) d->accept();
     });
     d->resize(1100, 560);
+    return d;
+}
+
+// ---- session 461: signal info, the MA by aspect --------------------------------------
+
+void StationKavachEditor::fillMaTable()
+{
+    const QVector<StationSignals::MaRow> rows = StationSignals::maTable(m_station, m_route);
+    m_maTable->setRowCount(rows.size());
+    for (int i = 0; i < rows.size(); ++i) {
+        const StationSignals::MaRow &x = rows.at(i);
+        auto ro = [](const QString &t) { auto *it = new QTableWidgetItem(t); it->setFlags(it->flags() & ~Qt::ItemIsEditable); return it; };
+        m_maTable->setItem(i, 0, ro(StationKavach::aspectName(x.aspect)));
+        m_maTable->setItem(i, 1, ro(x.got == x.wanted ? QString::number(x.got) : tr("%1 of %2").arg(x.got).arg(x.wanted)));
+        m_maTable->setItem(i, 2, ro(QString::number(x.maEnd)));
+        m_maTable->setItem(i, 3, ro(x.routes.join(QStringLiteral(" → "))));
+        auto *note = ro(x.note);
+        if (!x.note.isEmpty()) note->setForeground(UiColor::warning());
+        m_maTable->setItem(i, 4, note);
+    }
+    m_maTable->resizeColumnsToContents();
+}
+
+bool StationKavachEditor::setSignalInfo(int row, qint64 info)
+{
+    if (row < 0 || row >= m_station.signalList.size()) { refuse(tr("Select a signal first")); return false; }
+    if (info < 0 || info >= (1 << 17)) { refuse(tr("Signal info %1 does not fit its 17 bits").arg(info)); return false; }
+    Station next = m_station;
+    next.signalList[row].sigInfo = info;
+    commit(next, tr("edit KAVACH signal %1's info").arg(next.signalList[row].name));
+    emit said(tr("Signal %1: %2 (%3)").arg(next.signalList[row].name, StationSignals::describe(info)).arg(info));
+    return true;
+}
+
+QDialog *StationKavachEditor::signalInfoDialog(int row)
+{
+    if (row < 0 || row >= m_station.signalList.size()) { refuse(tr("Select a signal first")); return nullptr; }
+    const StationKavach::Signal g = m_station.signalList.at(row);
+    const StationSignals::SigInfo now = StationSignals::unpack(g.sigInfo);
+    auto *d = new QDialog(this);
+    d->setObjectName(QStringLiteral("skeSignalInfoDialog"));
+    d->setWindowTitle(tr("Signal info: %1").arg(g.name));
+    auto *form = new QFormLayout(d);
+    auto *kind = new QComboBox(d);
+    kind->setObjectName(QStringLiteral("skeSigKind"));
+    for (const auto &k : StationSignals::kinds()) kind->addItem(QStringLiteral("%1 (0x%2)").arg(k.second).arg(k.first, 2, 16, QLatin1Char('0')), k.first);
+    if (kind->findData(now.kind) < 0) kind->addItem(tr("%1 (no name)").arg(now.kind), now.kind);
+    kind->setCurrentIndex(kind->findData(now.kind));
+    auto *dir = new QComboBox(d);
+    dir->setObjectName(QStringLiteral("skeSigDir"));
+    for (const auto &x : StationSignals::directions()) dir->addItem(x.second, x.first);
+    if (dir->findData(now.dir) < 0) dir->addItem(tr("%1 (no name)").arg(now.dir), now.dir);
+    dir->setCurrentIndex(dir->findData(now.dir));
+    auto *line = new QSpinBox(d);
+    line->setObjectName(QStringLiteral("skeSigLine"));
+    line->setRange(0, 31);
+    line->setSpecialValueText(tr("not applicable"));
+    line->setValue(now.line);
+    auto *running = new QCheckBox(tr("Running (override); off: standstill"), d);
+    running->setObjectName(QStringLiteral("skeSigRunning"));
+    running->setChecked(now.running);
+    auto *stop = new QCheckBox(tr("A stop signal"), d);
+    stop->setObjectName(QStringLiteral("skeSigStop"));
+    stop->setChecked(now.stop);
+    auto *value = new QLabel(d);
+    value->setObjectName(QStringLiteral("skeSigValue"));
+    form->addRow(tr("Type"), kind);
+    form->addRow(tr("Direction"), dir);
+    form->addRow(tr("Line number"), line);
+    form->addRow(running);
+    form->addRow(stop);
+    form->addRow(tr("CUR_SIG_INFO"), value);
+    auto read = [=]() {
+        StationSignals::SigInfo s;
+        s.kind = kind->currentData().toInt();
+        s.dir = dir->currentData().toInt();
+        s.line = line->value();
+        s.running = running->isChecked();
+        s.stop = stop->isChecked();
+        return StationSignals::pack(s);
+    };
+    auto show = [=]() { value->setText(tr("%1 (0x%2): %3").arg(read()).arg(read(), 0, 16).arg(StationSignals::describe(read()))); };
+    connect(kind, QOverload<int>::of(&QComboBox::currentIndexChanged), d, show);
+    connect(dir, QOverload<int>::of(&QComboBox::currentIndexChanged), d, show);
+    connect(line, QOverload<int>::of(&QSpinBox::valueChanged), d, show);
+    connect(running, &QCheckBox::toggled, d, show);
+    connect(stop, &QCheckBox::toggled, d, show);
+    show();
+    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, d);
+    form->addRow(buttons);
+    connect(buttons, &QDialogButtonBox::rejected, d, &QDialog::reject);
+    connect(buttons, &QDialogButtonBox::accepted, d, [this, d, row, read]() { if (setSignalInfo(row, read())) d->accept(); });
     return d;
 }

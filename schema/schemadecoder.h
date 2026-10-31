@@ -34,6 +34,12 @@
 
 namespace Schema {
 
+// Session 461: CUR_SIG_INFO's signal type (bits 9-14) and direction (bits
+// 5-8) in words, as the sigInfo formatter shows them; "undefined" for a
+// code with no name.
+QString sigKindName(qint64 kind);
+QString sigDirName(qint64 dir);
+
 // The captype tokens a <packet match="..."> answers to.
 //
 // A packet may name more than one, comma-separated —

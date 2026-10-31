@@ -117,6 +117,22 @@ route whose signals the layout has comes out with HBL's tags, linking
 distances and Reverse points. Its Normal points are HBL's less the flank
 points.
 
+## Signals and movement authority (session 461)
+
+- **Info…** (KAVACH tab, beside the signals) sets a signal's
+  CUR_SIG_INFO by its fields: type (Home, Adv-Str, Auto, …), direction
+  (DN MAIN, UP, …), line number, running override, stop signal. The value
+  is shown as it is built. Hover the Signal info cell to see it in words.
+- **MA by aspect** (a tab of the selected route): the MA the station would
+  give a loco on the route with its exit signal at Red, calling-on,
+  Yellow, Double Yellow and Green. The signals beyond are at Green and the
+  points as the route sets them. These are the numbers Packet Maker
+  answers with; a route with fewer routes on than the aspect wants is
+  said.
+- **The layout's signals against the KAVACH data's:** a different foot tag,
+  a signal in one list and not the other, a route's signal with no KAVACH
+  row. Listed under the Routes step.
+
 ## The tag form
 
 Select a tag (on the drawing or in the Tags table) and turn on View ▸

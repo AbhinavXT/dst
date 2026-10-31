@@ -100,6 +100,7 @@ TEST_SUITE(session233)
     StationLayoutWindow w;
     CHECK(w.reopenLast() && w.station().signalList.size() == 36 && w.station().points.size() == 18, "the built-in station");
     w.resize(1200, 760);
+    w.setStepsShown(false);   // session 459: the drawing at the width these numbers were set for
     w.show();
     StationLayoutCanvas *c = w.canvas();
     c->grab();

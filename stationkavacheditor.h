@@ -101,6 +101,11 @@ public:
     // The dialog (built, not shown: Propose routes… execs it).
     QDialog *proposeDialog();
     QPushButton *proposeButton() const { return m_propose; }
+    // Session 461: a signal's CUR_SIG_INFO set (one edit; refused past 17 bits), and its
+    // dialog by fields (built, not shown). The selected route's MA at each aspect: maTable().
+    bool setSignalInfo(int row, qint64 info);
+    QDialog *signalInfoDialog(int row);
+    QTableWidget *maTable() const { return m_maTable; }
 
 signals:
     // The new "kavach" block (empty: removed) and the Undo label.
@@ -136,6 +141,8 @@ private:
     QPushButton *m_pick = nullptr;
     QPushButton *m_poles = nullptr;    // session 457
     QPushButton *m_propose = nullptr;  // session 460
+    QTableWidget *m_maTable = nullptr; // session 461
+    void fillMaTable();
     QStackedWidget *m_stack = nullptr;
     QPushButton *m_start = nullptr;
     QSpinBox  *m_stationId = nullptr, *m_stnVersion = nullptr;

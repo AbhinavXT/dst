@@ -10,6 +10,99 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-461"></a>
+## Session 461 — a station's signals and the MA each route would get
+
+The plan's 461 (docs/STATION_TEST_RIG_PLAN.md): the signals' CUR_SIG_INFO
+set by its fields, the layout's signals and the KAVACH data's as one list,
+and the MA each route would be given at each aspect.
+
+**What it does.**
+- **`StationSignals`** (`stationsignals.{h,cpp}`, new):
+  - **CUR_SIG_INFO** unpacked and packed by its fields: line (bits 0-4),
+    direction (5-8), type (9-14), override (15), stop signal (16), named
+    as the decoder names them. `Schema::sigKindName` / `sigDirName` are
+    now public.
+  - **`reconcile`**: where the layout's station signals and the KAVACH
+    signals disagree:
+    - a KAVACH signal the layout lacks;
+    - a different foot tag;
+    - a signal a route names with no KAVACH row.
+
+    A file of KAVACH data alone (no station signals drawn) is not
+    compared.
+  - **`maTable`**: for a route, its exit signal at Red, calling-on, Yellow,
+    Double Yellow and Green:
+    - the sections wanted and found, MA_W_R_T_SIG, the sections' routes;
+    - fewer routes on than wanted is said;
+    - worked out by `StationKavach::sectionsFrom`, the signals beyond at
+      Green, the points as the route sets them.
+- **KAVACH tab:**
+  - **Info…** (beside the signals) sets the selected signal's CUR_SIG_INFO from pickers
+    (type, direction), a line number and two boxes, its value shown live;
+    one Undo step, refused past 17 bits;
+  - each signal's info in words as its tooltip;
+  - the route's new **MA by aspect** tab; Add / Delete row are greyed
+    there.
+- **The Routes step** lists `reconcile`'s lines (and Checks, as
+  "KAVACH: …").
+
+**Seen.** Station 527 (section30_527.json, from its SLRPs):
+- S43 66400 = DN MAIN, Adv-Str, stop; A900 77664 = DN MAIN, Semi-Auto
+  Lit, stop.
+- S43-A900: MA 1116 m at Red, 1956 m at Yellow. From S48 with S43 Yellow:
+  1650 m. The MAs 527 sent (session 422).
+- At Green, 4 sections are wanted and the file has 2 routes on: 1956 m,
+  said.
+
+**Files.** `stationsignals.{h,cpp}` (new, `dlcore.pri`);
+`schema/schemadecoder.{h,cpp}` (`sigKindName`, `sigDirName` public);
+`stationkavacheditor.{h,cpp}` (Info…, `setSignalInfo`,
+`signalInfoDialog`, the MA by aspect tab); `stationlayoutwindow.cpp`
+(reconcile into the KAVACH notes, the steps' width, the nearest tag);
+`stationsteps.cpp` (no floor); `tests/test_session{220,222,223,233}.cpp`
+(the steps hidden); `tests/test_session461.cpp` (new),
+`tests/tests.pro`; `docs/STATION_BUILDER.md`.
+
+**Tests.** `session461` (24 checks):
+- 527's two real values, field by field, packed back;
+- every bit in its field;
+- the pickers' 36 types and 12 directions;
+- the MA by aspect against 527's real MAs (1116, 1956, 1650) and the
+  engine's own sections;
+- reconcile: silent on KAVACH-only data and on agreeing lists; a foot tag
+  off, a missing signal and a missing KAVACH row each said;
+- the dialog setting Home in one edit; two refusals;
+- the MA tab's 1956 m at Yellow; Add row doing nothing there;
+- the Routes step listing a foot tag off.
+
+**Not tested:** a junction route indicator's aspects (3-8, 12-13, the
+stencils) in the MA preview: it shows the five main aspects only.
+
+**CI after 459 and 460 (Linux, Windows; Linux Qt 6 was green).**
+- **Minimum width.** Linux's wider fonts made Station Layout's minimum
+  width 1075 px with the steps panel's 190 px floor. The panel now has no
+  floor of its own (it starts 240 px wide and can be squeezed), so the
+  window's minimum is what it was before 459.
+- **Drawing tests.** The steps take width from the drawing. Sessions 220,
+  222, 223 and 233 measure and click it at window sizes set before the
+  steps existed (on Linux / Windows: a place 1 m off, a Ctrl + click on a
+  neighbour, the sheet wider than the window). They now hide the steps, so
+  the drawing is the width their numbers were set for.
+- **Nearest-tag click (459).** It keeps the drawing's own order unless
+  another tag is more than 2 px nearer. A tag and its duplicate 4 m on lie
+  within a pixel; 459's strict "nearest" picked 148D for a right-click on
+  148.
+
+The button reads **Info…**, not "Signal info…": the longer label made
+Station Layout's minimum width 1014 px on Qt 5, and the window must stay
+within 1000 px (session 210; the Qt 5 gate caught it).
+
+**Gate.** Green on Qt 5.15 and Qt 6: validators (18), 472 suites / 11,961 checks, menu
+audit, smoke.
+
+---
+
 <a id="session-460"></a>
 ## Session 460 — a station's routes proposed from its layout
 

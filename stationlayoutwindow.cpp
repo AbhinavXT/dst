@@ -2,6 +2,7 @@
 #include "stationinterlock.h"
 #include "stationkavach.h"
 #include "stationkavacheditor.h"
+#include "stationsignals.h"
 #include "stationsteps.h"
 #include "stationstretch.h"
 #include "packetbuilder.h"
@@ -627,7 +628,9 @@ QString StationLayoutCanvas::tagAt(const QPointF &pos) const
         if (h.tag.isEmpty() || !h.rect.contains(pos)) continue;
         const QPointF c = m_loc.contains(h.tag) ? tagRect(h.tag).center() : h.rect.center();
         const double d = QLineF(c, pos).length();
-        if (best.isEmpty() || d < bestD) { best = h.tag; bestD = d; }
+        // A tag and its duplicate 4 m on are drawn within a pixel of each other: the first hit (the drawing's
+        // own order, as before) keeps it unless another tag is clearly nearer.
+        if (best.isEmpty() || d < bestD - 2.0) { best = h.tag; bestD = d; }
     }
     return best;
 }
@@ -2392,6 +2395,7 @@ StationLayoutWindow::StationLayoutWindow(QWidget *parent)
     guided->setStretchFactor(0, 0);
     guided->setStretchFactor(1, 1);
     guided->setCollapsible(1, false);
+    guided->setSizes({ 240, 940 });   // the panel adds nothing to the minimum width: given its width here
     m_stepsBtn->setCheckable(true);
     m_stepsBtn->setChecked(true);
     connect(m_stepsBtn, &QAction::toggled, this, [this](bool on) { setStepsShown(on); });
@@ -2627,6 +2631,8 @@ void StationLayoutWindow::refreshAll()
         QStringList notes;
         if (!StationKavach::fromJson(m_layout.kavach, &ks, &err, &notes)) { found << tr("KAVACH: %1").arg(err); kavachNotes << err; }
         routeCount = ks.routes.size();
+        // Session 461: the layout's signals and the KAVACH data's, where they disagree.
+        for (const QString &c : StationSignals::reconcile(m_layout, ks)) { found << tr("KAVACH: %1").arg(c); kavachNotes << c; }
         QSet<int> ids;
         for (const StationLayout::Tag &t : m_layout.tags)
             ids.insert((t.name.endsWith(QLatin1Char('D')) ? t.name.chopped(1) : t.name).toInt());
