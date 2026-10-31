@@ -10,6 +10,77 @@ are in the first commit if the originals are ever needed.
 
 ---
 
+<a id="session-453"></a>
+## Session 453 — the brake chain: each brake KAVACH applied, link by link
+
+Abhinav: *"What we can make with all the frames from kavach, biu and analog
+card"*. Of the six offered he picked the brake chain timeline, as a new
+Monitor tool, with all four links, and analog channels 1-3 read as BP, BC, MR
+in kg/cm² (every real analog frame so far is zero, so the order could not be
+read off the data).
+
+**What the operator sees.** Tools ▸ Monitor ▸ Equipment ▸ **Brake chain…**,
+on the current tab (live or opened from a file):
+- **A table, one row per brake KAVACH applied**: DMI `brake_type` turning to
+  NB, FSB, EB or LE (a new row also when it changes from one to another),
+  the speed then, and the time from that decision to each link the capture
+  shows:
+  - **Brake output**: a DOP1 / DOP2 brake pin's `output=` bit changing
+    (normal / full-service / emergency / light-engine), as logged; which value
+    applies the brake is not interpreted;
+  - **Relay feedback**: a DIP `*_relay_fb_*` bit (or DIP_OLD `*_fdbk`);
+  - **BIU command**: `@biu_cmd` A9 / SA9, their validity or the isolate bit
+    differing from the command before;
+  - **BIU pressure moves / at target**: `@biu_press` BP or BC 0.1 kg/cm² from
+    where it stood, then within 0.1 of the command's targets;
+  - **Analog pressure moves / at target**: the same on `@analog_top` /
+    `@analog_bottom` channels 1 and 2;
+  - **Speed falls / standstill**: DMI `train_speed` 1 km/h below the onset's,
+    then 0 ("standing" when the loco stood at the decision).
+  
+  "—" is a link the capture does not show, never a failure. The reasons
+  column is session 175's.
+- **A chart of the row picked**: the BIU's BP / BC, A9 / SA9 dashed, the
+  analog cards' BP / BC dotted, the speed on its own axis, from 2 s before the
+  decision, a mark at each link (links at the same moment share a label).
+  Hover for the values; click, or double-click a table cell, to jump the log
+  to that moment. Under it, each link in words.
+- Export CSV… (a row per application, a column per link in seconds), Save
+  image…, Rebuild. The status line names what the tab lacks (no @dop / @dip,
+  no @biu_cmd, no analog).
+- A link is looked for from 2 s before the decision (a .cap is stamped to
+  the second, so a link can share it or log first) to the next decision, at
+  most 60 s after. A live tab's arrival times are to the millisecond.
+
+**On real data** (`replay/2026-10-08/loco_1_1_08102026_101300.cap`): three
+EBs, at 10:15:22, 10:15:48 and 10:16:20. Each has the DOP brake outputs and
+the DIP2 LE relay feedback changing in the same second. The last two came at
+14 km/h: the speed fell at +2 s and the loco stood at +8 s.
+
+**Files.** `brakechain.{h,cpp}`, `brakechainwindow.{h,cpp}` (new, in
+`dlcore.pri`), `mainwindow.h`, `mainwindow_menus.cpp`, `mainwindow_tools.cpp`,
+`tests/test_session453.cpp` (new), `tests/tests.pro`,
+`tests/menuaudit_main.cpp` (Monitor ▸ Equipment has Brake chain: 20 entries).
+
+**Tests.** `session453` (25 checks). On the real capture, as
+`schema/engine.py` reads it: the three EBs and their times; the outputs and
+the relay feedback at +0 s, named; no BIU or analog link (no @biu_*, the
+analog frames all zero); standing at the first, 14 km/h at the other two with
+the speed falling at +2 s and standstill at +8 s; the reasons as
+`RunReport::brakeEvents`; the CSV; the table, the chart's hover, a
+double-click's jump. Made `@biu_*` / analog lines around the real 10:15:22
+EB: the command at +0.250 s (A9 5.00 → 0.00, SA9 0.00 → 2.40), BIU moves
++0.5 s, at target +2 s, analog moves +0.75 s, at target +2.5 s; an unchanged
+command at the next EB is not a link.
+- **Not tested:** real `@biu_*` lines and non-zero analog frames (none
+  captured yet); the analog channel order is Abhinav's assumption until one
+  is. Brake outputs and relays are only as the DIO logs show them: a .cap
+  without the IOA's serial logs has neither.
+
+**Gate.** Green on Qt 5.15 and Qt 6.11: validators, 464 suites / 11,757 checks, menu audit, smoke.
+
+---
+
 <a id="session-452"></a>
 ## Session 452 — the Brake Test Bench runs on the log port, from the VCC's @biu_* lines
 

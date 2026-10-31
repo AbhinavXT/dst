@@ -390,7 +390,7 @@ int main(int argc, char **argv) {
             { monRunning,   { "Braking Curves", "Plot field over time", "Speed vs distance",
                               "Two-loco view", "SoS", "Track diagram" } },
             { monEquipment, { "Radio and GPS health", "Odometry at the tags", "Fault timeline",
-                              "Cab inputs and outputs", "Reader direction" } },
+                              "Cab inputs and outputs", "Brake chain", "Reader direction" } },
             { monReports,   { "Run summary report", "Mission report", "Fleet summary", "Incident report" } },
         };
         int total = 0;
@@ -403,7 +403,7 @@ int main(int argc, char **argv) {
                     printf("      missing from its group: %s\n", qPrintable(t));
                 }
         }
-        CHECK(allThere && total == 19, "every former Monitor entry is in its group (19)");
+        CHECK(allThere && total == 20, "every former Monitor entry is in its group (19, and Brake chain since 453)");
     }
     CHECK(monLive && findAction(monLive, "Live Loco Console"), "Monitor > Live > Live Loco Console");
     // Session 247: the three NMS packet logs; session 248: in their own group;

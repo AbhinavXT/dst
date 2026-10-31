@@ -603,6 +603,13 @@ MainWindow::MenuRoots MainWindow::buildMenus()
                             "(DMI buttons, cab forward / reverse, horn, traction cut-off, brake relays), under the mode"));
     connect(actCabIo, &QAction::triggered, this, &MainWindow::onActionCabIo);
 
+    // Session 453: each brake KAVACH applied, and how long each link took.
+    QAction *actBrakeChain = equipmentMenu->addAction(tr("&Brake chain…"));
+    actBrakeChain->setObjectName(QStringLiteral("actBrakeChain"));
+    actBrakeChain->setToolTip(tr("Each brake KAVACH applied in the current tab, and the time from the decision to the "
+                                 "brake output, relay feedback, BIU command and pressures, analog pressures and the speed falling"));
+    connect(actBrakeChain, &QAction::triggered, this, &MainWindow::onActionBrakeChain);
+
     // Session 247: every NMS packet as a table row, exportable as CSV / .xlsx.
     // Session 248: in their own Monitor group.
     const struct { NmsLog::Kind kind; const char *text, *name, *tip; } nmsLogs[] = {

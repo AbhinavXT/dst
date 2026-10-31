@@ -122,6 +122,8 @@ SOURCES += \
     $$PWD/fleetwindow.cpp \
     $$PWD/faulttimeline.cpp \
     $$PWD/faulttimelinewindow.cpp \
+    $$PWD/brakechain.cpp \
+    $$PWD/brakechainwindow.cpp \
     $$PWD/iotimeline.cpp \
     $$PWD/iotimelinewindow.cpp \
     $$PWD/cabio.cpp \
@@ -347,6 +349,8 @@ HEADERS += \
     $$PWD/fleetwindow.h \
     $$PWD/faulttimeline.h \
     $$PWD/faulttimelinewindow.h \
+    $$PWD/brakechain.h \
+    $$PWD/brakechainwindow.h \
     $$PWD/iotimeline.h \
     $$PWD/iotimelinewindow.h \
     $$PWD/cabio.h \

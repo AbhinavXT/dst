@@ -113,6 +113,7 @@
 #include "fleetwindow.h"
 #include "faulttimelinewindow.h"
 #include "iotimelinewindow.h"
+#include "brakechainwindow.h"
 #include "incidentreportdialog.h"
 #include "incidentreportwindow.h"
 #include "speeddistance.h"
@@ -629,6 +630,22 @@ void MainWindow::onActionCabIo()
     QString name = m_tabs.value(key).friendlyName;
     auto *w = new IoTimelineWindow(model, key, name.isEmpty() ? key : name, this);
     connect(w, &IoTimelineWindow::jumpRequested, this, &MainWindow::jumpToEntry);
+    w->show();
+    w->raise();
+}
+
+// Session 453: each brake KAVACH applied, link by link.
+void MainWindow::onActionBrakeChain()
+{
+    const QString key = currentTabKey();
+    LogModel *model = key.isEmpty() ? nullptr : m_dispatcher->modelForKey(key);
+    if (!model || model->count() == 0) {
+        notify(NoteLevel::Info, tr("Select a tab with messages first."));
+        return;
+    }
+    QString name = m_tabs.value(key).friendlyName;
+    auto *w = new BrakeChainWindow(model, key, name.isEmpty() ? key : name, this);
+    connect(w, &BrakeChainWindow::jumpRequested, this, &MainWindow::jumpToEntry);
     w->show();
     w->raise();
 }
